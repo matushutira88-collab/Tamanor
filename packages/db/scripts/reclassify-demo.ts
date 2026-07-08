@@ -11,7 +11,7 @@
  * live manual decisions. No platform action is performed.
  */
 import { prisma, Priority, RiskLevel, Sentiment } from "../src/index";
-import { classifyHybrid, buildIntelFromHybrid, type ClassifierRule } from "@guardora/ai";
+import { classifyHybrid, buildIntelFromHybrid, evaluateAutoProtect, type ClassifierRule } from "@guardora/ai";
 
 const force = process.env.RECLASSIFY_FORCE === "1";
 const translation = {
@@ -57,6 +57,22 @@ async function main() {
     rulesByBrand.set(r.brandId, arr);
   }
 
+  const memRules = await prisma.brandRiskMemoryRule.findMany({ where: { isActive: true } });
+  const memoryByBrand = new Map<string, { type: string; normalizedPhrase: string; language: string | null; severity: string; isActive: boolean }[]>();
+  for (const m of memRules) {
+    const arr = memoryByBrand.get(m.brandId) ?? [];
+    arr.push({ type: m.type, normalizedPhrase: m.normalizedPhrase, language: m.language, severity: m.severity, isActive: m.isActive });
+    memoryByBrand.set(m.brandId, arr);
+  }
+
+  const apPolicies = await prisma.brandAutoProtectPolicy.findMany({ where: { isActive: true } });
+  const policiesByBrand = new Map<string, { category: string; mode: string; minConfidence: number; isActive: boolean }[]>();
+  for (const p of apPolicies) {
+    const arr = policiesByBrand.get(p.brandId) ?? [];
+    arr.push({ category: p.category, mode: p.mode, minConfidence: p.minConfidence, isActive: p.isActive });
+    policiesByBrand.set(p.brandId, arr);
+  }
+
   let updated = 0, skipped = 0, escalated = 0;
   for (const it of items) {
     if (it._count.decisions > 0 && !force) { skipped++; continue; }
@@ -68,8 +84,14 @@ async function main() {
         rating: it.contentItem.rating ?? undefined,
         rules: rulesByBrand.get(it.brandId) ?? [],
       },
-      { workspaceLocale: localeByBrand.get(it.brandId) ?? "en", translation, aiRisk },
+      { workspaceLocale: localeByBrand.get(it.brandId) ?? "en", translation, aiRisk, memoryRules: memoryByBrand.get(it.brandId) ?? [] },
     );
+
+    const autoProtect = evaluateAutoProtect(
+      { text: it.contentItem.text, riskLevel: hybrid.level, categories: hybrid.categories, riskSignals: hybrid.explanation.riskSignals, matchedTerms: hybrid.explanation.matchedTerms, sentiment: hybrid.sentiment, confidence: hybrid.confidence },
+      policiesByBrand.get(it.brandId) ?? [],
+    );
+    const requiresApproval = hybrid.approvalRequired || autoProtect.decision === "requires_approval";
 
     const wasCalm = it.riskLevel === RiskLevel.none || it.riskLevel === RiskLevel.low;
     const nowHot = hybrid.level === RiskLevel.high || hybrid.level === RiskLevel.critical;
@@ -85,10 +107,16 @@ async function main() {
         riskRationale: hybrid.explanation.shortReason || hybrid.engine,
         riskEngine: hybrid.engine,
         priority: priorityForRisk(hybrid.level),
-        requiresApproval: hybrid.approvalRequired,
+        requiresApproval,
         assessedAt: new Date(),
         ...buildIntelFromHybrid(hybrid),
       },
+    });
+
+    await prisma.autoProtectDecision.upsert({
+      where: { itemId: it.id },
+      create: { tenantId: it.tenantId, brandId: it.brandId, itemId: it.id, matchedCategory: autoProtect.matchedCategory, policyMode: autoProtect.policyMode, confidence: autoProtect.confidence, decision: autoProtect.decision, reason: autoProtect.reason },
+      update: { matchedCategory: autoProtect.matchedCategory, policyMode: autoProtect.policyMode, confidence: autoProtect.confidence, decision: autoProtect.decision, reason: autoProtect.reason },
     });
     // Observability: provider calls (no tokens/secrets/text).
     if (hybrid.providerCalls.length) {

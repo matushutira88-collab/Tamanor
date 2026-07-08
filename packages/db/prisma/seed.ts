@@ -26,7 +26,7 @@ import {
   DecisionStatus,
   SyncRunStatus,
 } from "@prisma/client";
-import { RiskClassifier, buildReputationIntel } from "@guardora/ai";
+import { RiskClassifier, buildReputationIntel, DEFAULT_AUTO_PROTECT_POLICIES } from "@guardora/ai";
 import type { ClassifierRule } from "@guardora/ai";
 
 const translationCfg = {
@@ -192,6 +192,24 @@ async function main() {
     ],
   });
 
+  // --- Brand risk memory (example, brand-scoped) -----------------------------
+  await prisma.brandRiskMemoryRule.createMany({
+    data: [
+      { tenantId: tenant.id, brandId: coffee.id, type: "watch_phrase", phrase: "cold brew", normalizedPhrase: "cold brew", language: "en", severity: "medium", source: "manual", isActive: true },
+      { tenantId: tenant.id, brandId: coffee.id, type: "allow_phrase", phrase: "steal the show", normalizedPhrase: "steal the show", language: "en", severity: "low", source: "feedback", isActive: true },
+      { tenantId: tenant.id, brandId: fitness.id, type: "competitor_phrase", phrase: "fitpro", normalizedPhrase: "fitpro", language: "en", severity: "low", source: "feedback", isActive: false },
+    ],
+  });
+
+  // --- Auto-Protect default policies (safe; shadow mode only) ----------------
+  await prisma.brandAutoProtectPolicy.createMany({
+    data: [coffee.id, fitness.id].flatMap((brandId) =>
+      DEFAULT_AUTO_PROTECT_POLICIES.map((p) => ({
+        tenantId: tenant.id, brandId, category: p.category, mode: p.mode, minConfidence: 0.7, isActive: true,
+      })),
+    ),
+  });
+
   // Load active rules per brand for the classifier.
   const rulesByBrand = new Map<string, ClassifierRule[]>();
   for (const brandId of [coffee.id, fitness.id]) {
@@ -329,7 +347,7 @@ async function main() {
       event: "seed.completed",
       actorKind: ActorKind.system,
       metadata: {
-        note: `${MOCK} dev seed`,
+        note: "dev seed (demo data)",
         brands: 2,
         connectedAccounts: accounts.length,
         reputationItems: created,

@@ -16,6 +16,7 @@ import {
   type TranslationCallStatus,
   type RecommendedAction,
 } from "./providers";
+import { applyBrandMemory, type BrandMemoryRule, type BrandMemoryMatch } from "./brand-memory";
 
 const RISK_ORDER = ["none", "low", "medium", "high", "critical"] as const;
 const rank = (l: string) => Math.max(0, RISK_ORDER.indexOf(l as (typeof RISK_ORDER)[number]));
@@ -25,6 +26,8 @@ export interface HybridConfig {
   translation: { enabled: boolean; provider: string; targetMode: "workspace_locale" | "en" };
   aiRisk: { enabled: boolean; provider: string; minConfidence: number };
   brandContext?: string;
+  /** Active brand-scoped memory rules (applied after Risk Rules V1). */
+  memoryRules?: BrandMemoryRule[];
 }
 
 export interface ProviderCallRecord {
@@ -63,6 +66,8 @@ export interface HybridResult {
   classificationMode: "rules_only" | "ai_assisted";
   aiProvider: string;
   aiProviderStatus: AiRiskCallStatus;
+  // Brand memory.
+  memoryMatched: BrandMemoryMatch[];
   // Engine + observability.
   engine: string;
   providerCalls: ProviderCallRecord[];
@@ -99,7 +104,16 @@ export async function classifyHybrid(
   // 1–3) original text preserved by caller; language detection + Risk Rules V1.
   const rules = await classifier.classify(input);
   const detectedLanguage = rules.detectedLanguage ?? "unknown";
-  const ruleSignals = rules.explanation?.riskSignals ?? [];
+
+  // Brand memory rules (brand-scoped) applied on top of Risk Rules V1.
+  const memory = applyBrandMemory({
+    text: input.text,
+    level: rules.level as unknown as string,
+    categories: rules.categories as unknown as string[],
+    riskSignals: rules.explanation?.riskSignals ?? [],
+    rules: cfg.memoryRules ?? [],
+  });
+  const ruleSignals = memory.riskSignals;
 
   // 4) Translation (only if not already in the target locale).
   const targetLocale = cfg.translation.targetMode === "en" ? "en" : cfg.workspaceLocale;
@@ -131,10 +145,10 @@ export async function classifyHybrid(
   let classificationMode: HybridResult["classificationMode"] = "rules_only";
   let aiProvider = "none";
   let aiProviderStatus: AiRiskCallStatus = "skipped";
-  let level = rules.level as unknown as string;
+  let level = memory.level;
   let confidence = rules.confidence;
   let sentiment = rules.sentiment as unknown as string;
-  let categories = [...(rules.categories as unknown as string[])];
+  let categories = [...memory.categories];
   let recommendedReviewAction = rules.explanation?.recommendedReviewAction ?? "none";
   let approvalRequired = rank(level) >= rank("high");
   let shortReason = "";
@@ -194,6 +208,7 @@ export async function classifyHybrid(
     classificationMode,
     aiProvider,
     aiProviderStatus,
+    memoryMatched: memory.matches,
     engine: rules.engine ?? "risk-rules-v1",
     providerCalls,
   };

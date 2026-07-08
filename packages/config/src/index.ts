@@ -339,7 +339,7 @@ export function getMetaSetupStatus(
     key: "META_LIVE_SYNC",
     label: "Live sync",
     status: meta.liveSync ? "on" : "off",
-    note: meta.liveSync ? "live Graph reads enabled" : "using MOCK fallback",
+    note: meta.liveSync ? "live Graph reads enabled" : "using placeholder data (no live sync)",
     required: false,
   });
 

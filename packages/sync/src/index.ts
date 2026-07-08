@@ -22,7 +22,7 @@ import {
   ContentKind,
   decryptToken,
 } from "@guardora/db";
-import { classifyHybrid, buildIntelFromHybrid, type ClassifierRule } from "@guardora/ai";
+import { classifyHybrid, buildIntelFromHybrid, evaluateAutoProtect, type ClassifierRule } from "@guardora/ai";
 import {
   ConnectorMode as CoreMode,
   Platform as CorePlatform,
@@ -336,14 +336,32 @@ async function persistItem(
     select: { defaultLocale: true },
   });
 
+  // Brand-scoped active memory rules (never cross-brand).
+  const memoryRules = await prisma.brandRiskMemoryRule.findMany({
+    where: { brandId: account.brandId, tenantId: account.tenantId, isActive: true },
+    select: { type: true, normalizedPhrase: true, language: true, severity: true, isActive: true },
+  });
+
   const hybrid = await classifyHybrid(
     { text: item.text, platform: item.platform, locale: item.author.locale, rating: item.rating, rules },
     {
       workspaceLocale: brand?.defaultLocale ?? "en",
       translation: getTranslationConfig(),
       aiRisk: getAiRiskConfig(),
+      memoryRules,
     },
   );
+
+  // Auto-Protect evaluation (shadow only — never executes a platform action).
+  const policies = await prisma.brandAutoProtectPolicy.findMany({
+    where: { brandId: account.brandId, tenantId: account.tenantId, isActive: true },
+    select: { category: true, mode: true, minConfidence: true, isActive: true },
+  });
+  const autoProtect = evaluateAutoProtect(
+    { text: item.text, riskLevel: hybrid.level, categories: hybrid.categories, riskSignals: hybrid.explanation.riskSignals, matchedTerms: hybrid.explanation.matchedTerms, sentiment: hybrid.sentiment, confidence: hybrid.confidence },
+    policies,
+  );
+  const requiresApproval = hybrid.approvalRequired || autoProtect.decision === "requires_approval";
 
   const content = await prisma.contentItem.create({
     data: {
@@ -372,7 +390,7 @@ async function persistItem(
       contentItemId: content.id,
       status: ReputationStatus.classified,
       priority: priorityFor(hybrid.level),
-      requiresApproval: hybrid.approvalRequired,
+      requiresApproval,
       riskLevel: hybrid.level as unknown as DbRiskLevel,
       riskConfidence: hybrid.confidence,
       riskCategories: hybrid.categories,
@@ -389,6 +407,33 @@ async function persistItem(
     tenantId: account.tenantId,
     brandId: account.brandId,
   });
+
+  // Audit when brand memory influenced the classification (no secrets/tokens).
+  if (hybrid.memoryMatched.length > 0) {
+    await audit(account, "classifier.brand_memory_used", {
+      itemId: repItem.id,
+      matched: hybrid.memoryMatched.map((m) => ({ type: m.type, effect: m.effect })),
+    });
+  }
+
+  // Record the Auto-Protect decision (shadow only — no platform action taken).
+  await prisma.autoProtectDecision.upsert({
+    where: { itemId: repItem.id },
+    create: {
+      tenantId: account.tenantId, brandId: account.brandId, itemId: repItem.id,
+      matchedCategory: autoProtect.matchedCategory, policyMode: autoProtect.policyMode,
+      confidence: autoProtect.confidence, decision: autoProtect.decision, reason: autoProtect.reason,
+    },
+    update: {
+      matchedCategory: autoProtect.matchedCategory, policyMode: autoProtect.policyMode,
+      confidence: autoProtect.confidence, decision: autoProtect.decision, reason: autoProtect.reason,
+    },
+  });
+  if (autoProtect.decision === "would_auto_hide") {
+    await audit(account, "auto_protect.would_auto_hide", {
+      itemId: repItem.id, category: autoProtect.matchedCategory, mode: autoProtect.policyMode, executed: false,
+    });
+  }
 }
 
 /** Persist provider-call observability rows. No tokens/secrets/text are stored. */

@@ -34,6 +34,38 @@ them plainly to testers so expectations are correct.
 - Demo **comment content** may be in English even when the UI is SK/DE — that is
   expected (only UI chrome is localized).
 
+## Auto-Protect (V1.18)
+
+- Auto-Protect lets a brand choose per harmful-content category: **monitor**,
+  **send to approval**, or **auto-hide**. **Auto-hide runs in SHADOW MODE only** —
+  Guardora computes a "would auto-hide" decision, records it, and audits it, but
+  **no content is hidden on any platform**. Live hide/reply/delete stay disabled.
+- **Normal criticism of the service is never auto-hidden** (hard safety floor). A
+  shadow policy on criticism resolves to `blocked_by_safety`.
+- A client **must enable a category** for it to act; categories without an active
+  policy stay **monitor only**. Low-confidence shadow items are downgraded to
+  **requires_approval**.
+- `auto_hide_live_reserved` is a **reserved** enum for the future action-enable
+  phase — it is **not selectable in the UI** and never performs a live action.
+- The future **action-enable phase is a separate, explicit step**. This release
+  makes no claim that live auto-hide is enabled.
+- Every policy change and `would_auto_hide` decision is audited (no tokens/secrets).
+
+## Brand risk memory & feedback (V1.17)
+
+- Guardora learns **at the brand level only**. Feedback and memory rules are
+  **tenant + brand scoped** — a rule for one brand **never** affects another, and
+  there is **no global model training** across brands.
+- Marking an item **false positive / missed risk** saves feedback; a memory rule
+  is created **only on explicit confirmation** (default = feedback only).
+- **Safety floor:** allow/reduce brand memory rules can lower routine risk but
+  **never** cancel a critical safety signal — scam/fraud, threats, legal threats,
+  explicit harassment, or critical profanity always hold.
+- Every feedback entry and memory-rule create/update/activate/deactivate is
+  **audited** (no tokens/secrets). The classifier also audits when a brand memory
+  signal influenced a result.
+- **No platform action** is ever taken from feedback — actions stay disabled.
+
 ## Providers (translation + AI risk)
 
 - **Provider interfaces are ready** (`TranslationProvider`, `AiRiskProvider`) but

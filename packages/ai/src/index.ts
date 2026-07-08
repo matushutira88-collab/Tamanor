@@ -9,4 +9,6 @@ export * from "./risk-classifier";
 export * from "./language-detect";
 export * from "./translation";
 export * from "./providers";
+export * from "./brand-memory";
+export * from "./auto-protect";
 export * from "./pipeline";

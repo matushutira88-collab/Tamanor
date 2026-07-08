@@ -26,6 +26,7 @@ import {
   proposeDelete,
   proposeReply,
 } from "../actions";
+import { submitFeedback, addMemoryRule } from "./actions";
 
 const OPEN_PROPOSAL_STATUSES = ["proposed", "approved"];
 
@@ -50,6 +51,7 @@ export default async function InboxItemPage({
   const t = getDictionary(await getLocale());
   const act = can(session.role, Permission.InboxAct);
   const propose = can(session.role, Permission.ProposalPropose);
+  const manageRules = can(session.role, Permission.RuleManage);
 
   const item = await prisma.reputationItem.findFirst({
     where: { id, tenantId: session.tenantId },
@@ -60,6 +62,8 @@ export default async function InboxItemPage({
     },
   });
   if (!item) notFound();
+
+  const autoDecision = await prisma.autoProtectDecision.findUnique({ where: { itemId: item.id } });
 
   const meta = PLATFORM_META[item.platform as Platform];
   const notice = sp.notice;
@@ -179,7 +183,7 @@ export default async function InboxItemPage({
                 <label className="block text-xs font-medium text-[var(--color-muted)]">
                   {t.dash.proposeReply}{" "}
                   <span className="normal-case">
-                    ({t.dash.replyToneLabel}: {humanize(item.brand.defaultTone)})
+                    ({t.dash.replyToneLabel}: {tEnum(t, "tone", item.brand.defaultTone)})
                   </span>
                 </label>
                 <Textarea
@@ -361,6 +365,83 @@ export default async function InboxItemPage({
               </div>
             );
           })()}
+
+          {/* Auto-Protect decision (shadow only) */}
+          {autoDecision ? (
+            <div className="gu-card p-5">
+              <h3 className="mb-3 text-sm font-semibold">🛡️ {t.autoProtect.decisionTitle}</h3>
+              <dl className="space-y-2 text-sm">
+                <Row label={t.autoProtect.matchedCategory}>{tEnum(t, "autoProtectCategory", autoDecision.matchedCategory)}</Row>
+                <Row label={t.autoProtect.policyMode}>{autoDecision.policyMode === "none" ? "—" : tEnum(t, "autoProtectMode", autoDecision.policyMode)}</Row>
+                <Row label={t.autoProtect.decision}>
+                  {autoDecision.decision === "would_auto_hide" ? (
+                    <Badge tone="warn">{t.autoProtect.wouldHideBadge}</Badge>
+                  ) : (
+                    <Badge tone={autoDecision.decision === "requires_approval" ? "brand" : "neutral"}>{tEnum(t, "autoProtectDecision", autoDecision.decision)}</Badge>
+                  )}
+                </Row>
+                <Row label={t.autoProtect.reason}><span className="text-xs text-[var(--color-muted)]">{
+                  autoDecision.decision === "would_auto_hide" ? t.autoProtect.rWouldHide
+                  : autoDecision.decision === "requires_approval" ? t.autoProtect.rApproval
+                  : autoDecision.decision === "blocked_by_safety" ? t.autoProtect.rBlocked
+                  : autoDecision.decision === "no_action" ? t.autoProtect.rNoAction
+                  : t.autoProtect.rMonitor
+                }</span></Row>
+                <Row label={t.autoProtect.liveExecuted}><span className="font-medium text-[var(--color-ok)]">{t.autoProtect.always}</span></Row>
+              </dl>
+              {autoDecision.decision === "would_auto_hide" ? (
+                <div className="mt-3 rounded-lg border border-dashed border-[var(--color-warn)] p-3 text-xs">
+                  <p className="font-medium">{t.autoProtect.wouldHideNote}</p>
+                  <p className="mt-1 text-[var(--color-muted)]">{t.autoProtect.shadowExplain}</p>
+                </div>
+              ) : null}
+              <p className="mt-3 text-[11px] text-[var(--color-muted)]">✅ {t.autoProtect.noLiveAction} · {t.autoProtect.shadowOnly}</p>
+            </div>
+          ) : null}
+
+          {/* Improve Guardora for this brand (feedback + brand memory) */}
+          {act ? (
+            <div className="gu-card p-5">
+              <h3 className="mb-1 text-sm font-semibold">🛡️ {t.memory.improveTitle}</h3>
+              <p className="mb-3 text-[11px] text-[var(--color-muted)]">{t.memory.improveHint}</p>
+              <form action={submitFeedback} className="space-y-2">
+                <input type="hidden" name="itemId" value={item.id} />
+                <div className="flex flex-wrap gap-1.5">
+                  {(["correct_risk", "false_positive", "false_negative", "mark_safe", "mark_risky", "wrong_language", "wrong_sentiment"] as const).map((ft) => (
+                    <button key={ft} name="feedbackType" value={ft} type="submit"
+                      className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-xs hover:border-[var(--color-border-strong)]">
+                      {t.memory[ft]}
+                    </button>
+                  ))}
+                </div>
+                <Textarea name="note" rows={2} placeholder={t.memory.notePlaceholder} />
+              </form>
+
+              {manageRules ? (
+                <form action={addMemoryRule} className="mt-4 space-y-2 border-t border-[var(--color-border)] pt-3">
+                  <input type="hidden" name="itemId" value={item.id} />
+                  <p className="text-[11px] text-[var(--color-muted)]">{t.memory.suggestionBody}</p>
+                  <input name="phrase" required placeholder={t.memory.phrasePlaceholder}
+                    className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm" />
+                  <div className="flex gap-1.5">
+                    <select name="type" defaultValue="watch_phrase"
+                      className="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs">
+                      {(["watch_phrase", "allow_phrase", "block_phrase", "competitor_phrase", "crisis_phrase", "increase_risk_pattern", "reduce_risk_pattern"] as const).map((mt) => (
+                        <option key={mt} value={mt}>{tEnum(t, "memoryType", mt)}</option>
+                      ))}
+                    </select>
+                    <select name="severity" defaultValue="medium"
+                      className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs">
+                      {(["low", "medium", "high", "critical"] as const).map((s) => (
+                        <option key={s} value={s}>{tEnum(t, "severity", s)}</option>
+                      ))}
+                    </select>
+                    <PrimaryButton type="submit">{t.memory.add}</PrimaryButton>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="gu-card p-5">
             <h3 className="mb-2 text-sm font-semibold">{t.dash.platformCapabilities}</h3>

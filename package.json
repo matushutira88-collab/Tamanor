@@ -23,6 +23,10 @@
     "risk:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/classifier.test.ts",
     "intel:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/language.test.ts",
     "providers:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/providers.test.ts",
+    "memory:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/memory.test.ts",
+    "memory:db-test": "pnpm --filter @guardora/db exec tsx scripts/brand-memory.test.ts",
+    "autoprotect:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/auto-protect.test.ts",
+    "autoprotect:db-test": "pnpm --filter @guardora/db exec tsx scripts/auto-protect.test.ts",
     "risk:reclassify-demo": "pnpm --filter @guardora/db reclassify-demo",
     "db:studio": "pnpm --filter @guardora/db studio",
     "clean": "pnpm -r clean"

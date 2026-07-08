@@ -38,6 +38,7 @@ export default async function DashboardPage() {
   const [
     received, highRisk, pending, connected, lastRun, risky, trendRows,
     riskGroups, platformGroups, catRows, syncRuns, incidents, accounts,
+    autoDecisionGroups,
   ] = await Promise.all([
     prisma.reputationItem.count({ where }),
     prisma.reputationItem.count({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] } } }),
@@ -52,7 +53,15 @@ export default async function DashboardPage() {
     prisma.syncRun.findMany({ where, orderBy: { startedAt: "desc" }, take: 100, select: { status: true, durationMs: true } }),
     prisma.syncRun.findMany({ where: { ...where, status: "failed" }, orderBy: { startedAt: "desc" }, take: 4, select: { startedAt: true, error: true } }),
     prisma.connectedAccount.findMany({ where: { ...where, status: { in: [ConnectorStatus.Active, ConnectorStatus.MockConnected] } }, select: { health: true } }),
+    prisma.autoProtectDecision.groupBy({ by: ["decision"], where, _count: true }),
   ]);
+
+  const apMap = new Map(autoDecisionGroups.map((g) => [g.decision, g._count as unknown as number]));
+  const apWouldHide = apMap.get("would_auto_hide") ?? 0;
+  const apApproval = apMap.get("requires_approval") ?? 0;
+  const apMonitored = apMap.get("monitor") ?? 0;
+  const apCriticism = (apMap.get("no_action") ?? 0) + (apMap.get("blocked_by_safety") ?? 0);
+  const apProtected = apWouldHide + apApproval;
 
   const trend = bucketByDay(trendRows.map((r) => r.createdAt), 30);
   const firstName = session.userName.split(" ")[0] ?? session.userName;
@@ -94,6 +103,24 @@ export default async function DashboardPage() {
         <StatCard label={t.home.kpiConnected} value={String(connected)} tone="ok" icon={<IconPlug />} hint={t.home.kpiConnectedHint} />
         <StatCard label={t.home.kpiLastSync} value={lastRun ? formatDate(lastRun.startedAt) : "—"} icon={<IconSync />} hint={lastRun ? `${lastRun.mock ? t.home.mock : t.home.live} · ${tEnum(t, "syncStatus", lastRun.status)}` : t.home.noSyncYet} />
       </div>
+
+      {/* Auto-Protect metrics (shadow mode — no live action) */}
+      {received > 0 ? (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center gap-2">
+            <h2 className="text-sm font-semibold">🛡️ {t.autoProtect.title}</h2>
+            <Badge tone="neutral">{t.autoProtect.shadowOnly}</Badge>
+            <span className="text-xs text-[var(--color-muted)]">{t.autoProtect.liveDisabled}</span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <StatCard label={t.autoProtect.mProtected} value={String(apProtected)} tone="brand" />
+            <StatCard label={t.autoProtect.mWouldHide} value={String(apWouldHide)} tone="warn" />
+            <StatCard label={t.autoProtect.mSentApproval} value={String(apApproval)} tone="brand" />
+            <StatCard label={t.autoProtect.mMonitored} value={String(apMonitored)} />
+            <StatCard label={t.autoProtect.mCriticism} value={String(apCriticism)} tone="ok" />
+          </div>
+        </div>
+      ) : null}
 
       {received === 0 ? (
         <div className="mt-6">

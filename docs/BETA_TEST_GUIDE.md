@@ -159,6 +159,42 @@ used" (a safe state, not an error). A `mock` provider exists for local tests onl
 (refused in production); when enabled, gated items show **"AI assisted"**. No fake
 AI, no fake translation, no platform action.
 
+## Brand Risk Memory + feedback (learns per brand)
+
+Open an inbox item → **"Improve Guardora for this brand"**. You can mark it
+correctly classified, a **false positive**, a **missed risk**, safe/risky for this
+brand, or report a wrong language/sentiment. You can also add a phrase to the
+brand **watchlist / allowlist / blocklist**.
+
+- Feedback and rules are **only for this brand** — never shared across brands,
+  and this is **not** global AI model training.
+- False positive / missed risk **saves feedback**; a memory rule is created only
+  if you **explicitly confirm** it.
+- **Safety floor:** an allow rule can calm routine items but **never** cancels a
+  scam, threat, legal threat, harassment, or critical profanity signal.
+- See all learned rules under **Rules → Brand Risk Memory** (type, severity,
+  source, language, created, active toggle).
+- **Nothing is executed** on any platform — every feedback action is audited and
+  actions stay disabled.
+
+## Auto-Protect (shadow mode)
+
+Under **Rules → Auto-Protect** a brand chooses, per harmful-content category, to
+**monitor**, **send to approval**, or **auto-hide**. Important for the beta:
+
+- **Auto-hide is shadow mode only.** Guardora shows what it *would* hide
+  ("Would auto-hide") and records it, but **nothing is hidden on any platform** —
+  live hide/reply/delete remain disabled.
+- **Normal criticism of your service is never auto-hidden** — a bad review still
+  reaches you.
+- You **must switch a category on** for it to act. `Auto-hide (reserved)` is a
+  future mode and is not selectable.
+- Open an inbox item to see the **Auto-Protect decision** card (matched category,
+  mode, decision, confidence, reason, "Live action executed: No"). The dashboard
+  shows Auto-Protect metrics.
+- The future **live action-enable phase is separate** — this release does not
+  enable live auto-hide.
+
 ## What to test on mobile
 
 - Marketing homepage (hero, CTAs full-width, language switcher reachable).

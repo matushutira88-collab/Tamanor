@@ -75,6 +75,36 @@ See [LIVE_META_TEST.md](./LIVE_META_TEST.md).
       gated items show **"AI assisted"** and `provider_calls` records the calls.
 - [ ] `provider_calls` never contains tokens/secrets/text.
 
+## C6. Brand risk memory + feedback (V1.17)
+
+- [ ] `pnpm memory:test` (allow/block/watch/competitor, safety floor, inactive,
+      brand isolation, no platform action) passes.
+- [ ] `pnpm memory:db-test` (feedback persistence + tenant/brand isolation) passes.
+- [ ] Inbox detail shows **"Improve Guardora for this brand"** with feedback
+      actions; clicking one shows a confirmation and adds an audit entry — **no**
+      platform action runs.
+- [ ] False positive / missed risk saves feedback; a memory rule is created only
+      on explicit confirm.
+- [ ] **Rules → Brand Risk Memory** lists rules with type/severity/source/
+      language/created + active toggle. A brand's rule never appears for another.
+- [ ] `brand_risk_feedback` / `brand_risk_memory_rules` scoped by tenant+brand.
+
+## C7. Auto-Protect policies — shadow mode (V1.18)
+
+- [ ] `pnpm autoprotect:test` (policy modes, would_auto_hide, safety floor,
+      confidence downgrade, competitor promo vs comparison, disabled policy,
+      reserved-live never live) passes.
+- [ ] `pnpm autoprotect:db-test` (decision persistence + tenant/brand isolation) passes.
+- [ ] **Rules → Auto-Protect** shows per-category mode (Monitor / Approval /
+      Auto-hide shadow). `normal_criticism` cannot be set to auto-hide;
+      `auto_hide_live_reserved` is not selectable.
+- [ ] Inbox detail **Auto-Protect decision** card shows matched category, mode,
+      decision, confidence, reason, and **"Live action executed: No"**; a
+      would_auto_hide item shows the shadow-mode explanation.
+- [ ] Dashboard shows Auto-Protect metrics (protected / would-hide / approval /
+      monitored / criticism preserved).
+- [ ] No content is hidden on any platform; every decision is audited.
+
 ## D. i18n test
 
 - [ ] EN landing renders (`/`).

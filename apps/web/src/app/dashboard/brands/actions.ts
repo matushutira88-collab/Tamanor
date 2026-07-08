@@ -8,6 +8,7 @@ import {
   Permission,
   assertCan,
 } from "@guardora/core";
+import { DEFAULT_AUTO_PROTECT_POLICIES } from "@guardora/ai";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
@@ -42,13 +43,21 @@ export async function createBrand(formData: FormData): Promise<void> {
     },
   });
 
+  // Safe Auto-Protect defaults (shadow mode only; criticism stays monitor).
+  await prisma.brandAutoProtectPolicy.createMany({
+    data: DEFAULT_AUTO_PROTECT_POLICIES.map((p) => ({
+      tenantId: session.tenantId, brandId: brand.id, category: p.category, mode: p.mode,
+      minConfidence: 0.7, isActive: true, createdBy: session.userId,
+    })),
+  });
+
   await writeAudit({
     session,
     event: "brand.created",
     brandId: brand.id,
     targetType: "brand",
     targetId: brand.id,
-    metadata: { name: brand.name },
+    metadata: { name: brand.name, autoProtectDefaults: DEFAULT_AUTO_PROTECT_POLICIES.length },
   });
 
   revalidatePath("/dashboard/brands");

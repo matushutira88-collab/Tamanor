@@ -441,6 +441,94 @@ model ReputationItem {
   @@map("reputation_items")
 }
 
+/// Human feedback on a classification, scoped to a tenant+brand. Brand-local
+/// learning only — never a global model update across brands.
+model BrandRiskFeedback {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  brandId            String
+  itemId             String?
+  actorId            String?
+  /// correct_risk | false_positive | false_negative | mark_safe | mark_risky |
+  /// wrong_category | wrong_language | wrong_sentiment
+  feedbackType       String
+  originalRiskLevel  String?
+  correctedRiskLevel String?
+  originalCategory   String?
+  correctedCategory  String?
+  note               String?
+  createdAt          DateTime @default(now())
+
+  @@index([tenantId, brandId])
+  @@index([brandId, feedbackType])
+  @@map("brand_risk_feedback")
+}
+
+/// A brand-scoped risk memory rule the classifier applies (never global).
+model BrandRiskMemoryRule {
+  id             String   @id @default(cuid())
+  tenantId       String
+  brandId        String
+  /// watch_phrase | block_phrase | allow_phrase | reduce_risk_pattern |
+  /// increase_risk_pattern | competitor_phrase | crisis_phrase
+  type           String
+  phrase         String
+  normalizedPhrase String
+  language       String?
+  /// low | medium | high | critical
+  severity       String   @default("medium")
+  /// manual | feedback | system
+  source         String   @default("manual")
+  isActive       Boolean  @default(true)
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId, brandId, isActive])
+  @@index([brandId, type])
+  @@map("brand_risk_memory_rules")
+}
+
+/// Per-brand Auto-Protect policy: what to do for each harmful-content category.
+/// `auto_hide_shadow` computes a "would hide" decision only — NO platform action.
+/// `auto_hide_live_reserved` is reserved for a future action-enable phase and must
+/// never be selectable in the UI yet.
+model BrandAutoProtectPolicy {
+  id            String   @id @default(cuid())
+  tenantId      String
+  brandId       String
+  category      String
+  mode          String   @default("monitor") // monitor | approval | auto_hide_shadow | auto_hide_live_reserved
+  minConfidence Float    @default(0.7)
+  isActive      Boolean  @default(true)
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([brandId, category])
+  @@index([tenantId, brandId, isActive])
+  @@map("brand_auto_protect_policies")
+}
+
+/// Recorded Auto-Protect decision for an item. `would_auto_hide` is SHADOW ONLY —
+/// nothing is hidden on the platform. One decision per item (latest wins).
+model AutoProtectDecision {
+  id              String   @id @default(cuid())
+  tenantId        String
+  brandId         String
+  itemId          String   @unique
+  matchedCategory String
+  policyMode      String
+  confidence      Float    @default(0)
+  decision        String // no_action | monitor | requires_approval | would_auto_hide | blocked_by_safety
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, brandId])
+  @@index([brandId, decision])
+  @@map("auto_protect_decisions")
+}
+
 /// Observability record for an external provider call (translation | ai_risk).
 /// Never stores tokens, secrets, or full sensitive payloads.
 model ProviderCall {

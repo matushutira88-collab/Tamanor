@@ -23,7 +23,9 @@ import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { withEmoji } from "@/lib/enum-emoji";
-import { createRule, toggleRule, deleteRule } from "./actions";
+import { createRule, toggleRule, deleteRule, createMemoryRule, toggleMemoryRule, deleteMemoryRule, updateAutoProtectPolicy } from "./actions";
+import { AUTO_PROTECT_CATEGORIES } from "@guardora/ai";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/rules");
@@ -66,9 +68,21 @@ export default async function RulesPage({
   });
 
   const brandOptions = brands.map((b) => ({ value: b.id, label: b.name }));
+  const brandNameById = new Map(brands.map((b) => [b.id, b.name]));
   const rules: RuleRow[] = brands.flatMap((b) =>
     b.brandRules.map((r) => ({ id: r.id, name: r.name, category: r.category, phrases: r.phrases, enabled: r.enabled, brandName: b.name })),
   );
+
+  const memoryRules = await prisma.brandRiskMemoryRule.findMany({
+    where: { tenantId: session.tenantId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const autoPolicies = await prisma.brandAutoProtectPolicy.findMany({
+    where: { tenantId: session.tenantId },
+  });
+  const policyKey = (brandId: string, category: string) => `${brandId}:${category}`;
+  const policyMap = new Map(autoPolicies.map((p) => [policyKey(p.brandId, p.category), p]));
 
   return (
     <>
@@ -90,6 +104,7 @@ export default async function RulesPage({
           }
         />
       ) : (
+        <>
         <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
           {/* Category cards */}
           <div className="space-y-4">
@@ -191,6 +206,152 @@ export default async function RulesPage({
             </Card>
           )}
         </div>
+
+        {/* Brand Risk Memory */}
+        <section className="mt-8">
+          <div className="mb-3">
+            <h2 className="text-lg font-semibold">🧠 {hdrT.memory.memoryTitle}</h2>
+            <p className="text-sm text-[var(--color-muted)]">{hdrT.memory.memorySubtitle}</p>
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+            <Card className="overflow-x-auto">
+              {memoryRules.length === 0 ? (
+                <p className="p-4 text-sm text-[var(--color-muted)]">{hdrT.memory.memoryEmpty}</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
+                      <th className="py-2 pr-2">{hdrT.memory.colPhrase}</th>
+                      <th className="px-2">{hdrT.memory.colType}</th>
+                      <th className="px-2">{hdrT.memory.colSeverity}</th>
+                      <th className="px-2">{hdrT.memory.colSource}</th>
+                      <th className="px-2">{hdrT.memory.colLanguage}</th>
+                      <th className="px-2">{hdrT.memory.colCreated}</th>
+                      <th className="px-2 text-right">{hdrT.memory.colActive}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memoryRules.map((m) => (
+                      <tr key={m.id} className="border-b border-[var(--color-border)] last:border-0">
+                        <td className="py-2 pr-2 font-medium">{m.phrase} <span className="text-[11px] text-[var(--color-muted)]">· {brandNameById.get(m.brandId) ?? ""}</span></td>
+                        <td className="px-2"><Badge>{tEnum(hdrT, "memoryType", m.type)}</Badge></td>
+                        <td className="px-2">{tEnum(hdrT, "severity", m.severity)}</td>
+                        <td className="px-2">{tEnum(hdrT, "memorySource", m.source)}</td>
+                        <td className="px-2">{m.language ? tEnum(hdrT, "detectedLang", m.language) : "—"}</td>
+                        <td className="px-2 text-xs text-[var(--color-muted)]">{formatDate(m.createdAt)}</td>
+                        <td className="px-2 text-right">
+                          {manage ? (
+                            <div className="flex justify-end gap-1.5">
+                              <form action={toggleMemoryRule.bind(null, m.id, !m.isActive)}>
+                                <button type="submit" className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs hover:border-[var(--color-border-strong)]">
+                                  {m.isActive ? hdrT.memory.deactivate : hdrT.memory.activate}
+                                </button>
+                              </form>
+                              <form action={deleteMemoryRule.bind(null, m.id)}>
+                                <button type="submit" className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-danger)] hover:border-[var(--color-danger)]">✕</button>
+                              </form>
+                            </div>
+                          ) : (
+                            <Badge tone={m.isActive ? "ok" : "neutral"}>{m.isActive ? hdrT.dash.active : hdrT.dash.inactive}</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
+
+            {manage ? (
+              <Card className="h-fit">
+                <h3 className="mb-3 text-sm font-semibold">{hdrT.memory.addMemoryRule}</h3>
+                <form action={createMemoryRule} className="space-y-3">
+                  <Field label={hdrT.dash.brand}>
+                    <Select name="brandId" options={brandOptions} />
+                  </Field>
+                  <Field label={hdrT.memory.colPhrase}>
+                    <Input name="phrase" required placeholder={hdrT.memory.phrasePlaceholder} />
+                  </Field>
+                  <Field label={hdrT.memory.colType}>
+                    <Select name="type" options={(["watch_phrase", "allow_phrase", "block_phrase", "competitor_phrase", "crisis_phrase", "increase_risk_pattern", "reduce_risk_pattern"] as const).map((v) => ({ value: v, label: tEnum(hdrT, "memoryType", v) }))} />
+                  </Field>
+                  <Field label={hdrT.memory.colSeverity}>
+                    <Select name="severity" options={(["low", "medium", "high", "critical"] as const).map((v) => ({ value: v, label: tEnum(hdrT, "severity", v) }))} />
+                  </Field>
+                  <PrimaryButton type="submit" className="w-full">{hdrT.memory.add}</PrimaryButton>
+                </form>
+              </Card>
+            ) : null}
+          </div>
+        </section>
+
+        {/* Auto-Protect */}
+        <section className="mt-8">
+          <div className="mb-3">
+            <h2 className="text-lg font-semibold">🛡️ {hdrT.autoProtect.title}</h2>
+            <p className="text-sm text-[var(--color-muted)]">{hdrT.autoProtect.subtitle}</p>
+            <p className="mt-1 text-xs text-[var(--color-warn)]">⚠️ {hdrT.autoProtect.shadowExplain} · {hdrT.autoProtect.liveDisabled}</p>
+          </div>
+          <div className="space-y-6">
+            {brands.map((b) => (
+              <Card key={b.id} className="overflow-x-auto">
+                <h3 className="mb-3 text-sm font-semibold">{b.name}</h3>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
+                      <th className="py-2 pr-2">{hdrT.autoProtect.colCategory}</th>
+                      <th className="px-2">{hdrT.autoProtect.colMode}</th>
+                      <th className="px-2">{hdrT.autoProtect.colMinConfidence}</th>
+                      <th className="px-2">{hdrT.autoProtect.colActive}</th>
+                      <th className="px-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {AUTO_PROTECT_CATEGORIES.map((cat) => {
+                      const p = policyMap.get(policyKey(b.id, cat));
+                      const isCriticism = cat === "normal_criticism";
+                      return (
+                        <tr key={cat} className="border-b border-[var(--color-border)] last:border-0 align-top">
+                          <td className="py-2 pr-2">
+                            <div className="font-medium">{tEnum(hdrT, "autoProtectCategory", cat)}</div>
+                            <div className="text-[11px] text-[var(--color-muted)]">{tEnum(hdrT, "autoProtectCategoryDesc", cat)}</div>
+                          </td>
+                          <td className="px-2 py-2" colSpan={4}>
+                            <form action={updateAutoProtectPolicy} className="flex flex-wrap items-center gap-2">
+                              <input type="hidden" name="brandId" value={b.id} />
+                              <input type="hidden" name="category" value={cat} />
+                              {manage ? (
+                                <>
+                                  <select name="mode" defaultValue={p?.mode ?? "monitor"} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs">
+                                    {(["monitor", "approval", ...(isCriticism ? [] : ["auto_hide_shadow"])] as const).map((m) => (
+                                      <option key={m} value={m}>{tEnum(hdrT, "autoProtectMode", m)}</option>
+                                    ))}
+                                  </select>
+                                  <input name="minConfidence" type="number" step="0.05" min="0" max="1" defaultValue={p?.minConfidence ?? 0.7} className="w-16 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs" />
+                                  <label className="flex items-center gap-1 text-xs">
+                                    <input type="checkbox" name="isActive" defaultChecked={p?.isActive ?? true} /> {hdrT.autoProtect.colActive}
+                                  </label>
+                                  <button type="submit" className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:border-[var(--color-border-strong)]">{hdrT.autoProtect.save}</button>
+                                </>
+                              ) : (
+                                <span className="text-xs">
+                                  <Badge>{tEnum(hdrT, "autoProtectMode", p?.mode ?? "monitor")}</Badge>
+                                  {p?.isActive === false ? <span className="ml-2 text-[var(--color-muted)]">({hdrT.dash.inactive})</span> : null}
+                                </span>
+                              )}
+                            </form>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="mt-3 text-[11px] text-[var(--color-muted)]">{hdrT.autoProtect.reservedNote}</p>
+              </Card>
+            ))}
+          </div>
+        </section>
+        </>
       )}
     </>
   );

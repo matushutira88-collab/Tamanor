@@ -70,10 +70,16 @@ See [META_SETUP.md](./META_SETUP.md) and [LIVE_META_TEST.md](./LIVE_META_TEST.md
 
 ## E. Moderation action enablement (LATER — not part of launch)
 
-Moderation execution stays **disabled** until a dedicated action-enable phase:
+Moderation execution stays **disabled** until a dedicated action-enable phase.
+**Auto-Protect auto-hide is SHADOW MODE only** today: Guardora records a
+`would_auto_hide` decision but performs **no live platform action**. Turning
+shadow into live is exactly this phase.
 
 - [ ] Separate **action-enable phase** (not bundled with launch).
 - [ ] **Per-brand opt-in** required.
+- [ ] Promote Auto-Protect `auto_hide_shadow` → `auto_hide_live_reserved` only
+      behind an explicit, per-brand, audited enablement (reserved enum today).
+- [ ] **Normal criticism never auto-hidden** — safety floor enforced in engine.
 - [ ] **Approval required** before any execution.
 - [ ] **Audit required** for every executed action.
 - [ ] **Capability check** required (never fake success on unsupported actions).
