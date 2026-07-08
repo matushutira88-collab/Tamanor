@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+/* =============================================================================
+   Guardora design system — clean, professional, light B2B SaaS.
+   Teal / emerald accent. Soft background, generous spacing, rounded cards.
+   ========================================================================== */
+@theme {
+  /* Surfaces */
+  --color-bg: #f6f8fb;
+  --color-bg-soft: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #f2f5f9;
+  --color-border: #e6eaf0;
+  --color-border-strong: #d7dde7;
+
+  /* Text */
+  --color-fg: #0f1b2d;
+  --color-muted: #66768c;
+
+  /* Brand — teal */
+  --color-brand: #0d9488;
+  --color-brand-strong: #0f766e;
+  --color-brand-soft: #d6f5ef;
+  --color-brand-fg: #ffffff;
+
+  /* Accent — emerald */
+  --color-accent: #10b981;
+
+  /* Semantic */
+  --color-danger: #e11d48;
+  --color-danger-soft: #ffe4e9;
+  --color-warn: #b45309;
+  --color-warn-soft: #fdeecd;
+  --color-ok: #047857;
+  --color-ok-soft: #d5f3e6;
+  --color-neutral-soft: #eef2f7;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+
+  --radius: 12px;
+  --radius-lg: 16px;
+
+  --shadow-card: 0 1px 2px rgba(15, 27, 45, 0.04), 0 1px 3px rgba(15, 27, 45, 0.06);
+  --shadow-pop: 0 8px 30px rgba(15, 27, 45, 0.10);
+}
+
+html,
+body {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-brand-soft);
+  color: var(--color-brand-strong);
+}
+
+/* Soft tinted backdrop used on marketing hero + auth. */
+.gu-grid {
+  background-image:
+    radial-gradient(60rem 40rem at 75% -15%, rgba(13, 148, 136, 0.10), transparent 60%),
+    radial-gradient(48rem 30rem at 5% 0%, rgba(16, 185, 129, 0.08), transparent 55%);
+}
+
+/* Card — the primary container. */
+.gu-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* Flat card variant (no shadow) for nested/secondary blocks. */
+.gu-panel {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.gu-inset {
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+/* =============================================================================
+   Dark premium scope — used ONLY on the marketing landing page. Locally
+   overrides the design tokens so var(--color-*) components render dark, while
+   the app dashboard stays light.
+   ========================================================================== */
+.gu-dark {
+  --color-bg: #05100f;
+  --color-bg-soft: #081a18;
+  --color-surface: #0a1c1b;
+  --color-surface-2: #0f2624;
+  --color-border: #163330;
+  --color-border-strong: #1f4a44;
+  --color-fg: #eaf6f3;
+  --color-muted: #8aa8a2;
+  --color-brand: #19c39a;
+  --color-brand-strong: #12a785;
+  --color-brand-soft: #0c3a34;
+  --color-brand-fg: #041210;
+  --color-accent: #34d399;
+  --color-danger: #ff6b7a;
+  --color-danger-soft: #341620;
+  --color-warn: #f3b657;
+  --color-warn-soft: #33270f;
+  --color-ok: #34d399;
+  --color-ok-soft: #0e352a;
+  --color-neutral-soft: #123330;
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03), 0 24px 48px rgba(0, 0, 0, 0.45);
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+}
+
+/* Radial teal glow backdrop for the hero. */
+.gu-hero {
+  background-image:
+    radial-gradient(58rem 38rem at 72% -12%, rgba(25, 195, 154, 0.18), transparent 60%),
+    radial-gradient(48rem 32rem at 6% 2%, rgba(52, 211, 153, 0.10), transparent 55%);
+}
+
+/* Subtle neon grid, faded with a radial mask. */
+.gu-gridwave {
+  background-image:
+    linear-gradient(to right, rgba(25, 195, 154, 0.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(25, 195, 154, 0.09) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(130% 100% at 50% -10%, #000 18%, transparent 72%);
+  mask-image: radial-gradient(130% 100% at 50% -10%, #000 18%, transparent 72%);
+}
+
+/* Thin gradient hairline separators. */
+.gu-hairline {
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-border-strong),
+    transparent
+  );
+}

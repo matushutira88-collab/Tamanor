@@ -1,0 +1,17 @@
+/**
+ * @guardora/core — shared domain model.
+ *
+ * The single source of truth for Guardora's reputation domain: platforms,
+ * brands, reputation items, risk, moderation, rules, and audit.
+ */
+export * from "./ids";
+export * from "./platform";
+export * from "./tenant";
+export * from "./permissions";
+export * from "./brand";
+export * from "./connector-mode";
+export * from "./connector-account";
+export * from "./reputation";
+export * from "./moderation";
+export * from "./brand-rule";
+export * from "./audit";

@@ -1,0 +1,64 @@
+import type { Metadata } from "next";
+import { MarketingPage, Section, DraftNote } from "@/components/marketing-page";
+
+export const metadata: Metadata = {
+  title: "Terms — Guardora.ai",
+  description:
+    "The terms that govern use of Guardora.ai during its early-access period.",
+};
+
+export default function TermsPage() {
+  return (
+    <MarketingPage
+      eyebrow="Legal"
+      title="Terms of Service"
+      subtitle="The basics of using Guardora during early access."
+    >
+      <DraftNote />
+
+      <Section title="Using the service">
+        <p>
+          Guardora is provided for legitimate brand reputation management. You
+          agree to use it in compliance with the terms and policies of the
+          platforms you connect, and with applicable law. You are responsible for
+          the actions you approve inside Guardora.
+        </p>
+      </Section>
+
+      <Section title="Connected accounts">
+        <p>
+          You may only connect accounts you are authorized to manage. Connections
+          use official OAuth and can be revoked by you at any time from the
+          platform or from Guardora.
+        </p>
+      </Section>
+
+      <Section title="Acceptable use">
+        <p>
+          Guardora may not be used to harass, deceive, or evade platform rules.
+          Guardora operates in read-only mode by default and gates sensitive
+          actions behind human approval; you agree not to attempt to circumvent
+          these controls.
+        </p>
+      </Section>
+
+      <Section title="Availability & changes">
+        <p>
+          During early access the service is provided &ldquo;as is&rdquo; and may
+          change. We will give reasonable notice of material changes to these
+          terms. Final terms will be published before general availability.
+        </p>
+      </Section>
+
+      <Section title="Contact">
+        <p>
+          Questions about these terms? Email{" "}
+          <a className="text-[var(--color-brand)] hover:underline" href="mailto:legal@guardora.ai">
+            legal@guardora.ai
+          </a>
+          .
+        </p>
+      </Section>
+    </MarketingPage>
+  );
+}

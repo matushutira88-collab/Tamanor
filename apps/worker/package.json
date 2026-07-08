@@ -1,0 +1,25 @@
+{
+  "name": "@guardora/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- tsx watch src/index.ts",
+    "start": "dotenv -e ../../.env -- tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@guardora/ai": "workspace:*",
+    "@guardora/config": "workspace:*",
+    "@guardora/connectors": "workspace:*",
+    "@guardora/core": "workspace:*",
+    "@guardora/db": "workspace:*",
+    "@guardora/sync": "workspace:*"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^7.4.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}

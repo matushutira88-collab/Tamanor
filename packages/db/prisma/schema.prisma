@@ -1,0 +1,545 @@
+// =============================================================================
+// Guardora.ai — Prisma schema
+//
+// Multi-tenant, multi-brand, multi-platform reputation model.
+// Mirrors @guardora/core domain types. Enums are kept in sync with core.
+// No client passwords are stored. Connector tokens come from official OAuth only.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Enums -------------------------------------------------------------------
+
+enum Platform {
+  facebook_page
+  instagram_business
+  youtube
+  linkedin_company
+  tiktok
+  google_business
+}
+
+enum Role {
+  owner
+  admin
+  analyst
+  reviewer
+  viewer
+}
+
+enum BrandStatus {
+  active
+  paused
+  archived
+}
+
+enum BrandTone {
+  professional
+  friendly
+  formal
+  casual
+  empathetic
+}
+
+enum ConnectorStatus {
+  pending
+  active
+  mock_connected
+  expired
+  disconnected
+  error
+}
+
+enum ConnectorMode {
+  placeholder
+  oauth_ready
+  read_only
+  action_disabled
+}
+
+enum ConnectorHealth {
+  unknown
+  healthy
+  degraded
+  error
+}
+
+enum SyncRunStatus {
+  running
+  completed
+  failed
+}
+
+enum ContentKind {
+  comment
+  reply
+  review
+  mention
+  direct_message
+}
+
+enum ReputationStatus {
+  new
+  classified
+  needs_approval
+  actioned
+  escalated
+  ignored
+  resolved
+}
+
+enum Priority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum RuleCategory {
+  blocked_words
+  competitor_mentions
+  crisis_keywords
+  custom_phrases
+}
+
+enum RiskLevel {
+  none
+  low
+  medium
+  high
+  critical
+}
+
+enum Sentiment {
+  negative
+  neutral
+  positive
+}
+
+enum ModerationAction {
+  none
+  reply
+  hide
+  delete
+  ignore
+  mark_resolved
+  escalate
+}
+
+enum ActorKind {
+  ai
+  human
+  rule
+  system
+}
+
+enum DecisionStatus {
+  proposed
+  approved
+  rejected
+  executed
+  failed
+  cancelled
+}
+
+// --- Identity & tenancy ------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  locale    String   @default("en")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  proposed    ModerationDecision[] @relation("DecisionProposer")
+  reviewed    ModerationDecision[] @relation("DecisionReviewer")
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("free")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships       Membership[]
+  brands            Brand[]
+  connectedAccounts ConnectedAccount[]
+  contentItems      ContentItem[]
+  reputationItems   ReputationItem[]
+  decisions         ModerationDecision[]
+  brandRules        BrandRule[]
+  auditLogs         AuditLog[]
+  reportSnapshots   ReportSnapshot[]
+  metaOnboarding    MetaOnboardingSession[]
+
+  @@map("tenants")
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String
+  role      Role     @default(viewer)
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("memberships")
+}
+
+// --- Brands & connectors -----------------------------------------------------
+
+model Brand {
+  id            String      @id @default(cuid())
+  tenantId      String
+  name          String
+  displayName   String?
+  defaultLocale String      @default("en")
+  timezone      String      @default("UTC")
+  defaultTone   BrandTone   @default(professional)
+  status        BrandStatus @default(active)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connectedAccounts ConnectedAccount[]
+  contentItems      ContentItem[]
+  reputationItems   ReputationItem[]
+  decisions         ModerationDecision[]
+  brandRules        BrandRule[]
+  reportSnapshots   ReportSnapshot[]
+
+  @@index([tenantId])
+  @@map("brands")
+}
+
+model ConnectedAccount {
+  id           String          @id @default(cuid())
+  tenantId     String
+  brandId      String
+  platform     Platform
+  status       ConnectorStatus @default(pending)
+  mode         ConnectorMode   @default(placeholder)
+  health       ConnectorHealth @default(unknown)
+  externalId   String
+  externalName String?
+  // Meta specifics
+  pageId       String?
+  igBusinessId String?
+  scopes       String[]
+  // Permissions the user actually granted (may differ from requested scopes).
+  grantedPermissions String[]
+
+  // ---------------------------------------------------------------------------
+  // TOKENS — obtained via official OAuth ONLY (never passwords/scraping).
+  // DEV NOTE: stored as plaintext in development for simplicity.
+  // PRODUCTION REQUIREMENT: these columns MUST be encrypted at rest (KMS/envelope
+  // encryption). Tokens are never returned to the UI and never logged.
+  // See docs/SECURITY.md.
+  // ---------------------------------------------------------------------------
+  accessToken    String?
+  longLivedToken String?
+  refreshToken   String?
+  tokenType      String?
+  tokenExpiresAt DateTime?
+
+  lastSyncedAt         DateTime?
+  lastSuccessfulSyncAt DateTime?
+  // Last external content cursor/timestamp seen (for incremental reads).
+  lastCursor           String?
+  lastError            String?
+  lastErrorAt          DateTime?
+  // Read-only sync retry/backoff state (no aggressive retry loops).
+  syncAttempts         Int       @default(0)
+  nextRetryAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand        Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contentItems ContentItem[]
+  syncRuns     SyncRun[]
+
+  @@unique([brandId, platform, externalId])
+  @@index([tenantId])
+  @@index([brandId])
+  @@map("connected_accounts")
+}
+
+model SyncRun {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  brandId            String
+  connectedAccountId String
+  status             SyncRunStatus @default(running)
+  // Whether this run used the MOCK fallback (placeholder mode).
+  mock               Boolean       @default(false)
+  fetched            Int           @default(0)
+  created            Int           @default(0)
+  deduped            Int           @default(0)
+  errors             Int           @default(0)
+  error              String?
+  durationMs         Int?
+  // External content cursor/timestamp reached by this run, if any.
+  cursor             String?
+  startedAt          DateTime      @default(now())
+  finishedAt         DateTime?
+
+  connectedAccount ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([connectedAccountId, startedAt])
+  @@map("sync_runs")
+}
+
+/// Short-lived OAuth onboarding state between the Meta callback and Page
+/// selection. Holds discovery results INCLUDING per-page access tokens.
+///
+/// SECURITY: `userAccessToken` and the tokens embedded in `pages` are SECRETS —
+/// server-only, never returned to the UI, never logged. DEV stores plaintext;
+/// PRODUCTION must encrypt at rest (see docs/SECURITY.md). Rows expire quickly
+/// and are deleted once a Page is selected.
+model MetaOnboardingSession {
+  id              String   @id @default(cuid())
+  tenantId        String
+  brandId         String
+  userId          String
+  userAccessToken String
+  tokenType       String?
+  tokenExpiresAt  DateTime?
+  grantedScopes   String[]
+  // Discovered pages (JSON) incl. per-page access tokens — server-only secrets.
+  pages           Json
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, brandId])
+  @@map("meta_onboarding_sessions")
+}
+
+/// Raw inbound platform webhook events. Global (may not map to a tenant yet).
+/// Stored for auditing; NO automatic moderation actions are taken from these.
+model WebhookEvent {
+  id             String   @id @default(cuid())
+  platform       Platform
+  eventType      String?
+  signatureValid Boolean  @default(false)
+  payload        Json
+  processed      Boolean  @default(false)
+  // Whether the event mapped to a connected account (false = ignored/unmatched).
+  matched        Boolean  @default(false)
+  error          String?
+  receivedAt     DateTime @default(now())
+
+  @@index([platform, receivedAt])
+  @@index([processed])
+  @@map("webhook_events")
+}
+
+// --- Content & reputation ----------------------------------------------------
+
+model ContentItem {
+  id                 String      @id @default(cuid())
+  tenantId           String
+  brandId            String
+  connectedAccountId String
+  platform           Platform
+  kind               ContentKind
+  externalId         String
+  externalParentId   String?
+  text               String
+  authorExternalId   String?
+  authorDisplayName  String?
+  authorLocale       String?
+  rating             Int?
+  permalink          String?
+  publishedAt        DateTime
+  ingestedAt         DateTime    @default(now())
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand            Brand            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  connectedAccount ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+  reputationItem   ReputationItem?
+
+  @@unique([connectedAccountId, externalId])
+  @@index([tenantId])
+  @@index([brandId])
+  @@index([platform])
+  @@map("content_items")
+}
+
+model ReputationItem {
+  id              String           @id @default(cuid())
+  tenantId        String
+  brandId         String
+  platform        Platform
+  contentItemId   String           @unique
+  status          ReputationStatus @default(new)
+  priority        Priority         @default(normal)
+  requiresApproval Boolean         @default(false)
+
+  // Embedded risk assessment (mirrors core ReputationRisk)
+  riskLevel       RiskLevel        @default(none)
+  riskConfidence  Float            @default(0)
+  riskCategories  String[]
+  sentiment       Sentiment        @default(neutral)
+  riskRationale   String?
+  riskEngine      String?
+  assessedAt      DateTime?
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand       Brand                @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contentItem ContentItem          @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  decisions   ModerationDecision[]
+
+  @@index([tenantId])
+  @@index([brandId, status])
+  @@index([riskLevel])
+  @@map("reputation_items")
+}
+
+model ModerationDecision {
+  id                String           @id @default(cuid())
+  tenantId          String
+  brandId           String
+  reputationItemId  String
+  action            ModerationAction
+  status            DecisionStatus   @default(proposed)
+  // Who proposed the action (ai / human / rule / system).
+  proposedByKind    ActorKind
+  proposedByUserId  String?
+  replyText         String?
+  reason            String?
+  confidence        Float?
+  // Point-in-time AI risk assessment captured at proposal creation.
+  riskSnapshot      Json?
+  // Reviewer who approved / rejected / cancelled.
+  reviewerUserId    String?
+  reviewedAt        DateTime?
+  executedAt        DateTime?
+  failureReason     String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand          Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  reputationItem ReputationItem @relation(fields: [reputationItemId], references: [id], onDelete: Cascade)
+  proposer       User?          @relation("DecisionProposer", fields: [proposedByUserId], references: [id])
+  reviewer       User?          @relation("DecisionReviewer", fields: [reviewerUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([brandId])
+  @@index([reputationItemId])
+  @@index([status])
+  @@map("moderation_decisions")
+}
+
+// --- Rules, audit, reports ---------------------------------------------------
+
+model BrandRule {
+  id         String       @id @default(cuid())
+  tenantId   String
+  brandId    String
+  name       String
+  category   RuleCategory
+  // Case-insensitive phrases matched against content text.
+  phrases    String[]
+  enabled    Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand  Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([brandId, enabled])
+  @@map("brand_rules")
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  tenantId    String
+  brandId     String?
+  event       String
+  actorKind   ActorKind
+  actorUserId String?
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation(fields: [actorUserId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([event])
+  @@map("audit_logs")
+}
+
+model ReportSnapshot {
+  id          String   @id @default(cuid())
+  tenantId    String
+  brandId     String
+  periodStart DateTime
+  periodEnd   DateTime
+  metrics     Json
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand  Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([brandId, periodEnd])
+  @@map("report_snapshots")
+}
+
+enum LeadStatus {
+  new
+  contacted
+  closed
+}
+
+/// Public inbound lead / contact request (Book a demo, Contact form).
+/// Global — not tied to a tenant. Contains no secrets.
+model Lead {
+  id        String     @id @default(cuid())
+  name      String
+  email     String
+  company   String?
+  website   String?
+  platforms String[]
+  message   String?
+  source    String     @default("book_demo")
+  consent   Boolean    @default(false)
+  status    LeadStatus @default(new)
+  // Internal, team-only notes. Never shown publicly.
+  notes     String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([status, createdAt])
+  @@map("leads")
+}

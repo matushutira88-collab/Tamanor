@@ -1,0 +1,28 @@
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { requireSession } from "@/server/auth";
+import { prisma } from "@/server/db";
+
+const TRIAL_ITEM_LIMIT = 500;
+
+export default async function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const session = await requireSession();
+  const itemsProcessed = await prisma.reputationItem.count({
+    where: { tenantId: session.tenantId },
+  });
+
+  return (
+    <DashboardShell
+      tenantName={session.tenantName}
+      userName={session.userName}
+      role={session.role}
+      trialUsed={itemsProcessed}
+      trialLimit={TRIAL_ITEM_LIMIT}
+    >
+      {children}
+    </DashboardShell>
+  );
+}
