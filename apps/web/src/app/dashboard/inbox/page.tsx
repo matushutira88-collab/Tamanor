@@ -7,6 +7,7 @@ import {
   RiskLevel,
 } from "@guardora/core";
 import { PageHeader, Badge, EmptyState, Tabs } from "@/components/dashboard/ui";
+import { PlatformIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
@@ -131,9 +132,12 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                   <span className="text-xs text-[var(--color-muted)]">{it.contentItem.authorDisplayName ?? "Unknown"}</span>
                 </span>
               </span>
-              <span className="min-w-0 text-xs text-[var(--color-muted)]">
-                <span className="block truncate text-[var(--color-fg)]">{it.brand.name}</span>
-                {PLATFORM_META[it.platform as Platform].label}
+              <span className="flex min-w-0 items-center gap-2 text-xs text-[var(--color-muted)]">
+                <PlatformIcon platform={it.platform} size={22} />
+                <span className="min-w-0">
+                  <span className="block truncate text-[var(--color-fg)]">{it.brand.name}</span>
+                  {PLATFORM_META[it.platform as Platform].label}
+                </span>
               </span>
               <span><Badge tone={RISK_TONE[it.riskLevel as RiskLevel]}>{humanize(it.riskLevel)}</Badge></span>
               <span><Badge tone={PRIORITY_TONE[it.priority as Priority]}>{humanize(it.priority)}</Badge></span>

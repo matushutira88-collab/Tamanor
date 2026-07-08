@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HeroMock } from "@/components/hero-mock";
+import { IllusShield } from "@/components/illustrations";
 
 export const metadata: Metadata = {
   title: "Guardora.ai — AI Reputation Firewall for modern brands",
@@ -267,6 +268,9 @@ export default function LandingPage() {
                 Guardora is built to protect your brand without ever putting your
                 accounts or your customers at risk.
               </p>
+              <div className="mt-6 text-[var(--color-brand)]">
+                <IllusShield size={120} />
+              </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {SAFETY.map((s) => (

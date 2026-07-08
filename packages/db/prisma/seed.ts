@@ -62,6 +62,26 @@ interface SeedItem {
 async function main() {
   console.log(`${MOCK} Seeding Guardora dev data...`);
 
+  // --- Safety: refuse to wipe a REAL connected Meta account ------------------
+  // The seed is a destructive dev reset. If a real (live, non-mock) account has
+  // been connected, wiping it would delete the operator's OAuth connection.
+  // Require SEED_FORCE=1 to proceed in that case.
+  const realAccounts = await prisma.connectedAccount.count({
+    where: {
+      status: "active",
+      NOT: { externalId: { startsWith: "mock_" } },
+    },
+  });
+  if (realAccounts > 0 && process.env.SEED_FORCE !== "1") {
+    console.error(
+      `\n⛔ Refusing to seed: ${realAccounts} real connected account(s) exist.\n` +
+        "   Seeding truncates connected_accounts and would remove them.\n" +
+        "   Run the seed BEFORE connecting real accounts, or set SEED_FORCE=1 to override.\n",
+    );
+    await prisma.$disconnect();
+    process.exit(1);
+  }
+
   // --- Reset (dev only) ------------------------------------------------------
   await prisma.auditLog.deleteMany();
   await prisma.moderationDecision.deleteMany();
@@ -315,26 +335,42 @@ async function main() {
   console.log(`${MOCK} Done: 1 tenant, 1 user, 2 brands, ${accounts.length} accounts, ${created + demoCount} reputation items (incl. ${demoCount} demo).`);
 }
 
-/** Larger clearly-[MOCK] demo dataset spread across ~14 days for nicer charts. */
-const DEMO_TEXTS: Array<{ text: string; author: string; rating?: number }> = [
-  { text: "[MOCK] Absolutely love this brand, best in the market!", author: "happy_customer" },
-  { text: "[MOCK] Great support team, solved my issue fast.", author: "grateful_gus" },
-  { text: "[MOCK] Do you ship to Germany?", author: "curious_klaus" },
-  { text: "[MOCK] total scam, they took my money and ghosted me", author: "angry_ana" },
-  { text: "[MOCK] Free crypto giveaway!! click here to claim now 🎁", author: "promo_bot_42" },
-  { text: "[MOCK] worst service ever, want a refund immediately", author: "upset_ULF" },
-  { text: "[MOCK] these misleading claims are false advertising", author: "skeptic_sam" },
-  { text: "[MOCK] we should boycott this company after what happened", author: "activist_al" },
-  { text: "[MOCK] shut up nobody asked for your opinion", author: "troll_t" },
-  { text: "[MOCK] Competitor Beanmaster is way cheaper honestly", author: "bargain_bob" },
-  { text: "[MOCK] The new update looks fantastic, well done!", author: "fan_fiona" },
-  { text: "[MOCK] my order arrived broken and no one replied", author: "let_down_lily" },
-  { text: "[MOCK] is this product safe for kids?", author: "parent_pat" },
-  { text: "[MOCK] you scammed me, I'm calling my lawyer", author: "furious_fred" },
-  { text: "[MOCK] amazing quality, will recommend to friends", author: "loyal_lena", rating: 5 },
-  { text: "[MOCK] mediocre experience, expected more for the price", author: "meh_mike", rating: 3 },
-  { text: "[MOCK] terrible, got food poisoning, avoid!", author: "sick_steph", rating: 1 },
-  { text: "[MOCK] neutral comment about the weather today", author: "random_rob" },
+/**
+ * Larger, clearly-[MOCK] demo dataset spread across ~30 days for rich charts.
+ * `cat` is the intended risk category (merged into the classifier output so the
+ * Topics/Insights views show a realistic category mix). No real clients.
+ */
+const DEMO_TEXTS: Array<{ text: string; author: string; cat: string; rating?: number }> = [
+  { text: "[MOCK] Absolutely love this brand, best in the market!", author: "happy_customer", cat: "positive", rating: 5 },
+  { text: "[MOCK] Great support team, solved my issue fast. 5 stars", author: "grateful_gus", cat: "positive", rating: 5 },
+  { text: "[MOCK] The new collection looks fantastic, well done!", author: "fan_fiona", cat: "positive", rating: 5 },
+  { text: "[MOCK] amazing quality, will recommend to friends", author: "loyal_lena", cat: "positive", rating: 5 },
+  { text: "[MOCK] Do you ship to Germany?", author: "curious_klaus", cat: "neutral" },
+  { text: "[MOCK] is this product safe for kids?", author: "parent_pat", cat: "neutral" },
+  { text: "[MOCK] what are your opening hours on weekends?", author: "planner_paula", cat: "neutral" },
+  { text: "[MOCK] mediocre experience, expected more for the price", author: "meh_mike", cat: "complaint", rating: 3 },
+  { text: "[MOCK] worst service ever, want a refund immediately", author: "upset_ulf", cat: "complaint", rating: 1 },
+  { text: "[MOCK] my order arrived broken and no one replied", author: "let_down_lily", cat: "complaint", rating: 2 },
+  { text: "[MOCK] terrible, got food poisoning, avoid this place!", author: "sick_steph", cat: "complaint", rating: 1 },
+  { text: "[MOCK] total scam, they took my money and ghosted me", author: "angry_ana", cat: "scam" },
+  { text: "[MOCK] you scammed me, I'm calling my lawyer about this", author: "furious_fred", cat: "legal_threat" },
+  { text: "[MOCK] this is a scam, wire transfer only? report them", author: "wary_wendy", cat: "scam" },
+  { text: "[MOCK] Free crypto giveaway!! click here to claim now 🎁", author: "promo_bot_42", cat: "spam" },
+  { text: "[MOCK] buy now! promo code FOLLOW for cheap followers 🔥", author: "spam_channel", cat: "spam" },
+  { text: "[MOCK] check my profile for free money, subscribe to my page", author: "bot_bianca", cat: "spam" },
+  { text: "[MOCK] these misleading claims are false advertising", author: "skeptic_sam", cat: "misinformation" },
+  { text: "[MOCK] this is fake news, the product doesn't even work", author: "doubtful_dan", cat: "misinformation" },
+  { text: "[MOCK] we should boycott this company after what happened", author: "activist_al", cat: "brand_attack" },
+  { text: "[MOCK] this brand is dangerous, everyone should avoid it", author: "warning_will", cat: "brand_attack" },
+  { text: "[MOCK] shut up nobody asked for your opinion, loser", author: "troll_t", cat: "harassment" },
+  { text: "[MOCK] you people are idiots, worst company alive", author: "rager_rick", cat: "harassment" },
+  { text: "[MOCK] absolute garbage, what the hell is this", author: "cranky_cy", cat: "profanity" },
+  { text: "[MOCK] damn this is bad, hell of a disappointment", author: "grumpy_greg", cat: "profanity" },
+  { text: "[MOCK] Competitor Beanmaster is way cheaper honestly", author: "bargain_bob", cat: "neutral" },
+  { text: "[MOCK] Roastly does this better, just saying", author: "switcher_sue", cat: "neutral" },
+  { text: "[MOCK] injury risk with this, someone will get hurt", author: "careful_cathy", cat: "brand_attack" },
+  { text: "[MOCK] hateful people run this brand, disgusting", author: "hostile_hank", cat: "hate_speech" },
+  { text: "[MOCK] neutral note: nice weather for the launch today", author: "random_rob", cat: "neutral" },
 ];
 
 interface MockAccount {
@@ -345,10 +381,20 @@ interface MockAccount {
 
 function demoStatus(level: string, i: number): ReputationStatus {
   if (level === RiskLevel.critical || level === RiskLevel.high) {
-    return i % 3 === 0 ? ReputationStatus.needs_approval : ReputationStatus.classified;
+    const m = i % 5;
+    return m === 0 || m === 1
+      ? ReputationStatus.needs_approval
+      : m === 2
+        ? ReputationStatus.escalated
+        : m === 3
+          ? ReputationStatus.classified
+          : ReputationStatus.resolved;
   }
-  if (level === RiskLevel.medium) return ReputationStatus.classified;
-  return i % 4 === 0 ? ReputationStatus.resolved : i % 4 === 1 ? ReputationStatus.ignored : ReputationStatus.classified;
+  if (level === RiskLevel.medium) {
+    return i % 3 === 0 ? ReputationStatus.classified : i % 3 === 1 ? ReputationStatus.resolved : ReputationStatus.new;
+  }
+  const m = i % 5;
+  return m === 0 ? ReputationStatus.resolved : m === 1 ? ReputationStatus.ignored : m === 2 ? ReputationStatus.new : ReputationStatus.classified;
 }
 
 async function seedDemoDataset(
@@ -358,12 +404,12 @@ async function seedDemoDataset(
 ): Promise<number> {
   if (mockAccounts.length === 0) return 0;
   let n = 0;
-  for (let day = 13; day >= 0; day--) {
-    const perDay = 3 + (day % 4); // 3..6 items/day
+  for (let day = 29; day >= 0; day--) {
+    const perDay = 5 + (day % 4); // 5..8 items/day → ~195 over 30 days
     for (let k = 0; k < perDay; k++) {
       const acct = mockAccounts[n % mockAccounts.length]!;
       const tpl = DEMO_TEXTS[(n * 7 + day * 3) % DEMO_TEXTS.length]!;
-      const when = new Date(Date.now() - day * 86_400_000 - ((n % 12) * 3_600_000));
+      const when = new Date(Date.now() - day * 86_400_000 - ((n % 20) * 3_400_000));
 
       const risk = await classifier.classify({
         text: tpl.text,
@@ -371,6 +417,9 @@ async function seedDemoDataset(
         rating: tpl.rating,
         rules: rulesByBrand.get(acct.brandId) ?? [],
       });
+
+      // Merge the intended demo category so Topics/Insights show a rich mix.
+      const categories = [...new Set([...(risk.categories as unknown as string[]), tpl.cat])];
 
       const content = await prisma.contentItem.create({
         data: {
@@ -380,6 +429,7 @@ async function seedDemoDataset(
           platform: acct.platform,
           kind: ContentKind.comment,
           externalId: `mock_demo_${n}_${Math.random().toString(36).slice(2, 9)}`,
+          externalParentId: `mock_post_${acct.platform}_${(n % 8)}`,
           text: tpl.text,
           authorDisplayName: tpl.author,
           rating: tpl.rating ?? null,
@@ -399,7 +449,7 @@ async function seedDemoDataset(
           requiresApproval: risk.level === RiskLevel.high || risk.level === RiskLevel.critical,
           riskLevel: risk.level as unknown as RiskLevel,
           riskConfidence: risk.confidence,
-          riskCategories: risk.categories as unknown as string[],
+          riskCategories: categories,
           sentiment: risk.sentiment as unknown as Sentiment,
           riskRationale: risk.rationale ?? null,
           riskEngine: risk.engine ?? null,
@@ -411,25 +461,28 @@ async function seedDemoDataset(
     }
   }
 
-  // Extra sync runs for richer sync history.
+  // Sync-run history across ~14 days, including a couple of failures (incidents).
   for (const acct of mockAccounts) {
-    for (let r = 0; r < 5; r++) {
-      const fetched = 2 + ((r * 3) % 7);
-      const deduped = r === 0 ? 0 : Math.max(0, fetched - 2);
-      const at = new Date(Date.now() - r * 86_400_000);
+    for (let r = 0; r < 14; r++) {
+      const at = new Date(Date.now() - r * 86_400_000 - 3_600_000);
+      const failed = r === 3 || r === 9; // occasional incident
+      const fetched = failed ? 0 : 3 + ((r * 5) % 9);
+      const deduped = failed ? 0 : r === 0 ? 0 : Math.max(0, fetched - 3);
       await prisma.syncRun.create({
         data: {
           tenantId,
           brandId: acct.brandId,
           connectedAccountId: acct.accountId,
-          status: SyncRunStatus.completed,
+          status: failed ? SyncRunStatus.failed : SyncRunStatus.completed,
           mock: true,
           fetched,
-          created: r === 0 ? fetched : Math.max(0, fetched - deduped),
+          created: failed ? 0 : Math.max(0, fetched - deduped),
           deduped,
-          durationMs: 120 + r * 45,
+          errors: failed ? 1 : 0,
+          error: failed ? "Meta API rate limit reached — the sync will retry later." : null,
+          durationMs: failed ? 90 : 110 + r * 22,
           startedAt: at,
-          finishedAt: new Date(at.getTime() + 320),
+          finishedAt: new Date(at.getTime() + (failed ? 90 : 340)),
         },
       });
     }

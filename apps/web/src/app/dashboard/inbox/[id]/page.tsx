@@ -146,10 +146,13 @@ export default async function InboxItemPage({
           {/* Propose platform actions (require approval before execution) */}
           {propose ? (
             <div className="gu-card p-5">
-              <h3 className="mb-1 text-sm font-semibold">Propose platform action</h3>
+              <div className="mb-1 flex items-center gap-2">
+                <h3 className="text-sm font-semibold">Propose platform action</h3>
+                <Badge tone="ok">No platform action executed</Badge>
+              </div>
               <p className="mb-3 text-xs text-[var(--color-muted)]">
                 Creates a proposal for review. Nothing runs until an authorized
-                reviewer approves and executes it.
+                reviewer approves and executes it — Guardora is read-only by default.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <form action={proposeHide.bind(null, item.id)}>

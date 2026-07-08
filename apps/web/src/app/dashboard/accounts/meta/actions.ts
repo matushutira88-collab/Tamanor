@@ -5,21 +5,90 @@ import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
 import {
-  ConnectorStatus,
-  ConnectorMode,
-  ConnectorHealth,
   Platform,
   encryptToken,
+  metaConnectedAccountFields,
 } from "@guardora/db";
+import type { AppSession } from "@/server/auth";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
 
 /**
- * Confirm the Page (and optionally IG) selection and create the ConnectedAccount
- * records. Only here — after explicit user confirmation — is a real connection
- * persisted. Tokens are stored server-side only and never audited.
+ * Create or RECONNECT a Meta ConnectedAccount for a Page/IG selection.
+ *
+ * On reconnect the existing row (unique on brandId+platform+externalId) is fully
+ * refreshed: scopes, grantedPermissions, and all token fields are ALWAYS
+ * overwritten with the current OAuth result, health is reset to healthy, and any
+ * error/backoff state is cleared. No duplicate is ever created. Tokens are
+ * stored encrypted server-side and are never logged or audited.
+ */
+async function upsertMetaAccount(
+  session: AppSession,
+  input: {
+    brandId: string;
+    platform: Platform;
+    externalId: string;
+    externalName: string;
+    pageId: string;
+    igBusinessId: string | null;
+    scopes: string[];
+    granted: string[];
+    encryptedToken: string;
+    tokenType: string | null;
+    tokenExpiresAt: Date | null;
+  },
+): Promise<string> {
+  const { brandId, platform, externalId } = input;
+
+  // Determine reconnect vs. first connect (for the audit event only).
+  const existing = await prisma.connectedAccount.findFirst({
+    where: { brandId, platform, externalId },
+    select: { id: true },
+  });
+
+  // Every field below is overwritten on BOTH create and update (shared builder),
+  // so a reconnect can never keep stale scopes/permissions/tokens.
+  const fields = metaConnectedAccountFields({
+    externalName: input.externalName,
+    pageId: input.pageId,
+    igBusinessId: input.igBusinessId,
+    scopes: input.scopes,
+    grantedPermissions: input.granted,
+    encryptedToken: input.encryptedToken,
+    tokenType: input.tokenType,
+    tokenExpiresAt: input.tokenExpiresAt,
+  });
+
+  const account = await prisma.connectedAccount.upsert({
+    where: { brandId_platform_externalId: { brandId, platform, externalId } },
+    create: { tenantId: session.tenantId, brandId, platform, externalId, ...fields },
+    update: fields,
+  });
+
+  await writeAudit({
+    session,
+    event: existing ? "account.reconnected" : "account.connected",
+    brandId,
+    targetType: "connected_account",
+    targetId: account.id,
+    // NO token material — only non-secret context.
+    metadata: {
+      platform,
+      mode: "read_only",
+      reconnected: Boolean(existing),
+      scopes: input.scopes.length,
+      grantedPermissions: input.granted.length,
+    },
+  });
+
+  return account.id;
+}
+
+/**
+ * Confirm the Page (and optionally IG) selection. Only here — after explicit
+ * user confirmation — is a real connection persisted or refreshed.
  */
 export async function confirmMetaSelection(
   onboardingId: string,
@@ -36,7 +105,6 @@ export async function confirmMetaSelection(
     redirect("/dashboard/accounts/meta/select?flow=expired");
   }
 
-  // Re-check brand ownership + permission scope.
   const brand = await prisma.brand.findFirst({
     where: { id: row.brandId, tenantId: session.tenantId },
     select: { id: true },
@@ -51,118 +119,48 @@ export async function confirmMetaSelection(
     redirect("/dashboard/accounts/meta/select?flow=bad_page");
   }
 
-  // The scopes actually requested/granted for this flow (env-driven).
+  // Scopes actually requested/granted for THIS flow (env-driven).
   const scopes = row.grantedScopes;
   const granted = row.grantedScopes;
-  // Page tokens obtained via a long-lived user token are long-lived. Store them
-  // through the encryption seam (dev: tagged plaintext; prod: KMS).
+  // Page tokens (from a long-lived user token) are long-lived. Encrypt at rest.
   const encryptedToken = encryptToken(page.pageAccessToken);
 
-  // Facebook Page account (always created on confirm).
-  const fb = await prisma.connectedAccount.upsert({
-    where: {
-      brandId_platform_externalId: {
-        brandId: row.brandId,
-        platform: Platform.facebook_page,
-        externalId: page.pageId,
-      },
-    },
-    create: {
-      tenantId: session.tenantId,
-      brandId: row.brandId,
-      platform: Platform.facebook_page,
-      status: ConnectorStatus.active,
-      mode: ConnectorMode.read_only,
-      health: ConnectorHealth.healthy,
-      externalId: page.pageId,
-      externalName: page.name,
-      pageId: page.pageId,
-      igBusinessId: page.igBusinessId ?? null,
-      scopes,
-      grantedPermissions: granted,
-      accessToken: encryptedToken,
-      longLivedToken: encryptedToken,
-      tokenType: row.tokenType,
-      tokenExpiresAt: row.tokenExpiresAt,
-    },
-    update: {
-      status: ConnectorStatus.active,
-      mode: ConnectorMode.read_only,
-      health: ConnectorHealth.healthy,
-      externalName: page.name,
-      igBusinessId: page.igBusinessId ?? null,
-      accessToken: encryptedToken,
-      longLivedToken: encryptedToken,
-      tokenType: row.tokenType,
-      tokenExpiresAt: row.tokenExpiresAt,
-      lastError: null,
-      lastErrorAt: null,
-    },
-  });
-  await writeAudit({
-    session,
-    event: "account.connected",
+  // Facebook Page account (always created/refreshed on confirm).
+  const fbId = await upsertMetaAccount(session, {
     brandId: row.brandId,
-    targetType: "connected_account",
-    targetId: fb.id,
-    metadata: { platform: "facebook_page", mode: "read_only" },
+    platform: Platform.facebook_page,
+    externalId: page.pageId,
+    externalName: page.name,
+    pageId: page.pageId,
+    igBusinessId: page.igBusinessId ?? null,
+    scopes,
+    granted,
+    encryptedToken,
+    tokenType: row.tokenType,
+    tokenExpiresAt: row.tokenExpiresAt,
   });
 
-  // Optionally connect the linked Instagram Business account.
+  // Optionally connect/refresh the linked Instagram Business account.
   if (connectIg && page.igBusinessId) {
-    const ig = await prisma.connectedAccount.upsert({
-      where: {
-        brandId_platform_externalId: {
-          brandId: row.brandId,
-          platform: Platform.instagram_business,
-          externalId: page.igBusinessId,
-        },
-      },
-      create: {
-        tenantId: session.tenantId,
-        brandId: row.brandId,
-        platform: Platform.instagram_business,
-        status: ConnectorStatus.active,
-        mode: ConnectorMode.read_only,
-        health: ConnectorHealth.healthy,
-        externalId: page.igBusinessId,
-        externalName: page.igUsername ? `@${page.igUsername}` : page.name,
-        pageId: page.pageId,
-        igBusinessId: page.igBusinessId,
-        scopes,
-        grantedPermissions: granted,
-        accessToken: encryptedToken,
-      longLivedToken: encryptedToken,
-        tokenType: row.tokenType,
-        tokenExpiresAt: row.tokenExpiresAt,
-      },
-      update: {
-        status: ConnectorStatus.active,
-        mode: ConnectorMode.read_only,
-        health: ConnectorHealth.healthy,
-        externalName: page.igUsername ? `@${page.igUsername}` : page.name,
-        accessToken: encryptedToken,
-      longLivedToken: encryptedToken,
-        tokenType: row.tokenType,
-        tokenExpiresAt: row.tokenExpiresAt,
-        lastError: null,
-        lastErrorAt: null,
-      },
-    });
-    await writeAudit({
-      session,
-      event: "account.connected",
+    await upsertMetaAccount(session, {
       brandId: row.brandId,
-      targetType: "connected_account",
-      targetId: ig.id,
-      metadata: { platform: "instagram_business", mode: "read_only" },
+      platform: Platform.instagram_business,
+      externalId: page.igBusinessId,
+      externalName: page.igUsername ? `@${page.igUsername}` : page.name,
+      pageId: page.pageId,
+      igBusinessId: page.igBusinessId,
+      scopes,
+      granted,
+      encryptedToken,
+      tokenType: row.tokenType,
+      tokenExpiresAt: row.tokenExpiresAt,
     });
   }
 
   await clearOnboarding(onboardingId);
 
   revalidatePath("/dashboard/accounts");
-  redirect(`/dashboard/accounts/${fb.id}?connected=1`);
+  redirect(`/dashboard/accounts/${fbId}?connected=1`);
 }
 
 /** Abandon the onboarding flow without connecting anything. */

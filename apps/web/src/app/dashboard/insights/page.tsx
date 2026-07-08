@@ -87,7 +87,7 @@ async function Overview({ where }: { where: Where }) {
 async function SentimentTab({ where }: { where: Where }) {
   const [groups, negRows] = await Promise.all([
     prisma.reputationItem.groupBy({ by: ["sentiment"], where, _count: true }),
-    prisma.reputationItem.findMany({ where: { ...where, sentiment: Sentiment.Negative, createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) } }, select: { createdAt: true } }),
+    prisma.reputationItem.findMany({ where: { ...where, sentiment: Sentiment.Negative, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }, select: { createdAt: true } }),
   ]);
   const map = new Map(groups.map((g) => [g.sentiment, g._count as unknown as number]));
   const pos = map.get(Sentiment.Positive) ?? 0;
@@ -111,8 +111,8 @@ async function SentimentTab({ where }: { where: Where }) {
           <BarList rows={[{ label: "Positive", value: pos, tone: "ok" }, { label: "Neutral", value: neu, tone: "neutral" }, { label: "Negative", value: neg, tone: "danger" }]} />
         </Card>
         <Card>
-          <SectionHeader title="Negative sentiment — last 14 days" />
-          {negRows.length === 0 ? <p className="py-8 text-center text-sm text-[var(--color-muted)]">No negative items in this window.</p> : <TrendChart buckets={bucketByDay(negRows.map((r) => r.createdAt), 14)} />}
+          <SectionHeader title="Negative sentiment — last 30 days" />
+          {negRows.length === 0 ? <p className="py-8 text-center text-sm text-[var(--color-muted)]">No negative items in this window.</p> : <TrendChart buckets={bucketByDay(negRows.map((r) => r.createdAt), 30)} />}
         </Card>
       </div>
     </>

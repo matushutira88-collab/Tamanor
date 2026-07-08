@@ -12,6 +12,7 @@ export function SiteHeader() {
           <a href="#platforms" className="transition hover:text-[var(--color-fg)]">Platforms</a>
           <a href="#features" className="transition hover:text-[var(--color-fg)]">Features</a>
           <a href="#control" className="transition hover:text-[var(--color-fg)]">AI + Human</a>
+          <Link href="/case-studies" className="transition hover:text-[var(--color-fg)]">Case studies</Link>
           <a href="#safety" className="transition hover:text-[var(--color-fg)]">Security</a>
           <a href="#pricing" className="transition hover:text-[var(--color-fg)]">Pricing</a>
         </nav>
