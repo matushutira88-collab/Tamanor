@@ -18,11 +18,11 @@ export function TrendChart({
         {buckets.map((b) => (
           <div key={b.key} className="group relative flex flex-1 flex-col items-center justify-end">
             <div
-              className="w-full rounded-t-md bg-[var(--color-brand)] transition-all"
+              className="w-full rounded-t-md bg-gradient-to-t from-[var(--color-brand)] to-[var(--color-accent)] transition-all group-hover:brightness-110"
               style={{
                 height: `${(b.count / max) * 100}%`,
-                minHeight: b.count > 0 ? 4 : 2,
-                opacity: b.count > 0 ? 1 : 0.25,
+                minHeight: b.count > 0 ? 5 : 2,
+                opacity: b.count > 0 ? 1 : 0.18,
               }}
             />
             <span className="pointer-events-none absolute -top-6 rounded bg-[var(--color-fg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-bg)] opacity-0 transition group-hover:opacity-100">
@@ -58,11 +58,11 @@ export function BarList({
     <div className="space-y-2.5">
       {rows.map((r) => (
         <div key={r.label} className="flex items-center gap-3 text-sm">
-          <span className="w-40 shrink-0 truncate text-[var(--color-muted)]">{r.label}</span>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-2)]">
-            <div className={`h-full rounded-full ${bg[r.tone ?? "brand"] ?? bg.brand}`} style={{ width: `${(r.value / max) * 100}%` }} />
+          <span className="w-40 shrink-0 truncate font-medium text-[var(--color-fg)]">{r.label}</span>
+          <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-2)]">
+            <div className={`h-full rounded-full ${bg[r.tone ?? "brand"] ?? bg.brand}`} style={{ width: `${Math.max((r.value / max) * 100, 3)}%` }} />
           </div>
-          <span className="w-8 text-right text-xs font-medium">{r.value}</span>
+          <span className="w-8 text-right text-xs font-bold text-[var(--color-fg)]">{r.value}</span>
         </div>
       ))}
     </div>

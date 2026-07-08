@@ -10,6 +10,7 @@ import {
 } from "@guardora/core";
 import { PageHeader, Card, SectionHeader, StatCard, Badge, SecondaryButton } from "@/components/dashboard/ui";
 import { BarList } from "@/components/dashboard/trend-chart";
+import { PlatformBreakdown } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
@@ -69,7 +70,7 @@ export default async function ReportsPage() {
     .map((lvl) => ({ label: humanize(lvl), value: riskMap.get(lvl) ?? 0, tone: RISK_TONE[lvl] }))
     .filter((r) => r.value > 0);
 
-  const platformRows = platformGroups.map((g) => ({ label: PLATFORM_META[g.platform as Platform].label, value: g._count as unknown as number }));
+  const platformRows = platformGroups.map((g) => ({ platform: g.platform as string, label: PLATFORM_META[g.platform as Platform].label, value: g._count as unknown as number })).sort((a, b) => b.value - a.value);
 
   const healthy = accounts.filter((a) => a.health === ConnectorHealth.Healthy).length;
   const attention = accounts.filter((a) => a.health === ConnectorHealth.Degraded || a.health === ConnectorHealth.Error).length;
@@ -105,7 +106,7 @@ export default async function ReportsPage() {
         </Card>
         <Card>
           <SectionHeader title="Platform breakdown" description="All items by platform" />
-          {platformRows.length === 0 ? <p className="py-8 text-center text-sm text-[var(--color-muted)]">No items yet.</p> : <BarList rows={platformRows} />}
+          {platformRows.length === 0 ? <p className="py-8 text-center text-sm text-[var(--color-muted)]">No items yet.</p> : <PlatformBreakdown rows={platformRows} />}
         </Card>
       </div>
 

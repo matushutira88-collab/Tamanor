@@ -121,21 +121,21 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             <Link
               key={it.id}
               href={`/dashboard/inbox/${it.id}`}
-              className="grid grid-cols-[1.7fr_1.1fr_0.8fr_0.8fr_0.9fr_0.8fr] items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 text-sm transition last:border-0 hover:bg-[var(--color-surface-2)]"
+              className="group grid grid-cols-[1.7fr_1.1fr_0.8fr_0.8fr_0.9fr_0.8fr] items-center gap-3 border-b border-[var(--color-border)] px-4 py-3.5 text-sm transition last:border-0 hover:bg-[var(--color-surface-2)]"
             >
               <span className="flex min-w-0 items-center gap-2.5">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface-2)] text-xs font-semibold text-[var(--color-muted)]">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand-soft)] text-xs font-bold text-[var(--color-brand-strong)]">
                   {(it.contentItem.authorDisplayName ?? "?").charAt(0).toUpperCase()}
                 </span>
                 <span className="min-w-0">
-                  <span className="line-clamp-1">{it.contentItem.text}</span>
+                  <span className="line-clamp-1 font-medium text-[var(--color-fg)]">{it.contentItem.text}</span>
                   <span className="text-xs text-[var(--color-muted)]">{it.contentItem.authorDisplayName ?? "Unknown"}</span>
                 </span>
               </span>
               <span className="flex min-w-0 items-center gap-2 text-xs text-[var(--color-muted)]">
-                <PlatformIcon platform={it.platform} size={22} />
+                <PlatformIcon platform={it.platform} size={24} />
                 <span className="min-w-0">
-                  <span className="block truncate text-[var(--color-fg)]">{it.brand.name}</span>
+                  <span className="block truncate font-medium text-[var(--color-fg)]">{it.brand.name}</span>
                   {PLATFORM_META[it.platform as Platform].label}
                 </span>
               </span>

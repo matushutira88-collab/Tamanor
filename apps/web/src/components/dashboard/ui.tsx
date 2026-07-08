@@ -127,22 +127,24 @@ export function StatCard({
     danger: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
   };
   return (
-    <div className="gu-card p-5">
+    <div className="gu-card p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-pop">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
           {label}
         </p>
         {icon ? (
           <span
-            className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconTone[tone]}`}
+            className={`flex h-9 w-9 items-center justify-center rounded-xl ring-1 ring-inset ring-current/10 ${iconTone[tone]}`}
           >
             {icon}
           </span>
         ) : null}
       </div>
-      <p className="mt-3 text-3xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-3 text-[32px] font-bold leading-none tracking-tight text-[var(--color-fg)]">
+        {value}
+      </p>
       {hint ? (
-        <p className="mt-1 text-xs text-[var(--color-muted)]">{hint}</p>
+        <p className="mt-2 text-xs text-[var(--color-muted)]">{hint}</p>
       ) : null}
     </div>
   );
@@ -169,7 +171,7 @@ export function Badge({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-current/15 ${
         TONE[tone] ?? TONE.neutral
       }`}
     >

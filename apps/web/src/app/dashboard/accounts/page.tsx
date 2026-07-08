@@ -10,6 +10,7 @@ import {
 } from "@guardora/core";
 import { getMetaConfig, getMetaSetupStatus } from "@guardora/config";
 import { PageHeader, Badge } from "@/components/dashboard/ui";
+import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
@@ -81,42 +82,6 @@ export default async function AccountsPage({
         </div>
       ) : null}
 
-      {/* Meta setup checklist — configured / missing / invalid, no secret values */}
-      <div className={`mb-6 gu-card p-5 ${setup.ready ? "" : "border-[var(--color-warn)]"}`}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Meta setup checklist</h3>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/dashboard/accounts/meta/test"
-              className="text-xs text-[var(--color-brand)] hover:underline"
-            >
-              Live test checklist →
-            </Link>
-            <Badge tone={setup.ready ? "ok" : "warn"}>
-              {setup.ready ? "Ready" : "Incomplete"}
-            </Badge>
-          </div>
-        </div>
-        <p className="mt-1 text-xs text-[var(--color-muted)]">
-          Values are never displayed. Full walkthrough: <code>docs/META_SETUP.md</code>.
-        </p>
-        <ul className="mt-3 space-y-1.5">
-          {setup.checks.map((c) => (
-            <li key={c.key} className="flex items-center justify-between gap-3 text-sm">
-              <span className="flex items-center gap-2">
-                <code className="rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 py-0.5 text-xs">
-                  {c.key}
-                </code>
-                {c.note ? (
-                  <span className="text-xs text-[var(--color-muted)]">{c.note}</span>
-                ) : null}
-              </span>
-              <Badge tone={CHECK_TONE[c.status]}>{c.status}</Badge>
-            </li>
-          ))}
-        </ul>
-      </div>
-
       {brands.length === 0 ? (
         <div className="gu-card p-6 text-sm text-[var(--color-muted)]">
           Create a brand first, then connect platforms to it.
@@ -141,7 +106,9 @@ export default async function AccountsPage({
                     return (
                       <div key={p} className="gu-card p-5">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <BrandIcon platform={p} size={26} />
+                            <div className="min-w-0">
                             <h3 className="text-sm font-semibold">{pMeta.label}</h3>
                             <div className="mt-1 flex flex-wrap items-center gap-1.5">
                               <Badge
@@ -158,6 +125,7 @@ export default async function AccountsPage({
                                   {CONNECTOR_MODE_META[account.mode as keyof typeof CONNECTOR_MODE_META]?.label ?? account.mode}
                                 </Badge>
                               ) : null}
+                            </div>
                             </div>
                           </div>
                           {manage ? (
@@ -226,6 +194,41 @@ export default async function AccountsPage({
           })}
         </div>
       )}
+
+      {/* Developer diagnostics — technical env checklist, collapsed by default. */}
+      <details className="mt-8 gu-card p-5">
+        <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm font-semibold">
+          <span className="flex items-center gap-2">
+            <span className="text-[var(--color-muted)]">Developer diagnostics</span>
+            <Badge tone={setup.ready ? "ok" : "warn"}>{setup.ready ? "Ready" : "Incomplete"}</Badge>
+          </span>
+          <Link
+            href="/dashboard/accounts/meta/test"
+            className="text-xs font-normal text-[var(--color-brand)] hover:underline"
+          >
+            Live test checklist →
+          </Link>
+        </summary>
+        <p className="mt-3 text-xs text-[var(--color-muted)]">
+          Environment configuration for platform connectors. Values are never
+          displayed. Full walkthrough: <code>docs/META_SETUP.md</code>.
+        </p>
+        <ul className="mt-3 space-y-1.5">
+          {setup.checks.map((c) => (
+            <li key={c.key} className="flex items-center justify-between gap-3 text-sm">
+              <span className="flex items-center gap-2">
+                <code className="rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 py-0.5 text-xs">
+                  {c.key}
+                </code>
+                {c.note ? (
+                  <span className="text-xs text-[var(--color-muted)]">{c.note}</span>
+                ) : null}
+              </span>
+              <Badge tone={CHECK_TONE[c.status]}>{c.status}</Badge>
+            </li>
+          ))}
+        </ul>
+      </details>
     </>
   );
 }

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Platform } from "@guardora/core";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HeroMock } from "@/components/hero-mock";
+import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { IllusShield } from "@/components/illustrations";
 
 export const metadata: Metadata = {
@@ -23,14 +25,14 @@ const JSON_LD = {
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD", description: "Free trial" },
 };
 
-const PLATFORMS = [
-  { short: "Fb", tint: "#4267ff", label: "Facebook Page" },
-  { short: "Ig", tint: "#e1476f", label: "Instagram Business" },
-  { short: "Yt", tint: "#ff5c72", label: "YouTube" },
-  { short: "In", tint: "#3ea6ff", label: "LinkedIn Company Page" },
-  { short: "Tk", tint: "#19c39a", label: "TikTok" },
-  { short: "G", tint: "#f3b657", label: "Google Business Profile" },
-  { short: "{ }", tint: "#8aa8a2", label: "API" },
+const PLATFORMS: { platform: string; label: string }[] = [
+  { platform: Platform.FacebookPage, label: "Facebook Page" },
+  { platform: Platform.InstagramBusiness, label: "Instagram Business" },
+  { platform: Platform.YouTube, label: "YouTube" },
+  { platform: Platform.LinkedInCompany, label: "LinkedIn Company Page" },
+  { platform: Platform.TikTok, label: "TikTok" },
+  { platform: Platform.GoogleBusiness, label: "Google Business Profile" },
+  { platform: "api", label: "API" },
 ];
 
 const FEATURES = [
@@ -158,12 +160,7 @@ export default function LandingPage() {
                 key={p.label}
                 className="flex items-center gap-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5"
               >
-                <span
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-bold text-[#04120f]"
-                  style={{ backgroundColor: p.tint }}
-                >
-                  {p.short}
-                </span>
+                <BrandIcon platform={p.platform} size={28} />
                 <span className="text-sm">{p.label}</span>
               </div>
             ))}

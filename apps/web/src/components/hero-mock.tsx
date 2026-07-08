@@ -1,3 +1,6 @@
+import { Platform } from "@guardora/core";
+import { BrandIcon } from "@/components/dashboard/platform-icon";
+
 /**
  * Marketing hero product mock. PURELY illustrative UI — it shows a PROPOSED
  * action and a "Pending human approval" status. It never depicts an executed or
@@ -12,7 +15,7 @@ export function HeroMock() {
       {/* Floating post card (behind) */}
       <div className="absolute -top-6 -right-2 hidden w-56 rotate-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_24px_48px_rgba(0,0,0,0.45)] sm:block">
         <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#e1476f] text-[10px] font-bold text-white">Ig</span>
+          <BrandIcon platform={Platform.InstagramBusiness} size={24} />
           <span className="text-xs text-[var(--color-muted)]">Instagram · Post</span>
         </div>
         <div className="mt-2 h-16 rounded-lg bg-gradient-to-br from-[var(--color-surface-2)] to-[var(--color-brand-soft)]" />
@@ -43,7 +46,7 @@ export function HeroMock() {
               <p className="text-sm font-medium">anon_user_88</p>
               <p className="text-[11px] text-[var(--color-muted)]">Facebook · 2m ago</p>
             </div>
-            <span className="ml-auto flex h-6 w-6 items-center justify-center rounded-md bg-[#4267ff] text-[10px] font-bold text-white">Fb</span>
+            <span className="ml-auto"><BrandIcon platform={Platform.FacebookPage} size={24} /></span>
           </div>
           <p className="mt-3 text-sm leading-relaxed text-[var(--color-fg)]">
             &ldquo;This brand is a total scam, don&rsquo;t waste your money — worst
@@ -97,20 +100,14 @@ export function HeroMock() {
       {/* Platform badges */}
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         {[
-          ["Fb", "#4267ff"],
-          ["Ig", "#e1476f"],
-          ["Yt", "#ff5c72"],
-          ["In", "#3ea6ff"],
-          ["Tk", "#19c39a"],
-          ["G", "#f3b657"],
-        ].map(([m, tint]) => (
-          <span
-            key={m}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-bold text-[#04120f]"
-            style={{ backgroundColor: tint as string }}
-          >
-            {m}
-          </span>
+          Platform.FacebookPage,
+          Platform.InstagramBusiness,
+          Platform.YouTube,
+          Platform.LinkedInCompany,
+          Platform.TikTok,
+          Platform.GoogleBusiness,
+        ].map((p) => (
+          <BrandIcon key={p} platform={p} size={28} label />
         ))}
       </div>
     </div>

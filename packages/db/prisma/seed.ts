@@ -98,7 +98,7 @@ async function main() {
   // --- Tenant + user + membership -------------------------------------------
   const tenant = await prisma.tenant.create({
     data: {
-      name: `${MOCK} Guardora Dev Workspace`,
+      name: "Demo Workspace",
       slug: "dev",
       plan: "dev",
     },
@@ -120,7 +120,7 @@ async function main() {
   const coffee = await prisma.brand.create({
     data: {
       tenantId: tenant.id,
-      name: `${MOCK} Northwind Coffee`,
+      name: "Northwind Coffee",
       displayName: "Northwind Coffee",
       defaultLocale: "en",
       timezone: "Europe/Bratislava",
@@ -132,7 +132,7 @@ async function main() {
   const fitness = await prisma.brand.create({
     data: {
       tenantId: tenant.id,
-      name: `${MOCK} Aurora Fitness`,
+      name: "Aurora Fitness",
       displayName: "Aurora Fitness",
       defaultLocale: "en",
       timezone: "America/New_York",
@@ -430,7 +430,8 @@ async function seedDemoDataset(
           kind: ContentKind.comment,
           externalId: `mock_demo_${n}_${Math.random().toString(36).slice(2, 9)}`,
           externalParentId: `mock_post_${acct.platform}_${(n % 8)}`,
-          text: tpl.text,
+          // Strip the internal [MOCK] marker — it must not appear in the UI.
+          text: tpl.text.replace(/^\[MOCK\]\s*/, ""),
           authorDisplayName: tpl.author,
           rating: tpl.rating ?? null,
           publishedAt: when,

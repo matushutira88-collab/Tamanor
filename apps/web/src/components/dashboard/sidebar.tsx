@@ -13,6 +13,7 @@ export function Sidebar({
   role,
   trialUsed,
   trialLimit,
+  demo = false,
   onNavigate,
 }: {
   tenantName: string;
@@ -20,6 +21,7 @@ export function Sidebar({
   role: string;
   trialUsed: number;
   trialLimit: number;
+  demo?: boolean;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -27,11 +29,16 @@ export function Sidebar({
   const pct = Math.min(100, Math.round((trialUsed / trialLimit) * 100));
 
   return (
-    <aside className="flex h-dvh w-[248px] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-soft)]">
-      <div className="flex h-16 items-center px-5">
+    <aside className="gu-sidebar flex h-dvh w-[248px] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-soft)]">
+      <div className="flex h-16 items-center justify-between px-5">
         <Link href="/">
           <Logo />
         </Link>
+        {demo ? (
+          <span className="rounded-full bg-[var(--color-brand-soft)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-brand-strong)] ring-1 ring-inset ring-current/20">
+            Demo
+          </span>
+        ) : null}
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">
@@ -52,9 +59,9 @@ export function Sidebar({
               <Link
                 href={item.href}
                 onClick={onNavigate}
-                className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
                   active
-                    ? "bg-[var(--color-brand-soft)] font-semibold text-[var(--color-brand-strong)]"
+                    ? "bg-[var(--color-brand-soft)] font-semibold text-[var(--color-brand-strong)] ring-1 ring-inset ring-current/20 before:absolute before:left-0 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-r-full before:bg-[var(--color-brand)]"
                     : "text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
                 }`}
               >
@@ -76,12 +83,12 @@ export function Sidebar({
 
       {/* Trial / billing box */}
       <div className="px-3">
-        <div className="rounded-xl border border-[var(--color-border)] bg-gradient-to-b from-[var(--color-brand-soft)] to-white p-4">
+        <div className="rounded-xl border border-[var(--color-border)] bg-gradient-to-b from-[var(--color-brand-soft)] to-[var(--color-surface-2)] p-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-[var(--color-fg)]">
               Free trial
             </span>
-            <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-[var(--color-brand-strong)]">
+            <span className="rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-brand)]">
               Beta
             </span>
           </div>
@@ -92,7 +99,7 @@ export function Sidebar({
                 {trialUsed.toLocaleString()} / {trialLimit.toLocaleString()}
               </span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-white">
+            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]">
               <div
                 className="h-full rounded-full bg-[var(--color-brand)]"
                 style={{ width: `${pct}%` }}

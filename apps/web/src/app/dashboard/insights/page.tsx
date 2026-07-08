@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PLATFORM_META, Platform, RiskLevel, Sentiment } from "@guardora/core";
 import { PageHeader, Card, SectionHeader, StatCard, Badge, EmptyState, Tabs } from "@/components/dashboard/ui";
 import { TrendChart, BarList } from "@/components/dashboard/trend-chart";
+import { PlatformBreakdown } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
@@ -76,7 +77,7 @@ async function Overview({ where }: { where: Where }) {
       <div className="mt-6">
         <Card>
           <SectionHeader title="Platform breakdown" />
-          <BarList rows={byPlatform.map((p) => ({ label: PLATFORM_META[p.platform as Platform].label, value: p._count as unknown as number }))} />
+          <PlatformBreakdown rows={byPlatform.map((p) => ({ platform: p.platform as string, label: PLATFORM_META[p.platform as Platform].label, value: p._count as unknown as number })).sort((a, b) => b.value - a.value)} />
         </Card>
       </div>
     </>

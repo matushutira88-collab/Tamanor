@@ -10,9 +10,10 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const session = await requireSession();
-  const itemsProcessed = await prisma.reputationItem.count({
-    where: { tenantId: session.tenantId },
-  });
+  const [itemsProcessed, tenant] = await Promise.all([
+    prisma.reputationItem.count({ where: { tenantId: session.tenantId } }),
+    prisma.tenant.findUnique({ where: { id: session.tenantId }, select: { plan: true } }),
+  ]);
 
   return (
     <DashboardShell
@@ -21,6 +22,7 @@ export default async function DashboardLayout({
       role={session.role}
       trialUsed={itemsProcessed}
       trialLimit={TRIAL_ITEM_LIMIT}
+      demo={tenant?.plan === "dev"}
     >
       {children}
     </DashboardShell>
