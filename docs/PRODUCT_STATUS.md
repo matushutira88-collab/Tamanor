@@ -21,6 +21,14 @@ human approval for sensitive actions, official OAuth/API connectors only.
 | **V1.9** | Demo-ready product polish (rich demo data, charts, case studies). |
 | **Global Visual QA Polish** | Contrast/premium pass, real brand icons, dark landing / light dashboard / dark-teal sidebar, `[MOCK]` removed from customer UI. |
 | **Real Meta read-only sync** | **Verified end-to-end** against a real Facebook Page. |
+| **V1.11** | SK/DE i18n (EN default) + testing readiness. Marketing in EN/SK/DE with language switcher and cookie persistence; dictionary-based, EN fallback; dashboard language preference. |
+| **V1.12** | Full localization QA. Dashboard page headers (all routes) + sidebar + key empty states localized; trust pages as localized shells (header/footer/nav via cookie, bodies EN fallback); SEO hreflang + canonical on EN/SK/DE marketing routes. i18n-check 189 keys. |
+| **V1.12B/C** | Complete dashboard i18n — homepage + all 12 inner pages localized; enum labels via `tEnum`; **513 i18n keys**; dashboard smoke SK/DE PASS across 13 routes; professional emoji accents (risk/sentiment/emotions/topics/approval/incidents). |
+| **V1.13** | **Beta Testing Package** — beta guide, checklist, bug/feedback templates, known limitations, test-results log. Localization no longer blocks beta. |
+| **V1.14** | Beta blockers: approval-detail i18n, automatic read-only sync (worker polling), Risk Rules V1 profanity/abuse classifier (SK/CZ/EN/DE). |
+| **V1.14B** | Hard i18n audit — all dashboard customer UI SK/DE (618 keys); enum display via tEnum. |
+| **V1.15** | **Multilingual comment intelligence** — per-item language detection (EN/SK/CS/DE/PL/HU + unknown), honest translation layer (no provider yet), structured risk explanation (matched terms / signals / recommendation), and inbox "Language & translation" + "Why this was flagged" cards. |
+| **V1.16** | **Provider interfaces** — provider-agnostic `TranslationProvider` + `AiRiskProvider` (`none` honest no-op + `mock` dev/test only, refused in production). Hybrid pipeline: Risk Rules V1 first-pass, AI provider only when gated (unknown/mixed language, low confidence, high/critical, scam/threat/legal, brand-rule match). Provider-call observability (`provider_calls` — no tokens/secrets/text). Inbox "Rules only / AI assisted" badge. No real external provider wired yet. |
 
 ## Current verified capability
 
@@ -39,6 +47,19 @@ ReputationItem → Inbox / detail.**
 - Enablement is a separate, later phase with per-brand opt-in, approval, audit,
   capability checks, and legal/safety review
   (see [LAUNCH_SAFETY_CHECKLIST.md](./LAUNCH_SAFETY_CHECKLIST.md) §E).
+
+## Beta readiness (V1.13)
+
+**Ready for controlled beta.** Localization no longer blocks it: EN/SK/DE
+marketing + dashboard UI are complete (513 keys, smoke-tested SK/DE across 13
+routes), demo data is clearly labeled, real Meta read-only sync is verified, and
+moderation actions are disabled. Beta materials live in
+[BETA_TEST_GUIDE.md](./BETA_TEST_GUIDE.md), [BETA_CHECKLIST.md](./BETA_CHECKLIST.md),
+[KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md), [BUG_REPORT_TEMPLATE.md](./BUG_REPORT_TEMPLATE.md),
+[BETA_FEEDBACK_FORM.md](./BETA_FEEDBACK_FORM.md), [TEST_RESULTS.md](./TEST_RESULTS.md).
+
+Not required for beta (needed before **public** launch): production token storage
+(`aes-gcm`/KMS), Meta App Review, domain + real emails, backups/monitoring.
 
 ## Notes on data & platforms
 

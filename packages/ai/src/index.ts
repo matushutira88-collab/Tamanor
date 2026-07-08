@@ -6,3 +6,7 @@
  */
 export * from "./types";
 export * from "./risk-classifier";
+export * from "./language-detect";
+export * from "./translation";
+export * from "./providers";
+export * from "./pipeline";

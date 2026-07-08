@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   ALL_PLATFORMS,
   ConnectorStatus,
-  CONNECTOR_MODE_META,
   PLATFORM_META,
   Permission,
   Platform,
@@ -14,7 +13,8 @@ import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
-import { humanize } from "@/lib/format";
+import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
 import { CONNECTOR_TONE } from "@/lib/ui-maps";
 import { connectMock, disconnect } from "./actions";
 
@@ -51,6 +51,7 @@ export default async function AccountsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  const hdrT = await getT();
   const manage = can(session.role, Permission.ConnectorManage);
   const meta = getMetaConfig();
   const setup = getMetaSetupStatus();
@@ -66,11 +67,11 @@ export default async function AccountsPage({
   return (
     <>
       <PageHeader
-        title={nav.label}
-        description={nav.description}
+        title={hdrT.dashHeaders[nav.icon].title}
+        description={hdrT.dashHeaders[nav.icon].desc}
         action={
           <Badge tone={meta.configured ? "ok" : "warn"}>
-            Meta OAuth: {meta.configured ? "configured" : "not configured"}
+            {hdrT.dash.metaOauth}: {meta.configured ? hdrT.dash.configured : hdrT.dash.notConfiguredLower}
           </Badge>
         }
       />
@@ -84,7 +85,7 @@ export default async function AccountsPage({
 
       {brands.length === 0 ? (
         <div className="gu-card p-6 text-sm text-[var(--color-muted)]">
-          Create a brand first, then connect platforms to it.
+          {hdrT.dash.createBrandFirst}
         </div>
       ) : (
         <div className="space-y-8">
@@ -118,11 +119,11 @@ export default async function AccountsPage({
                                     : "neutral"
                                 }
                               >
-                                {account ? humanize(account.status) : "Not connected"}
+                                {account ? tEnum(hdrT, "connector", account.status) : hdrT.dash.notConnected}
                               </Badge>
                               {account ? (
                                 <Badge tone="neutral">
-                                  {CONNECTOR_MODE_META[account.mode as keyof typeof CONNECTOR_MODE_META]?.label ?? account.mode}
+                                  {tEnum(hdrT, "mode", account.mode)}
                                 </Badge>
                               ) : null}
                             </div>
@@ -135,11 +136,11 @@ export default async function AccountsPage({
                                   href={`/api/connectors/meta/start?brandId=${brand.id}`}
                                   className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--color-brand-strong)] hover:text-white"
                                 >
-                                  Connect with Meta
+                                  {hdrT.dash.connectWithMeta}
                                 </a>
                               ) : isMeta && !meta.configured && !connected ? (
                                 <span className="rounded-lg border border-[var(--color-warn)] px-3 py-1.5 text-xs text-[var(--color-warn)]">
-                                  Config missing
+                                  {hdrT.dash.configMissing}
                                 </span>
                               ) : null}
 
@@ -149,14 +150,14 @@ export default async function AccountsPage({
                                     href={`/dashboard/accounts/${account!.id}`}
                                     className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs transition hover:border-[var(--color-brand)]"
                                   >
-                                    Details
+                                    {hdrT.dash.details}
                                   </Link>
                                   <form action={disconnect.bind(null, account!.id)}>
                                     <button
                                       type="submit"
                                       className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs transition hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
                                     >
-                                      Disconnect
+                                      {hdrT.dash.disconnect}
                                     </button>
                                   </form>
                                 </>
@@ -166,7 +167,7 @@ export default async function AccountsPage({
                                     type="submit"
                                     className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-muted)] transition hover:text-[var(--color-fg)]"
                                   >
-                                    Connect (mock)
+                                    {hdrT.dash.connectMock}
                                   </button>
                                 </form>
                               )}
@@ -175,15 +176,15 @@ export default async function AccountsPage({
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-1.5">
-                          {pMeta.supportsReviews ? <Badge tone="ok">Reviews</Badge> : null}
-                          <Badge tone="ok">Comments</Badge>
-                          {pMeta.supportsReply ? <Badge>Reply</Badge> : null}
+                          {pMeta.supportsReviews ? <Badge tone="ok">{hdrT.dash.reviews}</Badge> : null}
+                          <Badge tone="ok">{hdrT.dash.comments}</Badge>
+                          {pMeta.supportsReply ? <Badge>{hdrT.dash.reply}</Badge> : null}
                           {pMeta.supportsHide ? (
-                            <Badge>Hide</Badge>
+                            <Badge>{hdrT.dash.hide}</Badge>
                           ) : (
-                            <Badge tone="warn">No API hide</Badge>
+                            <Badge tone="warn">{hdrT.dash.noApiHide}</Badge>
                           )}
-                          {pMeta.supportsDelete ? <Badge>Delete</Badge> : null}
+                          {pMeta.supportsDelete ? <Badge>{hdrT.dash.delete}</Badge> : null}
                         </div>
                       </div>
                     );
@@ -199,19 +200,18 @@ export default async function AccountsPage({
       <details className="mt-8 gu-card p-5">
         <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm font-semibold">
           <span className="flex items-center gap-2">
-            <span className="text-[var(--color-muted)]">Developer diagnostics</span>
-            <Badge tone={setup.ready ? "ok" : "warn"}>{setup.ready ? "Ready" : "Incomplete"}</Badge>
+            <span className="text-[var(--color-muted)]">{hdrT.dash.developerDiagnostics}</span>
+            <Badge tone={setup.ready ? "ok" : "warn"}>{setup.ready ? hdrT.dash.ready : hdrT.dash.incomplete}</Badge>
           </span>
           <Link
             href="/dashboard/accounts/meta/test"
             className="text-xs font-normal text-[var(--color-brand)] hover:underline"
           >
-            Live test checklist →
+            {hdrT.dash.liveTestChecklist}
           </Link>
         </summary>
         <p className="mt-3 text-xs text-[var(--color-muted)]">
-          Environment configuration for platform connectors. Values are never
-          displayed. Full walkthrough: <code>docs/META_SETUP.md</code>.
+          {hdrT.dash.devDiagIntro} <code>docs/META_SETUP.md</code>.
         </p>
         <ul className="mt-3 space-y-1.5">
           {setup.checks.map((c) => (
@@ -224,7 +224,7 @@ export default async function AccountsPage({
                   <span className="text-xs text-[var(--color-muted)]">{c.note}</span>
                 ) : null}
               </span>
-              <Badge tone={CHECK_TONE[c.status]}>{c.status}</Badge>
+              <Badge tone={CHECK_TONE[c.status]}>{tEnum(hdrT, "check", c.status)}</Badge>
             </li>
           ))}
         </ul>

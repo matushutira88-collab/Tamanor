@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingPage } from "@/components/marketing-page";
+import { getTL } from "@/i18n/server";
 import { submitLead } from "../book-demo/actions";
 
 export const metadata: Metadata = {
@@ -18,12 +19,13 @@ export default async function ContactPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const _lp = await getTL();
   const sp = await searchParams;
   const sent = sp.sent === "1";
   const error = sp.error;
 
   return (
-    <MarketingPage eyebrow="Contact" title="Talk to the Guardora team." subtitle="Questions, partnerships, or a personalized walkthrough — we're here.">
+    <MarketingPage dict={_lp.t} locale={_lp.locale} eyebrow="Contact" title="Talk to the Guardora team." subtitle="Questions, partnerships, or a personalized walkthrough — we're here.">
       <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
         <div className="space-y-4">
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">

@@ -1,5 +1,14 @@
 import type { Metadata } from "next";
+import { Playfair_Display } from "next/font/google";
 import "./globals.css";
+
+/** Display serif — high-contrast headings, per Guardora brand (Canva mockup). */
+const displaySerif = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-serif-src",
+  display: "swap",
+});
 
 const TITLE = "Guardora.ai — AI Reputation Firewall for modern brands";
 const DESCRIPTION =
@@ -41,7 +50,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={displaySerif.variable}>
       <body>{children}</body>
     </html>
   );

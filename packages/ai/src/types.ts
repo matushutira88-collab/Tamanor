@@ -30,10 +30,32 @@ export interface ClassificationInput {
   rules?: ClassifierRule[];
 }
 
+/** Recommended human-review action (never auto-executed). */
+export type RecommendedReviewAction = "escalate" | "review" | "monitor" | "none";
+
+/** Structured, language-neutral explanation of why an item was flagged. */
+export interface RiskExplanation {
+  /** Lexicon/rule terms that matched (deduped, normalized). */
+  matchedTerms: string[];
+  /** Brand-rule names/phrases that matched. */
+  matchedRules: string[];
+  /** Risk signals (categories) that fired. */
+  riskSignals: string[];
+  /** Suggested human action. Advisory only — no platform action is executed. */
+  recommendedReviewAction: RecommendedReviewAction;
+}
+
 /** Result of a single classification pass. */
 export interface ClassificationResult extends ReputationRisk {
   /** Brand rules that matched, if any. */
   matchedRules?: MatchedRule[];
+  /** Detected language of the content (best-effort; may be "unknown"). */
+  detectedLanguage?: string;
+  languageConfidence?: number;
+  isMixedLanguage?: boolean;
+  languageDetectionSource?: "rules" | "library" | "ai" | "unknown";
+  /** Structured explanation for the "Why this was flagged" UI. */
+  explanation?: RiskExplanation;
 }
 
 /** Contract every AI risk engine implementation must satisfy. */

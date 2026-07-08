@@ -18,6 +18,16 @@ moderation actions — that is a separate, later phase (section E).
 - [x] No `[MOCK]` in customer-facing UI (internal seed marker only).
 - [x] Demo data clearly labeled (sidebar **"Demo"** badge; case studies as
       **example scenarios**).
+- [x] i18n: EN/SK/DE marketing renders; `pnpm i18n-check` PASS (dictionary key
+      coverage, EN fallback).
+
+### i18n QA before public launch
+
+- [ ] Native review of SK and DE marketing copy (tone, terminology).
+- [ ] DE (longer strings) verified across buttons/badges/nav on mobile.
+- [ ] Trust pages (privacy/terms/security/about/contact/book-demo) translated or
+      explicitly kept EN-only for launch.
+- [ ] `hreflang` / locale metadata for SEO if marketing is multilingual at launch.
 
 ## B. Before public launch ⏳
 

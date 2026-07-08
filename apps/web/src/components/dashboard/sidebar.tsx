@@ -14,6 +14,8 @@ export function Sidebar({
   trialUsed,
   trialLimit,
   demo = false,
+  navLabels,
+  sidebarStrings,
   onNavigate,
 }: {
   tenantName: string;
@@ -22,8 +24,11 @@ export function Sidebar({
   trialUsed: number;
   trialLimit: number;
   demo?: boolean;
+  navLabels?: Record<string, string>;
+  sidebarStrings?: Record<string, string>;
   onNavigate?: () => void;
 }) {
+  const s = sidebarStrings ?? {};
   const pathname = usePathname();
   const cleanTenant = tenantName.replace(/\[MOCK\]\s*/i, "");
   const pct = Math.min(100, Math.round((trialUsed / trialLimit) * 100));
@@ -74,7 +79,7 @@ export function Sidebar({
                 >
                   <NavIconGlyph icon={item.icon} />
                 </span>
-                {item.label}
+                {navLabels?.[item.icon] ?? item.label}
               </Link>
             </div>
           );
@@ -86,15 +91,15 @@ export function Sidebar({
         <div className="rounded-xl border border-[var(--color-border)] bg-gradient-to-b from-[var(--color-brand-soft)] to-[var(--color-surface-2)] p-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-[var(--color-fg)]">
-              Free trial
+              {s.freeTrial ?? "Free trial"}
             </span>
             <span className="rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-brand)]">
-              Beta
+              {s.beta ?? "Beta"}
             </span>
           </div>
           <div className="mt-3">
             <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--color-muted)]">
-              <span>Items processed</span>
+              <span>{s.itemsProcessed ?? "Items processed"}</span>
               <span className="font-medium text-[var(--color-fg)]">
                 {trialUsed.toLocaleString()} / {trialLimit.toLocaleString()}
               </span>
@@ -110,7 +115,7 @@ export function Sidebar({
             href="/dashboard/billing"
             className="mt-3 block rounded-lg bg-[var(--color-brand)] px-3 py-2 text-center text-xs font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]"
           >
-            Choose a plan
+            {s.choosePlan ?? "Choose a plan"}
           </Link>
         </div>
       </div>
@@ -130,7 +135,7 @@ export function Sidebar({
           <form action={signOut}>
             <button
               type="submit"
-              title="Sign out"
+              title={s.signOut ?? "Sign out"}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-muted)] transition hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

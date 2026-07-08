@@ -5,6 +5,7 @@ import { PageHeader, Badge, EmptyState, Tabs, Card } from "@/components/dashboar
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
+import { getT } from "@/i18n/server";
 import { humanize, formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -22,10 +23,11 @@ export default async function LeadsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  const hdrT = await getT();
   if (!can(session.role, Permission.MemberManage)) {
     return (
       <>
-        <PageHeader title={nav.label} description={nav.description} />
+        <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
         <EmptyState
           title="Restricted"
           body={`Leads are internal. Your role (${session.role}) doesn't have access. Ask an Owner or Admin.`}
@@ -60,7 +62,7 @@ export default async function LeadsPage({
 
   return (
     <>
-      <PageHeader title={nav.label} description={nav.description} />
+      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
       <Tabs active={status ?? ""} tabs={tabs} />
 
       {leads.length === 0 ? (

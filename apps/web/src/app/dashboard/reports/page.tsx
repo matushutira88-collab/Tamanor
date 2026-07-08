@@ -14,7 +14,10 @@ import { PlatformBreakdown } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
-import { humanize, formatDateTime } from "@/lib/format";
+import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
+import { withEmoji } from "@/lib/enum-emoji";
+import { formatDateTime } from "@/lib/format";
 import { RISK_TONE } from "@/lib/ui-maps";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +25,7 @@ const nav = navItem("/dashboard/reports");
 
 export default async function ReportsPage() {
   const session = await requireSession();
+  const hdrT = await getT();
   const where = { tenantId: session.tenantId };
   const weekStart = new Date(Date.now() - 7 * 86_400_000);
 
@@ -67,7 +71,7 @@ export default async function ReportsPage() {
   const riskOrder = [RiskLevel.Critical, RiskLevel.High, RiskLevel.Medium, RiskLevel.Low, RiskLevel.None];
   const riskMap = new Map(riskGroups.map((g) => [g.riskLevel, g._count as unknown as number]));
   const riskRows = riskOrder
-    .map((lvl) => ({ label: humanize(lvl), value: riskMap.get(lvl) ?? 0, tone: RISK_TONE[lvl] }))
+    .map((lvl) => ({ label: withEmoji("risk", lvl, tEnum(hdrT, "risk", lvl)), value: riskMap.get(lvl) ?? 0, tone: RISK_TONE[lvl] }))
     .filter((r) => r.value > 0);
 
   const platformRows = platformGroups.map((g) => ({ platform: g.platform as string, label: PLATFORM_META[g.platform as Platform].label, value: g._count as unknown as number })).sort((a, b) => b.value - a.value);
@@ -78,53 +82,53 @@ export default async function ReportsPage() {
   return (
     <>
       <PageHeader
-        title={nav.label}
-        description={nav.description}
+        title={hdrT.dashHeaders[nav.icon].title}
+        description={hdrT.dashHeaders[nav.icon].desc}
         action={
           <div className="flex items-center gap-2">
-            <Badge tone="neutral">Last 7 days</Badge>
-            <SecondaryButton type="button" disabled title="Export is coming soon">
-              Export · Coming soon
+            <Badge tone="neutral">{hdrT.dash.last7days}</Badge>
+            <SecondaryButton type="button" disabled title={hdrT.dash.exportComingSoonTitle}>
+              {hdrT.dash.exportComingSoon}
             </SecondaryButton>
           </div>
         }
       />
 
       {/* Weekly summary */}
-      <SectionHeader title="Weekly summary" description="Reputation activity over the last 7 days" />
+      <SectionHeader title={hdrT.dash.weeklySummary} description={hdrT.dash.weeklySummaryDesc} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Items received" value={String(itemsThisWeek)} tone="brand" />
-        <StatCard label="High risk" value={String(highThisWeek)} tone="danger" />
-        <StatCard label="Resolved" value={String(resolvedThisWeek)} tone="ok" />
-        <StatCard label="Pending approvals" value={String(pending)} tone="warn" hint="All time" />
+        <StatCard label={hdrT.dash.itemsReceived} value={String(itemsThisWeek)} tone="brand" />
+        <StatCard label={hdrT.dash.highRisk} value={String(highThisWeek)} tone="danger" />
+        <StatCard label={hdrT.dash.resolved} value={String(resolvedThisWeek)} tone="ok" />
+        <StatCard label={hdrT.dash.pendingApprovals} value={String(pending)} tone="warn" hint={hdrT.dash.allTime} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card>
-          <SectionHeader title="Risk breakdown" description="All items by risk level" />
-          {riskRows.length === 0 ? <p className="py-8 text-center text-sm text-[var(--color-muted)]">No items yet.</p> : <BarList rows={riskRows} />}
+          <SectionHeader title={hdrT.dash.riskBreakdown} description={hdrT.dash.allItemsByRisk} />
+          {riskRows.length === 0 ? <p className="py-8 text-center text-sm text-[var(--color-muted)]">{hdrT.dash.noItemsYet}</p> : <BarList rows={riskRows} />}
         </Card>
         <Card>
-          <SectionHeader title="Platform breakdown" description="All items by platform" />
-          {platformRows.length === 0 ? <p className="py-8 text-center text-sm text-[var(--color-muted)]">No items yet.</p> : <PlatformBreakdown rows={platformRows} />}
+          <SectionHeader title={hdrT.dash.platformBreakdown} description={hdrT.dash.allItemsByPlatform} />
+          {platformRows.length === 0 ? <p className="py-8 text-center text-sm text-[var(--color-muted)]">{hdrT.dash.noItemsYet}</p> : <PlatformBreakdown rows={platformRows} />}
         </Card>
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card>
-          <SectionHeader title="Pending approvals" action={<Link href="/dashboard/approvals" className="text-xs font-medium text-[var(--color-brand)] hover:underline">Open queue →</Link>} />
+          <SectionHeader title={hdrT.dash.pendingApprovals} action={<Link href="/dashboard/approvals" className="text-xs font-medium text-[var(--color-brand)] hover:underline">{hdrT.dash.openQueue}</Link>} />
           <p className="text-3xl font-semibold">{pending}</p>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">Proposals awaiting review. Nothing runs until approved and executed.</p>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">{hdrT.dash.proposalsAwaiting}</p>
         </Card>
         <Card>
-          <SectionHeader title="Sync health" action={<Link href="/dashboard/accounts" className="text-xs font-medium text-[var(--color-brand)] hover:underline">Accounts →</Link>} />
+          <SectionHeader title={hdrT.dash.syncHealth} action={<Link href="/dashboard/accounts" className="text-xs font-medium text-[var(--color-brand)] hover:underline">{hdrT.dash.accountsLink}</Link>} />
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="brand">{accounts.length} connected</Badge>
-            <Badge tone="ok">{healthy} healthy</Badge>
-            {attention > 0 ? <Badge tone="warn">{attention} need attention</Badge> : null}
+            <Badge tone="brand">{accounts.length} {hdrT.dash.connected}</Badge>
+            <Badge tone="ok">{healthy} {hdrT.dash.healthy}</Badge>
+            {attention > 0 ? <Badge tone="warn">{attention} {hdrT.dash.needAttention}</Badge> : null}
           </div>
           <p className="mt-3 text-sm text-[var(--color-muted)]">
-            {lastRun ? `Last sync ${formatDateTime(lastRun.startedAt)} · ${lastRun.mock ? "mock" : "live"} · ${humanize(lastRun.status)}` : "No sync has run yet."}
+            {lastRun ? `${hdrT.dash.lastSync} ${formatDateTime(lastRun.startedAt)} · ${lastRun.mock ? "mock" : "live"} · ${tEnum(hdrT, "syncStatus", lastRun.status)}` : hdrT.dash.noSyncRun}
           </p>
         </Card>
       </div>
@@ -132,18 +136,18 @@ export default async function ReportsPage() {
       {/* Sync monitoring */}
       <div className="mt-6">
         <Card>
-          <SectionHeader title="Sync monitoring" description="Read-only sync reliability over the last runs" action={<Link href="/dashboard/accounts" className="text-xs font-medium text-[var(--color-brand)] hover:underline">Accounts →</Link>} />
+          <SectionHeader title={hdrT.dash.syncMonitoring} description={hdrT.dash.syncMonitoringDesc} action={<Link href="/dashboard/accounts" className="text-xs font-medium text-[var(--color-brand)] hover:underline">{hdrT.dash.accountsLink}</Link>} />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric label="Last sync" value={lastRun ? formatDateTime(lastRun.startedAt) : "—"} hint={lastRun ? `${lastRun.mock ? "mock" : "live"} · ${humanize(lastRun.status)}` : "no sync yet"} />
-            <Metric label="Failed syncs" value={String(failedSyncs)} hint={`of last ${syncRuns.length} runs`} tone={failedSyncs > 0 ? "danger" : "ok"} />
-            <Metric label="Avg. duration" value={avgDuration != null ? `${avgDuration} ms` : "—"} hint="completed runs" />
-            <Metric label="Need reconnect" value={String(reconnectCount)} hint="accounts" tone={reconnectCount > 0 ? "warn" : "ok"} />
+            <Metric label={hdrT.dash.lastSync} value={lastRun ? formatDateTime(lastRun.startedAt) : "—"} hint={lastRun ? `${lastRun.mock ? "mock" : "live"} · ${tEnum(hdrT, "syncStatus", lastRun.status)}` : hdrT.home.noSyncYetLower} />
+            <Metric label={hdrT.dash.failedSyncs} value={String(failedSyncs)} hint={`${hdrT.dash.ofLast} ${syncRuns.length} ${hdrT.dash.runs}`} tone={failedSyncs > 0 ? "danger" : "ok"} />
+            <Metric label={hdrT.dash.avgDuration} value={avgDuration != null ? `${avgDuration} ms` : "—"} hint={hdrT.dash.completedRuns} />
+            <Metric label={hdrT.dash.needReconnect} value={String(reconnectCount)} hint={hdrT.dash.accountsWord} tone={reconnectCount > 0 ? "warn" : "ok"} />
           </div>
 
           <div className="mt-5">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">Error categories (30 days)</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">{hdrT.dash.errorCategories30}</p>
             {errorRows.length === 0 ? (
-              <p className="text-sm text-[var(--color-muted)]">No sync errors recorded. 🎉</p>
+              <p className="text-sm text-[var(--color-muted)]">{hdrT.dash.noSyncErrors}</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {errorRows.map(([event, n]) => (

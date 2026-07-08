@@ -17,6 +17,19 @@ show what works, label demo data as demo, and never overstate what is enabled.
 - The product is **read-only by default.**
 - **No scraping, no client passwords — only official OAuth / API connectors.**
 
+### Language demo (EN / SK / DE)
+
+Guardora's marketing surface is available in three languages. Show the language
+switcher in the header and flip between them:
+
+- **EN** (default) — `/` and `/case-studies`.
+- **SK** — `/sk` and `/sk/case-studies`.
+- **DE** — `/de` and `/de/case-studies`.
+
+The choice persists via the `guardora_locale` cookie. In the dashboard, language
+is set under **Settings → Language** and re-labels the sidebar. Missing
+translations fall back to English.
+
 ## B. Landing demo (`/`)
 
 Show:

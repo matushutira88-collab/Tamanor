@@ -15,6 +15,9 @@ import {
 import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { requirePermission } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
+import { withEmoji } from "@/lib/enum-emoji";
 import { humanize, formatDateTime } from "@/lib/format";
 import { RISK_TONE, DECISION_TONE } from "@/lib/ui-maps";
 import { approve, reject, execute, cancel } from "../actions";
@@ -48,6 +51,7 @@ export default async function ProposalDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const session = await requirePermission(Permission.ProposalView);
+  const t = await getT();
 
   const d = await prisma.moderationDecision.findFirst({
     where: { id, tenantId: session.tenantId },
@@ -92,22 +96,22 @@ export default async function ProposalDetailPage({
   return (
     <>
       <PageHeader
-        title={`Proposal · ${humanize(d.action)}`}
+        title={`${t.dash.proposal} · ${tEnum(t, "action", d.action)}`}
         description={`${d.brand.name} · ${meta.label}`}
-        action={<Badge tone={DECISION_TONE[status]}>{humanize(status)}</Badge>}
+        action={<Badge tone={DECISION_TONE[status]}>{withEmoji("decision", status, tEnum(t, "decision", status))}</Badge>}
       />
 
       <Link
         href="/dashboard/approvals"
         className="text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
       >
-        ← Back to approval queue
+        {t.dash.backToApprovalQueue}
       </Link>
 
       {notice ? (
         <div className="mt-4" role="status">
           <Badge tone={NOTICE_TONE[noticeKind] ?? "neutral"}>
-            {noticeKind === "unsupported" ? "Unsupported" : humanize(noticeKind)}
+            {noticeKind === "unsupported" ? t.dash.unsupported : humanize(noticeKind)}
           </Badge>{" "}
           <span className="text-sm text-[var(--color-muted)]">{notice}</span>
         </div>
@@ -117,10 +121,10 @@ export default async function ProposalDetailPage({
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <div className="gu-card p-5">
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-muted)]">
-            Original content
+            {t.dash.originalContent}
           </h3>
           <div className="mb-2 flex items-center gap-2 text-xs text-[var(--color-muted)]">
-            <span>{d.reputationItem.contentItem.authorDisplayName ?? "Unknown"}</span>
+            <span>{d.reputationItem.contentItem.authorDisplayName ?? t.dash.unknown}</span>
             {typeof d.reputationItem.contentItem.rating === "number" ? (
               <Badge tone="neutral">{d.reputationItem.contentItem.rating}★</Badge>
             ) : null}
@@ -133,24 +137,24 @@ export default async function ProposalDetailPage({
             href={`/dashboard/inbox/${d.reputationItemId}`}
             className="mt-3 inline-block text-xs text-[var(--color-brand)] hover:underline"
           >
-            View item in inbox →
+            {t.dash.viewItemInInbox}
           </Link>
         </div>
 
         <div className="gu-card p-5">
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-muted)]">
-            Proposed action
+            {t.dash.proposedAction}
           </h3>
           <div className="flex items-center gap-2">
-            <Badge>{humanize(d.action)}</Badge>
+            <Badge>{tEnum(t, "action", d.action)}</Badge>
             {isPlatformAction(action) ? (
               supported ? (
-                <Badge tone="ok">API supported</Badge>
+                <Badge tone="ok">{t.dash.apiSupported}</Badge>
               ) : (
-                <Badge tone="danger">API unsupported</Badge>
+                <Badge tone="danger">{t.dash.apiUnsupported}</Badge>
               )
             ) : (
-              <Badge tone="neutral">Guardora-side</Badge>
+              <Badge tone="neutral">{t.dash.guardoraSide}</Badge>
             )}
           </div>
 
@@ -162,8 +166,7 @@ export default async function ProposalDetailPage({
 
           {isPlatformAction(action) && supported === false ? (
             <p className="mt-3 text-xs text-[var(--color-warn)]">
-              ⚠ {meta.label} API does not support {d.action}. Executing this
-              proposal will fail (by design — no fake success).
+              ⚠ {meta.label} {t.dash.apiNoSupportMid} {tEnum(t, "action", d.action)}. {t.dash.apiNoSupportEnd}
             </p>
           ) : null}
 
@@ -173,14 +176,14 @@ export default async function ProposalDetailPage({
 
           <dl className="mt-3 space-y-1 text-xs text-[var(--color-muted)]">
             <div className="flex justify-between">
-              <dt>Proposed by</dt>
+              <dt>{t.dash.proposedBy}</dt>
               <dd>
                 {humanize(d.proposedByKind)}
                 {d.proposer ? ` · ${d.proposer.name ?? d.proposer.email}` : ""}
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt>Created</dt>
+              <dt>{t.dash.created}</dt>
               <dd>{formatDateTime(d.createdAt)}</dd>
             </div>
           </dl>
@@ -190,50 +193,50 @@ export default async function ProposalDetailPage({
       {/* Risk snapshot + timeline */}
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <div className="gu-card p-5">
-          <h3 className="mb-3 text-sm font-semibold">AI risk snapshot</h3>
+          <h3 className="mb-3 text-sm font-semibold">{t.dash.aiRiskSnapshot}</h3>
           <p className="mb-3 text-xs text-[var(--color-muted)]">
-            Captured when the proposal was created.
+            {t.dash.capturedWhenCreated}
           </p>
           <dl className="space-y-2 text-sm">
             <div className="flex items-center justify-between">
-              <dt className="text-[var(--color-muted)]">Risk level</dt>
+              <dt className="text-[var(--color-muted)]">{t.dash.riskLevel}</dt>
               <dd>
-                <Badge tone={RISK_TONE[snapshotLevel]}>{humanize(snapshotLevel)}</Badge>
+                <Badge tone={RISK_TONE[snapshotLevel]}>{withEmoji("risk", snapshotLevel, tEnum(t, "risk", snapshotLevel))}</Badge>
               </dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-[var(--color-muted)]">AI confidence</dt>
+              <dt className="text-[var(--color-muted)]">{t.dash.aiConfidence}</dt>
               <dd>{((snapshot?.confidence ?? d.confidence ?? 0) * 100).toFixed(0)}%</dd>
             </div>
             {snapshot?.sentiment ? (
               <div className="flex items-center justify-between">
-                <dt className="text-[var(--color-muted)]">Sentiment</dt>
-                <dd>{humanize(snapshot.sentiment)}</dd>
+                <dt className="text-[var(--color-muted)]">{t.dash.sentiment}</dt>
+                <dd>{withEmoji("sentiment", snapshot.sentiment, tEnum(t, "sentiment", snapshot.sentiment))}</dd>
               </div>
             ) : null}
           </dl>
           {snapshot?.categories?.length ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {snapshot.categories.map((c) => (
-                <Badge key={c}>{humanize(c)}</Badge>
+                <Badge key={c}>{withEmoji("category", c, tEnum(t, "category", c))}</Badge>
               ))}
             </div>
           ) : null}
         </div>
 
         <div className="gu-card p-5">
-          <h3 className="mb-3 text-sm font-semibold">Lifecycle</h3>
+          <h3 className="mb-3 text-sm font-semibold">{t.dash.lifecycle}</h3>
           <ol className="space-y-2 text-sm">
-            <Step done label="Proposed" when={formatDateTime(d.createdAt)} />
+            <Step done label={tEnum(t, "decision", DecisionStatus.Proposed)} when={formatDateTime(d.createdAt)} />
             <Step
               done={[DecisionStatus.Approved, DecisionStatus.Executed].includes(status)}
               rejected={status === DecisionStatus.Rejected || status === DecisionStatus.Cancelled}
               label={
                 status === DecisionStatus.Rejected
-                  ? "Rejected"
+                  ? tEnum(t, "decision", DecisionStatus.Rejected)
                   : status === DecisionStatus.Cancelled
-                    ? "Cancelled"
-                    : "Approved"
+                    ? humanize(DecisionStatus.Cancelled)
+                    : tEnum(t, "decision", DecisionStatus.Approved)
               }
               when={d.reviewedAt ? formatDateTime(d.reviewedAt) : undefined}
               who={d.reviewer ? d.reviewer.name ?? d.reviewer.email : undefined}
@@ -241,7 +244,7 @@ export default async function ProposalDetailPage({
             <Step
               done={status === DecisionStatus.Executed}
               rejected={status === DecisionStatus.Failed}
-              label={status === DecisionStatus.Failed ? "Failed" : "Executed"}
+              label={status === DecisionStatus.Failed ? tEnum(t, "decision", DecisionStatus.Failed) : tEnum(t, "decision", DecisionStatus.Executed)}
               when={d.executedAt ? formatDateTime(d.executedAt) : undefined}
             />
           </ol>
@@ -255,13 +258,13 @@ export default async function ProposalDetailPage({
 
       {/* Decision controls */}
       <div className="mt-6 gu-card p-5">
-        <h3 className="mb-3 text-sm font-semibold">Review &amp; execution</h3>
+        <h3 className="mb-3 text-sm font-semibold">{t.dash.reviewExecution}</h3>
         {status === DecisionStatus.Executed ||
         status === DecisionStatus.Rejected ||
         status === DecisionStatus.Cancelled ||
         status === DecisionStatus.Failed ? (
           <p className="text-sm text-[var(--color-muted)]">
-            This proposal is {humanize(status).toLowerCase()} — no further action.
+            {t.dash.proposalFinalPre} {tEnum(t, "decision", status).toLowerCase()} {t.dash.proposalFinalPost}
           </p>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -270,18 +273,18 @@ export default async function ProposalDetailPage({
                 {mayApprove ? (
                   <form action={approve.bind(null, d.id)}>
                     <button type="submit" className="rounded-lg bg-[var(--color-ok)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90">
-                      Approve
+                      {t.dash.approveBtn}
                     </button>
                   </form>
                 ) : (
                   <span className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-muted)]">
-                    {approveDenied ?? "You cannot approve this."}
+                    {approveDenied ?? t.dash.cannotApprove}
                   </span>
                 )}
                 {mayReject ? (
                   <form action={reject.bind(null, d.id)}>
                     <button type="submit" className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm transition hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]">
-                      Reject
+                      {t.dash.rejectBtn}
                     </button>
                   </form>
                 ) : null}
@@ -292,12 +295,12 @@ export default async function ProposalDetailPage({
               mayExecute ? (
                 <form action={execute.bind(null, d.id)}>
                   <button type="submit" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-brand-strong)] hover:text-white">
-                    Execute {isPlatformAction(action) ? "(mock)" : ""}
+                    {t.dash.executeBtn} {isPlatformAction(action) ? t.dash.mockSuffix : ""}
                   </button>
                 </form>
               ) : (
                 <span className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-muted)]">
-                  Approved — only Admin/Owner can execute.
+                  {t.dash.onlyAdminExecute}
                 </span>
               )
             ) : null}
@@ -305,15 +308,14 @@ export default async function ProposalDetailPage({
             {mayCancel ? (
               <form action={cancel.bind(null, d.id)}>
                 <button type="submit" className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-muted)] transition hover:text-[var(--color-fg)]">
-                  Cancel
+                  {t.dash.cancelBtn}
                 </button>
               </form>
             ) : null}
           </div>
         )}
         <p className="mt-3 text-[11px] text-[var(--color-muted)]">
-          Capability is re-checked at execution. Unsupported platform actions
-          fail honestly and are audited — never faked.
+          {t.dash.capabilityRecheck}
         </p>
       </div>
     </>

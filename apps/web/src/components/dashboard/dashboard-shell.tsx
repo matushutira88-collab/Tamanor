@@ -11,6 +11,8 @@ export function DashboardShell({
   trialUsed,
   trialLimit,
   demo = false,
+  navLabels,
+  sidebarStrings,
   children,
 }: {
   tenantName: string;
@@ -19,10 +21,12 @@ export function DashboardShell({
   trialUsed: number;
   trialLimit: number;
   demo?: boolean;
+  navLabels?: Record<string, string>;
+  sidebarStrings?: Record<string, string>;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, demo };
+  const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, demo, navLabels, sidebarStrings };
 
   return (
     <div className="flex min-h-dvh bg-[var(--color-bg)]">

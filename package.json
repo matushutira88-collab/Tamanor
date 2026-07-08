@@ -19,6 +19,11 @@
     "db:migrate:deploy": "pnpm --filter @guardora/db migrate:deploy",
     "db:seed": "pnpm --filter @guardora/db seed",
     "db:reconnect-check": "pnpm --filter @guardora/db reconnect-check",
+    "i18n-check": "pnpm --filter @guardora/worker exec tsx ../web/scripts/i18n-check.ts",
+    "risk:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/classifier.test.ts",
+    "intel:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/language.test.ts",
+    "providers:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/providers.test.ts",
+    "risk:reclassify-demo": "pnpm --filter @guardora/db reclassify-demo",
     "db:studio": "pnpm --filter @guardora/db studio",
     "clean": "pnpm -r clean"
   },

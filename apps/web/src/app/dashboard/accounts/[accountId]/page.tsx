@@ -11,11 +11,12 @@ import {
   modeAllowsSync,
   modeAllowsActions,
 } from "@guardora/core";
-import { getMetaConfig, loadEnv } from "@guardora/config";
+import { getMetaConfig, loadEnv, getAutoSyncConfig } from "@guardora/config";
 import { PageHeader, Badge, StatCard } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
+import { getT } from "@/i18n/server";
 import { prisma } from "@/server/db";
-import { humanize, formatDateTime } from "@/lib/format";
+import { humanize, formatDate, formatDateTime } from "@/lib/format";
 import { CONNECTOR_TONE } from "@/lib/ui-maps";
 import { runSyncAction } from "../actions";
 
@@ -102,6 +103,12 @@ export default async function AccountDetailPage({
   });
   const meta = getMetaConfig();
   const appUrl = loadEnv().APP_URL;
+  const t = await getT();
+  const autoSync = getAutoSyncConfig();
+  const nextSyncAt =
+    autoSync.enabled && account.lastSyncedAt
+      ? new Date(account.lastSyncedAt.getTime() + autoSync.intervalSeconds * 1000)
+      : null;
 
   return (
     <>
@@ -221,10 +228,19 @@ export default async function AccountDetailPage({
       <div className="mt-6 gu-card p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold">Read-only sync</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold">{t.dash.autoSync}</h3>
+              <Badge tone={autoSync.enabled ? "ok" : "neutral"}>
+                {autoSync.enabled ? t.dash.autoSyncOn : t.dash.autoSyncOff}
+              </Badge>
+            </div>
             <p className="mt-0.5 text-xs text-[var(--color-muted)]">
               Pulls comments into the inbox. Creates ReputationItems. Never
               performs moderation actions.
+            </p>
+            <p className="mt-1 text-xs text-[var(--color-muted)]">
+              {account.lastSyncedAt ? `${t.dash.lastSync}: ${formatDateTime(account.lastSyncedAt)}` : t.home.noSyncYet}
+              {nextSyncAt ? ` · ${t.dash.nextSync}: ${formatDate(nextSyncAt)}` : ""}
             </p>
           </div>
           {manage && canSync ? (
@@ -233,7 +249,7 @@ export default async function AccountDetailPage({
                 type="submit"
                 className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-brand-strong)] hover:text-white"
               >
-                Run read-only sync{mode === ConnectorMode.Placeholder ? " (mock)" : ""}
+                {t.dash.runReadOnlySync}{mode === ConnectorMode.Placeholder ? ` ${t.dash.mockSuffix}` : ""}
               </button>
             </form>
           ) : (

@@ -11,7 +11,8 @@ import {
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
-import { humanize } from "@/lib/format";
+import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
 import { createBrand } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -23,18 +24,12 @@ const STATUS_TONE: Record<string, string> = {
   archived: "neutral",
 };
 
-const toneOptions = Object.values(BrandTone).map((v) => ({
-  value: v,
-  label: humanize(v),
-}));
-const statusOptions = Object.values(BrandStatus).map((v) => ({
-  value: v,
-  label: humanize(v),
-}));
-
 export default async function BrandsPage() {
   const session = await requireSession();
+  const hdrT = await getT();
   const manage = can(session.role, Permission.BrandManage);
+  const toneOptions = Object.values(BrandTone).map((v) => ({ value: v, label: tEnum(hdrT, "tone", v) }));
+  const statusOptions = Object.values(BrandStatus).map((v) => ({ value: v, label: tEnum(hdrT, "brandStatus", v) }));
 
   const brands = await prisma.brand.findMany({
     where: { tenantId: session.tenantId },
@@ -46,7 +41,7 @@ export default async function BrandsPage() {
 
   return (
     <>
-      <PageHeader title={nav.label} description={nav.description} />
+      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
 
       <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
         {/* List */}
@@ -66,11 +61,11 @@ export default async function BrandsPage() {
                   <div>
                     <h3 className="font-semibold">{b.name}</h3>
                     <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                      {b.defaultLocale} · {b.timezone} · {humanize(b.defaultTone)}
+                      {tEnum(hdrT, "language", b.defaultLocale)} · {b.timezone} · {tEnum(hdrT, "tone", b.defaultTone)}
                     </p>
                   </div>
                   <Badge tone={STATUS_TONE[b.status] ?? "neutral"}>
-                    {humanize(b.status)}
+                    {tEnum(hdrT, "brandStatus", b.status)}
                   </Badge>
                 </div>
                 <div className="mt-3 flex gap-4 text-xs text-[var(--color-muted)]">
@@ -85,30 +80,30 @@ export default async function BrandsPage() {
         {/* Create */}
         {manage ? (
           <div className="gu-card h-fit p-5">
-            <h3 className="mb-4 text-sm font-semibold">New brand</h3>
+            <h3 className="mb-4 text-sm font-semibold">{hdrT.dash.newBrand}</h3>
             <form action={createBrand} className="space-y-3">
-              <Field label="Name">
+              <Field label={hdrT.dash.name}>
                 <Input name="name" required placeholder="Acme Coffee" />
               </Field>
-              <Field label="Display name" hint="Optional public-facing name">
+              <Field label={hdrT.dash.displayName}>
                 <Input name="displayName" placeholder="Acme" />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Language">
+                <Field label={hdrT.common.language}>
                   <Input name="defaultLocale" defaultValue="en" />
                 </Field>
-                <Field label="Timezone">
+                <Field label={hdrT.dash.timezone}>
                   <Input name="timezone" defaultValue="UTC" />
                 </Field>
               </div>
-              <Field label="Default tone">
+              <Field label={hdrT.dash.defaultTone}>
                 <Select name="defaultTone" options={toneOptions} />
               </Field>
-              <Field label="Status">
+              <Field label={hdrT.dash.status}>
                 <Select name="status" options={statusOptions} />
               </Field>
               <PrimaryButton type="submit" className="w-full">
-                Create brand
+                {hdrT.dash.createBrandBtn}
               </PrimaryButton>
             </form>
           </div>

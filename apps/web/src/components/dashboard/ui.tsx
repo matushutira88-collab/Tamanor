@@ -24,7 +24,7 @@ export function PageHeader({
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="text-[26px] font-semibold leading-tight tracking-tight">
+        <h1 className="gu-display text-[28px] leading-tight">
           {title}
         </h1>
         {description ? (
@@ -140,7 +140,7 @@ export function StatCard({
           </span>
         ) : null}
       </div>
-      <p className="mt-3 text-[32px] font-bold leading-none tracking-tight text-[var(--color-fg)]">
+      <p className="gu-display mt-3 text-[34px] leading-none text-[var(--color-fg)]">
         {value}
       </p>
       {hint ? (

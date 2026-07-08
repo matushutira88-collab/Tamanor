@@ -48,16 +48,6 @@ async function tick(): Promise<void> {
     });
   }
 
-  // Read-only sync for connected Meta accounts (creates ReputationItems only).
-  let synced = 0;
-  try {
-    synced = await syncConnectedMetaAccounts();
-  } catch (err) {
-    log.error("sync.failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
   // Webhook follow-up: read-only targeted sync (gated by META_WEBHOOK_SYNC, off).
   try {
     const wh = await processPendingWebhookEvents();
@@ -75,7 +65,6 @@ async function tick(): Promise<void> {
     const proposed = await proposeForHighRiskItems();
     log.info("tick.done", {
       accounts: accounts.length,
-      syncedItems: synced,
       proposalsCreated: proposed,
     });
   } catch (err) {
@@ -85,30 +74,66 @@ async function tick(): Promise<void> {
   }
 }
 
+/**
+ * Automatic read-only sync. Gated by AUTO_SYNC_ENABLED and paced by
+ * AUTO_SYNC_INTERVAL_SECONDS. Reads only — never executes a platform action.
+ * Eligible-account selection + backoff live in syncConnectedMetaAccounts.
+ */
+async function autoSyncTick(): Promise<void> {
+  try {
+    const { created, accounts } = await syncConnectedMetaAccounts("automatic");
+    log.info("autosync.done", { accounts, createdItems: created });
+  } catch (err) {
+    log.error("autosync.failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function main(): Promise<void> {
   const env = loadEnv();
+  const autoSyncMs = env.AUTO_SYNC_INTERVAL_SECONDS * 1000;
   log.info("worker.boot", {
     env: env.NODE_ENV,
     intervalMs: env.WORKER_SYNC_INTERVAL_MS,
+    autoSyncEnabled: env.AUTO_SYNC_ENABLED,
+    autoSyncIntervalSeconds: env.AUTO_SYNC_INTERVAL_SECONDS,
     aiProvider: env.AI_PROVIDER,
   });
 
-  let running = true;
+  const state = { running: true };
   const shutdown = (signal: string) => {
     log.info("worker.shutdown", { signal });
-    running = false;
+    state.running = false;
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  // Run once immediately, then loop on the configured interval.
-  await tick();
-  while (running) {
-    await sleep(env.WORKER_SYNC_INTERVAL_MS);
-    if (!running) break;
+  // Maintenance loop: pipeline, token monitor, cleanup, webhooks, proposals.
+  const maintenance = (async () => {
     await tick();
-  }
+    while (state.running) {
+      await sleep(env.WORKER_SYNC_INTERVAL_MS);
+      if (!state.running) break;
+      await tick();
+    }
+  })();
 
+  // Automatic read-only sync loop (independent cadence), only when enabled.
+  const autosync = (async () => {
+    if (!env.AUTO_SYNC_ENABLED) {
+      log.info("autosync.disabled", { hint: "set AUTO_SYNC_ENABLED=true to enable" });
+      return;
+    }
+    await autoSyncTick();
+    while (state.running) {
+      await sleep(autoSyncMs);
+      if (!state.running) break;
+      await autoSyncTick();
+    }
+  })();
+
+  await Promise.all([maintenance, autosync]);
   log.info("worker.stopped");
 }
 

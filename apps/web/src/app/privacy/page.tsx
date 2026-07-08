@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MarketingPage, Section, Bullets, DraftNote } from "@/components/marketing-page";
+import { getTL } from "@/i18n/server";
 
 export const metadata: Metadata = {
   title: "Privacy — Guardora.ai",
@@ -7,9 +8,10 @@ export const metadata: Metadata = {
     "How Guardora.ai handles data: what we process, why, and the choices you have. Early-product privacy wording.",
 };
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const _lp = await getTL();
   return (
-    <MarketingPage
+    <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="Legal"
       title="Privacy"
       subtitle="How Guardora handles data — described plainly."

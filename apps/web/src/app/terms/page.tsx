@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MarketingPage, Section, DraftNote } from "@/components/marketing-page";
+import { getTL } from "@/i18n/server";
 
 export const metadata: Metadata = {
   title: "Terms — Guardora.ai",
@@ -7,9 +8,10 @@ export const metadata: Metadata = {
     "The terms that govern use of Guardora.ai during its early-access period.",
 };
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const _lp = await getTL();
   return (
-    <MarketingPage
+    <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="Legal"
       title="Terms of Service"
       subtitle="The basics of using Guardora during early access."

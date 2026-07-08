@@ -1,57 +1,72 @@
 import Link from "next/link";
 import { getMetaConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { requireSession } from "@/server/auth";
 import { navItem } from "@/lib/nav";
+import { getT } from "@/i18n/server";
+import { getLocale } from "@/i18n/locale-server";
+import { getDictionary } from "@/i18n";
 
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/settings");
 
 export default async function SettingsPage() {
   await requireSession();
+  const hdrT = await getT();
   const meta = getMetaConfig();
+  const locale = await getLocale();
+  const t = getDictionary(locale);
 
   const sections = [
     {
-      title: "Brand profile",
-      body: "Names, languages, timezones, default reply tone, and status for each brand you protect.",
+      title: t.dash.brandProfile,
+      body: t.dash.brandProfileBody,
       href: "/dashboard/brands",
-      cta: "Manage brands",
+      cta: t.dash.manageBrands,
       badge: null as null | { tone: string; text: string },
     },
     {
-      title: "Moderation rules",
-      body: "Deterministic brand policies — blocked words, competitors, crisis keywords — layered on the AI Risk Engine.",
+      title: t.dash.moderationRules,
+      body: t.dash.moderationRulesBody,
       href: "/dashboard/rules",
-      cta: "Manage rules",
+      cta: t.dash.manageRules,
       badge: null,
     },
     {
-      title: "Automations",
-      body: "Read-only sync and AI proposals run in the background. Auto-execution of moderation actions stays OFF.",
+      title: t.dash.automations,
+      body: t.dash.automationsBody,
       href: "/dashboard/accounts",
-      cta: "View accounts",
-      badge: { tone: "ok", text: "Actions disabled" },
+      cta: t.dash.viewAccounts,
+      badge: { tone: "ok", text: t.dash.actionsDisabled },
     },
     {
-      title: "Webhooks",
-      body: "Inbound platform events are signature-verified and stored. No automatic actions are taken.",
+      title: t.dash.webhooks,
+      body: t.dash.webhooksBody,
       href: "/dashboard/accounts",
-      cta: "View webhook status",
-      badge: meta.webhookVerifyToken ? { tone: "ok", text: "Verify token set" } : { tone: "warn", text: "Not configured" },
+      cta: t.dash.viewWebhookStatus,
+      badge: meta.webhookVerifyToken ? { tone: "ok", text: t.dash.verifyTokenSet } : { tone: "warn", text: t.dash.notConfigured },
     },
     {
-      title: "Security",
-      body: "Official OAuth only. Tokens are stored server-side, never shown or logged. Production requires encrypted-at-rest storage (KMS).",
+      title: t.dash.security,
+      body: t.dash.securityBody,
       href: "/dashboard/audit",
-      cta: "Open audit log",
-      badge: { tone: "brand", text: "OAuth only" },
+      cta: t.dash.openAuditLog,
+      badge: { tone: "brand", text: t.dash.oauthOnly },
     },
   ];
 
   return (
     <>
-      <PageHeader title={nav.label} description={nav.description} />
+      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
+
+      <Card className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold">{t.common.language}</h3>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">{t.dash.languageHintClean}</p>
+        </div>
+        <LanguageSwitcher current={locale} variant="app" />
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         {sections.map((s) => (

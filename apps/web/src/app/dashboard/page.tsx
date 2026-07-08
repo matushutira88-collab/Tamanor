@@ -19,8 +19,11 @@ import {
 import { TrendChart, BarList } from "@/components/dashboard/trend-chart";
 import { PlatformIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
+import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
+import { withEmoji, ICON } from "@/lib/enum-emoji";
 import { prisma } from "@/server/db";
-import { humanize, formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { bucketByDay } from "@/lib/trend";
 import { RISK_TONE } from "@/lib/ui-maps";
 
@@ -28,6 +31,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const session = await requireSession();
+  const t = await getT();
   const where = { tenantId: session.tenantId };
   const since30 = new Date(Date.now() - 30 * 86_400_000);
 
@@ -55,7 +59,7 @@ export default async function DashboardPage() {
 
   const riskMap = new Map(riskGroups.map((g) => [g.riskLevel, g._count as unknown as number]));
   const riskRows = [RiskLevel.Critical, RiskLevel.High, RiskLevel.Medium, RiskLevel.Low, RiskLevel.None]
-    .map((l) => ({ label: humanize(l), value: riskMap.get(l) ?? 0, tone: RISK_TONE[l] }))
+    .map((l) => ({ label: withEmoji("risk", l, tEnum(t, "risk", l)), value: riskMap.get(l) ?? 0, tone: RISK_TONE[l] }))
     .filter((r) => r.value > 0);
 
   const platformRows = platformGroups
@@ -76,28 +80,28 @@ export default async function DashboardPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Overview"
-        title={`Welcome back, ${firstName}`}
-        description="Here's what's happening with your brand reputation today."
-        action={<Link href="/dashboard/accounts"><PrimaryButton type="button">Connect an account</PrimaryButton></Link>}
+        eyebrow={t.home.eyebrow}
+        title={`${t.home.greeting}, ${firstName}`}
+        description={t.home.subtitle}
+        action={<Link href="/dashboard/accounts"><PrimaryButton type="button">{t.ui.connectAccount}</PrimaryButton></Link>}
       />
 
       {/* KPI cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Received items" value={String(received)} tone="brand" icon={<IconInbox />} hint="All time" />
-        <StatCard label="High risk" value={String(highRisk)} tone="danger" icon={<IconAlert />} hint="High or critical" />
-        <StatCard label="Pending approvals" value={String(pending)} tone="warn" icon={<IconClock />} hint="Awaiting review" />
-        <StatCard label="Connected accounts" value={String(connected)} tone="ok" icon={<IconPlug />} hint="Across brands" />
-        <StatCard label="Last sync" value={lastRun ? formatDate(lastRun.startedAt) : "—"} icon={<IconSync />} hint={lastRun ? `${lastRun.mock ? "mock" : "live"} · ${humanize(lastRun.status)}` : "No sync yet"} />
+        <StatCard label={t.home.kpiReceived} value={String(received)} tone="brand" icon={<IconInbox />} hint={t.home.kpiReceivedHint} />
+        <StatCard label={t.home.kpiHighRisk} value={String(highRisk)} tone="danger" icon={<IconAlert />} hint={t.home.kpiHighRiskHint} />
+        <StatCard label={t.home.kpiPending} value={String(pending)} tone="warn" icon={<IconClock />} hint={t.home.kpiPendingHint} />
+        <StatCard label={t.home.kpiConnected} value={String(connected)} tone="ok" icon={<IconPlug />} hint={t.home.kpiConnectedHint} />
+        <StatCard label={t.home.kpiLastSync} value={lastRun ? formatDate(lastRun.startedAt) : "—"} icon={<IconSync />} hint={lastRun ? `${lastRun.mock ? t.home.mock : t.home.live} · ${tEnum(t, "syncStatus", lastRun.status)}` : t.home.noSyncYet} />
       </div>
 
       {received === 0 ? (
         <div className="mt-6">
           <EmptyState
-            title="No reputation items yet"
-            body="Connect a platform and run a read-only sync, or seed the dev workspace to explore Guardora."
-            hint="Connectors run in read-only mode — no moderation actions are taken."
-            action={<Link href="/dashboard/accounts"><PrimaryButton type="button">Go to accounts</PrimaryButton></Link>}
+            title={t.ui.emptyDashboardTitle}
+            body={t.ui.emptyDashboardBody}
+            hint={t.ui.emptyDashboardHint}
+            action={<Link href="/dashboard/accounts"><PrimaryButton type="button">{t.ui.goToAccounts}</PrimaryButton></Link>}
           />
         </div>
       ) : (
@@ -105,11 +109,11 @@ export default async function DashboardPage() {
           {/* Trend + latest risky */}
           <div className="mt-6 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
             <Card>
-              <SectionHeader title="Risk trend" description="High & critical items over the last 30 days" action={<Link href="/dashboard/insights" className="text-xs font-medium text-[var(--color-brand)] hover:underline">View insights →</Link>} />
-              {trendRows.length === 0 ? <p className="py-10 text-center text-sm text-[var(--color-muted)]">No risky items in the last 30 days.</p> : <TrendChart buckets={trend} />}
+              <SectionHeader title={t.home.riskTrend} description={t.home.riskTrendDesc} action={<Link href="/dashboard/insights" className="text-xs font-medium text-[var(--color-brand)] hover:underline">{t.ui.viewInsights}</Link>} />
+              {trendRows.length === 0 ? <p className="py-10 text-center text-sm text-[var(--color-muted)]">{t.home.noRiskyItems30}</p> : <TrendChart buckets={trend} />}
             </Card>
             <Card>
-              <SectionHeader title="Latest risky items" action={<Link href="/dashboard/inbox" className="text-xs font-medium text-[var(--color-brand)] hover:underline">Open inbox →</Link>} />
+              <SectionHeader title={t.home.latestRisky} action={<Link href="/dashboard/inbox" className="text-xs font-medium text-[var(--color-brand)] hover:underline">{t.ui.openInbox}</Link>} />
               <ul className="-mx-2 space-y-0.5">
                 {risky.map((it) => (
                   <li key={it.id}>
@@ -119,7 +123,7 @@ export default async function DashboardPage() {
                         <span className="line-clamp-1 text-sm">{it.contentItem.text}</span>
                         <span className="mt-0.5 block text-xs text-[var(--color-muted)]">{it.brand.name} · {PLATFORM_META[it.platform as Platform].label}</span>
                       </span>
-                      <Badge tone={RISK_TONE[it.riskLevel as RiskLevel]}>{humanize(it.riskLevel)}</Badge>
+                      <Badge tone={RISK_TONE[it.riskLevel as RiskLevel]}>{withEmoji("risk", it.riskLevel, tEnum(t, "risk", it.riskLevel))}</Badge>
                     </Link>
                   </li>
                 ))}
@@ -130,11 +134,11 @@ export default async function DashboardPage() {
           {/* Breakdowns + topics */}
           <div className="mt-6 grid gap-6 lg:grid-cols-3">
             <Card>
-              <SectionHeader title="Risk breakdown" description="All items by level" />
+              <SectionHeader title={t.home.riskBreakdown} description={t.home.allItemsByLevel} />
               <BarList rows={riskRows} />
             </Card>
             <Card>
-              <SectionHeader title="Platform breakdown" />
+              <SectionHeader title={t.home.platformBreakdown} />
               <div className="space-y-2.5">
                 {platformRows.map((p) => (
                   <div key={p.platform} className="flex items-center gap-2.5 text-sm">
@@ -147,11 +151,11 @@ export default async function DashboardPage() {
               </div>
             </Card>
             <Card>
-              <SectionHeader title="Top risky topics" action={<Link href="/dashboard/insights?tab=topics" className="text-xs font-medium text-[var(--color-brand)] hover:underline">All →</Link>} />
+              <SectionHeader title={t.home.topTopics} action={<Link href="/dashboard/insights?tab=topics" className="text-xs font-medium text-[var(--color-brand)] hover:underline">{t.ui.allLink}</Link>} />
               <div className="flex flex-wrap gap-2">
                 {topTopics.map(([cat, n]) => (
                   <span key={cat} className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-surface-2)] px-3 py-1 text-sm">
-                    {humanize(cat)}<span className="text-xs text-[var(--color-muted)]">{n}</span>
+                    {withEmoji("category", cat, tEnum(t, "category", cat))}<span className="text-xs text-[var(--color-muted)]">{n}</span>
                   </span>
                 ))}
               </div>
@@ -161,29 +165,29 @@ export default async function DashboardPage() {
           {/* Sync health + incidents */}
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <Card>
-              <SectionHeader title="Sync health" action={<Link href="/dashboard/accounts" className="text-xs font-medium text-[var(--color-brand)] hover:underline">Accounts →</Link>} />
+              <SectionHeader title={t.home.syncHealth} action={<Link href="/dashboard/accounts" className="text-xs font-medium text-[var(--color-brand)] hover:underline">{t.ui.accountsLink}</Link>} />
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="brand">{accounts.length} connected</Badge>
-                <Badge tone="ok">{healthyAccounts} healthy</Badge>
-                {needAttention > 0 ? <Badge tone="warn">{needAttention} need attention</Badge> : null}
-                {failedSyncs > 0 ? <Badge tone="danger">{failedSyncs} failed runs</Badge> : null}
+                <Badge tone="brand">{accounts.length} {t.home.badgeConnected}</Badge>
+                <Badge tone="ok">{healthyAccounts} {t.home.badgeHealthy}</Badge>
+                {needAttention > 0 ? <Badge tone="warn">{needAttention} {t.home.badgeNeedAttention}</Badge> : null}
+                {failedSyncs > 0 ? <Badge tone="danger">{failedSyncs} {t.home.badgeFailedRuns}</Badge> : null}
               </div>
               <p className="mt-3 text-sm text-[var(--color-muted)]">
-                {avgDuration != null ? `Avg. sync ${avgDuration} ms · ` : ""}
-                {lastRun ? `last ${formatDate(lastRun.startedAt)} (${lastRun.mock ? "mock" : "live"})` : "no sync yet"}
+                {avgDuration != null ? `${t.home.avgSync} ${avgDuration} ms · ` : ""}
+                {lastRun ? `${t.home.last} ${formatDate(lastRun.startedAt)} (${lastRun.mock ? t.home.mock : t.home.live})` : t.home.noSyncYetLower}
               </p>
             </Card>
             <Card>
-              <SectionHeader title="Recent incidents" />
+              <SectionHeader title={t.home.recentIncidents} />
               {incidents.length === 0 ? (
-                <p className="py-4 text-sm text-[var(--color-muted)]">No incidents. All syncs healthy. 🎉</p>
+                <p className="py-4 text-sm text-[var(--color-muted)]">{t.home.noIncidents}</p>
               ) : (
                 <ul className="space-y-2">
                   {incidents.map((i, idx) => (
                     <li key={idx} className="flex items-start gap-2.5 text-sm">
                       <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-danger)]" />
                       <span className="min-w-0">
-                        <span className="block truncate text-[var(--color-fg)]">{i.error ?? "Sync failed"}</span>
+                        <span className="block truncate text-[var(--color-fg)]">{ICON.incident} {i.error ?? t.home.syncFailed}</span>
                         <span className="text-xs text-[var(--color-muted)]">{formatDateTime(i.startedAt)}</span>
                       </span>
                     </li>

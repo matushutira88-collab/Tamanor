@@ -407,6 +407,26 @@ model ReputationItem {
   riskEngine      String?
   assessedAt      DateTime?
 
+  // Structured "why flagged" explanation (matchedTerms, riskSignals, action).
+  riskExplanation Json?
+
+  // Multilingual comment intelligence (best-effort; original text preserved).
+  detectedLanguage        String?
+  languageConfidence      Float?
+  isMixedLanguage         Boolean  @default(false)
+  languageDetectionSource String?  // rules | library | ai | unknown
+
+  // Translation layer (no fake translation; provider off by default).
+  translationStatus   String   @default("not_needed") // not_needed | translated | unavailable | failed
+  translationProvider String   @default("none")
+  translatedText      String?
+  translatedToLocale  String?
+
+  // Hybrid classification provenance.
+  classificationMode String  @default("rules_only") // rules_only | ai_assisted
+  aiProvider         String   @default("none")
+  aiProviderStatus   String   @default("skipped") // classified | skipped | unavailable | failed
+
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -419,6 +439,25 @@ model ReputationItem {
   @@index([brandId, status])
   @@index([riskLevel])
   @@map("reputation_items")
+}
+
+/// Observability record for an external provider call (translation | ai_risk).
+/// Never stores tokens, secrets, or full sensitive payloads.
+model ProviderCall {
+  id        String   @id @default(cuid())
+  type      String // translation | ai_risk
+  provider  String
+  status    String
+  latencyMs Int      @default(0)
+  errorCode String?
+  itemId    String?
+  tenantId  String?
+  brandId   String?
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([tenantId])
+  @@map("provider_calls")
 }
 
 model ModerationDecision {

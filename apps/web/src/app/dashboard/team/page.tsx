@@ -3,7 +3,9 @@ import { PageHeader, Card, SectionHeader, Badge, Field, Input, Select, PrimaryBu
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
-import { humanize, formatDate } from "@/lib/format";
+import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/team");
@@ -16,16 +18,9 @@ const ROLE_TONE: Record<string, string> = {
   viewer: "neutral",
 };
 
-const ROLE_DESC: Record<string, string> = {
-  owner: "Full control incl. billing & members",
-  admin: "Manage brands, connectors, rules, members",
-  analyst: "Triage inbox, draft replies, manage rules",
-  reviewer: "Review & approve proposals (scoped)",
-  viewer: "Read-only across the workspace",
-};
-
 export default async function TeamPage() {
   const session = await requireSession();
+  const hdrT = await getT();
   const manage = can(session.role, Permission.MemberManage);
 
   const memberships = await prisma.membership.findMany({
@@ -34,20 +29,20 @@ export default async function TeamPage() {
     orderBy: { createdAt: "asc" },
   });
 
-  const roleOptions = Object.values(Role).map((r) => ({ value: r, label: humanize(r) }));
+  const roleOptions = Object.values(Role).map((r) => ({ value: r, label: tEnum(hdrT, "role", r) }));
 
   return (
     <>
-      <PageHeader title={nav.label} description={nav.description} />
+      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
 
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <Card>
-          <SectionHeader title="Members" description={`${memberships.length} member(s) in this workspace`} />
+          <SectionHeader title={hdrT.dash.members} description={`${memberships.length} ${hdrT.dash.membersInWorkspace}`} />
           <div className="overflow-hidden rounded-lg border border-[var(--color-border)]">
             <div className="grid grid-cols-[1.6fr_1fr_0.9fr] gap-3 bg-[var(--color-surface-2)] px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
-              <span>Member</span>
-              <span>Role</span>
-              <span>Joined</span>
+              <span>{hdrT.dash.member}</span>
+              <span>{hdrT.dash.role}</span>
+              <span>{hdrT.dash.joined}</span>
             </div>
             {memberships.map((m) => (
               <div key={m.id} className="grid grid-cols-[1.6fr_1fr_0.9fr] items-center gap-3 border-t border-[var(--color-border)] px-4 py-3 text-sm">
@@ -60,7 +55,7 @@ export default async function TeamPage() {
                     <span className="block truncate text-xs text-[var(--color-muted)]">{m.user.email}</span>
                   </span>
                 </span>
-                <span><Badge tone={ROLE_TONE[m.role] ?? "neutral"}>{humanize(m.role)}</Badge></span>
+                <span><Badge tone={ROLE_TONE[m.role] ?? "neutral"}>{tEnum(hdrT, "role", m.role)}</Badge></span>
                 <span className="text-xs text-[var(--color-muted)]">{formatDate(m.createdAt)}</span>
               </div>
             ))}
@@ -69,30 +64,30 @@ export default async function TeamPage() {
 
         <div className="space-y-6">
           <Card>
-            <SectionHeader title="Invite a teammate" description="Send an invitation to join this workspace." />
+            <SectionHeader title={hdrT.dash.inviteTeammate} description={hdrT.dash.inviteDesc} />
             <form className="space-y-3">
-              <Field label="Email">
-                <Input type="email" placeholder="teammate@company.com" disabled={!manage} />
+              <Field label={hdrT.dash.email}>
+                <Input type="email" placeholder={hdrT.dash.emailPlaceholder} disabled={!manage} />
               </Field>
-              <Field label="Role">
+              <Field label={hdrT.dash.role}>
                 <Select options={roleOptions} disabled={!manage} defaultValue={Role.Viewer} />
               </Field>
               <PrimaryButton type="button" disabled className="w-full">
-                Send invite
+                {hdrT.dash.sendInvite}
               </PrimaryButton>
               <p className="text-xs text-[var(--color-muted)]">
-                {manage ? "Invitations are coming soon." : `Your role (${session.role}) can't manage members.`}
+                {manage ? hdrT.dash.invitationsComingSoon : hdrT.dash.cantManageMembers}
               </p>
             </form>
           </Card>
 
           <Card>
-            <SectionHeader title="Roles" />
+            <SectionHeader title={hdrT.dash.roles} />
             <ul className="space-y-2.5">
               {Object.values(Role).map((r) => (
                 <li key={r} className="flex items-start gap-2.5 text-sm">
-                  <Badge tone={ROLE_TONE[r] ?? "neutral"}>{humanize(r)}</Badge>
-                  <span className="text-xs text-[var(--color-muted)]">{ROLE_DESC[r]}</span>
+                  <Badge tone={ROLE_TONE[r] ?? "neutral"}>{tEnum(hdrT, "role", r)}</Badge>
+                  <span className="text-xs text-[var(--color-muted)]">{tEnum(hdrT, "roleDesc", r)}</span>
                 </li>
               ))}
             </ul>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MarketingPage } from "@/components/marketing-page";
+import { getTL } from "@/i18n/server";
 import { submitLead } from "./actions";
 
 export const metadata: Metadata = {
@@ -20,12 +21,13 @@ export default async function BookDemoPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const _lp = await getTL();
   const sp = await searchParams;
   const sent = sp.sent === "1";
   const error = sp.error;
 
   return (
-    <MarketingPage
+    <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="Book a demo"
       title="See Guardora protect a brand in real time."
       subtitle="Tell us about your brand and channels — we'll set up a personalized, read-only walkthrough."

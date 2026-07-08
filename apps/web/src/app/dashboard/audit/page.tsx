@@ -4,6 +4,7 @@ import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { requirePermission } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
+import { getT } from "@/i18n/server";
 import { humanize, formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export default async function AuditPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requirePermission(Permission.AuditView);
+  const hdrT = await getT();
   const sp = await searchParams;
 
   const brandId = sp.brand || undefined;
@@ -50,21 +52,21 @@ export default async function AuditPage({
   ]);
 
   const brandOptions = [
-    { value: "", label: "All brands" },
+    { value: "", label: hdrT.dash.allBrands },
     ...brands.map((b) => ({ value: b.id, label: b.name })),
   ];
   const actorOptions = [
-    { value: "", label: "All actors" },
+    { value: "", label: hdrT.dash.allActors },
     ...Object.values(ActorKind).map((v) => ({ value: v, label: humanize(v) })),
   ];
 
   return (
     <>
-      <PageHeader title={nav.label} description={nav.description} />
+      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
 
       <form className="mb-5 flex flex-wrap items-end gap-3">
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-[var(--color-muted)]">Brand</span>
+          <span className="mb-1 block text-xs font-medium text-[var(--color-muted)]">{hdrT.dash.brand}</span>
           <select name="brand" defaultValue={brandId ?? ""} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-soft)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)]">
             {brandOptions.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -72,7 +74,7 @@ export default async function AuditPage({
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-[var(--color-muted)]">Actor</span>
+          <span className="mb-1 block text-xs font-medium text-[var(--color-muted)]">{hdrT.dash.actor}</span>
           <select name="actor" defaultValue={actor ?? ""} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-soft)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)]">
             {actorOptions.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -80,23 +82,23 @@ export default async function AuditPage({
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-[var(--color-muted)]">Event contains</span>
-          <input name="q" defaultValue={q ?? ""} placeholder="e.g. moderation" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-soft)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)]" />
+          <span className="mb-1 block text-xs font-medium text-[var(--color-muted)]">{hdrT.dash.eventContains}</span>
+          <input name="q" defaultValue={q ?? ""} placeholder={hdrT.dash.eventContainsPlaceholder} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-soft)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)]" />
         </label>
         <button type="submit" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-brand-strong)] hover:text-white">
-          Apply
+          {hdrT.dash.apply}
         </button>
         <Link href="/dashboard/audit" className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-muted)] transition hover:text-[var(--color-fg)]">
-          Clear
+          {hdrT.dash.clear}
         </Link>
       </form>
 
       <div className="gu-card overflow-hidden">
         <div className="grid grid-cols-[1.3fr_1.6fr_0.9fr_1.4fr] gap-3 border-b border-[var(--color-border)] px-4 py-3 text-xs uppercase tracking-widest text-[var(--color-muted)]">
-          <span>Time</span>
-          <span>Event</span>
-          <span>Actor</span>
-          <span>Target</span>
+          <span>{hdrT.dash.time}</span>
+          <span>{hdrT.dash.event}</span>
+          <span>{hdrT.dash.actor}</span>
+          <span>{hdrT.dash.target}</span>
         </div>
         {logs.length === 0 ? (
           <div className="px-4 py-16 text-center text-sm text-[var(--color-muted)]">
@@ -125,7 +127,7 @@ export default async function AuditPage({
         )}
       </div>
       <p className="mt-3 text-xs text-[var(--color-muted)]">
-        Append-only · showing {logs.length} entr{logs.length === 1 ? "y" : "ies"} · max 200.
+        Append-only · {hdrT.dash.showing} {logs.length} {hdrT.dash.items} · {hdrT.dash.max} 200.
       </p>
     </>
   );

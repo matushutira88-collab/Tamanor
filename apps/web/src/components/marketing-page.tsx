@@ -1,22 +1,27 @@
 import type { ReactNode } from "react";
 import { SiteHeader } from "./site-header";
 import { SiteFooter } from "./site-footer";
+import { defaultLocale, type Dictionary, type Locale } from "@/i18n";
 
 /** Shared dark wrapper for public marketing / legal pages. */
 export function MarketingPage({
   title,
   subtitle,
   eyebrow,
+  dict,
+  locale = defaultLocale,
   children,
 }: {
   title: string;
   subtitle?: string;
   eyebrow?: string;
+  dict?: Dictionary;
+  locale?: Locale;
   children: ReactNode;
 }) {
   return (
     <main className="gu-dark min-h-dvh bg-[var(--color-bg)] text-[var(--color-fg)]">
-      <SiteHeader />
+      <SiteHeader dict={dict} locale={locale} />
       <section className="gu-hero border-b border-[var(--color-border)]">
         <div className="mx-auto max-w-4xl px-6 py-16 md:py-20">
           {eyebrow ? (
@@ -35,7 +40,7 @@ export function MarketingPage({
         </div>
       </section>
       <section className="mx-auto max-w-4xl px-6 py-14">{children}</section>
-      <SiteFooter />
+      <SiteFooter dict={dict} locale={locale} />
     </main>
   );
 }

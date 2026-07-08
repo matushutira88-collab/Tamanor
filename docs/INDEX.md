@@ -4,9 +4,19 @@ Start here. Guardora is an **AI Reputation Firewall for modern brands** —
 read-only by default, human approval for sensitive actions, official OAuth/API
 connectors only.
 
+## Beta testing (V1.13)
+
+- [BETA_TEST_GUIDE.md](./BETA_TEST_GUIDE.md) — how to run and test the beta (live vs demo vs disabled).
+- [BETA_CHECKLIST.md](./BETA_CHECKLIST.md) — per-session checklist across all routes + languages.
+- [BUG_REPORT_TEMPLATE.md](./BUG_REPORT_TEMPLATE.md) — copy-paste bug report format.
+- [BETA_FEEDBACK_FORM.md](./BETA_FEEDBACK_FORM.md) — tester feedback questions.
+- [KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md) — what is intentionally disabled/limited.
+- [TEST_RESULTS.md](./TEST_RESULTS.md) — session log + verification baseline template.
+
 ## Demo & launch
 
-- [DEMO_SCRIPT.md](./DEMO_SCRIPT.md) — ordered walkthrough for a professional demo (A–K).
+- [DEMO_SCRIPT.md](./DEMO_SCRIPT.md) — ordered walkthrough for a professional demo (A–K + EN/SK/DE).
+- [TESTING_PLAN.md](./TESTING_PLAN.md) — internal/beta testing checklist (setup, demo data, real sync, i18n, safety, QA).
 - [LAUNCH_SAFETY_CHECKLIST.md](./LAUNCH_SAFETY_CHECKLIST.md) — gate before public exposure.
 - [PRODUCT_STATUS.md](./PRODUCT_STATUS.md) — current state, verified capability, what's still disabled.
 

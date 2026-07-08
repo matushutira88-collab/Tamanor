@@ -7,7 +7,9 @@ import { log } from "./logger";
  * Business). Read-only: creates ReputationItems, never executes actions.
  * Deduplication means repeated ticks converge (no duplicate items).
  */
-export async function syncConnectedMetaAccounts(): Promise<number> {
+export async function syncConnectedMetaAccounts(
+  trigger: "manual" | "automatic" = "automatic",
+): Promise<{ created: number; accounts: number }> {
   const accounts = await prisma.connectedAccount.findMany({
     where: {
       platform: {
@@ -22,7 +24,7 @@ export async function syncConnectedMetaAccounts(): Promise<number> {
 
   let created = 0;
   for (const account of accounts) {
-    const r = await runReadOnlySync(account.id);
+    const r = await runReadOnlySync(account.id, trigger);
     created += r.created;
     log.info("worker.sync.account", {
       accountId: account.id,
@@ -31,7 +33,8 @@ export async function syncConnectedMetaAccounts(): Promise<number> {
       created: r.created,
       deduped: r.deduped,
       errors: r.errors,
+      trigger,
     });
   }
-  return created;
+  return { created, accounts: accounts.length };
 }

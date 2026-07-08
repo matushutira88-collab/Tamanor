@@ -13,18 +13,30 @@ import { PageHeader, Badge, EmptyState, Tabs } from "@/components/dashboard/ui";
 import { requirePermission } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
+import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
+import { withEmoji } from "@/lib/enum-emoji";
 import { humanize, formatDate } from "@/lib/format";
 import { RISK_TONE, DECISION_TONE } from "@/lib/ui-maps";
+import type { Dictionary } from "@/i18n/dictionaries/en";
 
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/approvals");
 
 type SP = Record<string, string | undefined>;
 
-function opt<T extends Record<string, string>>(e: T, allLabel: string) {
+function opt<T extends Record<string, string>>(
+  e: T,
+  allLabel: string,
+  t?: Dictionary,
+  kind?: keyof Dictionary["enums"],
+) {
   return [
     { value: "", label: allLabel },
-    ...Object.values(e).map((v) => ({ value: v, label: humanize(v) })),
+    ...Object.values(e).map((v) => ({
+      value: v,
+      label: t && kind ? tEnum(t, kind, v) : humanize(v),
+    })),
   ];
 }
 function pick<T extends Record<string, string>>(e: T, raw?: string) {
@@ -37,6 +49,7 @@ export default async function ApprovalsPage({
   searchParams: Promise<SP>;
 }) {
   const session = await requirePermission(Permission.ProposalView);
+  const hdrT = await getT();
   const sp = await searchParams;
 
   const status = pick(DecisionStatus, sp.status);
@@ -81,7 +94,7 @@ export default async function ApprovalsPage({
   ]);
 
   const brandOptions = [
-    { value: "", label: "All brands" },
+    { value: "", label: hdrT.dash.allBrands },
     ...brands.map((b) => ({ value: b.id, label: b.name })),
   ];
 
@@ -98,17 +111,17 @@ export default async function ApprovalsPage({
 
   const tabs = [
     { key: "", label: "All", href: `/dashboard/approvals?${otherFilters.toString()}`, count: totalCount },
-    { key: DecisionStatus.Proposed, label: "Proposed", href: tabHref(DecisionStatus.Proposed), count: countByStatus.get(DecisionStatus.Proposed) ?? 0 },
-    { key: DecisionStatus.Approved, label: "Approved", href: tabHref(DecisionStatus.Approved), count: countByStatus.get(DecisionStatus.Approved) ?? 0 },
-    { key: DecisionStatus.Executed, label: "Executed", href: tabHref(DecisionStatus.Executed), count: countByStatus.get(DecisionStatus.Executed) ?? 0 },
-    { key: DecisionStatus.Failed, label: "Failed", href: tabHref(DecisionStatus.Failed), count: countByStatus.get(DecisionStatus.Failed) ?? 0 },
+    { key: DecisionStatus.Proposed, label: tEnum(hdrT, "decision", DecisionStatus.Proposed), href: tabHref(DecisionStatus.Proposed), count: countByStatus.get(DecisionStatus.Proposed) ?? 0 },
+    { key: DecisionStatus.Approved, label: tEnum(hdrT, "decision", DecisionStatus.Approved), href: tabHref(DecisionStatus.Approved), count: countByStatus.get(DecisionStatus.Approved) ?? 0 },
+    { key: DecisionStatus.Executed, label: tEnum(hdrT, "decision", DecisionStatus.Executed), href: tabHref(DecisionStatus.Executed), count: countByStatus.get(DecisionStatus.Executed) ?? 0 },
+    { key: DecisionStatus.Failed, label: tEnum(hdrT, "decision", DecisionStatus.Failed), href: tabHref(DecisionStatus.Failed), count: countByStatus.get(DecisionStatus.Failed) ?? 0 },
   ];
 
   return (
     <>
       <PageHeader
-        title={nav.label}
-        description={nav.description}
+        title={hdrT.dashHeaders[nav.icon].title}
+        description={hdrT.dashHeaders[nav.icon].desc}
         action={<Badge tone="warn">{countByStatus.get(DecisionStatus.Proposed) ?? 0} pending</Badge>}
       />
 
@@ -116,34 +129,34 @@ export default async function ApprovalsPage({
 
       <form className="mb-4 flex flex-wrap items-end gap-2.5">
         <input type="hidden" name="status" value={status ?? ""} />
-        <FilterSelect name="brand" label="Brand" value={brandId ?? ""} options={brandOptions} />
-        <FilterSelect name="action" label="Action" value={action ?? ""} options={opt(ModerationAction, "All actions")} />
-        <FilterSelect name="platform" label="Platform" value={platform ?? ""} options={opt(Platform, "All platforms")} />
-        <FilterSelect name="risk" label="Risk" value={risk ?? ""} options={opt(RiskLevel, "All risk")} />
-        <FilterSelect name="priority" label="Priority" value={priority ?? ""} options={opt(Priority, "All priority")} />
+        <FilterSelect name="brand" label={hdrT.dash.brand} value={brandId ?? ""} options={brandOptions} />
+        <FilterSelect name="action" label={hdrT.dash.action} value={action ?? ""} options={opt(ModerationAction, hdrT.dash.allActions, hdrT, "action")} />
+        <FilterSelect name="platform" label={hdrT.dash.platform} value={platform ?? ""} options={opt(Platform, hdrT.dash.allPlatforms)} />
+        <FilterSelect name="risk" label={hdrT.dash.risk} value={risk ?? ""} options={opt(RiskLevel, hdrT.dash.allRisk, hdrT, "risk")} />
+        <FilterSelect name="priority" label={hdrT.dash.priority} value={priority ?? ""} options={opt(Priority, hdrT.dash.allPriority, hdrT, "priority")} />
         <button type="submit" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-brand-strong)]">
-          Apply
+          {hdrT.dash.apply}
         </button>
         <Link href="/dashboard/approvals" className="rounded-lg px-3 py-2 text-sm text-[var(--color-muted)] transition hover:text-[var(--color-fg)]">
-          Clear
+          {hdrT.dash.clear}
         </Link>
       </form>
 
       {decisions.length === 0 ? (
         <EmptyState
-          title="No proposals here"
+          title={hdrT.dash.noProposalsHere}
           body="Proposals appear when the AI engine or a reviewer suggests an action. Nothing runs until it's approved and executed."
           hint="Runtime keeps moderation actions disabled — this is a safe review queue."
         />
       ) : (
       <div className="gu-card overflow-hidden">
         <div className="grid grid-cols-[1.5fr_0.9fr_0.8fr_0.8fr_0.9fr_0.9fr] gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
-          <span>Content</span>
-          <span>Brand · Platform</span>
-          <span>Action</span>
-          <span>Risk</span>
-          <span>Status</span>
-          <span>Created</span>
+          <span>{hdrT.dash.content}</span>
+          <span>{hdrT.dash.brandPlatform}</span>
+          <span>{hdrT.dash.action}</span>
+          <span>{hdrT.dash.risk}</span>
+          <span>{hdrT.dash.status}</span>
+          <span>{hdrT.dash.created}</span>
         </div>
 
         {(
@@ -163,14 +176,14 @@ export default async function ApprovalsPage({
                   {PLATFORM_META[d.reputationItem.platform as Platform].label}
                 </span>
                 <span>
-                  <Badge>{humanize(d.action)}</Badge>
+                  <Badge>{tEnum(hdrT, "action", d.action)}</Badge>
                 </span>
                 <span>
-                  <Badge tone={RISK_TONE[snapshotLevel]}>{humanize(snapshotLevel)}</Badge>
+                  <Badge tone={RISK_TONE[snapshotLevel]}>{withEmoji("risk", snapshotLevel, tEnum(hdrT, "risk", snapshotLevel))}</Badge>
                 </span>
                 <span>
                   <Badge tone={DECISION_TONE[d.status as DecisionStatus]}>
-                    {humanize(d.status)}
+                    {withEmoji("decision", d.status, tEnum(hdrT, "decision", d.status))}
                   </Badge>
                 </span>
                 <span className="text-xs text-[var(--color-muted)]">
@@ -183,7 +196,7 @@ export default async function ApprovalsPage({
       </div>
       )}
       <p className="mt-3 text-xs text-[var(--color-muted)]">
-        Showing {decisions.length} proposal(s) · max 100.
+        {hdrT.dash.showing} {decisions.length} {hdrT.dash.items} · {hdrT.dash.max} 100.
       </p>
     </>
   );

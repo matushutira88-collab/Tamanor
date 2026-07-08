@@ -29,6 +29,28 @@ const EnvSchema = z.object({
 
   // Worker
   WORKER_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  /**
+   * Automatic read-only sync polling. When true, the worker periodically runs a
+   * read-only sync for eligible connected accounts (never any platform action).
+   * Default OFF; enable per environment. Manual "Run read-only sync" always works.
+   */
+  AUTO_SYNC_ENABLED: boolFromEnv,
+  AUTO_SYNC_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
+  /**
+   * Comment translation. When enabled with a real provider, non-workspace-locale
+   * comments can be translated. Default OFF — no translation is ever fabricated;
+   * the original text is always preserved.
+   */
+  TRANSLATION_ENABLED: boolFromEnv,
+  TRANSLATION_PROVIDER: z.string().default("none"),
+  TRANSLATION_TARGET_MODE: z.enum(["workspace_locale", "en"]).default("workspace_locale"),
+  /**
+   * External AI risk provider (gated hybrid pipeline). Default OFF: Risk Rules V1
+   * is used alone. `mock` is dev/test only. No real provider is wired yet.
+   */
+  AI_RISK_PROVIDER_ENABLED: boolFromEnv,
+  AI_RISK_PROVIDER: z.string().default("none"),
+  AI_RISK_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.7),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(4),
 
   // Meta (Facebook Page + Instagram Business) — official OAuth only.
@@ -64,6 +86,43 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): GuardoraEnv {
   if (cached) return cached;
   cached = EnvSchema.parse(source);
   return cached;
+}
+
+/** Automatic read-only sync configuration for UI + worker. */
+export function getAutoSyncConfig(source: NodeJS.ProcessEnv = process.env): {
+  enabled: boolean;
+  intervalSeconds: number;
+} {
+  const env = loadEnv(source);
+  return { enabled: env.AUTO_SYNC_ENABLED, intervalSeconds: env.AUTO_SYNC_INTERVAL_SECONDS };
+}
+
+/** Comment translation configuration (provider off by default). */
+export function getTranslationConfig(source: NodeJS.ProcessEnv = process.env): {
+  enabled: boolean;
+  provider: string;
+  targetMode: "workspace_locale" | "en";
+} {
+  const env = loadEnv(source);
+  return {
+    enabled: env.TRANSLATION_ENABLED,
+    provider: env.TRANSLATION_PROVIDER,
+    targetMode: env.TRANSLATION_TARGET_MODE,
+  };
+}
+
+/** External AI risk provider configuration (off by default). */
+export function getAiRiskConfig(source: NodeJS.ProcessEnv = process.env): {
+  enabled: boolean;
+  provider: string;
+  minConfidence: number;
+} {
+  const env = loadEnv(source);
+  return {
+    enabled: env.AI_RISK_PROVIDER_ENABLED,
+    provider: env.AI_RISK_PROVIDER,
+    minConfidence: env.AI_RISK_MIN_CONFIDENCE,
+  };
 }
 
 /** Per-platform connector credentials. All optional (placeholder-friendly). */

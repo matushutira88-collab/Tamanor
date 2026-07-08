@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingPage, Section } from "@/components/marketing-page";
+import { getTL } from "@/i18n/server";
 
 export const metadata: Metadata = {
   title: "About — Guardora.ai",
@@ -8,9 +9,10 @@ export const metadata: Metadata = {
     "Guardora.ai is an AI Reputation Firewall that helps modern brands protect their reputation across social media, comments and reviews.",
 };
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const _lp = await getTL();
   return (
-    <MarketingPage
+    <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="About"
       title="An AI Reputation Firewall for modern brands."
       subtitle="Guardora helps brands protect their reputation across social media, comments and reviews — with AI speed and human control."

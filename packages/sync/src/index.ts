@@ -22,7 +22,7 @@ import {
   ContentKind,
   decryptToken,
 } from "@guardora/db";
-import { RiskClassifier, type ClassifierRule } from "@guardora/ai";
+import { classifyHybrid, buildIntelFromHybrid, type ClassifierRule } from "@guardora/ai";
 import {
   ConnectorMode as CoreMode,
   Platform as CorePlatform,
@@ -34,10 +34,8 @@ import {
   MetaGraphError,
   type FetchedContent,
 } from "@guardora/connectors";
-import { getMetaConfig } from "@guardora/config";
+import { getMetaConfig, getTranslationConfig, getAiRiskConfig } from "@guardora/config";
 import { mockMetaFetch } from "./mock-fetch";
-
-const classifier = new RiskClassifier();
 
 export interface SyncOutcome {
   ok: boolean;
@@ -79,7 +77,10 @@ type AccountRow = NonNullable<
   Awaited<ReturnType<typeof prisma.connectedAccount.findUnique>>
 >;
 
-export async function runReadOnlySync(accountId: string): Promise<SyncOutcome> {
+export async function runReadOnlySync(
+  accountId: string,
+  trigger: "manual" | "automatic" = "manual",
+): Promise<SyncOutcome> {
   const account = await prisma.connectedAccount.findUnique({
     where: { id: accountId },
   });
@@ -106,7 +107,7 @@ export async function runReadOnlySync(accountId: string): Promise<SyncOutcome> {
       mock: useMock,
     },
   });
-  await audit(account, "sync.started", { mock: useMock });
+  await audit(account, "sync.started", { mock: useMock, trigger });
   const startedAt = Date.now();
 
   try {
@@ -166,6 +167,7 @@ export async function runReadOnlySync(accountId: string): Promise<SyncOutcome> {
       created,
       deduped,
       durationMs,
+      trigger,
     });
 
     return {
@@ -329,13 +331,19 @@ async function persistItem(
   item: FetchedContent,
   rules: ClassifierRule[],
 ): Promise<void> {
-  const risk = await classifier.classify({
-    text: item.text,
-    platform: item.platform,
-    locale: item.author.locale,
-    rating: item.rating,
-    rules,
+  const brand = await prisma.brand.findUnique({
+    where: { id: account.brandId },
+    select: { defaultLocale: true },
   });
+
+  const hybrid = await classifyHybrid(
+    { text: item.text, platform: item.platform, locale: item.author.locale, rating: item.rating, rules },
+    {
+      workspaceLocale: brand?.defaultLocale ?? "en",
+      translation: getTranslationConfig(),
+      aiRisk: getAiRiskConfig(),
+    },
+  );
 
   const content = await prisma.contentItem.create({
     data: {
@@ -356,24 +364,50 @@ async function persistItem(
     },
   });
 
-  await prisma.reputationItem.create({
+  const repItem = await prisma.reputationItem.create({
     data: {
       tenantId: account.tenantId,
       brandId: account.brandId,
       platform: account.platform,
       contentItemId: content.id,
       status: ReputationStatus.classified,
-      priority: priorityFor(risk.level),
-      requiresApproval:
-        risk.level === DbRiskLevel.high || risk.level === DbRiskLevel.critical,
-      riskLevel: risk.level as unknown as DbRiskLevel,
-      riskConfidence: risk.confidence,
-      riskCategories: risk.categories as unknown as string[],
-      sentiment: risk.sentiment as unknown as DbSentiment,
-      riskRationale: risk.rationale ?? null,
-      riskEngine: risk.engine ?? null,
+      priority: priorityFor(hybrid.level),
+      requiresApproval: hybrid.approvalRequired,
+      riskLevel: hybrid.level as unknown as DbRiskLevel,
+      riskConfidence: hybrid.confidence,
+      riskCategories: hybrid.categories,
+      sentiment: hybrid.sentiment as unknown as DbSentiment,
+      riskRationale: hybrid.explanation.shortReason || hybrid.engine,
+      riskEngine: hybrid.engine,
       assessedAt: new Date(),
+      ...buildIntelFromHybrid(hybrid),
     },
+  });
+
+  await logProviderCalls(hybrid.providerCalls, {
+    itemId: repItem.id,
+    tenantId: account.tenantId,
+    brandId: account.brandId,
+  });
+}
+
+/** Persist provider-call observability rows. No tokens/secrets/text are stored. */
+async function logProviderCalls(
+  calls: { type: string; provider: string; status: string; latencyMs: number; errorCode?: string }[],
+  ctx: { itemId: string; tenantId: string; brandId: string },
+): Promise<void> {
+  if (calls.length === 0) return;
+  await prisma.providerCall.createMany({
+    data: calls.map((c) => ({
+      type: c.type,
+      provider: c.provider,
+      status: c.status,
+      latencyMs: c.latencyMs,
+      errorCode: c.errorCode ?? null,
+      itemId: ctx.itemId,
+      tenantId: ctx.tenantId,
+      brandId: ctx.brandId,
+    })),
   });
 }
 

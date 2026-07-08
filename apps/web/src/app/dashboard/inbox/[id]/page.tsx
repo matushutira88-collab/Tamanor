@@ -12,6 +12,10 @@ import {
 import { PageHeader, Badge, Textarea, PrimaryButton } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { getLocale } from "@/i18n/locale-server";
+import { getDictionary } from "@/i18n";
+import { tEnum } from "@/i18n/labels";
+import { withEmoji } from "@/lib/enum-emoji";
 import { humanize, formatDateTime } from "@/lib/format";
 import { RISK_TONE, STATUS_TONE, PRIORITY_TONE } from "@/lib/ui-maps";
 import {
@@ -43,6 +47,7 @@ export default async function InboxItemPage({
   const { id } = await params;
   const sp = await searchParams;
   const session = await requireSession();
+  const t = getDictionary(await getLocale());
   const act = can(session.role, Permission.InboxAct);
   const propose = can(session.role, Permission.ProposalPropose);
 
@@ -66,11 +71,11 @@ export default async function InboxItemPage({
   return (
     <>
       <PageHeader
-        title="Reputation item"
-        description={`${item.brand.name} · ${meta.label} · ${humanize(item.contentItem.kind)}`}
+        title={t.dash.reputationItem}
+        description={`${item.brand.name} · ${meta.label} · ${withEmoji("kind", item.contentItem.kind, tEnum(t, "kind", item.contentItem.kind))}`}
         action={
           <Badge tone={STATUS_TONE[item.status as ReputationStatus]}>
-            {humanize(item.status)}
+            {tEnum(t, "status", item.status)}
           </Badge>
         }
       />
@@ -79,13 +84,13 @@ export default async function InboxItemPage({
         href="/dashboard/inbox"
         className="text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
       >
-        ← Back to inbox
+        {t.dash.backToInbox}
       </Link>
 
       {notice ? (
         <div className="mt-4" role="status">
           <Badge tone={NOTICE_TONE[noticeKind] ?? "neutral"}>
-            {noticeKind === "unsupported" ? "Unsupported" : humanize(noticeKind)}
+            {noticeKind === "unsupported" ? t.dash.unsupported : humanize(noticeKind)}
           </Badge>{" "}
           <span className="text-sm text-[var(--color-muted)]">{notice}</span>
         </div>
@@ -94,16 +99,16 @@ export default async function InboxItemPage({
       {openProposals.length > 0 ? (
         <div className="mt-4 flex items-center justify-between rounded-lg border border-[var(--color-warn)] bg-[var(--color-surface)] px-4 py-3">
           <span className="text-sm">
-            <Badge tone="warn">Pending approval</Badge>{" "}
+            <Badge tone="warn">{t.dash.pendingApproval}</Badge>{" "}
             <span className="text-[var(--color-muted)]">
-              {openProposals.length} open proposal(s) awaiting review.
+              {openProposals.length} {t.dash.openProposalsAwaiting}
             </span>
           </span>
           <Link
             href="/dashboard/approvals"
             className="text-xs font-medium text-[var(--color-brand)] hover:underline"
           >
-            Go to approval queue →
+            {t.dash.goToApprovalQueue}
           </Link>
         </div>
       ) : null}
@@ -113,7 +118,7 @@ export default async function InboxItemPage({
         <div className="space-y-6">
           <div className="gu-card p-5">
             <div className="mb-2 flex items-center gap-2 text-xs text-[var(--color-muted)]">
-              <span>{item.contentItem.authorDisplayName ?? "Unknown author"}</span>
+              <span>{item.contentItem.authorDisplayName ?? t.dash.unknownAuthor}</span>
               {typeof item.contentItem.rating === "number" ? (
                 <Badge tone="neutral">{item.contentItem.rating}★</Badge>
               ) : null}
@@ -125,19 +130,19 @@ export default async function InboxItemPage({
           {/* Immediate actions (Guardora-side, no platform call) */}
           {act ? (
             <div className="gu-card p-5">
-              <h3 className="mb-1 text-sm font-semibold">Triage</h3>
+              <h3 className="mb-1 text-sm font-semibold">{t.dash.triage}</h3>
               <p className="mb-3 text-xs text-[var(--color-muted)]">
-                Immediate, audited status changes — no platform action.
+                {t.dash.triageDesc}
               </p>
               <div className="flex flex-wrap gap-2">
                 <form action={resolveItem.bind(null, item.id)}>
-                  <ActionBtn tone="ok">Mark resolved</ActionBtn>
+                  <ActionBtn tone="ok">{t.dash.markResolved}</ActionBtn>
                 </form>
                 <form action={escalateItem.bind(null, item.id)}>
-                  <ActionBtn tone="danger">Escalate</ActionBtn>
+                  <ActionBtn tone="danger">{t.dash.escalate}</ActionBtn>
                 </form>
                 <form action={ignoreItem.bind(null, item.id)}>
-                  <ActionBtn tone="neutral">Ignore</ActionBtn>
+                  <ActionBtn tone="neutral">{t.dash.ignore}</ActionBtn>
                 </form>
               </div>
             </div>
@@ -147,65 +152,64 @@ export default async function InboxItemPage({
           {propose ? (
             <div className="gu-card p-5">
               <div className="mb-1 flex items-center gap-2">
-                <h3 className="text-sm font-semibold">Propose platform action</h3>
-                <Badge tone="ok">No platform action executed</Badge>
+                <h3 className="text-sm font-semibold">{t.dash.proposePlatformAction}</h3>
+                <Badge tone="ok">{t.common.noPlatformAction}</Badge>
               </div>
               <p className="mb-3 text-xs text-[var(--color-muted)]">
-                Creates a proposal for review. Nothing runs until an authorized
-                reviewer approves and executes it — Guardora is read-only by default.
+                {t.dash.proposeActionDesc}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <form action={proposeHide.bind(null, item.id)}>
-                  <ActionBtn tone="warn">Propose hide</ActionBtn>
+                  <ActionBtn tone="warn">{t.dash.proposeHide}</ActionBtn>
                 </form>
                 {!meta.supportsHide ? (
                   <span
                     title={`${meta.label} API does not support hiding`}
                     className="text-xs text-[var(--color-warn)]"
                   >
-                    ⚠ Hide is unsupported on {meta.label} — will fail at execution.
+                    {t.dash.hideUnsupportedPre} {meta.label} {t.dash.hideUnsupportedPost}
                   </span>
                 ) : null}
                 <form action={proposeDelete.bind(null, item.id)}>
-                  <ActionBtn tone="danger">Propose delete</ActionBtn>
+                  <ActionBtn tone="danger">{t.dash.proposeDelete}</ActionBtn>
                 </form>
               </div>
 
               <form action={proposeReply.bind(null, item.id)} className="mt-4 space-y-2">
                 <label className="block text-xs font-medium text-[var(--color-muted)]">
-                  Propose reply{" "}
+                  {t.dash.proposeReply}{" "}
                   <span className="normal-case">
-                    (tone: {humanize(item.brand.defaultTone)})
+                    ({t.dash.replyToneLabel}: {humanize(item.brand.defaultTone)})
                   </span>
                 </label>
                 <Textarea
                   name="replyText"
                   rows={3}
-                  placeholder="Write a reply draft… (queued for approval; not sent)"
+                  placeholder={t.dash.replyPlaceholder}
                 />
-                <PrimaryButton type="submit">Propose reply</PrimaryButton>
+                <PrimaryButton type="submit">{t.dash.proposeReply}</PrimaryButton>
               </form>
             </div>
           ) : null}
 
           {!act && !propose ? (
             <div className="gu-card p-5 text-xs text-[var(--color-muted)]">
-              Your role ({session.role}) has read-only access to this item.
+              {t.dash.readOnlyAccessPre} ({session.role}) {t.dash.readOnlyAccessPost}
             </div>
           ) : null}
 
           {/* Decision history */}
           <div className="gu-card p-5">
-            <h3 className="mb-3 text-sm font-semibold">Decision history</h3>
+            <h3 className="mb-3 text-sm font-semibold">{t.dash.decisionHistory}</h3>
             {item.decisions.length === 0 ? (
-              <p className="text-sm text-[var(--color-muted)]">No decisions yet.</p>
+              <p className="text-sm text-[var(--color-muted)]">{t.dash.noDecisions}</p>
             ) : (
               <ul className="space-y-2">
                 {item.decisions.map((d) => (
                   <li key={d.id} className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] pb-2 text-sm last:border-0">
                     <div>
-                      <span className="font-medium">{humanize(d.action)}</span>
-                      <span className="text-[var(--color-muted)]"> · {humanize(d.status)}</span>
+                      <span className="font-medium">{tEnum(t, "action", d.action)}</span>
+                      <span className="text-[var(--color-muted)]"> · {withEmoji("decision", d.status, tEnum(t, "decision", d.status))}</span>
                       {d.replyText ? (
                         <p className="mt-1 text-xs text-[var(--color-muted)]">“{d.replyText}”</p>
                       ) : null}
@@ -226,34 +230,34 @@ export default async function InboxItemPage({
         {/* Risk sidebar */}
         <aside className="space-y-4">
           <div className="gu-card p-5">
-            <h3 className="mb-3 text-sm font-semibold">AI Risk assessment</h3>
+            <h3 className="mb-3 text-sm font-semibold">{t.dash.aiRiskAssessment}</h3>
             <dl className="space-y-2 text-sm">
-              <Row label="Risk level">
+              <Row label={t.dash.riskLevel}>
                 <Badge tone={RISK_TONE[item.riskLevel as RiskLevel]}>
-                  {humanize(item.riskLevel)}
+                  {withEmoji("risk", item.riskLevel, tEnum(t, "risk", item.riskLevel))}
                 </Badge>
               </Row>
-              <Row label="Confidence">
+              <Row label={t.dash.confidence}>
                 {(item.riskConfidence * 100).toFixed(0)}%
               </Row>
-              <Row label="Priority">
+              <Row label={t.dash.priority}>
                 <Badge tone={PRIORITY_TONE[item.priority as Priority]}>
-                  {humanize(item.priority)}
+                  {tEnum(t, "priority", item.priority)}
                 </Badge>
               </Row>
-              <Row label="Sentiment">{humanize(item.sentiment)}</Row>
-              <Row label="Approval">
+              <Row label={t.dash.sentiment}>{withEmoji("sentiment", item.sentiment, tEnum(t, "sentiment", item.sentiment))}</Row>
+              <Row label={t.dash.approval}>
                 {item.requiresApproval ? (
-                  <Badge tone="warn">Required</Badge>
+                  <Badge tone="warn">{t.dash.required}</Badge>
                 ) : (
-                  <span className="text-[var(--color-muted)]">Not required</span>
+                  <span className="text-[var(--color-muted)]">{t.dash.notRequired}</span>
                 )}
               </Row>
             </dl>
             {item.riskCategories.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {item.riskCategories.map((c) => (
-                  <Badge key={c}>{humanize(c)}</Badge>
+                  <Badge key={c}>{withEmoji("category", c, tEnum(t, "category", c))}</Badge>
                 ))}
               </div>
             ) : null}
@@ -264,21 +268,109 @@ export default async function InboxItemPage({
             ) : null}
             {item.riskEngine ? (
               <p className="mt-2 text-[11px] text-[var(--color-muted)]">
-                Engine: {item.riskEngine}
+                {t.dash.engine}: {item.riskEngine}
               </p>
             ) : null}
           </div>
 
+          {/* Language & translation */}
           <div className="gu-card p-5">
-            <h3 className="mb-2 text-sm font-semibold">Platform capabilities</h3>
-            <div className="flex flex-wrap gap-1.5">
-              {meta.supportsReply ? <Badge tone="ok">Reply</Badge> : <Badge tone="warn">No reply</Badge>}
-              {meta.supportsHide ? <Badge tone="ok">Hide</Badge> : <Badge tone="warn">No hide</Badge>}
-              {meta.supportsDelete ? <Badge tone="ok">Delete</Badge> : <Badge tone="warn">No delete</Badge>}
+            <h3 className="mb-3 text-sm font-semibold">🌍 {t.intel.languageTranslation}</h3>
+            <dl className="space-y-2 text-sm">
+              <Row label={t.intel.detectedLanguage}>
+                <span className="flex items-center gap-1.5">
+                  {tEnum(t, "detectedLang", item.detectedLanguage ?? "unknown")}
+                  {item.isMixedLanguage ? <Badge tone="warn">{t.intel.mixedLanguage}</Badge> : null}
+                </span>
+              </Row>
+              {typeof item.languageConfidence === "number" ? (
+                <Row label={t.intel.confidence}>{(item.languageConfidence * 100).toFixed(0)}%</Row>
+              ) : null}
+            </dl>
+            <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[var(--color-muted)]">{t.intel.original}</p>
+              <p className="text-sm leading-relaxed">{item.contentItem.text}</p>
+            </div>
+            <div className="mt-2 rounded-lg border border-dashed border-[var(--color-border-strong)] p-3">
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[var(--color-muted)]">{t.intel.translation}</p>
+              {item.translationStatus === "translated" && item.translatedText ? (
+                <p className="text-sm leading-relaxed">{item.translatedText}</p>
+              ) : item.translationStatus === "not_needed" ? (
+                <p className="text-xs text-[var(--color-muted)]">✅ {t.dash.notRequired}</p>
+              ) : (
+                <p className="text-xs text-[var(--color-muted)]">{t.intel.translationUnavailable}</p>
+              )}
             </div>
             <p className="mt-2 text-[11px] text-[var(--color-muted)]">
-              Actions are checked against the connector. Unsupported actions are
-              never faked.
+              {t.intel.translationProviderLabel}: {item.translationProvider}
+            </p>
+          </div>
+
+          {/* Why this was flagged */}
+          {(() => {
+            const expl = (item.riskExplanation ?? null) as {
+              matchedTerms?: string[]; matchedRules?: string[]; riskSignals?: string[]; recommendedReviewAction?: string;
+            } | null;
+            const signals = expl?.riskSignals ?? [];
+            const terms = expl?.matchedTerms ?? [];
+            const action = expl?.recommendedReviewAction ?? "none";
+            return (
+              <div className="gu-card p-5">
+                <div className="mb-2 flex items-center gap-2">
+                  <h3 className="text-sm font-semibold">⚠️ {t.intel.whyFlagged}</h3>
+                  {item.classificationMode === "ai_assisted" ? (
+                    <Badge tone="brand">{t.intel.aiAssisted}</Badge>
+                  ) : (
+                    <Badge tone="neutral">{t.intel.rulesOnly}</Badge>
+                  )}
+                </div>
+                <p className="text-sm">
+                  {signals.length > 0
+                    ? `${t.intel.reasonPrefix} ${signals.map((s) => tEnum(t, "riskReason", s)).join(", ")}.`
+                    : t.intel.noSignals}
+                </p>
+                {terms.length > 0 ? (
+                  <div className="mt-3">
+                    <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[var(--color-muted)]">{t.intel.matchedTerms}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {terms.map((tm) => (
+                        <span key={tm} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-0.5 text-xs">{tm}</span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {signals.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {signals.map((s) => (
+                      <Badge key={s} tone="danger">{withEmoji("category", s, tEnum(t, "category", s))}</Badge>
+                    ))}
+                  </div>
+                ) : null}
+                <p className="mt-3 text-xs">
+                  <span className="font-medium">{t.intel.recommendation}:</span>{" "}
+                  <span className="text-[var(--color-muted)]">{tEnum(t, "reviewAction", action)}</span>
+                </p>
+                {item.requiresApproval ? (
+                  <p className="mt-2 text-xs text-[var(--color-warn)]">🛡️ {t.intel.approvalReason}</p>
+                ) : null}
+                <p className="mt-3 border-t border-[var(--color-border)] pt-2 text-[11px] text-[var(--color-muted)]">
+                  {item.aiProviderStatus === "classified"
+                    ? `${t.intel.classifiedWithAi} (${item.aiProvider})`
+                    : `${t.intel.classifiedByRules} · ${t.intel.noExternalAi}`}
+                </p>
+              </div>
+            );
+          })()}
+
+          <div className="gu-card p-5">
+            <h3 className="mb-2 text-sm font-semibold">{t.dash.platformCapabilities}</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {meta.supportsReply ? <Badge tone="ok">{t.dash.reply}</Badge> : <Badge tone="warn">{t.dash.noReply}</Badge>}
+              {meta.supportsHide ? <Badge tone="ok">{t.dash.hide}</Badge> : <Badge tone="warn">{t.dash.noHide}</Badge>}
+              {meta.supportsDelete ? <Badge tone="ok">{t.dash.delete}</Badge> : <Badge tone="warn">{t.dash.noDelete}</Badge>}
+            </div>
+            <p className="mt-2 text-[11px] text-[var(--color-muted)]">
+              {t.dash.capsChecked}
             </p>
           </div>
         </aside>

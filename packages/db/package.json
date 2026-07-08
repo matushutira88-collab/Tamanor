@@ -15,6 +15,7 @@
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "reconnect-check": "dotenv -e ../../.env -- tsx scripts/reconnect-regression.ts",
+    "reclassify-demo": "dotenv -e ../../.env -- tsx scripts/reclassify-demo.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo"
   },

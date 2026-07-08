@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MarketingPage, Section, Bullets } from "@/components/marketing-page";
+import { getTL } from "@/i18n/server";
 
 export const metadata: Metadata = {
   title: "Security — Guardora.ai",
@@ -7,9 +8,10 @@ export const metadata: Metadata = {
     "How Guardora protects your accounts and data: official OAuth only, no scraping, no client passwords, approval workflow, audit log, and read-only by default.",
 };
 
-export default function SecurityPage() {
+export default async function SecurityPage() {
+  const _lp = await getTL();
   return (
-    <MarketingPage
+    <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="Trust & safety"
       title="Safe by design."
       subtitle="Guardora is built to protect your brand without ever putting your accounts or your customers at risk."

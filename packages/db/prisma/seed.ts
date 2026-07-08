@@ -26,8 +26,13 @@ import {
   DecisionStatus,
   SyncRunStatus,
 } from "@prisma/client";
-import { RiskClassifier } from "@guardora/ai";
+import { RiskClassifier, buildReputationIntel } from "@guardora/ai";
 import type { ClassifierRule } from "@guardora/ai";
+
+const translationCfg = {
+  enabled: process.env.TRANSLATION_ENABLED === "true",
+  provider: process.env.TRANSLATION_PROVIDER ?? "none",
+};
 
 const prisma = new PrismaClient();
 const classifier = new RiskClassifier();
@@ -456,6 +461,7 @@ async function seedDemoDataset(
           riskEngine: risk.engine ?? null,
           assessedAt: when,
           createdAt: when,
+          ...buildReputationIntel(risk, "en", translationCfg),
         },
       });
       n++;
@@ -562,6 +568,7 @@ async function createReputationItem(
       riskRationale: risk.rationale ?? null,
       riskEngine: risk.engine ?? null,
       assessedAt: new Date(),
+      ...buildReputationIntel(risk, "en", translationCfg),
     },
   });
 }

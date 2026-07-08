@@ -11,7 +11,10 @@ import { PlatformIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
-import { humanize, formatDate } from "@/lib/format";
+import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
+import { withEmoji } from "@/lib/enum-emoji";
+import { formatDate } from "@/lib/format";
 import { RISK_TONE, STATUS_TONE, PRIORITY_TONE } from "@/lib/ui-maps";
 
 export const dynamic = "force-dynamic";
@@ -26,15 +29,9 @@ const TAB_STATUSES: Record<string, ReputationStatus[]> = {
   ignored: [ReputationStatus.Ignored],
 };
 const TAB_ORDER = ["needs_review", "proposed", "resolved", "ignored"] as const;
-const TAB_LABEL: Record<string, string> = {
-  needs_review: "Needs review",
-  proposed: "Proposed",
-  resolved: "Resolved",
-  ignored: "Ignored",
-};
 
-function opt<T extends Record<string, string>>(e: T, allLabel: string) {
-  return [{ value: "", label: allLabel }, ...Object.values(e).map((v) => ({ value: v, label: humanize(v) }))];
+function opt<T extends Record<string, string>>(e: T, allLabel: string, label: (v: string) => string) {
+  return [{ value: "", label: allLabel }, ...Object.values(e).map((v) => ({ value: v, label: label(v) }))];
 }
 function pick<T extends Record<string, string>>(e: T, raw?: string) {
   return raw && (Object.values(e) as string[]).includes(raw) ? raw : undefined;
@@ -42,6 +39,7 @@ function pick<T extends Record<string, string>>(e: T, raw?: string) {
 
 export default async function InboxPage({ searchParams }: { searchParams: Promise<SP> }) {
   const session = await requireSession();
+  const hdrT = await getT();
   const sp = await searchParams;
 
   const tab = sp.tab && TAB_STATUSES[sp.tab] ? sp.tab : "needs_review";
@@ -79,43 +77,50 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   if (priority) qs.set("priority", priority);
   const suffix = qs.toString() ? `&${qs.toString()}` : "";
 
-  const brandOptions = [{ value: "", label: "All brands" }, ...brands.map((b) => ({ value: b.id, label: b.name }))];
+  const brandOptions = [{ value: "", label: hdrT.dash.allBrands }, ...brands.map((b) => ({ value: b.id, label: b.name }))];
+
+  const tabLabel: Record<string, string> = {
+    needs_review: hdrT.dash.needsReview,
+    proposed: tEnum(hdrT, "decision", "proposed"),
+    resolved: tEnum(hdrT, "status", "resolved"),
+    ignored: tEnum(hdrT, "status", "ignored"),
+  };
 
   return (
     <>
-      <PageHeader title={nav.label} description={nav.description} />
+      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
 
       <Tabs
         active={tab}
-        tabs={TAB_ORDER.map((t) => ({ key: t, label: TAB_LABEL[t]!, href: `/dashboard/inbox?tab=${t}${suffix}`, count: tabCount(t) }))}
+        tabs={TAB_ORDER.map((t) => ({ key: t, label: tabLabel[t]!, href: `/dashboard/inbox?tab=${t}${suffix}`, count: tabCount(t) }))}
       />
 
       {/* Filters */}
       <form className="mb-4 flex flex-wrap items-end gap-2.5">
         <input type="hidden" name="tab" value={tab} />
-        <FilterSelect name="brand" label="Brand" value={brandId ?? ""} options={brandOptions} />
-        <FilterSelect name="platform" label="Platform" value={platform ?? ""} options={opt(Platform, "All platforms")} />
-        <FilterSelect name="risk" label="Risk" value={risk ?? ""} options={opt(RiskLevel, "All risk")} />
-        <FilterSelect name="priority" label="Priority" value={priority ?? ""} options={opt(Priority, "All priority")} />
-        <button type="submit" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-brand-strong)]">Apply</button>
-        <Link href={`/dashboard/inbox?tab=${tab}`} className="rounded-lg px-3 py-2 text-sm text-[var(--color-muted)] transition hover:text-[var(--color-fg)]">Clear</Link>
+        <FilterSelect name="brand" label={hdrT.dash.brand} value={brandId ?? ""} options={brandOptions} />
+        <FilterSelect name="platform" label={hdrT.dash.platform} value={platform ?? ""} options={opt(Platform, hdrT.dash.allPlatforms, (v) => PLATFORM_META[v as Platform].label)} />
+        <FilterSelect name="risk" label={hdrT.dash.risk} value={risk ?? ""} options={opt(RiskLevel, hdrT.dash.allRisk, (v) => tEnum(hdrT, "risk", v))} />
+        <FilterSelect name="priority" label={hdrT.dash.priority} value={priority ?? ""} options={opt(Priority, hdrT.dash.allPriority, (v) => tEnum(hdrT, "priority", v))} />
+        <button type="submit" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-brand-strong)]">{hdrT.dash.apply}</button>
+        <Link href={`/dashboard/inbox?tab=${tab}`} className="rounded-lg px-3 py-2 text-sm text-[var(--color-muted)] transition hover:text-[var(--color-fg)]">{hdrT.dash.clear}</Link>
       </form>
 
       {items.length === 0 ? (
         <EmptyState
-          title={`Nothing in "${TAB_LABEL[tab]}"`}
-          body="Items appear here as they're ingested and classified. Try another tab or adjust your filters."
-          hint="Read-only sync — no moderation actions are taken."
+          title={hdrT.ui.emptyInboxTitle}
+          body={hdrT.ui.emptyInboxBody}
+          hint={hdrT.common.readOnlyDefault}
         />
       ) : (
         <div className="gu-card overflow-hidden">
           <div className="grid grid-cols-[1.7fr_1.1fr_0.8fr_0.8fr_0.9fr_0.8fr] gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
-            <span>Content</span>
-            <span>Brand · Platform</span>
-            <span>Risk</span>
-            <span>Priority</span>
-            <span>Status</span>
-            <span>Ingested</span>
+            <span>{hdrT.dash.content}</span>
+            <span>{hdrT.dash.brandPlatform}</span>
+            <span>{hdrT.dash.risk}</span>
+            <span>{hdrT.dash.priority}</span>
+            <span>{hdrT.dash.status}</span>
+            <span>{hdrT.dash.ingested}</span>
           </div>
           {items.map((it) => (
             <Link
@@ -129,7 +134,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                 </span>
                 <span className="min-w-0">
                   <span className="line-clamp-1 font-medium text-[var(--color-fg)]">{it.contentItem.text}</span>
-                  <span className="text-xs text-[var(--color-muted)]">{it.contentItem.authorDisplayName ?? "Unknown"}</span>
+                  <span className="text-xs text-[var(--color-muted)]">{it.contentItem.authorDisplayName ?? hdrT.dash.unknown}</span>
                 </span>
               </span>
               <span className="flex min-w-0 items-center gap-2 text-xs text-[var(--color-muted)]">
@@ -139,15 +144,15 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                   {PLATFORM_META[it.platform as Platform].label}
                 </span>
               </span>
-              <span><Badge tone={RISK_TONE[it.riskLevel as RiskLevel]}>{humanize(it.riskLevel)}</Badge></span>
-              <span><Badge tone={PRIORITY_TONE[it.priority as Priority]}>{humanize(it.priority)}</Badge></span>
-              <span><Badge tone={STATUS_TONE[it.status as ReputationStatus]}>{humanize(it.status)}</Badge></span>
+              <span><Badge tone={RISK_TONE[it.riskLevel as RiskLevel]}>{withEmoji("risk", it.riskLevel, tEnum(hdrT, "risk", it.riskLevel))}</Badge></span>
+              <span><Badge tone={PRIORITY_TONE[it.priority as Priority]}>{tEnum(hdrT, "priority", it.priority)}</Badge></span>
+              <span><Badge tone={STATUS_TONE[it.status as ReputationStatus]}>{tEnum(hdrT, "status", it.status)}</Badge></span>
               <span className="text-xs text-[var(--color-muted)]">{formatDate(it.contentItem.ingestedAt)}</span>
             </Link>
           ))}
         </div>
       )}
-      <p className="mt-3 text-xs text-[var(--color-muted)]">Showing {items.length} item(s) · max 100.</p>
+      <p className="mt-3 text-xs text-[var(--color-muted)]">{`${hdrT.dash.showing} ${items.length} ${hdrT.dash.items} · ${hdrT.dash.max} 100`}</p>
     </>
   );
 }
