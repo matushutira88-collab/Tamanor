@@ -59,6 +59,13 @@ export default async function CommandCenterPage() {
   });
   const reconnectAccounts = fbConnections.filter((a) => a.connectionStatus !== "connected" || a.tokenHealth === "expired" || a.tokenHealth === "invalid" || a.tokenHealth === "revoked");
   const HIDE_PERM = "pages_manage_engagement";
+  // V1.28A — automatic protection = at least one brand opted into autonomous hide
+  // AND the env actually permits live execution.
+  const [autoBrands, canHideFalseBlocked] = await Promise.all([
+    prisma.brandLiveSafetySettings.count({ where: { tenantId: session.tenantId, liveModeEnabled: true, autonomousHideEnabled: true } }),
+    prisma.platformActionExecution.count({ where: { ...where, status: "blocked", reason: "facebook_can_hide_false" } }),
+  ]);
+  const autoProtectionOn = autoBrands > 0 && liveCfg.canExecuteLive;
   const anyKillSwitch = liveSafety.globalKillSwitch || killedBrands > 0 || killedAccounts > 0;
 
   // Next recommended setup step.
@@ -166,6 +173,8 @@ export default async function CommandCenterPage() {
               <Link href="/dashboard/accounts" className="mb-3 block rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs font-bold text-[var(--color-danger)]">🔌 {reconnectAccounts.map((a) => a.externalName ?? "Account").join(", ")}: {t.cc.reconnectNeeded}</Link>
             ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.autoProtection}</p><Badge tone={autoProtectionOn ? "danger" : "ok"}>{autoProtectionOn ? t.cc.on : t.cc.off}</Badge></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.blockedByCanHide}</p><p className="font-medium">{canHideFalseBlocked}</p></div>
               <div><p className="text-xs text-[var(--color-muted)]">{t.cc.safeLiveMode}</p><Badge tone={liveCfg.canExecuteLive ? "warn" : "ok"}>{liveCfg.canExecuteLive ? t.cc.safeLiveEnabled : t.cc.safeLiveDisabled}</Badge></div>
               <div><p className="text-xs text-[var(--color-muted)]">{t.cc.killSwitch}</p><Badge tone={anyKillSwitch ? "danger" : "ok"}>{anyKillSwitch ? t.cc.killSwitchOn : t.cc.killSwitchOff}</Badge></div>
               <div><p className="text-xs text-[var(--color-muted)]">{t.cc.autoHidesToday}</p><p className="font-medium">{autoHidesToday}</p></div>

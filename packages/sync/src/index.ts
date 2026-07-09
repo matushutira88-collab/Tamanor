@@ -484,9 +484,14 @@ async function persistItem(
         },
         requestedBy: "system",
       }, { safety });
-      // Safety blocked/downgraded an autonomous hide → keep the item in approval, not live.
+      // V1.28A queue routing: TERMINAL blocks (comment gone / Facebook refuses the
+      // hide) are resolved — no human can act on them. Everything else that blocked
+      // an autonomous hide routes to human approval (safety gates, limits, token).
       if (res.status === "blocked") {
-        await prisma.actionQueueItem.update({ where: { id: queued.id }, data: { queueState: "approval_required", safetyBlocked: true } });
+        const terminal = res.reason === "comment_deleted_or_unavailable" || res.reason === "facebook_can_hide_false";
+        if (!terminal) {
+          await prisma.actionQueueItem.update({ where: { id: queued.id }, data: { queueState: "approval_required", safetyBlocked: true } });
+        }
       }
     }
 
@@ -632,7 +637,9 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
       for (const a of accounts) {
         if (syncedAccounts.has(a.id)) continue;
         syncedAccounts.add(a.id);
-        await runReadOnlySync(a.id); // read-only; NEVER a moderation action
+        // Same runtime path as the auto-sync worker: read-only sync + policy-gated
+        // autonomous hide inside persistItem (V1.28A). No duplicated hide logic here.
+        await runReadOnlySync(a.id);
       }
 
       const first = accounts[0]!;

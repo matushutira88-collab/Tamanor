@@ -109,6 +109,16 @@ async function run() {
     check("PH2) diagnose loads latest execution FIRST (executed prioritized)", diag.includes("latest_execution") && /platformActionExecution\.findFirst/.test(diag) && diag.includes("executedOk"));
     check("PH3) diagnose → hidden_or_unavailable_after_execution (not blocked/generic) after a 200 execution", diag.includes("hidden_or_unavailable_after_execution") && /executedOk/.test(diag));
     check("PH4) restore button gated on ROLLBACK_AVAILABLE", aq.includes("ROLLBACK_AVAILABLE"));
+
+    // --- V1.27H public-visibility clarity ---
+    const sk = readSrc("apps/web/src/i18n/dictionaries/sk.ts");
+    check("HV1) is_hidden=true renders public-hidden explanation", aq.includes("commentHiddenPublicly") && aq.includes("t.cc.hiddenConfirmed") && aq.includes("t.cc.hiddenVerified") && aq.includes("t.cc.hiddenAdminNote"));
+    check("HV2) SK copy says hidden-for-public + author/admin note (not just 'hidden')", sk.includes("skrytý pre verejnosť") && sk.includes("Autor komentára alebo administrátor stránky ho môže stále vidieť"));
+    check("HV3) UI does not imply deletion on a hide", !/liveDone:.*(vymazan|zmazan|deleted|gelöscht)/i.test(sk) && !/liveDone:.*delete/i.test(readSrc("apps/web/src/i18n/dictionaries/en.ts")));
+    const connector = readSrc("packages/connectors/src/meta/facebook-hide.ts");
+    check("HV4) no delete action exists (hide/unhide only)", !/deleteComment|"delete"|op: "delete"/.test(connector) && !/delete_comment/.test(aq));
+    const hideDiag = readSrc("packages/sync/scripts/facebook-hide-diagnose.ts");
+    check("HV5) diagnose prints public_visibility_note on already_hidden", hideDiag.includes("public_visibility_note") && hideDiag.includes("author/admin"));
   } finally {
     await cleanup();
   }

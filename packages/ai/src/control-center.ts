@@ -40,6 +40,32 @@ export type QueueState =
   | "suggested" | "approval_required" | "approved" | "rejected" | "blocked_by_safety"
   | "dry_run" | "executed" | "failed" | "rollback_needed" | "monitor" | "no_action";
 
+/**
+ * V1.27G — Action Queue tabs. "active" is the default working queue: only items
+ * that still need a human decision (approval or an explicit retry). Resolved,
+ * monitored, dry-run/shadow and old handled items are NOT active work.
+ */
+export type QueueTab = "active" | "approval" | "blocked" | "resolved" | "all";
+export const QUEUE_TABS: QueueTab[] = ["active", "approval", "blocked", "resolved", "all"];
+
+const QUEUE_TAB_STATES: Record<Exclude<QueueTab, "all">, QueueState[]> = {
+  active: ["approval_required", "failed"],
+  approval: ["approval_required"],
+  blocked: ["blocked_by_safety", "failed"],
+  resolved: ["executed", "no_action", "approved", "rejected", "rollback_needed"],
+};
+
+/** QueueStates for a tab, or null for "all" (no filter). Monitored/dry_run/suggested are excluded from active. */
+export function queueTabStates(tab: QueueTab): QueueState[] | null {
+  if (tab === "all") return null;
+  return QUEUE_TAB_STATES[tab];
+}
+
+/** Parse an unknown tab value, defaulting to the active working queue. */
+export function normalizeQueueTab(v: string | undefined | null): QueueTab {
+  return (QUEUE_TABS as string[]).includes(v ?? "") ? (v as QueueTab) : "active";
+}
+
 /* ------------------------------------------------------------ Safety layer */
 
 /**
@@ -51,10 +77,12 @@ export const NEVER_AUTONOMOUS: Set<ControlCategory> = new Set([
   "customer_question", "positive_feedback",
 ]);
 
-/** Categories eligible for an autonomous hide candidate (still gated + shadow). */
+/** Categories eligible for an autonomous hide candidate (still gated + shadow).
+ * brand_impersonation is eligible but crisis-locked by default (Production Safe Mode). */
 export const AUTONOMOUS_ELIGIBLE: Set<ControlCategory> = new Set([
   "spam", "scam", "phishing", "profanity", "personal_attack", "hate_speech",
   "racism", "threat", "violence", "terrorism_extremism", "sexual_vulgarity",
+  "brand_impersonation",
 ]);
 
 /** Categories that raise an incident when detected. */

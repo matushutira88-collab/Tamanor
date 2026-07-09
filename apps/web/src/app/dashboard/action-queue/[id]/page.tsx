@@ -97,12 +97,16 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   // only for a live-capable hide item that would otherwise offer a live action.
   let commentDeleted = false;
   let commentCannotHide = false;
+  // Graph-verified is_hidden=true → the comment is hidden from the PUBLIC (the
+  // author/admin may still see it — expected Facebook behavior).
+  let commentHiddenPublicly = false;
   if (acct && q.proposedAction === "hide_comment" && live.canExecuteLive && item?.contentItem.externalId &&
       (predicted?.expected === "live_possible" || alreadyExecuted)) {
     try {
       const lc = await getCommentLifecycle({ accountId: acct.id, commentId: item.contentItem.externalId });
       commentDeleted = lc.status === "deleted";
       commentCannotHide = lc.status === "cannot_hide";
+      commentHiddenPublicly = lc.status === "hidden";
     } catch { /* best-effort; fall back to attempt-time detection */ }
   }
   // V1.27C — Facebook may refuse to hide a specific comment (can_hide=false); V1.27E
@@ -159,6 +163,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
               {autoExec.status === "executed" ? (
                 <>
                   <div className="mb-2 flex items-center gap-2"><Badge tone="danger">🤖 {t.cc.autoHidden}</Badge><span className="text-xs text-[var(--color-muted)]">{t.cc.autoHiddenBy}</span></div>
+                  <p className="mb-2 text-sm font-medium">{t.cc.autoHiddenPublic}</p>
                   <dl>
                     <Field label={t.cc.whyLabel}><span className="text-xs">{(t.autoProtect.blockReason as Record<string, string>)[autoExec.reason ?? ""] ?? autoExec.reason}</span></Field>
                     <Field label={t.cc.triggeredPolicy}>{autoExec.policyCategory ? tEnum(t, "autoProtectCategory", autoExec.policyCategory) : "—"}</Field>
@@ -166,7 +171,8 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
                     <Field label="Execution ID"><span className="font-mono text-[11px]">{autoExec.id}</span></Field>
                     <Field label={t.cc.lastAttemptAt}>{formatDateTime(autoExec.executedAt ?? autoExec.createdAt)}</Field>
                   </dl>
-                  {canApprove ? (
+                  <p className="mt-2 text-[11px] text-[var(--color-muted)]">{t.cc.hiddenAdminNote}</p>
+                  {canApprove && ROLLBACK_AVAILABLE ? (
                     <form action={rollbackExecution} className="mt-2">
                       <input type="hidden" name="executionId" value={autoExec.id} />
                       <input type="hidden" name="backTo" value={`/dashboard/action-queue/${q.id}`} />
@@ -294,6 +300,13 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
             <Card>
               <div className="rounded-lg border-2 border-[var(--color-danger)] bg-[var(--color-surface-2)] p-3 text-sm">
                 <p className="font-bold">✅ {t.cc.liveDone}</p>
+                {commentHiddenPublicly ? (
+                  <div className="mt-2 rounded-md border border-[var(--color-ok)] p-2 text-xs">
+                    <p className="font-medium">🔒 {t.cc.hiddenPublicly} — {t.cc.hiddenConfirmed}</p>
+                    <p className="mt-0.5 text-[var(--color-muted)]">{t.cc.hiddenVerified}</p>
+                  </div>
+                ) : null}
+                <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.hiddenAdminNote}</p>
                 <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.liveDoneRollback}</p>
                 {lastExec?.createdAt ? <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.lastAttemptAt}: {formatDateTime(lastExec.createdAt)}</p> : null}
               </div>

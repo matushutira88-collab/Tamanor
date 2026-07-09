@@ -61,7 +61,7 @@ async function runHideForQueueItem(
     if (res.status === "executed") {
       return { note: res.idempotent
         ? "This action was already performed. The comment was not hidden again. Return to dry-run mode before further testing."
-        : "The comment was hidden on Facebook. First live hide completed — return to dry-run mode before further testing.", kind: "ok" };
+        : "The comment was hidden from the public on Facebook. The comment author or a Page admin may still see it — that is expected Facebook behavior.", kind: "ok" };
     }
     if (res.reason === "comment_deleted_or_unavailable") return { note: "The comment no longer exists on Facebook. Nothing to hide — the item was resolved.", kind: "ok" };
     if (res.reason === "token_expired") return { note: "Facebook token expired. Reconnect the Facebook Page, then try again.", kind: "error" };

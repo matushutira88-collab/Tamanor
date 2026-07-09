@@ -81,15 +81,21 @@ export class MockFacebookHideTransport implements FacebookHideTransport {
     this.commentState = state?.comment ?? { ok: true, canHide: true, isHidden: false };
     this.pageTokenState = state?.pageToken ?? { ok: true, pageId: "P1", pageName: "Mock Page" };
   }
+  // Stateful (V1.28A): a successful hide flips is_hidden=true — mirrors real Graph
+  // behavior so the post-hide verification GET sees the effect of the POST.
+  private hiddenByPost = false;
   async hide(commentId: string): Promise<HideTransportResult> {
     this.calls.push({ op: "hide", commentId });
+    if (this.outcome.ok) this.hiddenByPost = true;
     return this.outcome;
   }
   async unhide(commentId: string): Promise<HideTransportResult> {
     this.calls.push({ op: "unhide", commentId });
+    if (this.outcome.ok) this.hiddenByPost = false;
     return this.outcome;
   }
   async getCommentState(): Promise<CommentState> {
+    if (this.commentState.ok && this.hiddenByPost) return { ...this.commentState, isHidden: true };
     return this.commentState;
   }
   async getPageTokenState(): Promise<PageTokenState> {

@@ -78,6 +78,10 @@ async function main() {
       console.log("GET comment         :", `ok — can_hide=${st.canHide} is_hidden=${st.isHidden}`);
       const result = st.isHidden ? "already_hidden" : executedOk ? "hidden_or_unavailable_after_execution" : !st.canHide ? "blocked/facebook_can_hide_false" : "hide_possible";
       console.log("result              :", result);
+      if (st.isHidden) {
+        // is_hidden hides from the PUBLIC only — author/admin visibility is expected.
+        console.log("public_visibility_note:", "hidden comments may remain visible to author/admin");
+      }
     }
   } else if (executedOk) {
     console.log("result              :", "hidden_or_unavailable_after_execution");

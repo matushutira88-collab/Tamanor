@@ -18,9 +18,10 @@ class CapturingTransport implements FacebookHideTransport {
   readonly name = "capture";
   readonly calls: { op: "hide" | "unhide"; commentId: string }[] = [];
   seenTokens: string[] = [];
-  async hide(commentId: string, token: string): Promise<HideTransportResult> { this.seenTokens.push(token); this.calls.push({ op: "hide", commentId }); return { ok: true, responseCode: "200" }; }
-  async unhide(commentId: string, token: string): Promise<HideTransportResult> { this.seenTokens.push(token); this.calls.push({ op: "unhide", commentId }); return { ok: true, responseCode: "200" }; }
-  async getCommentState(_c: string, token: string): Promise<CommentState> { this.seenTokens.push(token); return { ok: true, canHide: true, isHidden: false }; }
+  private hidden = false; // stateful: a successful hide flips is_hidden (verification GET)
+  async hide(commentId: string, token: string): Promise<HideTransportResult> { this.seenTokens.push(token); this.calls.push({ op: "hide", commentId }); this.hidden = true; return { ok: true, responseCode: "200" }; }
+  async unhide(commentId: string, token: string): Promise<HideTransportResult> { this.seenTokens.push(token); this.calls.push({ op: "unhide", commentId }); this.hidden = false; return { ok: true, responseCode: "200" }; }
+  async getCommentState(_c: string, token: string): Promise<CommentState> { this.seenTokens.push(token); return { ok: true, canHide: true, isHidden: this.hidden }; }
   async getPageTokenState(pageId: string, token: string): Promise<PageTokenState> { this.seenTokens.push(token); return { ok: true, pageId }; }
 }
 import { attemptFacebookHide, predictHideOutcome, type HideContext } from "../src/live-actions";

@@ -123,14 +123,14 @@ async function run() {
   check("rollback unhide live calls transport (unhide op)", ruLive.status === "executed" && ruLiveT.calls.length === 1 && ruLiveT.calls[0]!.op === "unhide");
 
   // --- Data ---
-  const rows = await prisma.platformActionExecution.findMany({ where: { tenantId: T } });
+  const rows = await prisma.platformActionExecution.findMany({ where: { tenantId: T, connectedAccountId: "A1" } });
   check("15) PlatformActionExecution persists", rows.length >= 10);
   const rowStr = JSON.stringify(rows);
   check("16) no tokens/secrets in execution rows", !rowStr.includes("SECRET_TOKEN") && !rowStr.includes("pageAccessToken"));
   check("17) execution rows carry policyId + queueItemId + trigger", rows.every((r) => r.trigger === "autonomous" || r.trigger === "approval") && rows.some((r) => r.policyId === "P_pol") && rows.every((r) => r.queueItemId != null));
-  const executed = await prisma.platformActionExecution.count({ where: { tenantId: T, status: "executed" } });
-  const dryRunCount = await prisma.platformActionExecution.count({ where: { tenantId: T, status: "dry_run" } });
-  const blocked = await prisma.platformActionExecution.count({ where: { tenantId: T, status: "blocked" } });
+  const executed = await prisma.platformActionExecution.count({ where: { tenantId: T, connectedAccountId: "A1", status: "executed" } });
+  const dryRunCount = await prisma.platformActionExecution.count({ where: { tenantId: T, connectedAccountId: "A1", status: "dry_run" } });
+  const blocked = await prisma.platformActionExecution.count({ where: { tenantId: T, connectedAccountId: "A1", status: "blocked" } });
   check("18) only explicit live-mock tests executed (2)", executed === 2, String(executed));
   check("19) dry-run/blocked counted separately from executed", dryRunCount >= 1 && blocked >= 1, `dry=${dryRunCount} exec=${executed} blocked=${blocked}`);
 
@@ -140,7 +140,7 @@ async function run() {
   const tdry = new MockFacebookHideTransport();
   const gdry = await attemptFacebookHide(baseCtx(), { config: CFG.dryRun, transport: tdry });
   const dryAudit = await prisma.auditLog.count({ where: { tenantId: T, event: "platform_action.dry_run", targetType: "platform_action_execution" } });
-  check("dry-run creates dry_run execution + audit, no transport, live=0", gdry.status === "dry_run" && tdry.calls.length === 0 && dryAudit >= 1 && (await prisma.platformActionExecution.count({ where: { tenantId: T, status: "executed" } })) === 0);
+  check("dry-run creates dry_run execution + audit, no transport, live=0", gdry.status === "dry_run" && tdry.calls.length === 0 && dryAudit >= 1 && (await prisma.platformActionExecution.count({ where: { tenantId: T, connectedAccountId: "A1", status: "executed" } })) === 0);
 
   // predictHideOutcome mirrors the gate without executing.
   check("predict: default env (all off) → blocked/global_disabled", (() => { const p = predictHideOutcome(baseCtx(), CFG.default); return p.expected === "blocked" && p.reason === "global_disabled"; })());

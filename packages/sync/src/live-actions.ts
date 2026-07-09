@@ -325,8 +325,27 @@ async function commentPreflight(ctx: HideContext, transport: FacebookHideTranspo
     return record(ctx, "failed", st.errorCode);
   }
   if (st.isHidden) return record(ctx, "executed", "already_hidden"); // record() resolves the queue item
-  if (!st.canHide) return record(ctx, "blocked", "facebook_can_hide_false");
+  if (!st.canHide) {
+    // Terminal: nobody (human or system) can hide this comment → resolve, not approval.
+    await resolveQueueItem(ctx.queueItemId, "no_action");
+    return record(ctx, "blocked", "facebook_can_hide_false");
+  }
   return null;
+}
+
+/**
+ * V1.28A — verify a hide AFTER a 200 POST when possible. A verify GET that still
+ * reports is_hidden=false records verification_failed — never a fake success. A
+ * GET that cannot run/errors keeps the 200 as authoritative (verify "if possible").
+ */
+async function recordVerifiedHide(ctx: HideContext, transport: FacebookHideTransport, provider: HideCommentResult): Promise<HideExecutionResult> {
+  if (transport.getCommentState && ctx.externalCommentId) {
+    const v = await transport.getCommentState(ctx.externalCommentId, ctx.account.accessToken ?? "");
+    if (v.ok && !v.isHidden) {
+      return record(ctx, "failed", "verification_failed", provider);
+    }
+  }
+  return record(ctx, "executed", "live_hide_executed", provider);
 }
 
 /** Write the safety-decision audit event (never tokens/secrets). */
@@ -439,7 +458,7 @@ export async function attemptFacebookHide(
       { dryRun: false, transport },
     );
     trace("hidePOST:result", { status: r.status, providerErrorCode: r.providerErrorCode ?? null, providerResponseCode: r.providerResponseCode ?? null });
-    if (r.status === "executed") return record(ctx, "executed", "live_hide_executed", r);
+    if (r.status === "executed") return recordVerifiedHide(ctx, transport, r);
     return record(ctx, "failed", r.providerErrorCode ?? "provider_error", r);
   }
 
@@ -482,7 +501,7 @@ export async function attemptFacebookHide(
     { pageId: ctx.account.pageId ?? ctx.account.externalId, commentId: ctx.externalCommentId!, connectedAccountId: ctx.connectedAccountId, itemId: ctx.itemId, pageAccessToken: ctx.account.accessToken ?? "" },
     { dryRun: false, transport },
   );
-  if (r.status === "executed") return record(ctx, "executed", "live_hide_executed", r);
+  if (r.status === "executed") return recordVerifiedHide(ctx, transport, r);
   return record(ctx, "failed", r.providerErrorCode ?? "provider_error", r);
 }
 

@@ -11,10 +11,11 @@ import { NEVER_AUTONOMOUS } from "@guardora/ai";
  * hidden. Nothing here logs tokens.
  */
 
-/** Categories eligible for AUTONOMOUS live hide under Production Safe Mode. */
+/** Categories eligible for AUTONOMOUS live hide under Production Safe Mode.
+ * brand_impersonation is eligible but stays behind the crisis lock by default. */
 export const LIVE_SAFETY_AUTONOMOUS_ELIGIBLE: Set<string> = new Set([
   "scam", "phishing", "spam", "hate_speech", "racism", "terrorism_extremism",
-  "personal_attack", "profanity", "threat",
+  "personal_attack", "profanity", "threat", "brand_impersonation",
 ]);
 
 /** Categories that trip the crisis lock (never autonomous while crisis lock is on). */
