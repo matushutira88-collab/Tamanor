@@ -1,0 +1,114 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { Permission, assertCan } from "@guardora/core";
+import { attemptFacebookHide } from "@guardora/sync";
+import { requireSession } from "@/server/auth";
+import { prisma } from "@/server/db";
+import { writeAudit } from "@/server/audit";
+
+function back(id: string, notice: string): never {
+  revalidatePath(`/dashboard/action-queue/${id}`);
+  redirect(`/dashboard/action-queue/${id}?kind=ok&notice=${encodeURIComponent(notice)}`);
+}
+
+async function loadQueueItem(tenantId: string, id: string) {
+  const q = await prisma.actionQueueItem.findFirst({ where: { id, tenantId } });
+  if (!q) throw new Error("Queue item not found");
+  return q;
+}
+
+/**
+ * Approve a queued action. This NEVER executes a live platform action — it only
+ * marks the item approved / dry-run ready. Live execution stays gated (env off).
+ */
+export async function approveQueueItem(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.ProposalApprove);
+  const id = String(formData.get("id") ?? "");
+  const q = await loadQueueItem(session.tenantId, id);
+
+  await prisma.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "approved", approvedByUserId: session.userId } });
+  await writeAudit({ session, event: "approval.approved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, proposedAction: q.proposedAction, executed: false } });
+
+  // Attempt the gated hide (approval trigger). Fail-closed: default env → blocked/
+  // dry_run, never a live action. This never executes reply/delete or Instagram.
+  let execNote = "Approved. No live action was executed (live execution is disabled).";
+  if (q.proposedAction === "hide_comment") {
+    const item = await prisma.reputationItem.findFirst({
+      where: { id: q.itemId, tenantId: session.tenantId },
+      select: { riskLevel: true, contentItem: { select: { externalId: true, externalParentId: true, connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, accessToken: true, pageId: true, externalId: true, platform: true } } } } },
+    });
+    const acct = item?.contentItem.connectedAccount;
+    const policy = await prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true }, select: { id: true, mode: true } });
+    if (acct) {
+      const res = await attemptFacebookHide({
+        tenantId: session.tenantId, brandId: q.brandId, itemId: q.itemId, queueItemId: q.id, policyId: policy?.id ?? null,
+        connectedAccountId: acct.id, platform: acct.platform as unknown as string,
+        externalCommentId: item!.contentItem.externalId, externalPostId: item!.contentItem.externalParentId ?? null,
+        matchedCategory: q.category, confidence: q.confidence, riskLevel: item!.riskLevel as unknown as string,
+        mode: policy?.mode ?? "approval", trigger: "approval",
+        account: { status: acct.status as unknown as string, health: acct.health as unknown as string, grantedPermissions: acct.grantedPermissions, accessToken: acct.accessToken, pageId: acct.pageId, externalId: acct.externalId },
+        requestedBy: "user",
+      });
+      execNote = res.status === "executed" ? "Approved and live hide executed."
+        : res.status === "dry_run" ? "Approved. Dry-run action prepared (no live action)."
+        : res.status === "failed" ? "Approved. Live action failed (not faked)."
+        : `Approved. Live action blocked (${res.reason}).`;
+    }
+  }
+  back(q.id, execNote);
+}
+
+export async function rejectQueueItem(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.ProposalApprove);
+  const id = String(formData.get("id") ?? "");
+  const q = await loadQueueItem(session.tenantId, id);
+
+  await prisma.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "rejected", rejectedByUserId: session.userId } });
+  await writeAudit({ session, event: "approval.rejected", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category } });
+  back(q.id, "Rejected.");
+}
+
+async function markFeedback(formData: FormData, feedbackType: "mark_safe" | "mark_risky", notice: string): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.InboxAct);
+  const id = String(formData.get("id") ?? "");
+  const q = await loadQueueItem(session.tenantId, id);
+  const item = await prisma.reputationItem.findFirst({ where: { id: q.itemId, tenantId: session.tenantId }, select: { id: true, riskLevel: true } });
+
+  await prisma.brandRiskFeedback.create({
+    data: { tenantId: session.tenantId, brandId: q.brandId, itemId: q.itemId, actorId: session.userId, feedbackType, originalRiskLevel: (item?.riskLevel as unknown as string) ?? null, originalCategory: q.category },
+  });
+  await writeAudit({ session, event: "feedback.created", brandId: q.brandId, targetType: "reputation_item", targetId: q.itemId, metadata: { feedbackType, category: q.category } });
+  back(q.id, notice);
+}
+
+export async function markSafeQueueItem(formData: FormData): Promise<void> {
+  return markFeedback(formData, "mark_safe", "Marked as safe for this brand.");
+}
+export async function markHarmfulQueueItem(formData: FormData): Promise<void> {
+  return markFeedback(formData, "mark_risky", "Marked as harmful for this brand.");
+}
+
+/** Create an incident from this queue item. */
+export async function createIncidentFromQueue(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.InboxAct);
+  const id = String(formData.get("id") ?? "");
+  const q = await loadQueueItem(session.tenantId, id);
+  const item = await prisma.reputationItem.findFirst({ where: { id: q.itemId, tenantId: session.tenantId }, select: { platform: true, riskLevel: true } });
+
+  const inc = await prisma.incident.create({
+    data: {
+      tenantId: session.tenantId, brandId: q.brandId,
+      title: `${q.category.replace(/_/g, " ")} — manual incident`, category: q.category,
+      severity: item?.riskLevel === "critical" ? "critical" : "high", status: "open",
+      sourcePlatform: (item?.platform as unknown as string) ?? null, relatedItemIds: [q.itemId],
+    },
+  });
+  await writeAudit({ session, event: "incident.created", brandId: q.brandId, targetType: "incident", targetId: inc.id, metadata: { category: q.category, manual: true } });
+  back(q.id, "Incident created.");
+}

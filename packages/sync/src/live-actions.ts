@@ -6,12 +6,14 @@ import {
   type FacebookHideTransport,
   type HideCommentResult,
 } from "@guardora/connectors";
-import { LIVE_ELIGIBLE_CATEGORIES, FACEBOOK_HIDE_PERMISSION } from "@guardora/ai";
+import { AUTONOMOUS_ELIGIBLE, NEVER_AUTONOMOUS, FACEBOOK_HIDE_PERMISSION } from "@guardora/ai";
 
 /**
- * Controlled Facebook comment hide. Fail-closed: every gate must pass, and even
- * then dry-run is the default. Reply/delete are never touched; Instagram is out
- * of scope. No tokens/secrets are ever logged or stored.
+ * Controlled Facebook comment hide, driven ONLY by ControlPolicy. Fail-closed:
+ * every gate must pass, and even then dry-run is the default. Reply/delete are
+ * never touched; Instagram is out of scope. No tokens/secrets are ever logged or
+ * stored. Autonomous never applies to normal criticism or customer-voice
+ * categories (hard safety floor).
  */
 
 export type HideExecutionStatus = "blocked" | "dry_run" | "executed" | "failed";
@@ -20,16 +22,19 @@ export interface HideContext {
   tenantId: string;
   brandId: string;
   itemId: string;
+  queueItemId?: string | null;
+  policyId?: string | null;
   connectedAccountId: string;
   platform: string;
   externalCommentId: string | null;
   externalPostId?: string | null;
-  decision: string;
   matchedCategory: string;
   confidence: number;
   riskLevel: string;
-  /** The Auto-Protect policy mode for the matched category. */
-  policyMode: string;
+  /** ControlPolicy mode: monitor | assist | approval | autonomous. */
+  mode: string;
+  /** approval = a human approved this queue item; autonomous = policy-driven. */
+  trigger: "approval" | "autonomous";
   account: {
     status: string;
     health: string;
@@ -39,11 +44,8 @@ export interface HideContext {
     externalId: string;
   };
   requestedBy?: "system" | "user";
-  trigger?: "auto_protect" | "manual_approval";
 }
 
-/** Live policy modes (a category opted into controlled live hide). */
-const LIVE_POLICY_MODES = new Set(["auto_hide_live", "auto_hide_live_reserved"]);
 const MIN_CONFIDENCE = 0.8;
 
 /** Determine why a live hide is (not) allowed. Fail-closed, ordered gates. */
@@ -55,10 +57,11 @@ function gate(ctx: HideContext, cfg: ReturnType<typeof getLiveActionsConfig>): {
   if (ctx.account.status !== "active") return { blockedReason: "account_not_active" };
   if (ctx.account.health !== "healthy") return { blockedReason: "unhealthy_account" };
   if (!ctx.account.grantedPermissions.includes(FACEBOOK_HIDE_PERMISSION)) return { blockedReason: "missing_permission" };
-  if (ctx.decision !== "would_auto_hide") return { blockedReason: "not_would_auto_hide" };
-  if (ctx.matchedCategory === "normal_criticism") return { blockedReason: "safety_normal_criticism" };
-  if (!LIVE_ELIGIBLE_CATEGORIES.has(ctx.matchedCategory as never)) return { blockedReason: "category_not_live_eligible" };
-  if (!LIVE_POLICY_MODES.has(ctx.policyMode)) return { blockedReason: "policy_not_live" };
+  // Hard safety floor: customer-voice categories are never auto-hidden.
+  if (NEVER_AUTONOMOUS.has(ctx.matchedCategory as never)) return { blockedReason: "safety_never_autonomous" };
+  if (!AUTONOMOUS_ELIGIBLE.has(ctx.matchedCategory as never)) return { blockedReason: "category_not_eligible" };
+  // Autonomous execution requires the ControlPolicy to be in autonomous mode.
+  if (ctx.trigger === "autonomous" && ctx.mode !== "autonomous") return { blockedReason: "policy_not_autonomous" };
   if (ctx.confidence < MIN_CONFIDENCE) return { blockedReason: "low_confidence" };
   if (ctx.matchedCategory === "threat" && ctx.riskLevel !== "critical") return { blockedReason: "threat_requires_critical" };
   if (!ctx.externalCommentId) return { blockedReason: "missing_comment_id" };
@@ -69,8 +72,9 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
   const exec = await prisma.platformActionExecution.create({
     data: {
       tenantId: ctx.tenantId, brandId: ctx.brandId, itemId: ctx.itemId,
+      queueItemId: ctx.queueItemId ?? null, policyId: ctx.policyId ?? null,
       connectedAccountId: ctx.connectedAccountId, platform: ctx.platform, actionType: "hide_comment",
-      requestedBy: ctx.requestedBy ?? "system", trigger: ctx.trigger ?? "auto_protect",
+      requestedBy: ctx.requestedBy ?? "system", trigger: ctx.trigger,
       status, reason, policyCategory: ctx.matchedCategory, confidence: ctx.confidence,
       externalCommentId: ctx.externalCommentId, externalPostId: ctx.externalPostId ?? null,
       providerResponseCode: provider?.providerResponseCode ?? null,
@@ -88,16 +92,16 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
       tenantId: ctx.tenantId, brandId: ctx.brandId, event, actorKind: ActorKind.system,
       targetType: "platform_action_execution", targetId: exec.id,
       // No tokens/secrets. Only classified fields.
-      metadata: { actionType: "hide_comment", status, reason, category: ctx.matchedCategory, executed: status === "executed" } as never,
+      metadata: { actionType: "hide_comment", status, reason, category: ctx.matchedCategory, trigger: ctx.trigger, executed: status === "executed" } as never,
     },
   });
   return { id: exec.id, status, reason };
 }
 
 /**
- * Attempt a controlled Facebook comment hide. Only ever called for a
- * `would_auto_hide` decision whose category is in live policy mode. Returns the
- * recorded execution. Never throws on a provider error — records `failed`.
+ * Attempt a controlled Facebook comment hide within a ControlPolicy. Returns the
+ * recorded PlatformActionExecution. Never throws on a provider error — records
+ * `failed`. Never a live action unless every env gate + safety gate passes.
  */
 export async function attemptFacebookHide(
   ctx: HideContext,

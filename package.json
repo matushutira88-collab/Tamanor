@@ -38,6 +38,7 @@
     "reset:test": "pnpm --filter @guardora/db exec tsx scripts/reset-content.test.ts",
     "control:populate": "pnpm --filter @guardora/db exec tsx scripts/control-populate.ts",
     "controldb:test": "pnpm --filter @guardora/db exec tsx scripts/control-center.test.ts",
+    "workflow:test": "pnpm --filter @guardora/db exec tsx scripts/workflow.test.ts",
     "risk:reclassify-demo": "pnpm --filter @guardora/db reclassify-demo",
     "db:studio": "pnpm --filter @guardora/db studio",
     "clean": "pnpm -r clean"

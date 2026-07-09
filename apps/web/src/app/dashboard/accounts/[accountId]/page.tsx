@@ -11,10 +11,11 @@ import {
   modeAllowsSync,
   modeAllowsActions,
 } from "@guardora/core";
-import { getMetaConfig, loadEnv, getAutoSyncConfig } from "@guardora/config";
-import { PageHeader, Badge, StatCard } from "@/components/dashboard/ui";
+import { getMetaConfig, loadEnv, getAutoSyncConfig, getLiveActionsConfig } from "@guardora/config";
+import { PageHeader, Badge, StatCard, Card } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
 import { prisma } from "@/server/db";
 import { humanize, formatDate, formatDateTime } from "@/lib/format";
 import { CONNECTOR_TONE } from "@/lib/ui-maps";
@@ -80,6 +81,27 @@ export default async function AccountDetailPage({
     },
   });
   if (!account) notFound();
+
+  // V1.23 — action capability matrix + linked control policies + recent queue.
+  const live = getLiveActionsConfig();
+  const HIDE_PERMISSION = "pages_manage_engagement";
+  const [linkedPolicies, recentQueue, lastDryRun, lastBlocked, lastExecuted] = await Promise.all([
+    prisma.controlPolicy.count({ where: { brandId: account.brand.id, isActive: true } }),
+    prisma.actionQueueItem.findMany({ where: { brandId: account.brand.id }, orderBy: { createdAt: "desc" }, take: 5 }),
+    prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "dry_run" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "blocked" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, reason: true } }),
+    prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "executed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+  ]);
+  const hideCapKey = account.platform !== Platform.FacebookPage ? "capNotImplemented"
+    : !live.facebookHideEnabled || !live.liveEnabled ? "capDisabledEnv"
+    : account.grantedPermissions.includes(HIDE_PERMISSION) ? "capAvailable" : "capMissingPerm";
+  const CAP_TONE: Record<string, string> = { capAvailable: "ok", capMissingPerm: "warn", capDisabledEnv: "neutral", capNotImplemented: "neutral", capBlockedSafety: "neutral" };
+  const capabilities: { labelKey: "capRead" | "capHide" | "capReply" | "capDelete"; key: string }[] = [
+    { labelKey: "capRead", key: "capAvailable" },
+    { labelKey: "capHide", key: hideCapKey },
+    { labelKey: "capReply", key: "capNotImplemented" },
+    { labelKey: "capDelete", key: "capNotImplemented" },
+  ];
 
   // Latest inbound webhook for this platform (global; not tenant-scoped).
   const lastWebhook = META_PLATFORMS.has(account.platform)
@@ -362,6 +384,49 @@ export default async function AccountDetailPage({
           </p>
         </div>
       ) : null}
+
+      {/* Action capabilities + linked control policies + recent queue (V1.23) */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
+        <Card>
+          <h3 className="mb-3 text-sm font-semibold">{t.cc.capabilities}</h3>
+          <div className="space-y-2">
+            {capabilities.map((c) => (
+              <div key={c.labelKey} className="flex items-center justify-between text-sm">
+                <span>{t.cc[c.labelKey]}</span>
+                <Badge tone={CAP_TONE[c.key] ?? "neutral"}>{t.cc[c.key as "capAvailable"]}</Badge>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 rounded-lg border border-[var(--color-border)] p-2 text-[11px] text-[var(--color-muted)]">
+            {t.cc.envGates}: LIVE_ACTIONS_ENABLED={String(live.liveEnabled)} · FACEBOOK_HIDE_ENABLED={String(live.facebookHideEnabled)} · DRY_RUN={String(live.dryRun)}
+          </div>
+          <dl className="mt-3 space-y-1 text-xs">
+            <div className="flex justify-between"><dt className="text-[var(--color-muted)]">{t.cc.lastDryRunAction}</dt><dd>{lastDryRun ? formatDateTime(lastDryRun.createdAt) : "—"}</dd></div>
+            <div className="flex justify-between"><dt className="text-[var(--color-muted)]">{t.cc.lastBlockedAction}</dt><dd>{lastBlocked ? formatDateTime(lastBlocked.createdAt) : "—"}</dd></div>
+            <div className="flex justify-between"><dt className="text-[var(--color-muted)]">{t.cc.lastExecutedAction}</dt><dd className={lastExecuted ? "text-[var(--color-warn)]" : ""}>{lastExecuted ? formatDateTime(lastExecuted.createdAt) : "—"}</dd></div>
+          </dl>
+        </Card>
+        <div className="space-y-3">
+          <Card>
+            <h3 className="mb-1 text-sm font-semibold">{t.cc.linkedPolicies}</h3>
+            <p className="text-2xl font-semibold">{linkedPolicies}</p>
+            <Link href="/dashboard/control-center" className="text-xs text-[var(--color-brand)] hover:underline">{t.cc.controlTitle} →</Link>
+          </Card>
+          <Card>
+            <h3 className="mb-2 text-sm font-semibold">{t.cc.recentQueue}</h3>
+            {recentQueue.length === 0 ? <p className="text-xs text-[var(--color-muted)]">{t.cc.queueEmpty}</p> : (
+              <div className="space-y-1">
+                {recentQueue.map((qi) => (
+                  <Link key={qi.id} href={`/dashboard/action-queue/${qi.id}`} className="flex items-center justify-between rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:border-[var(--color-border-strong)]">
+                    <span>{tEnum(t, "autoProtectCategory", qi.category)}</span>
+                    <Badge tone="neutral">{tEnum(t, "queueState", qi.queueState)}</Badge>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
     </>
   );
 }

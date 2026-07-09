@@ -603,11 +603,13 @@ model PlatformActionExecution {
   tenantId             String
   brandId              String
   itemId               String
+  queueItemId          String?
+  policyId             String?
   connectedAccountId   String
   platform             String
   actionType           String // hide_comment
   requestedBy          String    @default("system") // system | user
-  trigger              String    @default("auto_protect") // auto_protect | manual_approval
+  trigger              String    @default("autonomous") // approval | autonomous
   status               String // blocked | dry_run | executed | failed | rollback_pending | rolled_back
   reason               String?
   policyCategory       String?

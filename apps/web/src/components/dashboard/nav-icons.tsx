@@ -46,6 +46,15 @@ export function NavIconGlyph({ icon }: { icon: NavIcon }) {
           <path d="M12 9v5M12 17h.01" />
         </svg>
       );
+    case "timeline":
+      return (
+        <svg {...S}>
+          <path d="M6 3v18" />
+          <circle cx="6" cy="7" r="1.6" fill="currentColor" stroke="none" />
+          <circle cx="6" cy="13" r="1.6" fill="currentColor" stroke="none" />
+          <path d="M10 7h9M10 13h9M10 19h6" />
+        </svg>
+      );
     case "dashboard":
       return (
         <svg {...S}>

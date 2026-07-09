@@ -5,6 +5,7 @@ export type NavIcon =
   | "control"
   | "queue"
   | "incidents"
+  | "timeline"
   | "dashboard"
   | "inbox"
   | "approvals"
@@ -102,6 +103,13 @@ export const DASHBOARD_NAV: NavItem[] = [
     description: "Crises, threats and coordinated attacks that need attention.",
     icon: "incidents",
     group: "Control",
+  },
+  {
+    href: "/dashboard/timeline",
+    label: "Timeline",
+    description: "Every event over time — syncs, matches, decisions and safety blocks.",
+    icon: "timeline",
+    group: "Analyze",
   },
   {
     href: "/dashboard/insights",

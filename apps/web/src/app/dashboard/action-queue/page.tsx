@@ -52,7 +52,7 @@ export default async function ActionQueuePage() {
               {items.map((it) => (
                 <tr key={it.id} className="border-b border-[var(--color-border)] last:border-0">
                   <td className="py-2 pr-2 max-w-[220px]">
-                    <Link href={`/dashboard/inbox/${it.itemId}`} className="block truncate hover:underline">{texts.get(it.itemId) ?? "—"}</Link>
+                    <Link href={`/dashboard/action-queue/${it.id}`} className="block truncate font-medium hover:underline">{texts.get(it.itemId) ?? "—"}</Link>
                   </td>
                   <td className="px-2">{tEnum(t, "autoProtectCategory", it.category)}</td>
                   <td className="px-2 text-xs">{it.proposedAction.replace(/_/g, " ")}</td>

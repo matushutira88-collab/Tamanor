@@ -439,44 +439,45 @@ async function persistItem(
     await audit(account, "auto_protect.would_auto_hide", {
       itemId: repItem.id, category: autoProtect.matchedCategory, mode: autoProtect.policyMode, executed: false,
     });
-
-    // Controlled live-hide attempt ONLY when the category is in a live policy mode.
-    // Default policies are auto_hide_shadow → this is skipped (pure shadow, 0 executions).
-    const matchedPolicy = policies.find((p) => p.category === autoProtect.matchedCategory);
-    const livePolicy = matchedPolicy && (matchedPolicy.mode === "auto_hide_live" || matchedPolicy.mode === "auto_hide_live_reserved");
-    if (livePolicy) {
-      await attemptFacebookHide({
-        tenantId: account.tenantId, brandId: account.brandId, itemId: repItem.id,
-        connectedAccountId: account.id, platform: account.platform,
-        externalCommentId: item.externalId, externalPostId: item.externalParentId ?? null,
-        decision: autoProtect.decision, matchedCategory: autoProtect.matchedCategory,
-        confidence: autoProtect.confidence, riskLevel: hybrid.level, policyMode: matchedPolicy.mode,
-        account: {
-          status: account.status as unknown as string, health: account.health as unknown as string,
-          grantedPermissions: account.grantedPermissions, accessToken: account.accessToken,
-          pageId: account.pageId, externalId: account.externalId,
-        },
-        requestedBy: "system", trigger: "auto_protect",
-      });
-    }
   }
 
-  // Control Center: evaluate the item against Control Policies → Action Queue +
-  // incidents. Never executes a live action (autonomous → gated candidate).
+  // Control Center — the SINGLE source of truth. Evaluate the item against Control
+  // Policies → Action Queue + incidents, and (only when the policy is autonomous)
+  // attempt a gated hide (dry-run/blocked by default; never live unless env gates).
   const controlPolicies = await prisma.controlPolicy.findMany({
     where: { brandId: account.brandId, tenantId: account.tenantId, isActive: true },
-    select: { category: true, mode: true, minConfidence: true, isActive: true },
+    select: { id: true, category: true, mode: true, minConfidence: true, isActive: true },
   });
   if (controlPolicies.length > 0) {
     const decision = evaluateControl(
       { text: item.text, riskSignals: hybrid.explanation.riskSignals, categories: hybrid.categories, sentiment: hybrid.sentiment, riskLevel: hybrid.level, confidence: hybrid.confidence },
       controlPolicies,
     );
-    await prisma.actionQueueItem.upsert({
+    const queued = await prisma.actionQueueItem.upsert({
       where: { itemId: repItem.id },
       create: { tenantId: account.tenantId, brandId: account.brandId, itemId: repItem.id, category: decision.matchedCategory, confidence: decision.confidence, proposedAction: decision.proposedAction, queueState: decision.queueState, reason: decision.reason, safetyBlocked: decision.safetyBlocked, wouldExecute: decision.wouldExecute },
       update: { category: decision.matchedCategory, confidence: decision.confidence, proposedAction: decision.proposedAction, queueState: decision.queueState, reason: decision.reason, safetyBlocked: decision.safetyBlocked, wouldExecute: decision.wouldExecute },
     });
+
+    // Autonomous execution attempt — gated + fail-closed (default: dry_run/blocked, 0 live).
+    const matchedPolicy = controlPolicies.find((p) => p.category === decision.matchedCategory);
+    if (matchedPolicy?.mode === "autonomous" && decision.wouldExecute) {
+      await attemptFacebookHide({
+        tenantId: account.tenantId, brandId: account.brandId, itemId: repItem.id,
+        queueItemId: queued.id, policyId: matchedPolicy.id,
+        connectedAccountId: account.id, platform: account.platform,
+        externalCommentId: item.externalId, externalPostId: item.externalParentId ?? null,
+        matchedCategory: decision.matchedCategory, confidence: decision.confidence, riskLevel: hybrid.level,
+        mode: matchedPolicy.mode, trigger: "autonomous",
+        account: {
+          status: account.status as unknown as string, health: account.health as unknown as string,
+          grantedPermissions: account.grantedPermissions, accessToken: account.accessToken,
+          pageId: account.pageId, externalId: account.externalId,
+        },
+        requestedBy: "system",
+      });
+    }
+
     if (decision.raisesIncident && (hybrid.level === "high" || hybrid.level === "critical")) {
       const open = await prisma.incident.findFirst({ where: { brandId: account.brandId, category: decision.matchedCategory, status: "open" } });
       if (open) {

@@ -36,24 +36,54 @@ export default async function CommandCenterPage() {
   const healthy = accounts.filter((a) => a.health === ConnectorHealth.Healthy).length;
   const nextSync = autoSync.enabled && lastAutoRow ? new Date(lastAutoRow.createdAt.getTime() + autoSync.intervalSeconds * 1000) : null;
 
+  // Next recommended setup step.
+  const nextStep = accounts.length === 0 ? t.cc.nextConnect
+    : activePolicies === 0 ? t.cc.nextPolicies
+    : !autoSync.enabled ? t.cc.nextEnableSync
+    : pendingApprovals > 0 ? t.cc.nextReview
+    : t.cc.allSet;
+
+  const steps = [
+    { title: t.cc.onbStep1, body: t.cc.onbStep1Body, done: accounts.length > 0, href: "/dashboard/accounts", cta: t.cc.connectFacebook },
+    { title: t.cc.onbStep2, body: t.cc.onbStep2Body, done: accounts.length > 0, href: "/dashboard/control-center", cta: t.cc.controlTitle },
+    { title: t.cc.onbStep3, body: `${t.cc.presetConservative} · ${t.cc.presetBalanced} · ${t.cc.presetAggressive}`, done: activePolicies > 0, href: "/dashboard/control-center", cta: t.cc.createFirstPolicy },
+    { title: t.cc.onbStep4, body: `${t.cc.onbSafety1} ${t.cc.onbSafety2}`, done: activePolicies > 0, href: "/dashboard/control-center", cta: t.cc.controlTitle },
+    { title: t.cc.onbStep5, body: t.cc.subTagline, done: autoSync.enabled, href: "/dashboard/accounts", cta: t.cc.onbStep5 },
+  ];
+
   return (
     <>
       <PageHeader eyebrow={t.cc.tagline} title={t.cc.commandTitle} description={t.cc.subTagline} />
 
       {accounts.length === 0 ? (
-        <EmptyState
-          title={t.cc.emptyTitle}
-          body={t.cc.emptyBody}
-          hint={t.cc.neverHideCriticism}
-          action={
-            <div className="flex flex-wrap gap-2">
-              <Link href="/dashboard/accounts"><PrimaryButton type="button">{t.cc.connectFacebook}</PrimaryButton></Link>
-              <Link href="/dashboard/control-center" className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium hover:border-[var(--color-border-strong)]">{t.cc.createFirstPolicy}</Link>
-            </div>
-          }
-        />
+        <Card>
+          <h2 className="text-lg font-semibold">{t.cc.onbTitle}</h2>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">{t.cc.emptyBody}</p>
+          <ol className="mt-4 space-y-2">
+            {steps.map((s, i) => (
+              <li key={i} className="flex items-start gap-3 rounded-lg border border-[var(--color-border)] p-3">
+                <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${s.done ? "bg-[var(--color-ok)] text-white" : "bg-[var(--color-surface-2)]"}`}>{s.done ? "✓" : i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{s.title}</span>
+                    {!s.done ? <Link href={s.href} className="text-xs font-medium text-[var(--color-brand)] hover:underline">{s.cta} →</Link> : null}
+                  </div>
+                  <p className="text-xs text-[var(--color-muted)]">{s.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-3 rounded-lg border border-[var(--color-ok)] p-2 text-xs">🛡️ {t.cc.neverHideCriticism}</p>
+        </Card>
       ) : (
         <>
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-brand)] px-3 py-2 text-sm">
+            <span className="font-medium">👉 {t.cc.nextStep}:</span>
+            <span>{nextStep}</span>
+          </div>
+          <p className="mb-3 text-xs text-[var(--color-muted)]">
+            🟢 {t.cc.doingNow}: {activePolicies} {t.cc.controlTitle.toLowerCase()} · {autonomousShadow} {t.cc.automated.toLowerCase()} · {safetyBlocks} {t.cc.blockedSafety.toLowerCase()}
+          </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label={t.cc.connectedAccounts} value={String(accounts.length)} tone="ok" hint={`${healthy}/${accounts.length} ${t.cc.accountHealth}`} />
             <StatCard label={t.cc.controlling} value={String(activePolicies)} tone="brand" hint={t.cc.controlTitle} />

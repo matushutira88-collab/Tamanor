@@ -1,5 +1,6 @@
 import { Permission, can } from "@guardora/core";
 import { CONTROL_CATEGORIES, CONTROL_MODES, NEVER_AUTONOMOUS } from "@guardora/ai";
+import { getLiveActionsConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
@@ -7,6 +8,7 @@ import { prisma } from "@/server/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
+import { AutonomySave } from "@/components/dashboard/autonomy-save";
 import { updateControlPolicy, applyPreset } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +33,17 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
       <PageHeader eyebrow={t.cc.neverHideCriticism} title={t.cc.controlTitle} description={t.cc.controlSubtitle} />
       <Notice notice={sp.notice} kind={sp.kind} />
 
+      {(() => {
+        const live = getLiveActionsConfig();
+        const label = live.canExecuteLive ? t.cc.gatesLive : (live.liveEnabled && live.facebookHideEnabled) ? t.cc.gatesDryRun : t.cc.gatesOff;
+        const tone = live.canExecuteLive ? "danger" : (live.liveEnabled && live.facebookHideEnabled) ? "warn" : "ok";
+        return (
+          <div className="mb-3 flex items-center gap-2 text-sm">
+            <span className="font-medium">{t.cc.liveGatesStatus}:</span>
+            <Badge tone={tone}>{label}</Badge>
+          </div>
+        );
+      })()}
       <div className="mb-4 rounded-lg border border-[var(--color-warn)] p-3 text-xs">
         ⚠️ <span className="font-medium">{t.cc.autonomousWarn}</span>
       </div>
@@ -91,7 +104,7 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
                                   ))}
                                 </select>
                                 <input name="minConfidence" type="number" step="0.05" min="0" max="1" defaultValue={confFor(brand.id, cat)} className="w-16 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs" />
-                                <button type="submit" className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:border-[var(--color-border-strong)]">{t.cc.save}</button>
+                                <AutonomySave label={t.cc.save} confirmText={t.cc.autonomousWarn} />
                               </form>
                             ) : (
                               <Badge>{tEnum(t, "controlMode", mode)}</Badge>
@@ -103,6 +116,13 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
                   </tbody>
                 </table>
               </Card>
+              <div className="mt-2 grid gap-1 text-[11px] text-[var(--color-muted)] sm:grid-cols-2">
+                <span>• {t.cc.modeMonitor}</span>
+                <span>• {t.cc.modeAssist}</span>
+                <span>• {t.cc.modeApproval}</span>
+                <span>• {t.cc.modeAutonomous}</span>
+                <span className="sm:col-span-2">💡 {t.cc.autonomousExample}</span>
+              </div>
             </section>
           ))}
         </div>

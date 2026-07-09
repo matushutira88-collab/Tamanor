@@ -1,5 +1,5 @@
 /**
- * Controlled Facebook hide — safety-gate + connector + data tests.
+ * Controlled Facebook hide — ControlPolicy-driven gates + connector + data tests.
  * Run via: pnpm fbhide:test
  * Default env keeps live actions OFF: everything blocks or dry-runs, and the
  * transport is only ever called on an explicit live path with a MOCK transport.
@@ -14,7 +14,7 @@ function check(label: string, cond: boolean, detail = "") {
   if (!cond) failures++;
 }
 
-let T = "test_tenant_v121b"; // replaced with a real tenant id at runtime (audit FK)
+let T = "test_tenant_v121b";
 const CFG = {
   default: { liveEnabled: false, facebookHideEnabled: false, dryRun: true, canExecuteLive: false },
   fbOff: { liveEnabled: true, facebookHideEnabled: false, dryRun: true, canExecuteLive: false },
@@ -22,11 +22,11 @@ const CFG = {
   live: { liveEnabled: true, facebookHideEnabled: true, dryRun: false, canExecuteLive: true },
 };
 const baseCtx = (over: Partial<HideContext> = {}): HideContext => ({
-  tenantId: T, brandId: "B1", itemId: "I1", connectedAccountId: "A1", platform: "facebook_page",
-  externalCommentId: "C1", externalPostId: "P_post", decision: "would_auto_hide",
-  matchedCategory: "profanity", confidence: 0.9, riskLevel: "critical", policyMode: "auto_hide_live_reserved",
+  tenantId: T, brandId: "B1", itemId: "I1", queueItemId: "Q1", policyId: "P_pol", connectedAccountId: "A1", platform: "facebook_page",
+  externalCommentId: "C1", externalPostId: "P_post", matchedCategory: "scam", confidence: 0.9, riskLevel: "critical",
+  mode: "autonomous", trigger: "autonomous",
   account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: "SECRET_TOKEN", pageId: "P1", externalId: "P1" },
-  requestedBy: "system", trigger: "auto_protect", ...over,
+  requestedBy: "system", ...over,
 });
 
 async function cleanup() {
@@ -40,7 +40,6 @@ async function run() {
   T = tenant.id;
   await cleanup();
 
-  // --- Safety gates ---
   const g1 = await attemptFacebookHide(baseCtx(), { config: CFG.default, transport: new MockFacebookHideTransport() });
   check("1) LIVE_ACTIONS_ENABLED=false → blocked/global_disabled", g1.status === "blocked" && g1.reason === "global_disabled", `${g1.status}/${g1.reason}`);
 
@@ -61,17 +60,29 @@ async function run() {
   check("6) unsupported platform → blocked/unsupported_platform", g6.status === "blocked" && g6.reason === "unsupported_platform", `${g6.status}/${g6.reason}`);
 
   const g7 = await attemptFacebookHide(baseCtx({ matchedCategory: "normal_criticism" }), { config: CFG.live, transport: new MockFacebookHideTransport() });
-  check("7) normal_criticism → blocked/safety_normal_criticism", g7.status === "blocked" && g7.reason === "safety_normal_criticism", `${g7.status}/${g7.reason}`);
+  check("7) normal_criticism → blocked/safety_never_autonomous", g7.status === "blocked" && g7.reason === "safety_never_autonomous", `${g7.status}/${g7.reason}`);
 
-  const g8 = await attemptFacebookHide(baseCtx({ confidence: 0.6 }), { config: CFG.live, transport: new MockFacebookHideTransport() });
-  check("8) low confidence → blocked/low_confidence", g8.status === "blocked" && g8.reason === "low_confidence", `${g8.status}/${g8.reason}`);
+  // 8) legal/refund/safety → never autonomous.
+  for (const cat of ["legal_complaint", "refund_complaint", "safety_claim"]) {
+    const g = await attemptFacebookHide(baseCtx({ matchedCategory: cat }), { config: CFG.live, transport: new MockFacebookHideTransport() });
+    check(`8) ${cat} → blocked/safety_never_autonomous`, g.status === "blocked" && g.reason === "safety_never_autonomous", `${g.status}/${g.reason}`);
+  }
 
-  const g9 = await attemptFacebookHide(baseCtx({ matchedCategory: "competitor_promo" }), { config: CFG.live, transport: new MockFacebookHideTransport() });
-  check("9) competitor_promo → blocked/category_not_live_eligible", g9.status === "blocked" && g9.reason === "category_not_live_eligible", `${g9.status}/${g9.reason}`);
+  const g9 = await attemptFacebookHide(baseCtx({ confidence: 0.6 }), { config: CFG.live, transport: new MockFacebookHideTransport() });
+  check("9) low confidence → blocked/low_confidence", g9.status === "blocked" && g9.reason === "low_confidence", `${g9.status}/${g9.reason}`);
 
+  // autonomous trigger requires policy mode=autonomous.
+  const gna = await attemptFacebookHide(baseCtx({ mode: "approval", trigger: "autonomous" }), { config: CFG.live, transport: new MockFacebookHideTransport() });
+  check("autonomous trigger + mode!=autonomous → blocked/policy_not_autonomous", gna.status === "blocked" && gna.reason === "policy_not_autonomous", `${gna.status}/${gna.reason}`);
+
+  // 10) all gates + live (autonomous) → transport called once, executed.
   const t10 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
   const g10 = await attemptFacebookHide(baseCtx(), { config: CFG.live, transport: t10 });
   check("10) all gates + live → transport called once, executed", g10.status === "executed" && t10.calls.length === 1 && t10.calls[0]!.op === "hide", `${g10.status}/calls=${t10.calls.length}`);
+
+  // approval trigger works with mode=approval + all gates.
+  const gap = await attemptFacebookHide(baseCtx({ mode: "approval", trigger: "approval" }), { config: CFG.live, transport: new MockFacebookHideTransport({ ok: true, responseCode: "200" }) });
+  check("approval trigger + gates → executed", gap.status === "executed", gap.status);
 
   // --- Connector ---
   const t11 = new MockFacebookHideTransport();
@@ -87,7 +98,6 @@ async function run() {
   const r14 = await hideComment({ pageId: "P1", commentId: "C1", connectedAccountId: "A1", itemId: "I1", pageAccessToken: "x" }, { dryRun: false, transport: new MockFacebookHideTransport({ ok: false, responseCode: "429", errorCode: "rate_limit", errorMessage: "slow down" }) });
   check("14) rate limit → failed/rate_limit", r14.status === "failed" && r14.providerErrorCode === "rate_limit");
 
-  // rollback seam dry-run only
   const ru = await unhideComment({ pageId: "P1", commentId: "C1", connectedAccountId: "A1", itemId: "I1", pageAccessToken: "x" }, { transport: new MockFacebookHideTransport() });
   check("rollback unhide is dry-run only", ru.status === "dry_run");
 
@@ -96,13 +106,12 @@ async function run() {
   check("15) PlatformActionExecution persists", rows.length >= 10);
   const rowStr = JSON.stringify(rows);
   check("16) no tokens/secrets in execution rows", !rowStr.includes("SECRET_TOKEN") && !rowStr.includes("pageAccessToken"));
-  const audits = await prisma.auditLog.count({ where: { tenantId: T, targetType: "platform_action_execution" } });
-  check("17) audit events written", audits >= 10);
+  check("17) execution rows carry policyId + queueItemId + trigger", rows.every((r) => r.trigger === "autonomous" || r.trigger === "approval") && rows.some((r) => r.policyId === "P_pol") && rows.some((r) => r.queueItemId === "Q1"));
   const executed = await prisma.platformActionExecution.count({ where: { tenantId: T, status: "executed" } });
   const dryRunCount = await prisma.platformActionExecution.count({ where: { tenantId: T, status: "dry_run" } });
   const blocked = await prisma.platformActionExecution.count({ where: { tenantId: T, status: "blocked" } });
-  check("18) default/blocked env produced 0 executed except explicit live-mock test", executed === 1, String(executed));
-  check("19) dry-run counted separately from executed (distinct status buckets)", dryRunCount >= 1 && executed >= 1 && blocked >= 1, `dry=${dryRunCount} exec=${executed} blocked=${blocked}`);
+  check("18) only explicit live-mock tests executed (2)", executed === 2, String(executed));
+  check("19) dry-run/blocked counted separately from executed", dryRunCount >= 1 && blocked >= 1, `dry=${dryRunCount} exec=${executed} blocked=${blocked}`);
 
   await cleanup();
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — controlled Facebook hide gates`);
