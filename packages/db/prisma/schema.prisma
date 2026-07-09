@@ -281,6 +281,17 @@ model ConnectedAccount {
   // V1.27 Production Safe Mode — per-account kill switch. When true, NO live action.
   killSwitch   Boolean         @default(false)
 
+  // V1.27C Persistent Connection Manager — token/connection health, separate from
+  // sync health. A hide never runs on an unverified token.
+  connectionStatus           String    @default("connected") // connected|needs_reconnect|invalid_token|missing_permission|disabled_by_user|disconnected
+  tokenHealth                String    @default("unknown")    // unknown|ok|expiring_soon|expired|invalid|revoked
+  lastTokenCheckAt           DateTime?
+  lastTokenCheckResult       String?
+  lastSuccessfulGraphCheckAt DateTime?
+  lastReconnectAt            DateTime?
+  lastPermissionCheckAt      DateTime?
+  requiresReconnectReason    String?
+
   // ---------------------------------------------------------------------------
   // TOKENS — obtained via official OAuth ONLY (never passwords/scraping).
   // DEV NOTE: stored as plaintext in development for simplicity.

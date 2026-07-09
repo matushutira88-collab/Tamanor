@@ -79,8 +79,11 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   // V1.26C — when the item predicts "live_possible", the LIVE hide is the PRIMARY
   // action and its form renders directly (not conditioned on preflight). Single
   // source of truth shared with the UX test.
+  // V1.27C — Facebook may refuse to hide a specific comment (can_hide=false). That is
+  // only known after asking Meta, so we react to the last attempt's reason.
+  const canHideFalse = lastExec?.reason === "facebook_can_hide_false" || autoExec?.reason === "facebook_can_hide_false";
   const decision = resolvePrimaryAction({ proposedAction: q.proposedAction, expected: predicted?.expected ?? null, alreadyExecuted });
-  const liveMode = decision.primary === "live_hide";
+  const liveMode = decision.primary === "live_hide" && !canHideFalse;
   const showLiveForm = decision.showLiveForm;
   const showRetry = showLiveForm && lastExec?.status === "failed";
   const isDev = process.env.NODE_ENV !== "production";
@@ -156,6 +159,13 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
                   )}
                 </>
               )}
+            </Card>
+          ) : null}
+
+          {canHideFalse ? (
+            <Card>
+              <div className="mb-1 flex items-center gap-2"><Badge tone="warn">🚫 {t.cc.canHideFalseTitle}</Badge></div>
+              <p className="text-xs text-[var(--color-muted)]">{t.cc.canHideFalse}</p>
             </Card>
           ) : null}
 

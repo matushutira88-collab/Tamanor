@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
+import { checkAccountToken } from "@guardora/sync";
 import {
   Platform,
   encryptToken,
@@ -159,8 +160,16 @@ export async function confirmMetaSelection(
 
   await clearOnboarding(onboardingId);
 
+  // V1.27C — verify the stored PAGE token against Graph (GET /{pageId}) right away,
+  // so the account only shows fully healthy when the token actually works.
+  let verify = "ok";
+  try {
+    const res = await checkAccountToken(fbId);
+    verify = res.result;
+  } catch { /* verification is best-effort; account is still connected */ }
+
   revalidatePath("/dashboard/accounts");
-  redirect(`/dashboard/accounts/${fbId}?connected=1`);
+  redirect(`/dashboard/accounts/${fbId}?connected=1&verify=${encodeURIComponent(verify)}`);
 }
 
 /** Abandon the onboarding flow without connecting anything. */

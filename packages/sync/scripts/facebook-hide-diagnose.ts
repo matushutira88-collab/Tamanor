@@ -10,7 +10,7 @@
  * possible — without performing it.
  */
 import { prisma, decryptToken } from "@guardora/db";
-import { META_GRAPH_BASE } from "@guardora/connectors";
+import { GraphFacebookHideTransport } from "@guardora/connectors";
 
 function argOf(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -48,18 +48,16 @@ async function main() {
   const token = decryptToken(acct.longLivedToken ?? acct.accessToken);
   const commentId = item?.contentItem.externalId;
   if (token && commentId && !expired) {
-    try {
-      const url = `${META_GRAPH_BASE}/${encodeURIComponent(commentId)}?fields=id,can_hide,is_hidden,message&access_token=${encodeURIComponent(token)}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const j = (await res.json()) as { id?: string; can_hide?: boolean; is_hidden?: boolean; message?: string };
-        console.log("GET comment         :", `ok — can_hide=${j.can_hide} is_hidden=${j.is_hidden}`);
-        console.log("comment message     :", (j.message ?? "").slice(0, 80));
-      } else {
-        console.log("GET comment         :", `HTTP ${res.status} — token/permission issue (no token logged)`);
-      }
-    } catch {
-      console.log("GET comment         :", "network error (no token logged)");
+    const st = await new GraphFacebookHideTransport().getCommentState!(commentId, token);
+    if (!st.ok) {
+      // A token/permission failure — NOT a can_hide result.
+      console.log("GET comment         :", `token/permission issue (${st.errorCode})`);
+      console.log("result              :", st.errorCode === "token_expired" || st.errorCode === "token_invalid" ? "blocked/reconnect_required" : `blocked/${st.errorCode}`);
+    } else {
+      console.log("GET comment         :", `ok — can_hide=${st.canHide} is_hidden=${st.isHidden}`);
+      // V1.27C — can_hide=false is a Facebook policy result, not a token issue.
+      const result = st.isHidden ? "already_hidden" : !st.canHide ? "blocked/facebook_can_hide_false" : "hide_possible";
+      console.log("result              :", result);
     }
   } else {
     console.log("GET comment         :", token ? (expired ? "skipped (token expired)" : "skipped (no comment id)") : "skipped (no token)");

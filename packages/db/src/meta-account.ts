@@ -45,5 +45,10 @@ export function metaConnectedAccountFields(input: MetaAccountFieldsInput) {
     lastErrorAt: null,
     syncAttempts: 0,
     nextRetryAt: null,
+    // V1.27C — reconnect resets connection state; the token is verified right after
+    // (checkAccountToken) which flips tokenHealth to ok/invalid.
+    connectionStatus: "connected",
+    tokenHealth: "unknown",
+    requiresReconnectReason: null,
   };
 }

@@ -480,6 +480,7 @@ async function persistItem(
           grantedPermissions: account.grantedPermissions, accessToken: account.accessToken,
           pageId: account.pageId, externalId: account.externalId,
           tokenExpiresAt: account.tokenExpiresAt, needsReconnect: account.lastError === "token_expired",
+          connectionStatus: account.connectionStatus, tokenHealth: account.tokenHealth,
         },
         requestedBy: "system",
       }, { safety });
@@ -675,3 +676,4 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
 export { mockMetaFetch } from "./mock-fetch";
 export * from "./live-actions";
 export * from "./production-safety";
+export * from "./connection-manager";

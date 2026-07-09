@@ -8,7 +8,7 @@
  * call succeeded and which pages are visible — never the token itself.
  */
 import { prisma, decryptToken } from "@guardora/db";
-import { META_GRAPH_BASE } from "@guardora/connectors";
+import { META_GRAPH_BASE, GraphFacebookHideTransport } from "@guardora/connectors";
 
 function argOf(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -48,23 +48,27 @@ async function main() {
   // Only the CLASS of token — never a value.
   console.log("token type          :", acct.tokenType ?? (token ? "page_token" : "unknown"));
 
-  if (token && !expired) {
+  // V1.27C — a PAGE token is validated via GET /{pageId}?fields=id,name — NOT
+  // /me/accounts (which needs a USER token). /me/accounts is only a reconnect debug.
+  const pageId = acct.pageId ?? acct.externalId;
+  if (token) {
+    const st = await new GraphFacebookHideTransport().getPageTokenState!(pageId, token);
+    if (st.ok) {
+      console.log("page token          : page_token_ok");
+      console.log("target_page_visible :", st.pageId === pageId ? "YES" : `returned ${st.pageId}`);
+      console.log("page name (graph)   :", st.pageName ?? "—");
+    } else {
+      console.log("page token          :", `page_token_invalid (${st.errorCode})`);
+    }
+    // Optional secondary user-token debug (expected to fail for a page token).
     try {
-      const url = `${META_GRAPH_BASE}/me/accounts?fields=id,name&access_token=${encodeURIComponent(token)}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const j = (await res.json()) as { data?: { id: string; name: string }[] };
-        const pages = (j.data ?? []).map((p) => `${p.name} (${p.id})`);
-        console.log("graph /me/accounts  :", `ok — ${pages.length} page(s): ${pages.join(", ") || "none"}`);
-        console.log("target page visible :", (j.data ?? []).some((p) => p.id === (acct.pageId ?? acct.externalId)) ? "YES" : "no");
-      } else {
-        console.log("graph /me/accounts  :", `HTTP ${res.status} — token may be invalid/expired (no token logged)`);
-      }
+      const res = await fetch(`${META_GRAPH_BASE}/me/accounts?fields=id,name&access_token=${encodeURIComponent(token)}`);
+      console.log("user token check    :", res.ok ? "ok (user token)" : `user_token_check_failed (HTTP ${res.status})`);
     } catch {
-      console.log("graph /me/accounts  :", "network error (no token logged)");
+      console.log("user token check    :", "user_token_check_failed (network)");
     }
   } else {
-    console.log("graph /me/accounts  :", token ? "skipped (token expired)" : "skipped (no token)");
+    console.log("page token          :", "skipped (no token)");
   }
 
   await prisma.$disconnect();

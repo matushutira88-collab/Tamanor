@@ -58,6 +58,9 @@ export interface HideContext {
     tokenExpiresAt?: Date | string | null;
     /** Account already flagged as needing reconnect (e.g. prior token_expired). */
     needsReconnect?: boolean;
+    /** V1.27C connection manager state. */
+    connectionStatus?: string | null;
+    tokenHealth?: string | null;
   };
   requestedBy?: "system" | "user";
 }
@@ -110,9 +113,10 @@ function gate(ctx: HideContext, cfg: ReturnType<typeof getLiveActionsConfig>): {
   if (ctx.platform !== "facebook_page") return { blockedReason: "unsupported_platform" };
   if (ctx.account.status === "mock_connected") return { blockedReason: "account_is_demo" };
   if (ctx.account.status !== "active") return { blockedReason: "account_not_active" };
+  // V1.27C connection preflight — a hide never runs on an unverified/bad token.
+  if (ctx.account.connectionStatus && ctx.account.connectionStatus !== "connected") return { blockedReason: "reconnect_required" };
+  if (ctx.account.tokenHealth && (ctx.account.tokenHealth === "expired" || ctx.account.tokenHealth === "invalid" || ctx.account.tokenHealth === "revoked")) return { blockedReason: "token_not_healthy" };
   // V1.27B token preflight — before the generic health check so the reason is precise.
-  // A past expiry or an account already flagged for reconnect blocks with token_expired
-  // and never calls the Graph API.
   if (ctx.account.needsReconnect) return { blockedReason: "token_expired" };
   if (ctx.account.tokenExpiresAt && new Date(ctx.account.tokenExpiresAt).getTime() <= Date.now()) return { blockedReason: "token_expired" };
   if (ctx.account.health !== "healthy") return { blockedReason: "unhealthy_account" };
@@ -224,6 +228,37 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
  * recorded PlatformActionExecution. Never throws on a provider error — records
  * `failed`. Never a live action unless every env gate + safety gate passes.
  */
+/** V1.27C — flag an account as needing reconnect after a live token failure. */
+async function markAccountReconnect(connectedAccountId: string, errorCode: string): Promise<void> {
+  const tokenHealth = errorCode === "token_expired" ? "expired" : errorCode === "revoked" ? "revoked" : "invalid";
+  await prisma.connectedAccount.updateMany({
+    where: { id: connectedAccountId },
+    data: { connectionStatus: "needs_reconnect", tokenHealth, health: "error", lastError: errorCode, lastErrorAt: new Date(), requiresReconnectReason: errorCode },
+  });
+}
+
+/**
+ * V1.27C — real-time preflight right before a live hide: read the comment's
+ * can_hide/is_hidden (which also validates the Page token). Returns a terminal
+ * result to short-circuit, or null to proceed with the POST hide.
+ */
+async function commentPreflight(ctx: HideContext, transport: FacebookHideTransport): Promise<HideExecutionResult | null> {
+  if (!transport.getCommentState || !ctx.externalCommentId) return null;
+  const st = await transport.getCommentState(ctx.externalCommentId, ctx.account.accessToken ?? "");
+  if (!st.ok) {
+    // The token failed the live check → mark for reconnect, never POST.
+    if (st.errorCode === "token_expired" || st.errorCode === "token_invalid" || st.errorCode === "revoked") {
+      await markAccountReconnect(ctx.connectedAccountId, st.errorCode === "token_invalid" ? "token_invalid" : st.errorCode);
+      return record(ctx, "blocked", "reconnect_required");
+    }
+    if (st.errorCode === "permission") return record(ctx, "blocked", "missing_permission");
+    return record(ctx, "failed", st.errorCode);
+  }
+  if (st.isHidden) return record(ctx, "executed", "already_hidden");
+  if (!st.canHide) return record(ctx, "blocked", "facebook_can_hide_false");
+  return null;
+}
+
 /** Write the safety-decision audit event (never tokens/secrets). */
 async function writeSafetyAudit(ctx: HideContext, ev: SafetyEvaluation): Promise<void> {
   await prisma.auditLog.create({
@@ -299,6 +334,8 @@ export async function attemptFacebookHide(
     if (!cfg.canExecuteLive) return record(ctx, "blocked", "live_not_enabled");
     if (!cfg.liveConfirmed) return record(ctx, "blocked", "live_confirm_required");
     const transport = transportOverride ?? new GraphFacebookHideTransport();
+    const pre = await commentPreflight(ctx, transport);
+    if (pre) return pre;
     const r = await hideComment(
       { pageId: ctx.account.pageId ?? ctx.account.externalId, commentId: ctx.externalCommentId!, connectedAccountId: ctx.connectedAccountId, itemId: ctx.itemId, pageAccessToken: ctx.account.accessToken ?? "" },
       { dryRun: false, transport },
@@ -340,6 +377,8 @@ export async function attemptFacebookHide(
 
   // Autonomous live path — real transport (mock only via explicit override in a test).
   const transport = transportOverride ?? new GraphFacebookHideTransport();
+  const pre = await commentPreflight(ctx, transport);
+  if (pre) return pre;
   const r = await hideComment(
     { pageId: ctx.account.pageId ?? ctx.account.externalId, commentId: ctx.externalCommentId!, connectedAccountId: ctx.connectedAccountId, itemId: ctx.itemId, pageAccessToken: ctx.account.accessToken ?? "" },
     { dryRun: false, transport },

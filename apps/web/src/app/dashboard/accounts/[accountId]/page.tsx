@@ -72,6 +72,11 @@ export default async function AccountDetailPage({
       scopes: true,
       grantedPermissions: true,
       killSwitch: true,
+      connectionStatus: true,
+      tokenHealth: true,
+      lastTokenCheckAt: true,
+      lastSuccessfulGraphCheckAt: true,
+      requiresReconnectReason: true,
       tokenExpiresAt: true,
       lastSyncedAt: true,
       lastSuccessfulSyncAt: true,
@@ -276,6 +281,10 @@ export default async function AccountDetailPage({
           </div>
         ) : null}
         <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.connectionStatusLabel}</p><Badge tone={account.connectionStatus === "connected" ? "ok" : "danger"}>{account.connectionStatus === "connected" ? t.cc.connStatusConnected : account.connectionStatus === "missing_permission" ? t.cc.connStatusMissingPermission : t.cc.connStatusNeedsReconnect}</Badge></div>
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.tokenHealthLabel}</p><Badge tone={account.tokenHealth === "ok" ? "ok" : account.tokenHealth === "unknown" ? "neutral" : "danger"}>{account.tokenHealth === "ok" ? t.cc.tokenOk : account.tokenHealth === "unknown" ? t.cc.tokenUnknown : t.cc.tokenInvalidLabel}</Badge></div>
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastTokenCheck}</p><p className="font-medium">{account.lastTokenCheckAt ? formatDateTime(account.lastTokenCheckAt) : "—"}</p></div>
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastGraphCheck}</p><p className="font-medium">{account.lastSuccessfulGraphCheckAt ? formatDateTime(account.lastSuccessfulGraphCheckAt) : "—"}</p></div>
           <div><p className="text-xs text-[var(--color-muted)]">{t.cc.capRead}</p><Badge tone="ok">{t.cc.safeLiveEnabled}</Badge></div>
           <div><p className="text-xs text-[var(--color-muted)]">{t.cc.capHide}</p><Badge tone={account.grantedPermissions.includes(HIDE_PERMISSION) ? "ok" : "warn"}>{account.grantedPermissions.includes(HIDE_PERMISSION) ? HIDE_PERMISSION : t.cc.safeLiveDisabled}</Badge></div>
           <div><p className="text-xs text-[var(--color-muted)]">Token</p><Badge tone={tokenHealthy ? "ok" : "danger"}>{tokenHealthy ? t.cc.on : t.cc.off}</Badge></div>

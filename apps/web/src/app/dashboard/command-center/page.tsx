@@ -53,10 +53,12 @@ export default async function CommandCenterPage() {
     prisma.platformActionExecution.findFirst({ where: { ...where, status: "executed", trigger: "autonomous" }, orderBy: { executedAt: "desc" }, select: { executedAt: true } }),
     prisma.platformActionExecution.findFirst({ where: { ...where, status: "failed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, providerErrorCode: true, providerErrorMessage: true } }),
   ]);
-  const reconnectAccounts = await prisma.connectedAccount.findMany({
-    where: { tenantId: session.tenantId, status: ConnectorStatus.Active, OR: [{ lastError: "token_expired" }, { health: ConnectorHealth.Error }] },
-    select: { externalName: true },
+  const fbConnections = await prisma.connectedAccount.findMany({
+    where: { tenantId: session.tenantId, status: ConnectorStatus.Active, platform: "facebook_page" },
+    select: { id: true, externalName: true, connectionStatus: true, tokenHealth: true, grantedPermissions: true, lastTokenCheckAt: true, lastSuccessfulGraphCheckAt: true },
   });
+  const reconnectAccounts = fbConnections.filter((a) => a.connectionStatus !== "connected" || a.tokenHealth === "expired" || a.tokenHealth === "invalid" || a.tokenHealth === "revoked");
+  const HIDE_PERM = "pages_manage_engagement";
   const anyKillSwitch = liveSafety.globalKillSwitch || killedBrands > 0 || killedAccounts > 0;
 
   // Next recommended setup step.
@@ -177,6 +179,39 @@ export default async function CommandCenterPage() {
               <div><p className="text-xs text-[var(--color-muted)]">{t.cc.rollbackAvailability}</p><Badge tone={ROLLBACK_AVAILABLE ? "ok" : "warn"}>{ROLLBACK_AVAILABLE ? t.cc.rollbackReady : t.cc.rollbackUnavailable}</Badge></div>
             </div>
           </Card>
+
+          {fbConnections.length > 0 ? (
+            <Card className="mt-6">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">🔌 {t.cc.connectionsTitle}</h3>
+                {reconnectAccounts.length > 0 ? <Badge tone="danger">{reconnectAccounts.length}× {t.cc.reconnectPage}</Badge> : <Badge tone="ok">{t.cc.on}</Badge>}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead><tr className="border-b border-[var(--color-border)] text-left text-[var(--color-muted)]">
+                    <th className="py-1.5 pr-2">Facebook Page</th><th className="px-2">{t.cc.connectionStatusLabel}</th><th className="px-2">{t.cc.tokenHealthLabel}</th><th className="px-2">{t.cc.hideCapability}</th><th className="px-2">{t.cc.lastTokenCheck}</th><th className="px-2">{t.cc.lastGraphCheck}</th>
+                  </tr></thead>
+                  <tbody>
+                    {fbConnections.map((a) => {
+                      const okConn = a.connectionStatus === "connected";
+                      const okTok = a.tokenHealth === "ok";
+                      const canHide = okConn && okTok && a.grantedPermissions.includes(HIDE_PERM);
+                      return (
+                        <tr key={a.id} className="border-b border-[var(--color-border)] last:border-0">
+                          <td className="py-1.5 pr-2 font-medium">{a.externalName ?? "Page"}</td>
+                          <td className="px-2"><Badge tone={okConn ? "ok" : "danger"}>{okConn ? t.cc.connStatusConnected : a.connectionStatus === "missing_permission" ? t.cc.connStatusMissingPermission : t.cc.connStatusNeedsReconnect}</Badge></td>
+                          <td className="px-2"><Badge tone={okTok ? "ok" : a.tokenHealth === "unknown" ? "neutral" : "danger"}>{okTok ? t.cc.tokenOk : a.tokenHealth === "unknown" ? t.cc.tokenUnknown : t.cc.tokenInvalidLabel}</Badge></td>
+                          <td className="px-2"><Badge tone={canHide ? "ok" : "warn"}>{canHide ? t.cc.safeLiveEnabled : t.cc.safeLiveDisabled}</Badge></td>
+                          <td className="px-2 text-[var(--color-muted)]">{a.lastTokenCheckAt ? formatDateTime(a.lastTokenCheckAt) : "—"}</td>
+                          <td className="px-2 text-[var(--color-muted)]">{a.lastSuccessfulGraphCheckAt ? formatDateTime(a.lastSuccessfulGraphCheckAt) : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          ) : null}
         </>
       )}
     </>

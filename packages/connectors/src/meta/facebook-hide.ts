@@ -39,12 +39,29 @@ export interface HideTransportResult {
   errorMessage?: string;
 }
 
+/**
+ * V1.27C — result of reading a comment's hide-ability. `ok:false` means the token
+ * itself failed (reconnect needed); `ok:true` carries can_hide/is_hidden.
+ */
+export type CommentState =
+  | { ok: true; canHide: boolean; isHidden: boolean }
+  | { ok: false; errorCode: string };
+
+/** V1.27C — result of validating a Page token via GET /{pageId}?fields=id,name. */
+export type PageTokenState =
+  | { ok: true; pageId: string; pageName?: string }
+  | { ok: false; errorCode: string };
+
 /** The isolated network seam. Implementations must not log the token. */
 export interface FacebookHideTransport {
   readonly name: string;
   hide(commentId: string, accessToken: string): Promise<HideTransportResult>;
   /** Unhide (rollback). Dry-run-only in this phase — live unhide is a TODO. */
   unhide(commentId: string, accessToken: string): Promise<HideTransportResult>;
+  /** V1.27C — read can_hide/is_hidden for a comment (also validates the token). */
+  getCommentState?(commentId: string, accessToken: string): Promise<CommentState>;
+  /** V1.27C — validate a Page token via GET /{pageId}?fields=id,name. */
+  getPageTokenState?(pageId: string, accessToken: string): Promise<PageTokenState>;
 }
 
 /**
@@ -54,7 +71,16 @@ export interface FacebookHideTransport {
 export class MockFacebookHideTransport implements FacebookHideTransport {
   readonly name = "mock";
   readonly calls: { op: "hide" | "unhide"; commentId: string }[] = [];
-  constructor(private readonly outcome: HideTransportResult = { ok: true, responseCode: "200" }) {}
+  // V1.27C — configurable comment/page state (does NOT count as a hide/unhide call).
+  private readonly commentState: CommentState;
+  private readonly pageTokenState: PageTokenState;
+  constructor(
+    private readonly outcome: HideTransportResult = { ok: true, responseCode: "200" },
+    state?: { comment?: CommentState; pageToken?: PageTokenState },
+  ) {
+    this.commentState = state?.comment ?? { ok: true, canHide: true, isHidden: false };
+    this.pageTokenState = state?.pageToken ?? { ok: true, pageId: "P1", pageName: "Mock Page" };
+  }
   async hide(commentId: string): Promise<HideTransportResult> {
     this.calls.push({ op: "hide", commentId });
     return this.outcome;
@@ -62,6 +88,12 @@ export class MockFacebookHideTransport implements FacebookHideTransport {
   async unhide(commentId: string): Promise<HideTransportResult> {
     this.calls.push({ op: "unhide", commentId });
     return this.outcome;
+  }
+  async getCommentState(): Promise<CommentState> {
+    return this.commentState;
+  }
+  async getPageTokenState(): Promise<PageTokenState> {
+    return this.pageTokenState;
   }
 }
 
@@ -98,6 +130,44 @@ export class GraphFacebookHideTransport implements FacebookHideTransport {
   }
   unhide(commentId: string, accessToken: string): Promise<HideTransportResult> {
     return this.post(commentId, accessToken, false);
+  }
+  private classifyErr(status: number, code?: number): string {
+    if (status === 429 || code === 4 || code === 17 || code === 32 || code === 613) return "rate_limit";
+    if (code === 190) return "token_expired";
+    if (code === 10 || code === 200 || code === 803) return "permission";
+    if (status === 400) return "token_invalid";
+    if (status === 403) return "permission";
+    return "generic";
+  }
+  async getCommentState(commentId: string, accessToken: string): Promise<CommentState> {
+    const url = `${META_GRAPH_BASE}/${encodeURIComponent(commentId)}?fields=can_hide,is_hidden`;
+    try {
+      const res = await fetch(`${url}&access_token=${encodeURIComponent(accessToken)}`);
+      if (res.ok) {
+        const j = (await res.json()) as { can_hide?: boolean; is_hidden?: boolean };
+        return { ok: true, canHide: j.can_hide === true, isHidden: j.is_hidden === true };
+      }
+      let code: number | undefined;
+      try { code = ((await res.json()) as { error?: { code?: number } }).error?.code; } catch { /* non-JSON */ }
+      return { ok: false, errorCode: this.classifyErr(res.status, code) };
+    } catch {
+      return { ok: false, errorCode: "network" };
+    }
+  }
+  async getPageTokenState(pageId: string, accessToken: string): Promise<PageTokenState> {
+    const url = `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?fields=id,name`;
+    try {
+      const res = await fetch(`${url}&access_token=${encodeURIComponent(accessToken)}`);
+      if (res.ok) {
+        const j = (await res.json()) as { id?: string; name?: string };
+        return { ok: true, pageId: j.id ?? pageId, pageName: j.name };
+      }
+      let code: number | undefined;
+      try { code = ((await res.json()) as { error?: { code?: number } }).error?.code; } catch { /* non-JSON */ }
+      return { ok: false, errorCode: this.classifyErr(res.status, code) };
+    } catch {
+      return { ok: false, errorCode: "network" };
+    }
   }
 }
 
