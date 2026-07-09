@@ -32,6 +32,29 @@ Run through this per test session. Tick each item; log anything that fails with
 - [ ] Team page — members + roles
 - [ ] Settings — Language switcher changes dashboard language
 
+## Auto-Protect (shadow mode) — V1.18/V1.19
+
+- [ ] Dashboard **Auto-Protect value**: protected in shadow / would auto-hide /
+      sent to approval / normal criticism preserved / **Live actions executed = 0**
+- [ ] Reports **Auto-Protect report**: category breakdown, "What Guardora did not
+      hide", recent would-auto-hide, **"No live action executed"** banner
+- [ ] Inbox **Auto-Protect filters** (would auto-hide / requires approval /
+      monitored / normal criticism preserved / blocked by safety) filter the list
+- [ ] Inbox detail **Auto-Protect decision** card: category, mode, decision,
+      confidence, reason, **"Live action executed: No"**
+- [ ] Rules **Auto-Protect settings**: per-category mode; `normal_criticism`
+      cannot be set to auto-hide; reserved live mode not selectable
+- [ ] Shadow-mode wording clear; **no fake "live auto-hide"**; criticism preserved
+
+## Brand Risk Memory + Multilingual intelligence — V1.15/V1.17
+
+- [ ] Inbox detail **Language & translation** card (detected language, original
+      text preserved, "translation unavailable" when no provider — never faked)
+- [ ] Inbox detail **Why this was flagged** (matched terms, signals, recommendation)
+- [ ] Inbox detail **Improve Guardora for this brand** feedback + add phrase
+- [ ] Rules **Brand Risk Memory** list + active toggle (brand-scoped, not global)
+- [ ] Provider status clear: **"Rules only" / "Classified by rules"** (no external AI)
+
 ## Real Meta read-only
 
 - [ ] Real Meta account connected (OAuth + Page selection)
@@ -43,6 +66,9 @@ Run through this per test session. Tick each item; log anything that fails with
 
 - [ ] Mobile homepage (hero, CTAs, language switcher)
 - [ ] Mobile dashboard + off-canvas sidebar
+- [ ] Mobile inbox list + inbox detail cards
+- [ ] Mobile Reports Auto-Protect section (breakdown/lists scroll, no page overflow)
+- [ ] Mobile Rules Auto-Protect settings table (horizontal scroll inside card)
 - [ ] SK diacritics / long DE strings don't break layout
 
 ## Safety / integrity
@@ -57,8 +83,12 @@ Run through this per test session. Tick each item; log anything that fails with
 - [ ] `pnpm -r typecheck`
 - [ ] `pnpm build`
 - [ ] `pnpm i18n-check` (dictionary coverage)
-- [ ] `pnpm db:reconnect-check` (reconnect regression)
 - [ ] Dashboard i18n smoke SK/DE (`apps/web/scripts/dashboard-i18n-smoke.sh`)
+- [ ] `pnpm risk:test` · `pnpm intel:test` · `pnpm providers:test`
+- [ ] `pnpm memory:test` · `pnpm autoprotect:test` · `pnpm autoprotect:value-test`
+- [ ] `pnpm memory:db-test` · `pnpm autoprotect:db-test`
+- [ ] Token leak none · hide/reply/delete disabled · live actions = 0
+- [ ] Run `docs/DEMO_ENVIRONMENT_CHECK.md` before any beta/demo session
 
 ---
 

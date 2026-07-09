@@ -119,6 +119,26 @@ live action executed"** banner. In the **Inbox**, click the Auto-Protect quick
 filters (e.g. *Would auto-hide*, *Normal criticism preserved*). Demo comments span
 EN/SK/DE/PL/HU/CZ — **demo scenarios, not real customers.**
 
+## H3. Intelligence depth (inbox detail)
+
+Open a flagged inbox item and walk the cards — this is the "how it thinks" beat:
+
+- **Language & translation** — Guardora detects the comment's language (EN/SK/DE/
+  PL/HU/CZ and more) and always keeps the **original text**. Say clearly: the app
+  UI is EN/SK/DE, but **comments are handled multilingually**. Translation needs a
+  provider; today it honestly shows **"translation unavailable"** — never faked.
+- **Why this was flagged** — matched terms, risk signals, recommendation.
+- **Auto-Protect decision** — matched category, mode, decision, and **"Live action
+  executed: No"**.
+- **Improve Guardora for this brand** — mark false positive / missed risk, or add
+  a phrase to watch/allow/block. Stress: **Brand Risk Memory learns for THIS brand
+  only — never shared across brands, and it is not global AI model training.** See
+  **Rules → Brand Risk Memory**.
+- **Provider status** — "Classified by rules" / "Rules only" today. Say: the
+  **provider architecture is ready** (translation + AI risk interfaces), but **no
+  external AI/translation provider is wired yet** — Risk Rules V1 does the work,
+  and a `mock` provider exists only for tests.
+
 ## I. Safety close
 
 Reiterate the guarantees:
