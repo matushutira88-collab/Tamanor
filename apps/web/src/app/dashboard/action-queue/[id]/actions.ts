@@ -53,9 +53,9 @@ export async function approveQueueItem(formData: FormData): Promise<void> {
         requestedBy: "user",
       });
       execNote = res.status === "executed" ? "Approved and live hide executed."
-        : res.status === "dry_run" ? "Approved. Dry-run action prepared (no live action)."
+        : res.status === "dry_run" ? "Dry-run prepared. No Facebook comment was hidden."
         : res.status === "failed" ? "Approved. Live action failed (not faked)."
-        : `Approved. Live action blocked (${res.reason}).`;
+        : `Approved. Live action blocked (${res.reason}). No Facebook comment was hidden.`;
     }
   }
   back(q.id, execNote);

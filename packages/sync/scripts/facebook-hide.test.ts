@@ -6,7 +6,7 @@
  */
 import { prisma } from "@guardora/db";
 import { hideComment, unhideComment, MockFacebookHideTransport } from "@guardora/connectors";
-import { attemptFacebookHide, type HideContext } from "../src/live-actions";
+import { attemptFacebookHide, predictHideOutcome, type HideContext } from "../src/live-actions";
 
 let failures = 0;
 function check(label: string, cond: boolean, detail = "") {
@@ -16,10 +16,13 @@ function check(label: string, cond: boolean, detail = "") {
 
 let T = "test_tenant_v121b";
 const CFG = {
-  default: { liveEnabled: false, facebookHideEnabled: false, dryRun: true, canExecuteLive: false },
-  fbOff: { liveEnabled: true, facebookHideEnabled: false, dryRun: true, canExecuteLive: false },
-  dryRun: { liveEnabled: true, facebookHideEnabled: true, dryRun: true, canExecuteLive: false },
-  live: { liveEnabled: true, facebookHideEnabled: true, dryRun: false, canExecuteLive: true },
+  default: { liveEnabled: false, facebookHideEnabled: false, dryRun: true, canExecuteLive: false, liveConfirmed: false },
+  fbOff: { liveEnabled: true, facebookHideEnabled: false, dryRun: true, canExecuteLive: false, liveConfirmed: false },
+  dryRun: { liveEnabled: true, facebookHideEnabled: true, dryRun: true, canExecuteLive: false, liveConfirmed: false },
+  // Env allows live but NOT confirmed → still blocked (second lock).
+  live: { liveEnabled: true, facebookHideEnabled: true, dryRun: false, canExecuteLive: true, liveConfirmed: false },
+  // Env allows live AND confirmed → real execution possible (mock transport in tests).
+  liveConfirmed: { liveEnabled: true, facebookHideEnabled: true, dryRun: false, canExecuteLive: true, liveConfirmed: true },
 };
 const baseCtx = (over: Partial<HideContext> = {}): HideContext => ({
   tenantId: T, brandId: "B1", itemId: "I1", queueItemId: "Q1", policyId: "P_pol", connectedAccountId: "A1", platform: "facebook_page",
@@ -75,14 +78,19 @@ async function run() {
   const gna = await attemptFacebookHide(baseCtx({ mode: "approval", trigger: "autonomous" }), { config: CFG.live, transport: new MockFacebookHideTransport() });
   check("autonomous trigger + mode!=autonomous → blocked/policy_not_autonomous", gna.status === "blocked" && gna.reason === "policy_not_autonomous", `${gna.status}/${gna.reason}`);
 
-  // 10) all gates + live (autonomous) → transport called once, executed.
-  const t10 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const g10 = await attemptFacebookHide(baseCtx(), { config: CFG.live, transport: t10 });
-  check("10) all gates + live → transport called once, executed", g10.status === "executed" && t10.calls.length === 1 && t10.calls[0]!.op === "hide", `${g10.status}/calls=${t10.calls.length}`);
+  // V1.25 second lock: live env WITHOUT LIVE_HIDE_TEST_CONFIRM=YES → still blocked.
+  const tlock = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
+  const glock = await attemptFacebookHide(baseCtx(), { config: CFG.live, transport: tlock });
+  check("live env unconfirmed → blocked/live_confirm_required, transport NOT called", glock.status === "blocked" && glock.reason === "live_confirm_required" && tlock.calls.length === 0, `${glock.status}/${glock.reason}/calls=${tlock.calls.length}`);
 
-  // approval trigger works with mode=approval + all gates.
-  const gap = await attemptFacebookHide(baseCtx({ mode: "approval", trigger: "approval" }), { config: CFG.live, transport: new MockFacebookHideTransport({ ok: true, responseCode: "200" }) });
-  check("approval trigger + gates → executed", gap.status === "executed", gap.status);
+  // 10) all gates + live + confirmed → transport called once, executed.
+  const t10 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
+  const g10 = await attemptFacebookHide(baseCtx(), { config: CFG.liveConfirmed, transport: t10 });
+  check("10) all gates + live + confirmed → transport called once, executed", g10.status === "executed" && t10.calls.length === 1 && t10.calls[0]!.op === "hide", `${g10.status}/calls=${t10.calls.length}`);
+
+  // approval trigger works with mode=approval + all gates + confirmed.
+  const gap = await attemptFacebookHide(baseCtx({ mode: "approval", trigger: "approval" }), { config: CFG.liveConfirmed, transport: new MockFacebookHideTransport({ ok: true, responseCode: "200" }) });
+  check("approval trigger + gates + confirmed → executed", gap.status === "executed", gap.status);
 
   // --- Connector ---
   const t11 = new MockFacebookHideTransport();
@@ -112,6 +120,21 @@ async function run() {
   const blocked = await prisma.platformActionExecution.count({ where: { tenantId: T, status: "blocked" } });
   check("18) only explicit live-mock tests executed (2)", executed === 2, String(executed));
   check("19) dry-run/blocked counted separately from executed", dryRunCount >= 1 && blocked >= 1, `dry=${dryRunCount} exec=${executed} blocked=${blocked}`);
+
+  // --- V1.25 dry-run flow + prediction ---
+  // Dry-run creates a dry_run execution + audit event, transport NOT called, executed stays 0.
+  await cleanup();
+  const tdry = new MockFacebookHideTransport();
+  const gdry = await attemptFacebookHide(baseCtx(), { config: CFG.dryRun, transport: tdry });
+  const dryAudit = await prisma.auditLog.count({ where: { tenantId: T, event: "platform_action.dry_run", targetType: "platform_action_execution" } });
+  check("dry-run creates dry_run execution + audit, no transport, live=0", gdry.status === "dry_run" && tdry.calls.length === 0 && dryAudit >= 1 && (await prisma.platformActionExecution.count({ where: { tenantId: T, status: "executed" } })) === 0);
+
+  // predictHideOutcome mirrors the gate without executing.
+  check("predict: default env (all off) → blocked/global_disabled", (() => { const p = predictHideOutcome(baseCtx(), CFG.default); return p.expected === "blocked" && p.reason === "global_disabled"; })());
+  check("predict: dry-run env → dry_run", predictHideOutcome(baseCtx(), CFG.dryRun).expected === "dry_run");
+  check("predict: normal_criticism → blocked", predictHideOutcome(baseCtx({ matchedCategory: "normal_criticism" }), CFG.dryRun).expected === "blocked");
+  check("predict: live unconfirmed → blocked/live_confirm_required", (() => { const p = predictHideOutcome(baseCtx(), CFG.live); return p.expected === "blocked" && p.reason === "live_confirm_required"; })());
+  check("predict: live confirmed + gates → live_possible", predictHideOutcome(baseCtx(), CFG.liveConfirmed).expected === "live_possible");
 
   await cleanup();
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — controlled Facebook hide gates`);

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Permission, PLATFORM_META, Platform, can } from "@guardora/core";
 import { NEVER_AUTONOMOUS } from "@guardora/ai";
+import { getLiveActionsConfig } from "@guardora/config";
+import { predictHideOutcome } from "@guardora/sync";
 import { PageHeader, Card, Badge, SecondaryButton, PrimaryButton } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
@@ -25,13 +27,27 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   if (!q) notFound();
 
   const [item, policy, audits] = await Promise.all([
-    prisma.reputationItem.findFirst({ where: { id: q.itemId }, include: { contentItem: true, brand: { select: { name: true } } } }),
+    prisma.reputationItem.findFirst({ where: { id: q.itemId }, include: { contentItem: { include: { connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, pageId: true, externalId: true, externalName: true, platform: true } } } }, brand: { select: { name: true } } } }),
     prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true } }),
     prisma.auditLog.findMany({ where: { tenantId: session.tenantId, OR: [{ targetId: q.id }, { targetId: q.itemId }] }, orderBy: { createdAt: "desc" }, take: 10, select: { event: true, createdAt: true } }),
   ]);
   const meta = item ? PLATFORM_META[item.platform as Platform] : null;
   const neverAuto = NEVER_AUTONOMOUS.has(q.category as never);
   const fpRisk = q.confidence >= 0.85 ? "Low" : q.confidence >= 0.7 ? "Medium" : "High";
+
+  // Controlled hide test — predict the outcome without executing (V1.25).
+  const live = getLiveActionsConfig();
+  const acct = item?.contentItem.connectedAccount;
+  const predicted = acct ? predictHideOutcome({
+    tenantId: session.tenantId, brandId: q.brandId, itemId: q.itemId, queueItemId: q.id, policyId: policy?.id ?? null,
+    connectedAccountId: acct.id, platform: acct.platform as unknown as string,
+    externalCommentId: item!.contentItem.externalId, externalPostId: item!.contentItem.externalParentId ?? null,
+    matchedCategory: q.category, confidence: q.confidence, riskLevel: item!.riskLevel as unknown as string,
+    mode: policy?.mode ?? "approval", trigger: "approval",
+    account: { status: acct.status as unknown as string, health: acct.health as unknown as string, grantedPermissions: acct.grantedPermissions, pageId: acct.pageId, externalId: acct.externalId },
+  }, live) : null;
+  const EXP_LABEL: Record<string, string> = { blocked: t.cc.expBlocked, dry_run: t.cc.expDryRun, live_possible: t.cc.expLivePossible };
+  const EXP_TONE: Record<string, string> = { blocked: "ok", dry_run: "warn", live_possible: "danger" };
 
   const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div className="flex justify-between gap-4 border-b border-[var(--color-border)] py-1.5 text-sm last:border-0">
@@ -60,6 +76,29 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
               <Field label={t.cc.falsePositiveRisk}>{fpRisk}</Field>
             </dl>
           </Card>
+
+          {predicted ? (
+            <Card>
+              <h3 className="mb-2 text-sm font-semibold">🧪 {t.cc.controlledHideTest}</h3>
+              {live.canExecuteLive ? (
+                <div className="mb-3 rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs">
+                  <p className="font-bold text-[var(--color-danger)]">🚨 {t.cc.liveWarningTitle}</p>
+                  <p className="mt-1 text-[var(--color-muted)]">{t.cc.liveWarningBody}</p>
+                  <p className="mt-1"><Badge tone={live.liveConfirmed ? "danger" : "ok"}>{live.liveConfirmed ? t.cc.liveConfirmSet : t.cc.liveConfirmNeeded}</Badge></p>
+                </div>
+              ) : null}
+              <dl className="text-sm">
+                <Field label={acct!.externalName ?? "Account"}>{acct!.externalName} · {acct!.pageId ?? acct!.externalId}</Field>
+                <Field label={t.cc.envGates}>LIVE={String(live.liveEnabled)} · FB_HIDE={String(live.facebookHideEnabled)} · DRY_RUN={String(live.dryRun)}</Field>
+                <Field label={t.cc.linkedPolicies}>{policy ? tEnum(t, "controlMode", policy.mode) : "—"}</Field>
+                <Field label={t.cc.expectedResult}>
+                  <Badge tone={EXP_TONE[predicted.expected] ?? "neutral"}>{EXP_LABEL[predicted.expected] ?? predicted.expected}</Badge>
+                  <span className="ml-2 text-xs text-[var(--color-muted)]">{(t.autoProtect.blockReason as Record<string, string>)[predicted.reason] ?? predicted.reason}</span>
+                </Field>
+              </dl>
+              <p className="mt-2 text-[11px] text-[var(--color-muted)]">✅ {t.cc.stillVisible}</p>
+            </Card>
+          ) : null}
 
           <Card>
             <h3 className="mb-2 text-sm font-semibold">{t.cc.ifAutonomous}</h3>

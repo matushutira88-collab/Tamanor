@@ -191,13 +191,16 @@ Steps:
    shows **Dry-run live action** and the dashboard shows a **Dry-run hide attempt**
    — and that **nothing was hidden** on the Page (live executed = 0).
 
-2. **Stage 2 — real live (only when Stage 1 looks correct):**
+2. **Stage 2 — real live (only when Stage 1 looks correct):** — **LOCKED, see §12.**
    ```
    LIVE_ACTIONS_DRY_RUN=false
+   LIVE_HIDE_TEST_CONFIRM=YES   # V1.25 second lock — without it, hides stay blocked
    ```
    Restart the worker. Post another matching comment. Within one sync interval the
    comment should be **hidden on the Facebook Page**; the inbox item shows **Live
    hide executed** and a `platform_action_executions` row with status `executed`.
+   Without `LIVE_HIDE_TEST_CONFIRM=YES` the execution is recorded **blocked
+   (`live_confirm_required`)** and **nothing is hidden**.
 
 3. **Rollback:** the external comment id + execution id are stored. Live unhide is
    not yet automated (documented TODO) — unhide manually in Facebook if needed.
@@ -207,6 +210,68 @@ Steps:
 
 Safety: `normal_criticism` is never hidden; confidence must be ≥ 0.8; only
 `facebook_page`; only the categories you explicitly set to live.
+
+---
+
+## 12. First controlled Facebook hide — dry-run via Action Queue (V1.25)
+
+This is the **canonical first live-path test**. It exercises the ControlPolicy
+gate stack through the **manual approval** flow (Action Queue detail), staying in
+**dry-run** so **no Graph call** is made and **nothing is hidden on Facebook**.
+
+### Stage 1 — dry-run (safe; do this first)
+
+1. **Stop the worker** (avoid an autonomous path racing the manual test):
+   ```bash
+   pkill -9 -f "apps/worker"
+   ```
+2. **Set env for dry-run** (`.env`):
+   ```
+   GUARDORA_DATA_MODE=real
+   LIVE_ACTIONS_ENABLED=true
+   FACEBOOK_HIDE_ENABLED=true
+   LIVE_ACTIONS_DRY_RUN=true
+   LIVE_HIDE_TEST_CONFIRM=NO
+   ```
+3. **Start web + worker:** `pnpm dev` and `pnpm dev:worker`.
+4. **Post a harmful comment** on the real Konfigurátor Page (e.g. a profanity /
+   personal attack that maps to an autonomous-eligible category).
+5. **Wait one sync interval** for the read-only sync to ingest it.
+6. Open **Dashboard → Action Queue → the item**. Confirm the **🧪 Controlled
+   Facebook Hide Test** panel shows:
+   - account = Konfigurátor, pageId `1165524636643112`, permissions include
+     `pages_manage_engagement`,
+   - env gates `LIVE=true · FB_HIDE=true · DRY_RUN=true`,
+   - category / confidence / linked policy,
+   - **Expected result = Dry-run (no live action)**.
+7. **Approve** the item. Expect the notice **"Dry-run prepared. No Facebook
+   comment was hidden."**
+8. **Verify:**
+   - a `platform_action_executions` row with status **`dry_run`**, `queueItemId`
+     + `policyId` set, no token in the row,
+   - Command Center **dry-run count +1**, **live executed = 0**,
+   - the **Facebook comment is still visible** on the Page,
+   - Timeline + audit show the dry-run attempt.
+
+Automated equivalent: `pnpm fbhide:test` and the controlled-hide dry-run tests.
+
+### Stage 2 — real live hide (LOCKED — explicit opt-in only)
+
+**Do not perform Stage 2 until Stage 1 has been reviewed and you explicitly
+decide to hide a real comment.** Two independent locks must both be set:
+
+```
+LIVE_ACTIONS_DRY_RUN=false
+LIVE_HIDE_TEST_CONFIRM=YES
+```
+
+When `canExecuteLive` is true the Control Center and the Action Queue panel show a
+**bold red "Live Facebook hide is enabled"** warning. Until `LIVE_HIDE_TEST_CONFIRM
+=YES` is also set, every hide is recorded **blocked (`live_confirm_required`)** and
+**nothing is hidden** — this is the accidental-live-test guard. Approving with both
+locks set will hide the real comment via `POST /{comment-id}` `is_hidden=true`.
+
+After the test, restore `LIVE_ACTIONS_DRY_RUN=true` and `LIVE_HIDE_TEST_CONFIRM=NO`.
 
 ---
 

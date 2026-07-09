@@ -70,6 +70,9 @@ const EnvSchema = z.object({
     .string()
     .optional()
     .transform((v) => !(v === "false" || v === "0")),
+  // Second lock against an accidental live hide: even with all env gates on and
+  // dry-run off, a real Graph hide requires an explicit LIVE_HIDE_TEST_CONFIRM=YES.
+  LIVE_HIDE_TEST_CONFIRM: z.string().optional().default("NO"),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(4),
 
   // Meta (Facebook Page + Instagram Business) — official OAuth only.
@@ -129,8 +132,10 @@ export function getLiveActionsConfig(source: NodeJS.ProcessEnv = process.env): {
   liveEnabled: boolean;
   facebookHideEnabled: boolean;
   dryRun: boolean;
-  /** True only when a real Graph hide may run. */
+  /** True only when the env explicitly permits a live Graph hide (before confirm). */
   canExecuteLive: boolean;
+  /** Second lock: LIVE_HIDE_TEST_CONFIRM=YES. Required IN ADDITION to canExecuteLive. */
+  liveConfirmed: boolean;
 } {
   const env = loadEnv(source);
   const liveEnabled = env.LIVE_ACTIONS_ENABLED;
@@ -141,6 +146,7 @@ export function getLiveActionsConfig(source: NodeJS.ProcessEnv = process.env): {
     facebookHideEnabled,
     dryRun,
     canExecuteLive: liveEnabled && facebookHideEnabled && !dryRun,
+    liveConfirmed: env.LIVE_HIDE_TEST_CONFIRM === "YES",
   };
 }
 

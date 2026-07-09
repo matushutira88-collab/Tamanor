@@ -38,10 +38,19 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
         const label = live.canExecuteLive ? t.cc.gatesLive : (live.liveEnabled && live.facebookHideEnabled) ? t.cc.gatesDryRun : t.cc.gatesOff;
         const tone = live.canExecuteLive ? "danger" : (live.liveEnabled && live.facebookHideEnabled) ? "warn" : "ok";
         return (
-          <div className="mb-3 flex items-center gap-2 text-sm">
-            <span className="font-medium">{t.cc.liveGatesStatus}:</span>
-            <Badge tone={tone}>{label}</Badge>
-          </div>
+          <>
+            <div className="mb-3 flex items-center gap-2 text-sm">
+              <span className="font-medium">{t.cc.liveGatesStatus}:</span>
+              <Badge tone={tone}>{label}</Badge>
+            </div>
+            {live.canExecuteLive ? (
+              <div className="mb-4 rounded-lg border-2 border-[var(--color-danger)] p-3 text-sm">
+                <p className="font-bold text-[var(--color-danger)]">🚨 {t.cc.liveWarningTitle}</p>
+                <p className="mt-1 text-[var(--color-muted)]">{t.cc.liveWarningBody}</p>
+                <p className="mt-1"><Badge tone={live.liveConfirmed ? "danger" : "ok"}>{live.liveConfirmed ? t.cc.liveConfirmSet : t.cc.liveConfirmNeeded}</Badge></p>
+              </div>
+            ) : null}
+          </>
         );
       })()}
       <div className="mb-4 rounded-lg border border-[var(--color-warn)] p-3 text-xs">

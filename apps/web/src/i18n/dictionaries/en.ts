@@ -542,6 +542,11 @@ export const en = {
       low_confidence: "Confidence below the live threshold",
       threat_requires_critical: "Threats require critical level",
       missing_comment_id: "Missing comment id",
+      safety_never_autonomous: "Safety category is never auto-hidden",
+      category_not_eligible: "Category not eligible for live hide",
+      policy_not_autonomous: "Policy is not in autonomous mode",
+      live_confirm_required: "Live confirmation required (LIVE_HIDE_TEST_CONFIRM=YES)",
+      all_gates_passed_and_confirmed: "All gates passed — a live hide would execute",
     },
   },
 
@@ -690,6 +695,19 @@ export const en = {
     lastExecutedAction: "Last executed action",
     approveExplains: "What Approve does now",
     approveExplainsBody: "Approve records the decision and attempts a gated hide. With live actions off it is blocked or dry-run — no live hide runs.",
+    // controlled hide test panel (V1.25)
+    controlledHideTest: "Controlled Facebook Hide Test",
+    expectedResult: "Expected result",
+    expBlocked: "Blocked",
+    expDryRun: "Dry-run (no live action)",
+    expLivePossible: "Live possible (would execute)",
+    expLiveExecuted: "Live executed",
+    dryRunPrepared: "Dry-run prepared. No Facebook comment was hidden.",
+    liveWarningTitle: "Live Facebook hide is enabled",
+    liveWarningBody: "Real comments can be hidden on Facebook. A live hide additionally requires LIVE_HIDE_TEST_CONFIRM=YES; without it, hides stay blocked.",
+    liveConfirmNeeded: "LIVE_HIDE_TEST_CONFIRM=YES required",
+    liveConfirmSet: "Live confirmation set",
+    stillVisible: "The Facebook comment is still visible (nothing was hidden).",
   },
 
   // Brand risk memory + feedback (V1.17).

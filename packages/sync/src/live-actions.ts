@@ -48,6 +48,23 @@ export interface HideContext {
 
 const MIN_CONFIDENCE = 0.8;
 
+export type PredictedOutcome = "blocked" | "dry_run" | "live_possible";
+
+/**
+ * Predict what a hide attempt WOULD do — WITHOUT executing or touching the DB.
+ * Used by the controlled-test panel to show the expected result before any action.
+ */
+export function predictHideOutcome(
+  ctx: HideContext,
+  cfg: ReturnType<typeof getLiveActionsConfig>,
+): { expected: PredictedOutcome; reason: string } {
+  const { blockedReason } = gate(ctx, cfg);
+  if (blockedReason) return { expected: "blocked", reason: blockedReason };
+  if (cfg.dryRun || !cfg.canExecuteLive) return { expected: "dry_run", reason: "dry_run_mode" };
+  if (!cfg.liveConfirmed) return { expected: "blocked", reason: "live_confirm_required" };
+  return { expected: "live_possible", reason: "all_gates_passed_and_confirmed" };
+}
+
 /** Determine why a live hide is (not) allowed. Fail-closed, ordered gates. */
 function gate(ctx: HideContext, cfg: ReturnType<typeof getLiveActionsConfig>): { blockedReason: string | null } {
   if (!cfg.liveEnabled) return { blockedReason: "global_disabled" };
@@ -121,6 +138,12 @@ export async function attemptFacebookHide(
       { dryRun: true, transport: transportOverride ?? new GraphFacebookHideTransport() },
     );
     return record(ctx, "dry_run", "dry_run_mode", r);
+  }
+
+  // SECOND LOCK: even with all env gates on and dry-run off, a real Graph hide
+  // requires an explicit LIVE_HIDE_TEST_CONFIRM=YES. Prevents an accidental live test.
+  if (!cfg.liveConfirmed) {
+    return record(ctx, "blocked", "live_confirm_required");
   }
 
   // Live path — real transport (mock only via explicit override in a manual test).
