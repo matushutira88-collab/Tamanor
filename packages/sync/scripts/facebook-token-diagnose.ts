@@ -9,6 +9,7 @@
  */
 import { prisma, decryptToken } from "@guardora/db";
 import { META_GRAPH_BASE, GraphFacebookHideTransport } from "@guardora/connectors";
+import { checkAccountToken } from "../src/connection-manager";
 
 function argOf(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -70,6 +71,12 @@ async function main() {
   } else {
     console.log("page token          :", "skipped (no token)");
   }
+
+  // V1.27D — authoritative check + self-repair of a stale false-expired row.
+  const repaired = await checkAccountToken(accountId);
+  console.log("--- repair ---");
+  console.log("connection (now)    :", repaired.connectionStatus);
+  console.log("token health (now)  :", repaired.tokenHealth, `(result: ${repaired.result}${repaired.transient ? ", transient" : ""})`);
 
   await prisma.$disconnect();
 }

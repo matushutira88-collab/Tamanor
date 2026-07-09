@@ -228,6 +228,53 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
  * recorded PlatformActionExecution. Never throws on a provider error — records
  * `failed`. Never a live action unless every env gate + safety gate passes.
  */
+/** True when the account row claims a token/connection problem worth revalidating. */
+function accountLooksStale(a: HideContext["account"]): boolean {
+  return (
+    (!!a.connectionStatus && a.connectionStatus !== "connected") ||
+    (!!a.tokenHealth && (a.tokenHealth === "expired" || a.tokenHealth === "invalid" || a.tokenHealth === "revoked")) ||
+    a.needsReconnect === true ||
+    (!!a.tokenExpiresAt && new Date(a.tokenExpiresAt).getTime() <= Date.now())
+  );
+}
+
+/**
+ * V1.27D self-heal — when the account row says needs_reconnect/expired, do a FRESH
+ * Page-token check (GET /{pageId}). If it SUCCEEDS, repair the row to connected/ok
+ * and continue (a real, working token must override a stale false-expired flag).
+ * Unknown expiry never counts as expired. If it FAILS, mark precisely and let the
+ * gate block. Mutates ctx.account so the subsequent gate sees the repaired state.
+ */
+async function revalidateAndRepair(ctx: HideContext, transport: FacebookHideTransport): Promise<void> {
+  const token = ctx.account.accessToken;
+  if (!transport.getPageTokenState || !token) return; // cannot validate → leave state as-is
+  const st = await transport.getPageTokenState(ctx.account.pageId ?? ctx.account.externalId, token);
+  const now = new Date();
+  if (st.ok) {
+    await prisma.connectedAccount.updateMany({
+      where: { id: ctx.connectedAccountId },
+      data: { connectionStatus: "connected", tokenHealth: "ok", health: "healthy", requiresReconnectReason: null, lastError: null, lastErrorAt: null, lastTokenCheckAt: now, lastTokenCheckResult: "ok", lastSuccessfulGraphCheckAt: now, tokenExpiresAt: null },
+    });
+    ctx.account.connectionStatus = "connected";
+    ctx.account.tokenHealth = "ok";
+    ctx.account.needsReconnect = false;
+    ctx.account.tokenExpiresAt = null;
+    return;
+  }
+  // A transient/generic error must NOT downgrade a connection — only a real OAuth failure.
+  if (st.errorCode === "rate_limit" || st.errorCode === "network" || st.errorCode === "generic") {
+    await prisma.connectedAccount.updateMany({ where: { id: ctx.connectedAccountId }, data: { lastTokenCheckAt: now, lastTokenCheckResult: st.errorCode } });
+    return;
+  }
+  const tokenHealth = st.errorCode === "token_expired" ? "expired" : st.errorCode === "revoked" ? "revoked" : "invalid";
+  await prisma.connectedAccount.updateMany({
+    where: { id: ctx.connectedAccountId },
+    data: { connectionStatus: "needs_reconnect", tokenHealth, health: "error", requiresReconnectReason: st.errorCode, lastError: st.errorCode, lastErrorAt: now, lastTokenCheckAt: now, lastTokenCheckResult: st.errorCode },
+  });
+  ctx.account.connectionStatus = "needs_reconnect";
+  ctx.account.tokenHealth = tokenHealth;
+}
+
 /** V1.27C — flag an account as needing reconnect after a live token failure. */
 async function markAccountReconnect(connectedAccountId: string, errorCode: string): Promise<void> {
   const tokenHealth = errorCode === "token_expired" ? "expired" : errorCode === "revoked" ? "revoked" : "invalid";
@@ -277,9 +324,17 @@ export async function attemptFacebookHide(
   const cfg = opts?.config ?? getLiveActionsConfig();
   const transportOverride = opts?.transport;
   const liveAttempt = opts?.liveAttempt === true;
+  // V1.27D — optional, token-SAFE runtime trace (enable with HIDE_TRACE=1). Never
+  // logs a token or secret — only phase names + connection/token health + status.
+  const TRACE = process.env.HIDE_TRACE === "1";
+  const trace = (phase: string, extra: Record<string, unknown> = {}) => {
+    if (TRACE) console.log(`[hide-trace] ${phase}`, { liveAttempt, item: ctx.itemId, ...extra });
+  };
+  trace("start", { hasToken: !!ctx.account.accessToken, connectionStatus: ctx.account.connectionStatus, tokenHealth: ctx.account.tokenHealth, health: ctx.account.health, tokenExpiresAt: ctx.account.tokenExpiresAt ?? null, needsReconnect: ctx.account.needsReconnect ?? false });
 
   // --- Idempotency (V1.25B/V1.26): never create duplicate executions. ---
   const existing = await findExistingExecutions(ctx);
+  trace("existing", { count: existing.length, latest: existing[0] ? `${existing[0].status}/${existing[0].reason}` : null });
   if (existing.length > 0) {
     const executed = existing.find((r) => r.status === "executed");
     if (executed) {
@@ -301,12 +356,22 @@ export async function attemptFacebookHide(
       return { id: latest.id, status: "failed", reason: latest.reason ?? "provider_error", idempotent: true, createdAt: latest.createdAt };
     }
     if (latest.status === "blocked") {
-      // A blocked attempt re-runs only if env gates / permissions actually changed.
+      // V1.27D — a historical blocked row must NEVER permanently lock a future live
+      // attempt. Self-heal a stale needs_reconnect/expired account BEFORE re-evaluating
+      // the gate, so a now-valid token unblocks. (Without this, gate() would echo the
+      // old reconnect_required and revalidateAndRepair below would never run.)
+      const stale0 = accountLooksStale(ctx.account);
+      trace("blocked-idempotency", { latestReason: latest.reason, accountLooksStale: stale0 });
+      if ((cfg.canExecuteLive || liveAttempt) && stale0) {
+        await revalidateAndRepair(ctx, transportOverride ?? new GraphFacebookHideTransport());
+        trace("blocked-idempotency:after-selfheal", { connectionStatus: ctx.account.connectionStatus, tokenHealth: ctx.account.tokenHealth });
+      }
       const { blockedReason: nowReason } = gate(ctx, cfg);
+      trace("blocked-idempotency:regate", { nowReason, latestReason: latest.reason });
       if (nowReason && nowReason === latest.reason) {
         return { id: latest.id, status: "blocked", reason: nowReason, idempotent: true, createdAt: latest.createdAt };
       }
-      // else: gates changed (unblocked or a different reason) → fall through to a fresh attempt.
+      // else: gates changed or self-heal repaired the account → fall through to a fresh attempt.
     }
   }
 
@@ -322,7 +387,15 @@ export async function attemptFacebookHide(
     }
   }
 
+  // V1.27D — before blocking on a stale needs_reconnect/expired row, revalidate the
+  // Page token against Graph. A working token repairs the row and proceeds; unknown
+  // expiry is never treated as expired. Only runs when a live action is possible.
+  if ((cfg.canExecuteLive || liveAttempt) && accountLooksStale(ctx.account)) {
+    await revalidateAndRepair(ctx, transportOverride ?? new GraphFacebookHideTransport());
+  }
+
   const { blockedReason } = gate(ctx, cfg);
+  trace("gate", { blockedReason, connectionStatus: ctx.account.connectionStatus, tokenHealth: ctx.account.tokenHealth, health: ctx.account.health });
   if (blockedReason) {
     return record(ctx, "blocked", blockedReason);
   }
@@ -335,11 +408,14 @@ export async function attemptFacebookHide(
     if (!cfg.liveConfirmed) return record(ctx, "blocked", "live_confirm_required");
     const transport = transportOverride ?? new GraphFacebookHideTransport();
     const pre = await commentPreflight(ctx, transport);
+    trace("commentPreflight", { result: pre ? `${pre.status}/${pre.reason}` : "proceed" });
     if (pre) return pre;
+    trace("hidePOST", { called: true });
     const r = await hideComment(
       { pageId: ctx.account.pageId ?? ctx.account.externalId, commentId: ctx.externalCommentId!, connectedAccountId: ctx.connectedAccountId, itemId: ctx.itemId, pageAccessToken: ctx.account.accessToken ?? "" },
       { dryRun: false, transport },
     );
+    trace("hidePOST:result", { status: r.status, providerErrorCode: r.providerErrorCode ?? null, providerResponseCode: r.providerResponseCode ?? null });
     if (r.status === "executed") return record(ctx, "executed", "live_hide_executed", r);
     return record(ctx, "failed", r.providerErrorCode ?? "provider_error", r);
   }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { attemptFacebookHide, findPreflightDryRun } from "@guardora/sync";
+import { decryptToken } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
@@ -27,18 +28,22 @@ async function runHideForQueueItem(
 ): Promise<{ note: string; kind: "ok" | "error" }> {
   const item = await prisma.reputationItem.findFirst({
     where: { id: q.itemId, tenantId: session.tenantId },
-    select: { riskLevel: true, contentItem: { select: { externalId: true, externalParentId: true, connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, accessToken: true, pageId: true, externalId: true, platform: true, tokenExpiresAt: true, lastError: true, connectionStatus: true, tokenHealth: true } } } } },
+    select: { riskLevel: true, contentItem: { select: { externalId: true, externalParentId: true, connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, accessToken: true, longLivedToken: true, pageId: true, externalId: true, platform: true, tokenExpiresAt: true, lastError: true, connectionStatus: true, tokenHealth: true } } } } },
   });
   const acct = item?.contentItem.connectedAccount;
   if (!acct) return { note: "Approved. No live action was executed (live execution is disabled).", kind: "ok" };
   const policy = await prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true }, select: { id: true, mode: true } });
+  // CRITICAL: decrypt the stored Page token before the Graph call. The DB value is
+  // tagged/encrypted (e.g. "plain:v1:…"); sending it raw makes Graph reject it as an
+  // invalid OAuth token (code 190) → false token_expired / reconnect_required.
+  const pageToken = decryptToken(acct.longLivedToken ?? acct.accessToken) ?? null;
   const res = await attemptFacebookHide({
     tenantId: session.tenantId, brandId: q.brandId, itemId: q.itemId, queueItemId: q.id, policyId: policy?.id ?? null,
     connectedAccountId: acct.id, platform: acct.platform as unknown as string,
     externalCommentId: item!.contentItem.externalId, externalPostId: item!.contentItem.externalParentId ?? null,
     matchedCategory: q.category, confidence: q.confidence, riskLevel: item!.riskLevel as unknown as string,
     mode: policy?.mode ?? "approval", trigger: "approval",
-    account: { status: acct.status as unknown as string, health: acct.health as unknown as string, grantedPermissions: acct.grantedPermissions, accessToken: acct.accessToken, pageId: acct.pageId, externalId: acct.externalId, tokenExpiresAt: acct.tokenExpiresAt, needsReconnect: acct.lastError === "token_expired", connectionStatus: acct.connectionStatus, tokenHealth: acct.tokenHealth },
+    account: { status: acct.status as unknown as string, health: acct.health as unknown as string, grantedPermissions: acct.grantedPermissions, accessToken: pageToken, pageId: acct.pageId, externalId: acct.externalId, tokenExpiresAt: acct.tokenExpiresAt, needsReconnect: acct.connectionStatus === "needs_reconnect" || acct.tokenHealth === "expired" || acct.tokenHealth === "invalid" || acct.tokenHealth === "revoked" || acct.lastError === "token_expired", connectionStatus: acct.connectionStatus, tokenHealth: acct.tokenHealth },
     requestedBy: "user",
   }, { retry: opts?.retry, liveAttempt: opts?.liveAttempt });
 

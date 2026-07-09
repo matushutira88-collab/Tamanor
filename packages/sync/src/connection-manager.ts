@@ -31,9 +31,11 @@ function classifyError(errorCode: string): { tokenHealth: TokenHealth; transient
     case "revoked": return { tokenHealth: "revoked", transient: false };
     case "token_invalid": return { tokenHealth: "invalid", transient: false };
     case "permission": return { tokenHealth: "ok", transient: false }; // token works, perms missing
+    // V1.27D — ambiguous errors must NOT falsely mark a token expired/invalid.
     case "rate_limit":
-    case "network": return { tokenHealth: "unknown", transient: true };
-    default: return { tokenHealth: "invalid", transient: false };
+    case "network":
+    case "generic":
+    default: return { tokenHealth: "unknown", transient: true };
   }
 }
 

@@ -83,15 +83,20 @@ async function run() {
     const failRow = await prisma.platformActionExecution.findFirst({ where: { connectedAccountId: acct.id, status: "failed" }, orderBy: { createdAt: "desc" } });
     check("5) provider error sanitized (no token in message)", !!failRow && !JSON.stringify(failRow).includes(PAGE_TOKEN) && (failRow.providerErrorMessage ?? "").includes("HTTP 400"));
 
-    // 2) preflight blocks an expired token (past expiry) — no Graph call.
-    const tPre = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
+    // 2) past expiry + FRESH page check FAILS → blocked (reconnect), no hide POST.
+    const tPre = new MockFacebookHideTransport({ ok: true, responseCode: "200" }, { pageToken: { ok: false, errorCode: "token_expired" } });
     const rPre = await attemptFacebookHide(ctx(acct.id, { account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: PAGE_TOKEN, pageId: "TOK_PAGE", externalId: "TOK_PAGE", tokenExpiresAt: new Date(Date.now() - 1000) } }), { config: CFG, transport: tPre, liveAttempt: true });
-    check("2) preflight blocks expired token (no Graph call)", rPre.status === "blocked" && rPre.reason === "token_expired" && tPre.calls.length === 0, `${rPre.status}/${rPre.reason}`);
+    check("2) past expiry + failed revalidation → blocked, no hide POST", rPre.status === "blocked" && (rPre.reason === "reconnect_required" || rPre.reason === "token_expired") && tPre.calls.length === 0, `${rPre.status}/${rPre.reason}`);
 
-    // 3) preflight blocks when the account is flagged needsReconnect — no Graph call.
-    const tNr = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
+    // 2b) V1.27D — past expiry BUT fresh page check SUCCEEDS → repaired → hide proceeds.
+    const tHeal = new MockFacebookHideTransport({ ok: true, responseCode: "200" }, { pageToken: { ok: true, pageId: "TOK_PAGE", pageName: "Konfigurátor" } });
+    const rHeal = await attemptFacebookHide(ctx(acct.id, { account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: PAGE_TOKEN, pageId: "TOK_PAGE", externalId: "TOK_PAGE", tokenExpiresAt: new Date(Date.now() - 1000) } }), { config: CFG, transport: tHeal, liveAttempt: true });
+    check("2b) past expiry + fresh token OK → self-healed, hide executed", rHeal.status === "executed" && tHeal.calls.some((c) => c.op === "hide"), `${rHeal.status}/${rHeal.reason}`);
+
+    // 3) needsReconnect flag + FRESH page check FAILS → blocked, no hide POST.
+    const tNr = new MockFacebookHideTransport({ ok: true, responseCode: "200" }, { pageToken: { ok: false, errorCode: "token_invalid" } });
     const rNr = await attemptFacebookHide(ctx(acct.id, { account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: PAGE_TOKEN, pageId: "TOK_PAGE", externalId: "TOK_PAGE", needsReconnect: true } }), { config: CFG, transport: tNr, liveAttempt: true });
-    check("3) preflight blocks needsReconnect (no Graph call)", rNr.status === "blocked" && rNr.reason === "token_expired" && tNr.calls.length === 0, `${rNr.status}/${rNr.reason}`);
+    check("3) needsReconnect + failed revalidation → blocked, no hide POST", rNr.status === "blocked" && rNr.reason === "reconnect_required" && tNr.calls.length === 0, `${rNr.status}/${rNr.reason}`);
 
     // 6) reconnect clears token_expired (metaConnectedAccountFields resets health + lastError).
     const fields = metaConnectedAccountFields({ externalName: "Konfigurátor", pageId: "TOK_PAGE", igBusinessId: null, scopes: [], grantedPermissions: ["pages_manage_engagement"], encryptedToken: "newtoken", tokenType: "page", tokenExpiresAt: null });

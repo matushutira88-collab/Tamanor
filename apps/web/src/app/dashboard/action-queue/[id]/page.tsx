@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Permission, PLATFORM_META, Platform, can } from "@guardora/core";
 import { NEVER_AUTONOMOUS, AUTONOMOUS_ELIGIBLE, FACEBOOK_HIDE_PERMISSION } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
-import { predictHideOutcome, findPreflightDryRun, resolvePrimaryAction } from "@guardora/sync";
+import { predictHideOutcome, findPreflightDryRun, resolvePrimaryAction, checkAccountToken } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { SubmitButton } from "@/components/dashboard/submit-button";
 import { LiveHideForm } from "@/components/dashboard/live-hide-form";
@@ -30,7 +30,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   if (!q) notFound();
 
   const [item, policy, audits, lastExec] = await Promise.all([
-    prisma.reputationItem.findFirst({ where: { id: q.itemId }, include: { contentItem: { include: { connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, pageId: true, externalId: true, externalName: true, platform: true } } } }, brand: { select: { name: true } } } }),
+    prisma.reputationItem.findFirst({ where: { id: q.itemId }, include: { contentItem: { include: { connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, pageId: true, externalId: true, externalName: true, platform: true, connectionStatus: true, tokenHealth: true } } } }, brand: { select: { name: true } } } }),
     prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true } }),
     prisma.auditLog.findMany({ where: { tenantId: session.tenantId, OR: [{ targetId: q.id }, { targetId: q.itemId }] }, orderBy: { createdAt: "desc" }, take: 10, select: { event: true, createdAt: true } }),
     prisma.platformActionExecution.findFirst({ where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "approval" }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, reason: true, providerErrorCode: true, createdAt: true } }),
@@ -48,13 +48,26 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   // Controlled hide test — predict the outcome without executing (V1.25).
   const live = getLiveActionsConfig();
   const acct = item?.contentItem.connectedAccount;
+  // V1.27D — self-heal a stale needs_reconnect/expired row before predicting, so the
+  // panel reflects a fresh Graph check (the same repair the diagnostics/hide run does).
+  let effHealth = acct?.health as unknown as string | undefined;
+  let effConn = acct?.connectionStatus as string | undefined;
+  let effTok = acct?.tokenHealth as string | undefined;
+  if (acct && live.canExecuteLive && q.proposedAction === "hide_comment" &&
+      (effConn !== "connected" || effHealth !== "healthy" || effTok === "expired" || effTok === "invalid" || effTok === "revoked")) {
+    try {
+      const res = await checkAccountToken(acct.id);
+      effConn = res.connectionStatus; effTok = res.tokenHealth;
+      if (res.tokenHealth === "ok") effHealth = "healthy";
+    } catch { /* best-effort; fall back to stored state */ }
+  }
   const predicted = acct ? predictHideOutcome({
     tenantId: session.tenantId, brandId: q.brandId, itemId: q.itemId, queueItemId: q.id, policyId: policy?.id ?? null,
     connectedAccountId: acct.id, platform: acct.platform as unknown as string,
     externalCommentId: item!.contentItem.externalId, externalPostId: item!.contentItem.externalParentId ?? null,
     matchedCategory: q.category, confidence: q.confidence, riskLevel: item!.riskLevel as unknown as string,
     mode: policy?.mode ?? "approval", trigger: "approval",
-    account: { status: acct.status as unknown as string, health: acct.health as unknown as string, grantedPermissions: acct.grantedPermissions, pageId: acct.pageId, externalId: acct.externalId },
+    account: { status: acct.status as unknown as string, health: effHealth as string, grantedPermissions: acct.grantedPermissions, pageId: acct.pageId, externalId: acct.externalId, connectionStatus: effConn, tokenHealth: effTok },
   }, live) : null;
   const EXP_LABEL: Record<string, string> = { blocked: t.cc.expBlocked, dry_run: t.cc.expDryRun, live_possible: t.cc.expLivePossible };
   const EXP_TONE: Record<string, string> = { blocked: "ok", dry_run: "warn", live_possible: "danger" };
@@ -87,9 +100,12 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   const showLiveForm = decision.showLiveForm;
   const showRetry = showLiveForm && lastExec?.status === "failed";
   const isDev = process.env.NODE_ENV !== "production";
-  // V1.27B — a token_expired failure must show a reconnect CTA and block retry.
-  const tokenExpired = lastExec?.status === "failed" && (lastExec.reason === "token_expired" || lastExec.providerErrorCode === "token_expired")
-    || autoExec?.status === "failed" && (autoExec.reason === "token_expired" || autoExec.providerErrorCode === "token_expired");
+  // V1.27B/D — show a reconnect CTA only when the account is ACTUALLY unhealthy now.
+  // A self-healed (connected/ok) account must never show a stale reconnect CTA.
+  const accountUnhealthyNow = effConn !== "connected" || effTok === "expired" || effTok === "invalid" || effTok === "revoked";
+  const tokenExpired = accountUnhealthyNow && (
+    (lastExec?.status === "failed" && (lastExec.reason === "token_expired" || lastExec.providerErrorCode === "token_expired"))
+    || (autoExec?.status === "failed" && (autoExec.reason === "token_expired" || autoExec.providerErrorCode === "token_expired")));
   const reconnectHref = acct ? `/api/connectors/meta/start?brandId=${q.brandId}&accountId=${acct.id}` : "/dashboard/accounts";
   const R = ({ ok, label }: { ok: boolean; label: string }) => (
     <li className="flex items-center gap-1.5">{ok ? "✅" : "⛔"} <span className={ok ? "" : "text-[var(--color-muted)]"}>{label}</span></li>

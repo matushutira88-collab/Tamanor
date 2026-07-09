@@ -477,9 +477,9 @@ async function persistItem(
         mode: matchedPolicy.mode, trigger: "autonomous",
         account: {
           status: account.status as unknown as string, health: account.health as unknown as string,
-          grantedPermissions: account.grantedPermissions, accessToken: account.accessToken,
+          grantedPermissions: account.grantedPermissions, accessToken: decryptToken(account.longLivedToken ?? account.accessToken) ?? null,
           pageId: account.pageId, externalId: account.externalId,
-          tokenExpiresAt: account.tokenExpiresAt, needsReconnect: account.lastError === "token_expired",
+          tokenExpiresAt: account.tokenExpiresAt, needsReconnect: account.connectionStatus === "needs_reconnect" || account.tokenHealth === "expired" || account.tokenHealth === "invalid" || account.tokenHealth === "revoked" || account.lastError === "token_expired",
           connectionStatus: account.connectionStatus, tokenHealth: account.tokenHealth,
         },
         requestedBy: "system",

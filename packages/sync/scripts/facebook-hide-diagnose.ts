@@ -11,6 +11,7 @@
  */
 import { prisma, decryptToken } from "@guardora/db";
 import { GraphFacebookHideTransport } from "@guardora/connectors";
+import { checkAccountToken } from "../src/connection-manager";
 
 function argOf(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -62,6 +63,9 @@ async function main() {
   } else {
     console.log("GET comment         :", token ? (expired ? "skipped (token expired)" : "skipped (no comment id)") : "skipped (no token)");
   }
+  // V1.27D — repair a stale false-expired connection row when the Page token works.
+  const repaired = await checkAccountToken(acct.id);
+  console.log("connection (now)    :", `${repaired.connectionStatus} / token=${repaired.tokenHealth}`);
   console.log("NOTE                : diagnostic only — no hide was performed.");
 
   await prisma.$disconnect();

@@ -132,10 +132,12 @@ export class GraphFacebookHideTransport implements FacebookHideTransport {
     return this.post(commentId, accessToken, false);
   }
   private classifyErr(status: number, code?: number): string {
+    // Conservative (V1.27D): only a genuine OAuth error kills the token. An
+    // ambiguous 400 without an OAuth code is "generic" — never a false token death.
     if (status === 429 || code === 4 || code === 17 || code === 32 || code === 613) return "rate_limit";
     if (code === 190) return "token_expired";
+    if (code === 467) return "revoked";
     if (code === 10 || code === 200 || code === 803) return "permission";
-    if (status === 400) return "token_invalid";
     if (status === 403) return "permission";
     return "generic";
   }

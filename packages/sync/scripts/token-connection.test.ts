@@ -10,9 +10,20 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { prisma, metaConnectedAccountFields } from "@guardora/db";
-import { MockFacebookHideTransport } from "@guardora/connectors";
-import { attemptFacebookHide, type HideContext } from "../src/live-actions";
+import { prisma, metaConnectedAccountFields, encryptToken, decryptToken } from "@guardora/db";
+import { MockFacebookHideTransport, type FacebookHideTransport, type HideTransportResult, type CommentState, type PageTokenState } from "@guardora/connectors";
+
+// Captures the exact token handed to Graph (to prove it is DECRYPTED, not the stored tag).
+class CapturingTransport implements FacebookHideTransport {
+  readonly name = "capture";
+  readonly calls: { op: "hide" | "unhide"; commentId: string }[] = [];
+  seenTokens: string[] = [];
+  async hide(commentId: string, token: string): Promise<HideTransportResult> { this.seenTokens.push(token); this.calls.push({ op: "hide", commentId }); return { ok: true, responseCode: "200" }; }
+  async unhide(commentId: string, token: string): Promise<HideTransportResult> { this.seenTokens.push(token); this.calls.push({ op: "unhide", commentId }); return { ok: true, responseCode: "200" }; }
+  async getCommentState(_c: string, token: string): Promise<CommentState> { this.seenTokens.push(token); return { ok: true, canHide: true, isHidden: false }; }
+  async getPageTokenState(pageId: string, token: string): Promise<PageTokenState> { this.seenTokens.push(token); return { ok: true, pageId }; }
+}
+import { attemptFacebookHide, predictHideOutcome, type HideContext } from "../src/live-actions";
 import { checkAccountToken } from "../src/connection-manager";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -79,15 +90,21 @@ async function run() {
     // 4) reconnect clears token_expired/requiresReconnectReason.
     check("4) reconnect clears token errors", fields.lastError === null && fields.requiresReconnectReason === null);
 
-    // 5) hide preflight blocks needs_reconnect (no Graph hide call).
-    const t5 = new MockFacebookHideTransport({ ok: true });
+    // 5) stale needs_reconnect + fresh page check FAILS → blocked/reconnect_required, no hide.
+    const t5 = new MockFacebookHideTransport({ ok: true }, { pageToken: { ok: false, errorCode: "token_expired" } });
     const r5 = await attemptFacebookHide(ctx(acct.id, { account: { connectionStatus: "needs_reconnect", tokenHealth: "invalid" } }), { config: CFG, transport: t5, liveAttempt: true });
-    check("5) preflight blocks needs_reconnect", r5.status === "blocked" && r5.reason === "reconnect_required" && t5.calls.length === 0, `${r5.status}/${r5.reason}`);
+    check("5) needs_reconnect + failed revalidation → blocked/reconnect_required", r5.status === "blocked" && r5.reason === "reconnect_required" && t5.calls.length === 0, `${r5.status}/${r5.reason}`);
 
-    // 6) hide preflight blocks tokenHealth != ok.
+    // 5b) V1.27D — stale expired row BUT fresh page check SUCCEEDS → repaired → hide executes.
+    const t5b = new MockFacebookHideTransport({ ok: true }, { pageToken: { ok: true, pageId: "TOK_PAGE", pageName: "Konfigurátor" } });
+    const r5b = await attemptFacebookHide(ctx(acct.id, { account: { connectionStatus: "needs_reconnect", tokenHealth: "expired" } }), { config: CFG, transport: t5b, liveAttempt: true });
+    const heal = await prisma.connectedAccount.findUnique({ where: { id: acct.id }, select: { connectionStatus: true, tokenHealth: true, lastSuccessfulGraphCheckAt: true } });
+    check("5b) stale expired + fresh token OK → self-healed, hide executed", r5b.status === "executed" && t5b.calls.some((c) => c.op === "hide") && heal?.connectionStatus === "connected" && heal?.tokenHealth === "ok", `${r5b.status}/${heal?.tokenHealth}`);
+
+    // 6) tokenHealth expired + NO token (cannot revalidate) → blocked/token_not_healthy.
     const t6 = new MockFacebookHideTransport({ ok: true });
-    const r6 = await attemptFacebookHide(ctx(acct.id, { account: { connectionStatus: "connected", tokenHealth: "expired" } }), { config: CFG, transport: t6, liveAttempt: true });
-    check("6) preflight blocks tokenHealth != ok", r6.status === "blocked" && r6.reason === "token_not_healthy" && t6.calls.length === 0, `${r6.reason}`);
+    const r6 = await attemptFacebookHide(ctx(acct.id, { account: { connectionStatus: "connected", tokenHealth: "expired", accessToken: null } }), { config: CFG, transport: t6, liveAttempt: true });
+    check("6) tokenHealth != ok + unverifiable → blocked/token_not_healthy", r6.status === "blocked" && r6.reason === "token_not_healthy" && t6.calls.length === 0, `${r6.reason}`);
 
     // 7) the real-time comment/token check runs before the hide (token error → reconnect, no POST).
     const t7 = new MockFacebookHideTransport({ ok: true }, { comment: { ok: false, errorCode: "token_expired" } });
@@ -105,10 +122,10 @@ async function run() {
     const r10 = await attemptFacebookHide(ctx(acct.id), { config: CFG, transport: t10, liveAttempt: true });
     check("10) is_hidden=true → already_hidden (no POST)", r10.status === "executed" && r10.reason === "already_hidden" && t10.calls.length === 0, `${r10.status}/${r10.reason}`);
 
-    // 14) autonomous hide blocked when token unhealthy.
-    const t14 = new MockFacebookHideTransport({ ok: true });
-    const r14 = await attemptFacebookHide(ctx(acct.id, { trigger: "autonomous", mode: "autonomous", account: { connectionStatus: "connected", tokenHealth: "invalid" } }), { config: CFG, transport: t14, liveAttempt: false });
-    check("14) autonomous hide blocked when token unhealthy", r14.status === "blocked" && r14.reason === "token_not_healthy" && t14.calls.length === 0, `${r14.reason}`);
+    // 14) autonomous hide blocked when token unhealthy + fresh check fails.
+    const t14 = new MockFacebookHideTransport({ ok: true }, { pageToken: { ok: false, errorCode: "token_invalid" } });
+    const r14 = await attemptFacebookHide(ctx(acct.id, { trigger: "autonomous", mode: "autonomous", account: { connectionStatus: "needs_reconnect", tokenHealth: "invalid" } }), { config: CFG, transport: t14, liveAttempt: false });
+    check("14) autonomous hide blocked when token unhealthy", r14.status === "blocked" && r14.reason === "reconnect_required" && t14.calls.length === 0, `${r14.reason}`);
 
     // 15) token never logged in rows / audit.
     const rows = JSON.stringify(await prisma.platformActionExecution.findMany({ where: { connectedAccountId: acct.id } }));
@@ -120,8 +137,46 @@ async function run() {
     const r16 = await attemptFacebookHide(ctx(acct.id, { platform: "instagram_business", account: { connectionStatus: "connected", tokenHealth: "ok" } }), { config: CFG, transport: t16, liveAttempt: true });
     check("16) Instagram blocked; only hide ops used", r16.status === "blocked" && t16.calls.length === 0, r16.reason);
 
-    // Source assertions (9/11/12/13).
+    // RT) V1.27D runtime-order regression: a historical blocked/reconnect_required row +
+    // a stale account row, but a FRESH page token check succeeds → live hide EXECUTES,
+    // never returns the old blocked/reconnect_required.
+    await prisma.connectedAccount.update({ where: { id: acct.id }, data: { connectionStatus: "needs_reconnect", tokenHealth: "expired", health: "error", requiresReconnectReason: "token_expired" } });
+    await prisma.platformActionExecution.create({ data: { tenantId: T, brandId: brand.id, itemId: "CN_RT", queueItemId: "CN_RTQ", policyId: "P_pol", connectedAccountId: acct.id, platform: "facebook_page", actionType: "hide_comment", requestedBy: "user", trigger: "approval", status: "blocked", reason: "reconnect_required" } });
+    const okAll = new MockFacebookHideTransport({ ok: true, responseCode: "200" }, { pageToken: { ok: true, pageId: "TOK_PAGE", pageName: "Konfigurátor" }, comment: { ok: true, canHide: true, isHidden: false } });
+    const rRT = await attemptFacebookHide(ctx(acct.id, { itemId: "CN_RT", queueItemId: "CN_RTQ", account: { connectionStatus: "needs_reconnect", tokenHealth: "expired" } }), { config: CFG, transport: okAll, liveAttempt: true });
+    const rtRow = await prisma.platformActionExecution.findFirst({ where: { tenantId: T, queueItemId: "CN_RTQ", status: "executed" } });
+    check("RT) blocked row + stale account + fresh token OK → executed (not reconnect_required)", rRT.status === "executed" && rRT.reason === "live_hide_executed" && rtRow?.executedAt != null && okAll.calls.some((c) => c.op === "hide"), `${rRT.status}/${rRT.reason}`);
+
+    // UI) predictHideOutcome after a fresh page check repairs the row → live_possible.
+    await prisma.connectedAccount.update({ where: { id: acct.id }, data: { connectionStatus: "needs_reconnect", tokenHealth: "expired", health: "error" } });
+    const repaired = await checkAccountToken(acct.id, { transport: new MockFacebookHideTransport({ ok: true }, { pageToken: { ok: true, pageId: "TOK_PAGE" } }) });
+    const pred = predictHideOutcome({
+      tenantId: T, brandId: "B", itemId: "X", queueItemId: "Y", policyId: "P", connectedAccountId: acct.id, platform: "facebook_page",
+      externalCommentId: "C1", externalPostId: null, matchedCategory: "scam", confidence: 0.95, riskLevel: "critical", mode: "approval", trigger: "approval",
+      account: { status: "active", health: repaired.tokenHealth === "ok" ? "healthy" : "error", grantedPermissions: ["pages_manage_engagement"], pageId: "TOK_PAGE", externalId: "TOK_PAGE", connectionStatus: repaired.connectionStatus, tokenHealth: repaired.tokenHealth },
+    }, CFG);
+    check("UI) stale account + fresh page ok → predict live_possible", pred.expected === "live_possible", `${pred.expected}/${pred.reason}`);
+
+    // ENC) V1.27D runtime bug: the stored Page token is TAGGED/encrypted; the hide path
+    // must send the DECRYPTED token to Graph, else Graph rejects it (code 190) → false
+    // reconnect_required. This is the true cause of the real-UI failure.
+    const RAW = "EAArealpagetoken_abc123";
+    const stored = encryptToken(RAW);
+    check("ENC0) storage tags the token; decrypt strips it", stored !== RAW && decryptToken(stored) === RAW);
+    const cap = new CapturingTransport();
+    // The caller (web action) is responsible for decrypting; simulate that contract.
+    const rEnc = await attemptFacebookHide(ctx(acct.id, { itemId: "ENC", queueItemId: "ENCQ", account: { accessToken: decryptToken(stored) } }), { config: CFG, transport: cap, liveAttempt: true });
+    check("ENC1) Graph receives the DECRYPTED token and hide executes", rEnc.status === "executed" && cap.seenTokens.length > 0 && cap.seenTokens.every((t) => t === RAW) && !cap.seenTokens.some((t) => t.startsWith("plain:")), `${rEnc.status}/tokensOk=${cap.seenTokens.every((t) => t === RAW)}`);
+    // A tagged token would fail — prove the transport never receives the tag.
+    check("ENC2) tagged token never reaches Graph", !cap.seenTokens.includes(stored));
+
+    // Source assertions (9/11/12/13 + page self-heal wiring + token decrypt in the real path).
     const aq = readSrc("apps/web/src/app/dashboard/action-queue/[id]/page.tsx");
+    check("UI2) page self-heals via checkAccountToken and passes it to predict", aq.includes("checkAccountToken") && aq.includes("connectionStatus: effConn"));
+    const actionsSrc = readSrc("apps/web/src/app/dashboard/action-queue/[id]/actions.ts");
+    check("ENC3) web hide action decrypts the token before the Graph call", /decryptToken\(acct\.longLivedToken \?\? acct\.accessToken\)/.test(actionsSrc) && actionsSrc.includes("accessToken: pageToken"));
+    const syncSrc = readSrc("packages/sync/src/index.ts");
+    check("ENC4) autonomous path decrypts the token before the Graph call", /accessToken: decryptToken\(account\.longLivedToken \?\? account\.accessToken\)/.test(syncSrc));
     check("9) can_hide=false hides the live button", aq.includes("canHideFalse") && /liveMode = decision\.primary === "live_hide" && !canHideFalse/.test(aq));
     const diag = readSrc("packages/sync/scripts/facebook-token-diagnose.ts");
     check("11) page token diagnosis does not rely on /me/accounts", diag.includes("getPageTokenState") && diag.includes("page_token_ok") && /\/me\/accounts.*secondary|secondary.*\/me\/accounts|user token check/i.test(diag));
