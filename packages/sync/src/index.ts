@@ -22,7 +22,8 @@ import {
   ContentKind,
   decryptToken,
 } from "@guardora/db";
-import { classifyHybrid, buildIntelFromHybrid, evaluateAutoProtect, type ClassifierRule } from "@guardora/ai";
+import { classifyHybrid, buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, type ClassifierRule } from "@guardora/ai";
+import { attemptFacebookHide } from "./live-actions";
 import {
   ConnectorMode as CoreMode,
   Platform as CorePlatform,
@@ -93,10 +94,15 @@ export async function runReadOnlySync(
     return zero(false, `Sync is not available in "${account.mode}" mode.`);
   }
 
-  // A real (read_only) connection still uses the MOCK fallback unless live sync
-  // is explicitly enabled. This is never a fake success — it is clearly labelled.
+  // Mock fetch is ONLY for placeholder (demo) accounts. A real (read_only)
+  // account is NEVER injected with mock data — if live sync isn't enabled it is
+  // skipped cleanly. This keeps real testing free of mock content.
   const meta = getMetaConfig();
-  const useMock = !isRealConnection(mode) || !meta.liveSync;
+  const isReal = isRealConnection(mode);
+  const useMock = !isReal;
+  if (isReal && !meta.liveSync) {
+    return zero(false, "Live Meta sync is not enabled (META_LIVE_SYNC=false). No mock data is injected for a real account.");
+  }
 
   const run = await prisma.syncRun.create({
     data: {
@@ -433,6 +439,53 @@ async function persistItem(
     await audit(account, "auto_protect.would_auto_hide", {
       itemId: repItem.id, category: autoProtect.matchedCategory, mode: autoProtect.policyMode, executed: false,
     });
+
+    // Controlled live-hide attempt ONLY when the category is in a live policy mode.
+    // Default policies are auto_hide_shadow → this is skipped (pure shadow, 0 executions).
+    const matchedPolicy = policies.find((p) => p.category === autoProtect.matchedCategory);
+    const livePolicy = matchedPolicy && (matchedPolicy.mode === "auto_hide_live" || matchedPolicy.mode === "auto_hide_live_reserved");
+    if (livePolicy) {
+      await attemptFacebookHide({
+        tenantId: account.tenantId, brandId: account.brandId, itemId: repItem.id,
+        connectedAccountId: account.id, platform: account.platform,
+        externalCommentId: item.externalId, externalPostId: item.externalParentId ?? null,
+        decision: autoProtect.decision, matchedCategory: autoProtect.matchedCategory,
+        confidence: autoProtect.confidence, riskLevel: hybrid.level, policyMode: matchedPolicy.mode,
+        account: {
+          status: account.status as unknown as string, health: account.health as unknown as string,
+          grantedPermissions: account.grantedPermissions, accessToken: account.accessToken,
+          pageId: account.pageId, externalId: account.externalId,
+        },
+        requestedBy: "system", trigger: "auto_protect",
+      });
+    }
+  }
+
+  // Control Center: evaluate the item against Control Policies → Action Queue +
+  // incidents. Never executes a live action (autonomous → gated candidate).
+  const controlPolicies = await prisma.controlPolicy.findMany({
+    where: { brandId: account.brandId, tenantId: account.tenantId, isActive: true },
+    select: { category: true, mode: true, minConfidence: true, isActive: true },
+  });
+  if (controlPolicies.length > 0) {
+    const decision = evaluateControl(
+      { text: item.text, riskSignals: hybrid.explanation.riskSignals, categories: hybrid.categories, sentiment: hybrid.sentiment, riskLevel: hybrid.level, confidence: hybrid.confidence },
+      controlPolicies,
+    );
+    await prisma.actionQueueItem.upsert({
+      where: { itemId: repItem.id },
+      create: { tenantId: account.tenantId, brandId: account.brandId, itemId: repItem.id, category: decision.matchedCategory, confidence: decision.confidence, proposedAction: decision.proposedAction, queueState: decision.queueState, reason: decision.reason, safetyBlocked: decision.safetyBlocked, wouldExecute: decision.wouldExecute },
+      update: { category: decision.matchedCategory, confidence: decision.confidence, proposedAction: decision.proposedAction, queueState: decision.queueState, reason: decision.reason, safetyBlocked: decision.safetyBlocked, wouldExecute: decision.wouldExecute },
+    });
+    if (decision.raisesIncident && (hybrid.level === "high" || hybrid.level === "critical")) {
+      const open = await prisma.incident.findFirst({ where: { brandId: account.brandId, category: decision.matchedCategory, status: "open" } });
+      if (open) {
+        if (!open.relatedItemIds.includes(repItem.id)) await prisma.incident.update({ where: { id: open.id }, data: { relatedItemIds: { push: repItem.id } } });
+      } else {
+        const inc = await prisma.incident.create({ data: { tenantId: account.tenantId, brandId: account.brandId, title: `${decision.matchedCategory.replace(/_/g, " ")} detected`, category: decision.matchedCategory, severity: hybrid.level === "critical" ? "critical" : "high", status: "open", sourcePlatform: account.platform, relatedItemIds: [repItem.id] } });
+        await audit(account, "incident.created", { incidentId: inc.id, category: decision.matchedCategory });
+      }
+    }
   }
 }
 
@@ -608,3 +661,4 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
 }
 
 export { mockMetaFetch } from "./mock-fetch";
+export * from "./live-actions";

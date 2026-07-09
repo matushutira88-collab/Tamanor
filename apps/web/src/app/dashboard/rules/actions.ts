@@ -7,7 +7,8 @@ import {
   RuleCategory,
   assertCan,
 } from "@guardora/core";
-import { normalize } from "@guardora/ai";
+import { normalize, LIVE_ELIGIBLE_CATEGORIES } from "@guardora/ai";
+import { getLiveActionsConfig } from "@guardora/config";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
@@ -232,10 +233,15 @@ export async function updateAutoProtectPolicy(formData: FormData): Promise<void>
   const brandId = String(formData.get("brandId") ?? "");
   const category = String(formData.get("category") ?? "");
   let mode = String(formData.get("mode") ?? "monitor");
-  // Reserved live mode can never be selected; fall back to the safe shadow mode.
-  if (!(SELECTABLE_MODES as readonly string[]).includes(mode)) mode = "monitor";
+  const liveCfg = getLiveActionsConfig();
+  // Live mode is only permitted when globally enabled AND the category is
+  // live-eligible AND it is not normal_criticism. Otherwise fall back safely.
+  const liveAllowed = liveCfg.liveEnabled && LIVE_ELIGIBLE_CATEGORIES.has(category as never) && category !== "normal_criticism";
+  const selectable = liveAllowed ? [...SELECTABLE_MODES, "auto_hide_live_reserved"] : [...SELECTABLE_MODES];
+  if (!selectable.includes(mode)) mode = "monitor";
   // Safety floor: normal criticism must never be auto-hidden.
-  if (category === "normal_criticism" && mode === "auto_hide_shadow") mode = "approval";
+  if (category === "normal_criticism" && (mode === "auto_hide_shadow" || mode === "auto_hide_live_reserved")) mode = "approval";
+  const liveEnabling = mode === "auto_hide_live_reserved";
 
   const minConfidenceRaw = Number(formData.get("minConfidence") ?? "0.7");
   const minConfidence = Number.isFinite(minConfidenceRaw) ? Math.min(1, Math.max(0, minConfidenceRaw)) : 0.7;
@@ -252,11 +258,11 @@ export async function updateAutoProtectPolicy(formData: FormData): Promise<void>
 
   await writeAudit({
     session,
-    event: "auto_protect_policy.updated",
+    event: liveEnabling ? "policy.live_enabled" : "auto_protect_policy.updated",
     brandId,
     targetType: "auto_protect_policy",
     targetId: `${brandId}:${category}`,
-    metadata: { category, mode, minConfidence, isActive },
+    metadata: { category, mode, minConfidence, isActive, live: liveEnabling },
   });
 
   backWithNotice(`Auto-Protect updated for ${category}.`);

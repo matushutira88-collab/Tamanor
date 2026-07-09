@@ -64,6 +64,7 @@ export default async function InboxItemPage({
   if (!item) notFound();
 
   const autoDecision = await prisma.autoProtectDecision.findUnique({ where: { itemId: item.id } });
+  const lastAction = await prisma.platformActionExecution.findFirst({ where: { itemId: item.id }, orderBy: { createdAt: "desc" }, select: { status: true, reason: true } });
 
   const meta = PLATFORM_META[item.platform as Platform];
   const notice = sp.notice;
@@ -395,7 +396,25 @@ export default async function InboxItemPage({
                   <p className="mt-1 text-[var(--color-muted)]">{t.autoProtect.shadowExplain}</p>
                 </div>
               ) : null}
-              <p className="mt-3 text-[11px] text-[var(--color-muted)]">✅ {t.autoProtect.noLiveAction} · {t.autoProtect.shadowOnly}</p>
+              <div className="mt-3 border-t border-[var(--color-border)] pt-2 text-[11px]">
+                {(() => {
+                  const st = lastAction?.status;
+                  const label = st === "executed" ? t.autoProtect.liveStateExecuted
+                    : st === "dry_run" ? t.autoProtect.liveStateDryRun
+                    : st === "blocked" || st === "failed" ? t.autoProtect.liveStateBlocked
+                    : t.autoProtect.liveStateShadow;
+                  const tone = st === "executed" ? "danger" : st === "dry_run" ? "warn" : "neutral";
+                  return (
+                    <>
+                      <span className="mr-1"><Badge tone={tone}>{label}</Badge></span>
+                      {lastAction && st !== "executed" ? (
+                        <span className="text-[var(--color-muted)]">{t.autoProtect.liveWhyNot}: {(t.autoProtect.blockReason as Record<string, string>)[lastAction.reason ?? ""] ?? lastAction.reason}</span>
+                      ) : null}
+                    </>
+                  );
+                })()}
+                <p className="mt-1.5 text-[var(--color-muted)]">✅ {t.autoProtect.noLiveAction} · {t.autoProtect.shadowOnly}</p>
+              </div>
             </div>
           ) : null}
 

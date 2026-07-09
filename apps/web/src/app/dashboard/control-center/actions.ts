@@ -1,0 +1,74 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { Permission, assertCan } from "@guardora/core";
+import { CONTROL_MODES, NEVER_AUTONOMOUS, presetPolicies, type PresetName } from "@guardora/ai";
+import { requireSession } from "@/server/auth";
+import { prisma } from "@/server/db";
+import { writeAudit } from "@/server/audit";
+
+function back(notice: string): never {
+  revalidatePath("/dashboard/control-center");
+  redirect(`/dashboard/control-center?kind=ok&notice=${encodeURIComponent(notice)}`);
+}
+
+async function assertBrand(tenantId: string, brandId: string) {
+  const brand = await prisma.brand.findFirst({ where: { id: brandId, tenantId }, select: { id: true } });
+  if (!brand) throw new Error("Brand not found");
+}
+
+/** Update one Control Policy (Autonomy Matrix cell). Safety-clamped. Audited. */
+export async function updateControlPolicy(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.RuleManage);
+
+  const brandId = String(formData.get("brandId") ?? "");
+  const category = String(formData.get("category") ?? "");
+  let mode = String(formData.get("mode") ?? "monitor");
+  if (!(CONTROL_MODES as readonly string[]).includes(mode)) mode = "monitor";
+  // Hard safety: never-autonomous categories can be at most approval.
+  if (NEVER_AUTONOMOUS.has(category as never) && mode === "autonomous") mode = "approval";
+  const minConfidenceRaw = Number(formData.get("minConfidence") ?? "0.8");
+  const minConfidence = Number.isFinite(minConfidenceRaw) ? Math.min(1, Math.max(0, minConfidenceRaw)) : 0.8;
+
+  await assertBrand(session.tenantId, brandId);
+  await prisma.controlPolicy.upsert({
+    where: { brandId_platform_sourceType_category: { brandId, platform: "any", sourceType: "comment", category } },
+    create: { tenantId: session.tenantId, brandId, platform: "any", sourceType: "comment", category, mode, minConfidence, isActive: true, createdBy: session.userId },
+    update: { mode, minConfidence, isActive: true },
+  });
+
+  await writeAudit({
+    session,
+    event: mode === "autonomous" ? "autonomy_mode.changed" : "control_policy.updated",
+    brandId, targetType: "control_policy", targetId: `${brandId}:${category}`,
+    metadata: { category, mode, minConfidence, autonomous: mode === "autonomous" },
+  });
+  back(`Control policy updated for ${category}.`);
+}
+
+/** Apply a protection preset — creates/updates policies only, no fake content. */
+export async function applyPreset(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.RuleManage);
+
+  const brandId = String(formData.get("brandId") ?? "");
+  const preset = String(formData.get("preset") ?? "") as PresetName;
+  if (!["conservative", "balanced", "aggressive"].includes(preset)) throw new Error("Unknown preset");
+  await assertBrand(session.tenantId, brandId);
+
+  for (const p of presetPolicies(preset as Exclude<PresetName, "custom">)) {
+    await prisma.controlPolicy.upsert({
+      where: { brandId_platform_sourceType_category: { brandId, platform: "any", sourceType: "comment", category: p.category } },
+      create: { tenantId: session.tenantId, brandId, platform: "any", sourceType: "comment", category: p.category, mode: p.mode, minConfidence: 0.8, isActive: true, createdBy: session.userId },
+      update: { mode: p.mode },
+    });
+  }
+
+  await writeAudit({
+    session, event: "preset.applied", brandId, targetType: "control_policy", targetId: brandId,
+    metadata: { preset },
+  });
+  back(`Applied the ${preset} preset.`);
+}

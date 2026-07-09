@@ -51,6 +51,25 @@ const EnvSchema = z.object({
   AI_RISK_PROVIDER_ENABLED: boolFromEnv,
   AI_RISK_PROVIDER: z.string().default("none"),
   AI_RISK_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.7),
+
+  /**
+   * Live platform actions (controlled Facebook comment hide). ALL fail closed:
+   * live execution requires LIVE_ACTIONS_ENABLED=true AND FACEBOOK_HIDE_ENABLED=true
+   * AND LIVE_ACTIONS_DRY_RUN=false. Default OFF/dry-run — no live action.
+   */
+  /**
+   * Data mode for real testing. `real` = only real connected accounts sync and
+   * only real data is shown (demo/mock hidden). `demo` = seeded demo dataset.
+   */
+  GUARDORA_DATA_MODE: z.enum(["real", "demo"]).default("demo"),
+
+  LIVE_ACTIONS_ENABLED: boolFromEnv,
+  FACEBOOK_HIDE_ENABLED: boolFromEnv,
+  // Defaults TRUE (fail-closed): only an explicit "false"/"0" turns dry-run off.
+  LIVE_ACTIONS_DRY_RUN: z
+    .string()
+    .optional()
+    .transform((v) => !(v === "false" || v === "0")),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(4),
 
   // Meta (Facebook Page + Instagram Business) — official OAuth only.
@@ -88,6 +107,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): GuardoraEnv {
   return cached;
 }
 
+/** Data mode: `real` (real accounts only) or `demo` (seeded dataset). */
+export function getDataMode(source: NodeJS.ProcessEnv = process.env): "real" | "demo" {
+  return loadEnv(source).GUARDORA_DATA_MODE;
+}
+
 /** Automatic read-only sync configuration for UI + worker. */
 export function getAutoSyncConfig(source: NodeJS.ProcessEnv = process.env): {
   enabled: boolean;
@@ -95,6 +119,29 @@ export function getAutoSyncConfig(source: NodeJS.ProcessEnv = process.env): {
 } {
   const env = loadEnv(source);
   return { enabled: env.AUTO_SYNC_ENABLED, intervalSeconds: env.AUTO_SYNC_INTERVAL_SECONDS };
+}
+
+/**
+ * Live-actions configuration (controlled Facebook hide). Fail-closed: `canExecuteLive`
+ * is true only when explicitly enabled AND dry-run is explicitly disabled.
+ */
+export function getLiveActionsConfig(source: NodeJS.ProcessEnv = process.env): {
+  liveEnabled: boolean;
+  facebookHideEnabled: boolean;
+  dryRun: boolean;
+  /** True only when a real Graph hide may run. */
+  canExecuteLive: boolean;
+} {
+  const env = loadEnv(source);
+  const liveEnabled = env.LIVE_ACTIONS_ENABLED;
+  const facebookHideEnabled = env.FACEBOOK_HIDE_ENABLED;
+  const dryRun = env.LIVE_ACTIONS_DRY_RUN;
+  return {
+    liveEnabled,
+    facebookHideEnabled,
+    dryRun,
+    canExecuteLive: liveEnabled && facebookHideEnabled && !dryRun,
+  };
 }
 
 /** Comment translation configuration (provider off by default). */

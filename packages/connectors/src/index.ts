@@ -19,3 +19,5 @@ export { GoogleBusinessConnector } from "./adapters/google-business-connector";
 export * from "./meta/oauth";
 export * from "./meta/graph-client";
 export * from "./meta/discovery";
+// Controlled Facebook comment hide (the only live action; default off)
+export * from "./meta/facebook-hide";

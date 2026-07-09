@@ -135,6 +135,48 @@ See [LIVE_META_TEST.md](./LIVE_META_TEST.md).
       automatic sync, last manual sync, next-sync estimate, last error.
 - [ ] Follow `docs/REAL_META_TEST_CHECKLIST.md`; live actions executed = 0.
 
+## C10. Controlled Facebook auto-hide gates (V1.21B)
+
+- [ ] `pnpm fbhide:test` passes (all safety gates block; dry-run never calls the
+      transport; live-with-mock executes once; failures never fake success; no
+      tokens in rows; audit written; dry-run counted separately from executed).
+- [ ] Default env → **Live actions executed = 0** (dashboard card + DB).
+- [ ] Inbox Auto-Protect card shows the live state (Shadow / Dry-run / Blocked /
+      Executed) + reason when not executed.
+- [ ] Accounts shows **Hide comment capability**: Available / Missing permissions
+      / Disabled by env (Facebook Page only).
+- [ ] Rules live-mode option appears ONLY when `LIVE_ACTIONS_ENABLED=true`, with a
+      warning banner; `normal_criticism` can never be set to live.
+
+## C11. Real test mode + demo cleanup (V1.21C)
+
+- [ ] `pnpm realmode:test` passes (real/demo separation, autosync excludes mock,
+      cleanup never targets the real account/protected page, brandWhere real-only).
+- [ ] `pnpm real:cleanup-demo` (dry-run) prints a summary and deletes nothing;
+      keeps the real Konfigurátor page (`1165524636643112`).
+- [ ] With `GUARDORA_DATA_MODE=real`: dashboard/inbox/reports/accounts show a
+      **"Real test mode"** banner and **only real data** (no Demo Workspace, no
+      Northwind Coffee, no `[MOCK]`).
+- [ ] Worker log shows `dataMode` + `skippedDemo` when real; only active accounts
+      auto-sync.
+- [ ] Accounts overview: real accounts first, "Open account detail" CTA to
+      `/dashboard/accounts/[id]`; auto-sync cadence text ("every N seconds").
+- [ ] Real mode with no real data → empty state "No real synced comments yet."
+- [ ] Live actions = 0; hide/reply/delete disabled.
+
+## C12. Real-only reset (V1.21D)
+
+- [ ] `pnpm reset:test` passes (mock/demo removed, protected page + real synced
+      items kept, Northwind/Demo Workspace gone, mock accounts removed).
+- [ ] `pnpm real:reset-content` (dry-run) prints a summary, deletes nothing;
+      `REAL_RESET_CONFIRM=YES` applies it and keeps `1165524636643112`.
+- [ ] Default `pnpm db:seed` creates **no demo content** (workspace + dev user +
+      one empty brand + Auto-Protect policies only). `pnpm demo:seed` is separate.
+- [ ] After reset: no `[MOCK]`, no `mock_`, no Northwind Coffee, no Demo Workspace
+      in DB or UI. Accounts shows only the real Konfigurátor page.
+- [ ] Dashboard/Inbox/Reports show real data (or a real-only empty state).
+- [ ] Worker never mock-fetches a real account.
+
 ## D. i18n test
 
 - [ ] EN landing renders (`/`).

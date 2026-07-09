@@ -10,6 +10,7 @@ import { PageHeader, Badge, EmptyState, Tabs } from "@/components/dashboard/ui";
 import { PlatformIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { getRealModeFilter } from "@/server/data-mode";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -48,6 +49,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const priority = pick(Priority, sp.priority);
   const brandId = sp.brand || undefined;
   const ap = sp.ap || undefined;
+  const realMode = await getRealModeFilter(session.tenantId);
 
   // Auto-Protect filter → resolve matching reputation item ids (brand-scoped).
   let apItemIds: string[] | undefined;
@@ -61,6 +63,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
 
   const baseFilters = {
     tenantId: session.tenantId,
+    ...realMode.brandWhere,
     ...(platform ? { platform: platform as Platform } : {}),
     ...(risk ? { riskLevel: risk as RiskLevel } : {}),
     ...(priority ? { priority: priority as Priority } : {}),
@@ -69,7 +72,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   };
 
   const [brands, grouped, items] = await Promise.all([
-    prisma.brand.findMany({ where: { tenantId: session.tenantId }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } }),
+    prisma.brand.findMany({ where: { tenantId: session.tenantId, ...(realMode.isRealMode ? { id: { in: realMode.realBrandIds } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } }),
     prisma.reputationItem.groupBy({ by: ["status"], where: baseFilters, _count: true }),
     prisma.reputationItem.findMany({
       where: { ...baseFilters, status: { in: TAB_STATUSES[tab] } },

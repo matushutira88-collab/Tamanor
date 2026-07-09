@@ -24,7 +24,9 @@ import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { withEmoji } from "@/lib/enum-emoji";
 import { createRule, toggleRule, deleteRule, createMemoryRule, toggleMemoryRule, deleteMemoryRule, updateAutoProtectPolicy } from "./actions";
-import { AUTO_PROTECT_CATEGORIES } from "@guardora/ai";
+import { AUTO_PROTECT_CATEGORIES, LIVE_ELIGIBLE_CATEGORIES } from "@guardora/ai";
+import { getLiveActionsConfig } from "@guardora/config";
+import { getRealModeFilter } from "@/server/data-mode";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -61,8 +63,9 @@ export default async function RulesPage({
     label: tEnum(hdrT, "ruleCategory", v),
   }));
 
+  const realMode = await getRealModeFilter(session.tenantId);
   const brands = await prisma.brand.findMany({
-    where: { tenantId: session.tenantId },
+    where: { tenantId: session.tenantId, ...(realMode.isRealMode ? { id: { in: realMode.realBrandIds } } : {}) },
     orderBy: { createdAt: "asc" },
     include: { brandRules: { orderBy: { createdAt: "asc" } } },
   });
@@ -74,13 +77,14 @@ export default async function RulesPage({
   );
 
   const memoryRules = await prisma.brandRiskMemoryRule.findMany({
-    where: { tenantId: session.tenantId },
+    where: { tenantId: session.tenantId, ...realMode.brandWhere },
     orderBy: { createdAt: "desc" },
   });
 
   const autoPolicies = await prisma.brandAutoProtectPolicy.findMany({
     where: { tenantId: session.tenantId },
   });
+  const liveCfg = getLiveActionsConfig();
   const policyKey = (brandId: string, category: string) => `${brandId}:${category}`;
   const policyMap = new Map(autoPolicies.map((p) => [policyKey(p.brandId, p.category), p]));
 
@@ -291,6 +295,11 @@ export default async function RulesPage({
             <h2 className="text-lg font-semibold">🛡️ {hdrT.autoProtect.title}</h2>
             <p className="text-sm text-[var(--color-muted)]">{hdrT.autoProtect.subtitle}</p>
             <p className="mt-1 text-xs text-[var(--color-warn)]">⚠️ {hdrT.autoProtect.shadowExplain} · {hdrT.autoProtect.liveDisabled}</p>
+            {liveCfg.liveEnabled ? (
+              <div className="mt-2 rounded-lg border border-[var(--color-danger)] p-2 text-xs">
+                🚨 <span className="font-medium">{hdrT.autoProtect.liveBetaBanner}</span> {hdrT.autoProtect.liveWarning}
+              </div>
+            ) : null}
           </div>
           <div className="space-y-6">
             {brands.map((b) => (
@@ -323,8 +332,8 @@ export default async function RulesPage({
                               {manage ? (
                                 <>
                                   <select name="mode" defaultValue={p?.mode ?? "monitor"} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs">
-                                    {(["monitor", "approval", ...(isCriticism ? [] : ["auto_hide_shadow"])] as const).map((m) => (
-                                      <option key={m} value={m}>{tEnum(hdrT, "autoProtectMode", m)}</option>
+                                    {(["monitor", "approval", ...(isCriticism ? [] : ["auto_hide_shadow"]), ...(liveCfg.liveEnabled && !isCriticism && LIVE_ELIGIBLE_CATEGORIES.has(cat) ? ["auto_hide_live_reserved"] : [])] as const).map((m) => (
+                                      <option key={m} value={m}>{m === "auto_hide_live_reserved" ? hdrT.autoProtect.liveModeOption : tEnum(hdrT, "autoProtectMode", m)}</option>
                                     ))}
                                   </select>
                                   <input name="minConfidence" type="number" step="0.05" min="0" max="1" defaultValue={p?.minConfidence ?? 0.7} className="w-16 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs" />

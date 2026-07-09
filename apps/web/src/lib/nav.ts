@@ -1,6 +1,10 @@
 import type { Route } from "next";
 
 export type NavIcon =
+  | "command"
+  | "control"
+  | "queue"
+  | "incidents"
   | "dashboard"
   | "inbox"
   | "approvals"
@@ -33,6 +37,12 @@ export function navItem(href: string): NavItem {
 }
 
 export const DASHBOARD_NAV: NavItem[] = [
+  {
+    href: "/dashboard/command-center",
+    label: "Command Center",
+    description: "Control how your brand reacts online — in one place.",
+    icon: "command",
+  },
   {
     href: "/dashboard",
     label: "Dashboard",
@@ -71,6 +81,27 @@ export const DASHBOARD_NAV: NavItem[] = [
     description: "Deterministic brand policies layered on the AI Risk Engine.",
     icon: "rules",
     group: "Manage",
+  },
+  {
+    href: "/dashboard/control-center",
+    label: "Control Policies",
+    description: "Define what Guardora may do for each risk category and platform.",
+    icon: "control",
+    group: "Control",
+  },
+  {
+    href: "/dashboard/action-queue",
+    label: "Action Queue",
+    description: "Everything Guardora wants to do — suggested, pending, or shadow.",
+    icon: "queue",
+    group: "Control",
+  },
+  {
+    href: "/dashboard/incidents",
+    label: "Incidents",
+    description: "Crises, threats and coordinated attacks that need attention.",
+    icon: "incidents",
+    group: "Control",
   },
   {
     href: "/dashboard/insights",

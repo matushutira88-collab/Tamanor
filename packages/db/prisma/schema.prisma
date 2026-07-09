@@ -489,6 +489,72 @@ model BrandRiskMemoryRule {
   @@map("brand_risk_memory_rules")
 }
 
+/// Control Center policy — the unified source of truth for how a brand controls
+/// each content category per platform/source. Modes: monitor|assist|approval|
+/// autonomous. Autonomous is a gated candidate only (no live action by default).
+model ControlPolicy {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  brandId            String
+  connectedAccountId String?
+  platform           String   @default("any") // any | facebook_page | ...
+  sourceType         String   @default("comment") // comment|review|mention|message|post|rating
+  category           String
+  mode               String   @default("monitor") // monitor|assist|approval|autonomous
+  allowedActions     String[]
+  minConfidence      Float    @default(0.8)
+  isActive           Boolean  @default(true)
+  createdBy          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([brandId, platform, sourceType, category])
+  @@index([tenantId, brandId, isActive])
+  @@map("control_policies")
+}
+
+/// What Guardora wants to do for an item, within policy. Never a live action by
+/// default — see queueState. One active row per item.
+model ActionQueueItem {
+  id               String   @id @default(cuid())
+  tenantId         String
+  brandId          String
+  itemId           String   @unique
+  category         String
+  confidence       Float    @default(0)
+  proposedAction   String
+  queueState       String // suggested|approval_required|approved|rejected|blocked_by_safety|dry_run|executed|failed|rollback_needed|monitor|no_action
+  policyId         String?
+  reason           String?
+  safetyBlocked    Boolean  @default(false)
+  wouldExecute     Boolean  @default(false)
+  approvedByUserId String?
+  rejectedByUserId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId, brandId, queueState])
+  @@map("action_queue_items")
+}
+
+/// A reputation incident (crisis / threat / coordinated attack / legal / safety).
+model Incident {
+  id             String    @id @default(cuid())
+  tenantId       String
+  brandId        String
+  title          String
+  category       String
+  severity       String    @default("medium") // low|medium|high|critical
+  status         String    @default("open") // open|resolved
+  sourcePlatform String?
+  relatedItemIds String[]
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+
+  @@index([tenantId, brandId, status])
+  @@map("incidents")
+}
+
 /// Per-brand Auto-Protect policy: what to do for each harmful-content category.
 /// `auto_hide_shadow` computes a "would hide" decision only — NO platform action.
 /// `auto_hide_live_reserved` is reserved for a future action-enable phase and must
@@ -527,6 +593,38 @@ model AutoProtectDecision {
   @@index([tenantId, brandId])
   @@index([brandId, decision])
   @@map("auto_protect_decisions")
+}
+
+/// Record of a controlled platform-action attempt (Facebook comment hide only).
+/// Default env is fail-closed → status `blocked`/`dry_run`, never `executed`.
+/// NEVER stores tokens/secrets or raw sensitive provider payloads.
+model PlatformActionExecution {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  brandId              String
+  itemId               String
+  connectedAccountId   String
+  platform             String
+  actionType           String // hide_comment
+  requestedBy          String    @default("system") // system | user
+  trigger              String    @default("auto_protect") // auto_protect | manual_approval
+  status               String // blocked | dry_run | executed | failed | rollback_pending | rolled_back
+  reason               String?
+  policyCategory       String?
+  confidence           Float?
+  externalCommentId    String?
+  externalPostId       String?
+  providerResponseCode String?
+  providerErrorCode    String?
+  providerErrorMessage String? // sanitized only
+  createdAt            DateTime  @default(now())
+  executedAt           DateTime?
+  rolledBackAt         DateTime?
+
+  @@index([tenantId, brandId])
+  @@index([status])
+  @@index([itemId])
+  @@map("platform_action_executions")
 }
 
 /// Observability record for an external provider call (translation | ai_risk).

@@ -23,6 +23,7 @@ import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { withEmoji, ICON } from "@/lib/enum-emoji";
 import { prisma } from "@/server/db";
+import { getRealModeFilter } from "@/server/data-mode";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { bucketByDay } from "@/lib/trend";
 import { RISK_TONE } from "@/lib/ui-maps";
@@ -32,13 +33,14 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const session = await requireSession();
   const t = await getT();
-  const where = { tenantId: session.tenantId };
+  const realMode = await getRealModeFilter(session.tenantId);
+  const where = { tenantId: session.tenantId, ...realMode.brandWhere };
   const since30 = new Date(Date.now() - 30 * 86_400_000);
 
   const [
     received, highRisk, pending, connected, lastRun, risky, trendRows,
     riskGroups, platformGroups, catRows, syncRuns, incidents, accounts,
-    autoDecisionGroups, apCriticismCount,
+    autoDecisionGroups, apCriticismCount, actionExecGroups,
   ] = await Promise.all([
     prisma.reputationItem.count({ where }),
     prisma.reputationItem.count({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] } } }),
@@ -55,7 +57,13 @@ export default async function DashboardPage() {
     prisma.connectedAccount.findMany({ where: { ...where, status: { in: [ConnectorStatus.Active, ConnectorStatus.MockConnected] } }, select: { health: true } }),
     prisma.autoProtectDecision.groupBy({ by: ["decision"], where, _count: true }),
     prisma.autoProtectDecision.count({ where: { ...where, matchedCategory: "normal_criticism" } }),
+    prisma.platformActionExecution.groupBy({ by: ["status"], where, _count: true }),
   ]);
+
+  const apxMap = new Map(actionExecGroups.map((g) => [g.status, g._count as unknown as number]));
+  const liveExecuted = apxMap.get("executed") ?? 0;
+  const liveDryRun = apxMap.get("dry_run") ?? 0;
+  const liveBlocked = apxMap.get("blocked") ?? 0;
 
   const apMap = new Map(autoDecisionGroups.map((g) => [g.decision, g._count as unknown as number]));
   const apWouldHide = apMap.get("would_auto_hide") ?? 0;
@@ -95,6 +103,20 @@ export default async function DashboardPage() {
         action={<Link href="/dashboard/accounts"><PrimaryButton type="button">{t.ui.connectAccount}</PrimaryButton></Link>}
       />
 
+      {realMode.isRealMode ? (
+        <div className="mb-4 rounded-lg border border-[var(--color-brand)] px-3 py-2 text-sm">
+          🧪 <span className="font-medium">{t.dash.realTestMode}</span> · <span className="text-[var(--color-muted)]">{t.dash.realTestModeHint}</span>
+        </div>
+      ) : null}
+
+      {realMode.isRealMode && received === 0 ? (
+        <EmptyState
+          title={t.dash.noRealComments}
+          body={t.dash.noRealCommentsHint}
+          action={<Link href="/dashboard/accounts"><PrimaryButton type="button">{t.ui.goToAccounts}</PrimaryButton></Link>}
+        />
+      ) : (
+      <>
       {/* KPI cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label={t.home.kpiReceived} value={String(received)} tone="brand" icon={<IconInbox />} hint={t.home.kpiReceivedHint} />
@@ -119,8 +141,14 @@ export default async function DashboardPage() {
             <StatCard label={t.autoProtect.mWouldHide} value={String(apWouldHide)} tone="warn" />
             <StatCard label={t.autoProtect.mSentApproval} value={String(apApproval)} tone="brand" />
             <StatCard label={t.autoProtect.mCriticism} value={String(apCriticism)} tone="ok" />
-            <StatCard label={t.autoProtect.mLiveActions} value="0" tone="ok" hint={t.autoProtect.liveDisabled} />
+            <StatCard label={t.autoProtect.mLiveActions} value={String(liveExecuted)} tone={liveExecuted > 0 ? "warn" : "ok"} hint={t.autoProtect.liveDisabled} />
           </div>
+          {liveDryRun > 0 || liveBlocked > 0 ? (
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <StatCard label={t.autoProtect.mDryRunHide} value={String(liveDryRun)} tone="neutral" />
+              <StatCard label={t.autoProtect.mBlockedLive} value={String(liveBlocked)} tone="neutral" />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -226,6 +254,8 @@ export default async function DashboardPage() {
             </Card>
           </div>
         </>
+      )}
+      </>
       )}
     </>
   );

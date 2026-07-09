@@ -8,6 +8,62 @@ First run [DEMO_ENVIRONMENT_CHECK.md](./DEMO_ENVIRONMENT_CHECK.md).
 
 ---
 
+## Reset to real-only (V1.21D — recommended first)
+
+The main app now ships **without demo data**. To clean an existing dev DB of any
+leftover demo/mock content while **keeping your real Konfigurátor page and its
+real comments**:
+
+```bash
+pnpm real:reset-content                        # dry-run summary (nothing deleted)
+REAL_RESET_CONFIRM=YES pnpm real:reset-content # apply
+```
+
+Kept: real Konfigurátor account (pageId `1165524636643112`), its real synced
+comments, real tokens, login tenant/user. Removed: demo brands (Northwind Coffee),
+mock/demo accounts, `mock_` content, demo audit, "Demo Workspace" label.
+
+A **fresh** DB (`pnpm db:seed`) is already real-only (no demo). The demo dataset
+is only created explicitly via `pnpm demo:seed`.
+
+## Quick real internal test (V1.21C — clean, real-only)
+
+The fast path for a clean real test with **no demo pollution**:
+
+```bash
+# 1) stop stale workers
+pkill -9 -f "apps/worker"; pkill -9 -f "next dev"; pkill -9 -f "next-server"
+
+# 2-4) real mode + fast auto-sync (in .env)
+GUARDORA_DATA_MODE=real
+AUTO_SYNC_ENABLED=true
+AUTO_SYNC_INTERVAL_SECONDS=60
+
+# 5) preview the cleanup (safe), then apply it (removes demo brands, keeps the
+#    real Konfigurátor page — pageId 1165524636643112 is protected)
+pnpm real:cleanup-demo                       # dry-run summary, nothing deleted
+REAL_CLEANUP_CONFIRM=YES pnpm real:cleanup-demo   # apply
+
+# 6-7) run web + worker
+pnpm dev
+pnpm dev:worker
+```
+
+8. Post a comment on the real Facebook Page.
+9. Wait 60–90 seconds (one auto-sync interval — polling, not realtime).
+10. Verify **Dashboard / Inbox / Accounts → account detail**:
+    - the **"Real test mode"** banner is shown,
+    - **no Demo Workspace / Northwind Coffee / `[MOCK]`** anywhere,
+    - the real comment appears in the inbox after the automatic sync,
+    - Accounts shows the real page (**Live**, **Read-only**) with auto-sync
+      status, last automatic/manual sync, and the next-sync estimate,
+    - **Live actions executed = 0**.
+
+`real:cleanup-demo` **never deletes** a real connected account or the protected
+Konfigurátor page; it prints a summary and requires `REAL_CLEANUP_CONFIRM=YES`.
+
+---
+
 ## 1. Kill stale workers
 
 ```bash
@@ -107,6 +163,50 @@ card: **"Live action executed: No"**. Dashboard **Live actions executed = 0**.
   **Rules → Auto-Protect**. `normal_criticism` can never be auto-hidden.
 
 Automated equivalent: `pnpm realmeta:test`.
+
+---
+
+## 11. Controlled live hide test (V1.21B — advanced, opt-in only)
+
+**Default is shadow mode. Do this only for a deliberate, controlled live test on a
+single test Page (e.g. Konfigurátor).** Reply/delete are never enabled; Instagram
+is out of scope.
+
+Preconditions:
+- The Konfigurátor Page is connected as a **real** account (not demo), health
+  **healthy**, and granted **`pages_manage_engagement`** (Page moderation task).
+- You accept that matching comments **will be hidden on Facebook**.
+
+Steps:
+
+1. **Stage 1 — dry-run first (no Graph call):**
+   ```
+   LIVE_ACTIONS_ENABLED=true
+   FACEBOOK_HIDE_ENABLED=true
+   LIVE_ACTIONS_DRY_RUN=true
+   ```
+   Restart the worker. In **Rules → Auto-Protect**, set a harmful category (e.g.
+   `profanity`) to **"Auto-hide live — controlled beta"** for the Konfigurátor
+   brand (confirm the warning). Post a matching comment. Confirm the inbox item
+   shows **Dry-run live action** and the dashboard shows a **Dry-run hide attempt**
+   — and that **nothing was hidden** on the Page (live executed = 0).
+
+2. **Stage 2 — real live (only when Stage 1 looks correct):**
+   ```
+   LIVE_ACTIONS_DRY_RUN=false
+   ```
+   Restart the worker. Post another matching comment. Within one sync interval the
+   comment should be **hidden on the Facebook Page**; the inbox item shows **Live
+   hide executed** and a `platform_action_executions` row with status `executed`.
+
+3. **Rollback:** the external comment id + execution id are stored. Live unhide is
+   not yet automated (documented TODO) — unhide manually in Facebook if needed.
+
+4. **Turn it back off** after the test: set `LIVE_ACTIONS_DRY_RUN=true` (or the
+   category back to `auto_hide_shadow`) and restart the worker.
+
+Safety: `normal_criticism` is never hidden; confidence must be ≥ 0.8; only
+`facebook_page`; only the categories you explicitly set to live.
 
 ---
 

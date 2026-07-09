@@ -16,17 +16,21 @@ export default async function DashboardLayout({
   const dict = getDictionary(locale);
   const [itemsProcessed, tenant] = await Promise.all([
     prisma.reputationItem.count({ where: { tenantId: session.tenantId } }),
-    prisma.tenant.findUnique({ where: { id: session.tenantId }, select: { plan: true } }),
+    prisma.tenant.findUnique({ where: { id: session.tenantId }, select: { name: true } }),
   ]);
+
+  // The demo badge shows ONLY for an actual demo workspace (name contains "Demo").
+  // The default real-only seed uses a neutral workspace name → no badge.
+  const isDemoWorkspace = (tenant?.name ?? "").toLowerCase().includes("demo");
 
   return (
     <DashboardShell
-      tenantName={session.tenantName}
+      tenantName={tenant?.name ?? session.tenantName}
       userName={session.userName}
       role={session.role}
       trialUsed={itemsProcessed}
       trialLimit={TRIAL_ITEM_LIMIT}
-      demo={tenant?.plan === "dev"}
+      demo={isDemoWorkspace}
       navLabels={dict.dashboardNav}
       sidebarStrings={dict.sidebar}
     >

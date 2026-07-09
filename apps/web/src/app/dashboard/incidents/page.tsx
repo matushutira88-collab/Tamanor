@@ -1,0 +1,50 @@
+import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
+import { requireSession } from "@/server/auth";
+import { prisma } from "@/server/db";
+import { getRealModeFilter } from "@/server/data-mode";
+import { getT } from "@/i18n/server";
+import { tEnum } from "@/i18n/labels";
+import { formatDateTime } from "@/lib/format";
+
+export const dynamic = "force-dynamic";
+
+const SEVERITY_TONE: Record<string, string> = { critical: "danger", high: "danger", medium: "warn", low: "neutral" };
+
+export default async function IncidentsPage() {
+  const t = await getT();
+  const session = await requireSession();
+  const realMode = await getRealModeFilter(session.tenantId);
+  const where = { tenantId: session.tenantId, ...realMode.brandWhere };
+
+  const incidents = await prisma.incident.findMany({ where, orderBy: [{ status: "asc" }, { createdAt: "desc" }], take: 100 });
+
+  return (
+    <>
+      <PageHeader title={t.cc.incidentsTitle} description={t.cc.incidentsSubtitle} />
+
+      {incidents.length === 0 ? (
+        <Card className="p-6 text-sm text-[var(--color-muted)]">🛡️ {t.cc.incidentsEmpty}</Card>
+      ) : (
+        <div className="space-y-3">
+          {incidents.map((inc) => (
+            <Card key={inc.id}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={SEVERITY_TONE[inc.severity] ?? "neutral"}>{inc.severity}</Badge>
+                  <span className="font-medium">{inc.title}</span>
+                  <Badge>{tEnum(t, "autoProtectCategory", inc.category)}</Badge>
+                </div>
+                <Badge tone={inc.status === "open" ? "warn" : "ok"}>{inc.status}</Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-4 text-xs text-[var(--color-muted)]">
+                <span>{t.cc.related}: {inc.relatedItemIds.length}</span>
+                {inc.sourcePlatform ? <span>{inc.sourcePlatform}</span> : null}
+                <span>{formatDateTime(inc.createdAt)}</span>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}

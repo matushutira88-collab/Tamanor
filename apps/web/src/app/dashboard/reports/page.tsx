@@ -13,6 +13,7 @@ import { BarList } from "@/components/dashboard/trend-chart";
 import { PlatformBreakdown } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { getRealModeFilter } from "@/server/data-mode";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -26,7 +27,8 @@ const nav = navItem("/dashboard/reports");
 export default async function ReportsPage() {
   const session = await requireSession();
   const hdrT = await getT();
-  const where = { tenantId: session.tenantId };
+  const realMode = await getRealModeFilter(session.tenantId);
+  const where = { tenantId: session.tenantId, ...realMode.brandWhere };
   const weekStart = new Date(Date.now() - 7 * 86_400_000);
 
   const [

@@ -7,11 +7,12 @@ import {
   Platform,
   can,
 } from "@guardora/core";
-import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig } from "@guardora/config";
+import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsConfig } from "@guardora/config";
 import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { getRealModeFilter } from "@/server/data-mode";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -65,17 +66,27 @@ export default async function AccountsPage({
     include: { connectedAccounts: true },
   });
 
+  const realMode = await getRealModeFilter(session.tenantId);
+
   // Connected accounts summary — real (live) accounts first, demo/mock after.
+  // In real mode, demo/mock accounts are hidden entirely.
   const brandNameById = new Map(brands.map((b) => [b.id, b.name]));
   const connectedAccounts = brands
     .flatMap((b) => b.connectedAccounts)
-    .filter((a) => a.status === ConnectorStatus.Active || a.status === ConnectorStatus.MockConnected)
+    .filter((a) => a.status === ConnectorStatus.Active || (!realMode.isRealMode && a.status === ConnectorStatus.MockConnected))
     .sort((a, b) => {
       const live = (x: typeof a) => (x.status === ConnectorStatus.Active ? 0 : 1);
       return live(a) - live(b) || (b.lastSuccessfulSyncAt?.getTime() ?? 0) - (a.lastSuccessfulSyncAt?.getTime() ?? 0);
     });
 
   const autoSync = getAutoSyncConfig();
+  const live = getLiveActionsConfig();
+  const hideCapability = (grantedPermissions: string[]): { key: string; tone: string } =>
+    !live.facebookHideEnabled || !live.liveEnabled
+      ? { key: "capDisabledEnv", tone: "neutral" }
+      : grantedPermissions.includes("pages_manage_engagement")
+        ? { key: "capAvailable", tone: "ok" }
+        : { key: "capMissingPerms", tone: "warn" };
   const [lastAutoRow, lastManualRow] = await Promise.all([
     prisma.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "automatic" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "manual" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
@@ -102,6 +113,12 @@ export default async function AccountsPage({
         </div>
       ) : null}
 
+      {realMode.isRealMode ? (
+        <div className="mb-4 rounded-lg border border-[var(--color-brand)] px-3 py-2 text-sm">
+          🧪 <span className="font-medium">{hdrT.dash.realTestMode}</span> · <span className="text-[var(--color-muted)]">{hdrT.dash.realTestModeHint}</span>
+        </div>
+      ) : null}
+
       {/* Connected accounts + Auto-sync status (V1.21A) */}
       <div className="mb-6 grid gap-4 lg:grid-cols-[1fr_320px]">
         <Card>
@@ -120,6 +137,10 @@ export default async function AccountsPage({
                       <Badge>{PLATFORM_META[a.platform as Platform].label}</Badge>
                       <Badge tone={CONNECTOR_TONE[a.status as keyof typeof CONNECTOR_TONE] ?? "neutral"}>{tEnum(hdrT, "health", a.health)}</Badge>
                       <Badge tone="neutral">{hdrT.dash.syncModeReadOnly}</Badge>
+                      {a.platform === Platform.FacebookPage ? (() => {
+                        const cap = hideCapability(a.grantedPermissions);
+                        return <Badge tone={cap.tone}>{hdrT.autoProtect.hideCapability}: {hdrT.autoProtect[cap.key as "capAvailable" | "capMissingPerms" | "capDisabledEnv"]}</Badge>;
+                      })() : null}
                     </div>
                     <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-[var(--color-muted)]">
                       <div>{hdrT.dash.pageIdLabel}: <span className="text-[var(--color-fg)]">{a.pageId ?? a.externalId}</span></div>
@@ -133,6 +154,9 @@ export default async function AccountsPage({
                     {a.lastError ? (
                       <p className="mt-1.5 text-[11px] text-[var(--color-danger)]">{hdrT.dash.lastSyncErrorLabel}: {a.lastError}</p>
                     ) : null}
+                    <Link href={`/dashboard/accounts/${a.id}`} className="mt-2 inline-block text-xs font-medium text-[var(--color-brand)] hover:underline">
+                      {hdrT.dash.openAccountDetail} →
+                    </Link>
                   </div>
                 );
               })}
@@ -145,6 +169,7 @@ export default async function AccountsPage({
             <h3 className="text-sm font-semibold">{hdrT.dash.autoSyncStatusTitle}</h3>
             <Badge tone={autoSync.enabled ? "ok" : "warn"}>{autoSync.enabled ? hdrT.dash.autoSyncEnabled : hdrT.dash.autoSyncDisabled}</Badge>
           </div>
+          <p className="mb-2 text-[11px] text-[var(--color-muted)]">{hdrT.dash.syncCadence.replace("{n}", String(autoSync.intervalSeconds))}</p>
           <dl className="space-y-1.5 text-xs">
             <div className="text-[var(--color-muted)]">{hdrT.dash.workerRequired}</div>
             <div>{hdrT.dash.lastAutomaticSync}: <span className="font-medium">{lastAutoRow ? formatDateTime(lastAutoRow.createdAt) : hdrT.dash.noAutomaticSyncYet}</span></div>
@@ -165,7 +190,7 @@ export default async function AccountsPage({
         </div>
       ) : (
         <div className="space-y-8">
-          {brands.map((brand) => {
+          {(realMode.isRealMode ? brands.filter((b) => realMode.realBrandIds.includes(b.id)) : brands).map((brand) => {
             const byPlatform = new Map(
               brand.connectedAccounts.map((a) => [a.platform, a]),
             );

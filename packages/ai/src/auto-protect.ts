@@ -75,6 +75,20 @@ export const DEFAULT_AUTO_PROTECT_POLICIES: { category: AutoProtectCategory; mod
   { category: "normal_criticism", mode: "monitor" },
 ];
 
+/**
+ * Categories that may EVER be enabled for controlled LIVE Facebook hide. This is
+ * stricter than shadow eligibility. `threat` is live-eligible only at critical
+ * level (checked at execution time). Never includes normal_criticism,
+ * competitor_promo, crisis_keyword, or brand_impersonation.
+ */
+export const LIVE_ELIGIBLE_CATEGORIES = new Set<AutoProtectCategory>([
+  "profanity", "personal_attack", "hate_speech", "racism", "scam", "phishing",
+  "spam", "terrorism_extremism", "threat",
+]);
+
+/** Meta Page permission required to hide a comment. */
+export const FACEBOOK_HIDE_PERMISSION = "pages_manage_engagement";
+
 /** Categories that can reach would_auto_hide (confidence-gated). */
 const SHADOW_ELIGIBLE = new Set<AutoProtectCategory>([
   "hate_speech", "racism", "terrorism_extremism", "phishing", "scam", "threat",

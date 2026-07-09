@@ -1,5 +1,6 @@
 import { prisma, ConnectorStatus, Platform } from "@guardora/db";
 import { runReadOnlySync } from "@guardora/sync";
+import { getDataMode } from "@guardora/config";
 import { log } from "./logger";
 
 /**
@@ -12,12 +13,17 @@ export async function syncConnectedMetaAccounts(
   trigger: "manual" | "automatic" = "automatic",
 ): Promise<{ created: number; accounts: number; skippedBackoff: number }> {
   const now = new Date();
+  const dataMode = getDataMode();
+  // In real mode, sync ONLY real (active) accounts — never mock/demo.
+  const statuses = dataMode === "real"
+    ? [ConnectorStatus.active]
+    : [ConnectorStatus.active, ConnectorStatus.mock_connected];
 
-  // All connected Meta accounts (to distinguish eligible vs backed-off).
+  // Connected Meta accounts (to distinguish eligible vs backed-off).
   const all = await prisma.connectedAccount.findMany({
     where: {
       platform: { in: [Platform.facebook_page, Platform.instagram_business] },
-      status: { in: [ConnectorStatus.active, ConnectorStatus.mock_connected] },
+      status: { in: statuses },
     },
     select: {
       id: true, platform: true, externalId: true, externalName: true, pageId: true,
@@ -25,14 +31,23 @@ export async function syncConnectedMetaAccounts(
     },
   });
 
+  let skippedDemo = 0;
+  if (dataMode === "real") {
+    skippedDemo = await prisma.connectedAccount.count({
+      where: { platform: { in: [Platform.facebook_page, Platform.instagram_business] }, status: ConnectorStatus.mock_connected },
+    });
+  }
+
   const eligible = all.filter((a) => a.nextRetryAt == null || a.nextRetryAt <= now);
   const backedOff = all.filter((a) => a.nextRetryAt != null && a.nextRetryAt > now);
 
   log.info("worker.autosync.eligible", {
     trigger,
+    dataMode,
     connected: all.length,
     eligible: eligible.length,
     skippedBackoff: backedOff.length,
+    skippedDemo,
   });
   for (const a of backedOff) {
     log.info("worker.autosync.skip.backoff", {

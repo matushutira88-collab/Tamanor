@@ -34,6 +34,59 @@ them plainly to testers so expectations are correct.
 - Demo **comment content** may be in English even when the UI is SK/DE — that is
   expected (only UI chrome is localized).
 
+## Real-only app — demo data removed (V1.21D)
+
+- **Demo data has been removed from the main app.** The default `pnpm db:seed`
+  creates only a workspace, a dev user, one empty brand, and Auto-Protect policy
+  templates — **no demo brands, accounts, comments, or metrics**.
+- The illustrative demo dataset is now an **optional, separate** script:
+  `pnpm demo:seed` (never used by the real app or a real test).
+- **`pnpm real:reset-content`** removes existing demo/mock data (Northwind Coffee,
+  mock accounts, `mock_` content, demo audit, "Demo Workspace" label) while
+  **keeping** the real Konfigurátor page (`1165524636643112`), its **real synced
+  comments**, real tokens, and the login tenant/user. It prints a summary and
+  requires `REAL_RESET_CONFIRM=YES` (dry-run otherwise); it never deletes the
+  protected page.
+- Real internal testing goes through **real connected accounts only**. The worker
+  **never** mock-fetches a real account (a real account without `META_LIVE_SYNC`
+  is skipped cleanly, not filled with mock data).
+- Empty states are real-only ("Connect a Facebook Page", "Real items appear here
+  after the first sync").
+
+## Real test mode & demo data (V1.21C)
+
+- `GUARDORA_DATA_MODE` = `demo` (default) or `real`. In **real mode**, only real
+  (active) connected accounts sync, and dashboards/inbox/reports/accounts show
+  **only real data** — demo/mock brands (Demo Workspace, Northwind Coffee) and any
+  `[MOCK]` are hidden. A **"Real test mode"** banner is shown.
+- **Auto-sync is polling, not realtime** — it checks for new comments every
+  `AUTO_SYNC_INTERVAL_SECONDS`. New comments appear after the next interval.
+- `pnpm real:cleanup-demo` removes demo brands/data for a clean real test. It
+  **never deletes** a real connected account or the protected Konfigurátor Page
+  (`1165524636643112`), prints a summary, and requires `REAL_CLEANUP_CONFIRM=YES`.
+- The **Accounts** menu item opens an **overview**; a specific account opens only
+  via its **detail** (`/dashboard/accounts/[id]`), never as a top-level menu item.
+
+## Controlled Facebook auto-hide (V1.21B)
+
+- Guardora can now **hide Facebook Page comments** — but this is **default OFF and
+  fail-closed**. A live hide runs ONLY when **all** gates pass:
+  `LIVE_ACTIONS_ENABLED=true` AND `FACEBOOK_HIDE_ENABLED=true` AND
+  `LIVE_ACTIONS_DRY_RUN=false`, the brand set the category to **live mode**, the
+  connected account is real (not demo), platform is **facebook_page**, the Page
+  granted `pages_manage_engagement`, confidence ≥ 0.8, category is live-eligible,
+  and it is **not** normal_criticism.
+- **Three states:** *shadow* (would-hide, no execution) → *dry-run* (simulated,
+  no Graph call) → *live* (real hide). Default env stays shadow/dry-run, so
+  **live actions executed = 0**.
+- **Scope is Facebook Page `hide_comment` only.** Reply and delete stay disabled;
+  **Instagram is out of scope**; no new platforms.
+- **Normal criticism is never hidden** (hard safety floor, even in live mode).
+- **Rollback/unhide** is a prepared seam (comment id + execution id stored) but
+  **live unhide is a documented TODO** — required before any broader rollout.
+- Every attempt is recorded in `platform_action_executions` (no tokens/secrets)
+  and audited (`platform_action.blocked/dry_run/executed/failed`).
+
 ## Auto-Protect value dashboard & demo (V1.19)
 
 - The **Auto-Protect value** dashboard and **Auto-Protect report** summarise what

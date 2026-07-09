@@ -15,6 +15,37 @@ const S = {
 /** Minimal, dependency-free stroke icons for the sidebar. */
 export function NavIconGlyph({ icon }: { icon: NavIcon }) {
   switch (icon) {
+    case "command":
+      return (
+        <svg {...S}>
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 4v3M12 17v3M4 12h3M17 12h3" />
+          <circle cx="12" cy="12" r="2.5" />
+        </svg>
+      );
+    case "control":
+      return (
+        <svg {...S}>
+          <path d="M4 6h16M4 12h16M4 18h16" />
+          <circle cx="9" cy="6" r="2" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="12" r="2" fill="currentColor" stroke="none" />
+          <circle cx="8" cy="18" r="2" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "queue":
+      return (
+        <svg {...S}>
+          <path d="M4 6h16M4 12h10M4 18h13" />
+          <path d="M18 10l3 2-3 2" />
+        </svg>
+      );
+    case "incidents":
+      return (
+        <svg {...S}>
+          <path d="M12 3l9 16H3L12 3Z" />
+          <path d="M12 9v5M12 17h.01" />
+        </svg>
+      );
     case "dashboard":
       return (
         <svg {...S}>

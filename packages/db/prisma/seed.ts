@@ -34,6 +34,10 @@ const translationCfg = {
   provider: process.env.TRANSLATION_PROVIDER ?? "none",
 };
 
+// The default seed is real-only (no demo content). Set SEED_DEMO=true (via
+// `pnpm demo:seed`) to create the illustrative demo dataset for presentations.
+const SEED_DEMO = process.env.SEED_DEMO === "true";
+
 const prisma = new PrismaClient();
 const classifier = new RiskClassifier();
 
@@ -108,7 +112,7 @@ async function main() {
   // --- Tenant + user + membership -------------------------------------------
   const tenant = await prisma.tenant.create({
     data: {
-      name: "Demo Workspace",
+      name: "Guardora Workspace",
       slug: "dev",
       plan: "dev",
     },
@@ -126,7 +130,32 @@ async function main() {
     data: { userId: user.id, tenantId: tenant.id, role: Role.owner },
   });
 
-  // --- Brands ----------------------------------------------------------------
+  // --- Minimal (real-only) seed ---------------------------------------------
+  // The default seed creates NO demo content: just the workspace, a dev user, one
+  // empty brand, and safe Auto-Protect policy templates. Connect a real Facebook
+  // Page to start. The full demo dataset lives behind `pnpm demo:seed`.
+  if (!SEED_DEMO) {
+    const brand = await prisma.brand.create({
+      data: {
+        tenantId: tenant.id,
+        name: "My Brand",
+        defaultLocale: "en",
+        timezone: "Europe/Bratislava",
+        defaultTone: BrandTone.professional,
+        status: BrandStatus.active,
+      },
+    });
+    await prisma.brandAutoProtectPolicy.createMany({
+      data: DEFAULT_AUTO_PROTECT_POLICIES.map((p) => ({
+        tenantId: tenant.id, brandId: brand.id, category: p.category, mode: p.mode, minConfidence: 0.7, isActive: true,
+      })),
+    });
+    console.log("Done: minimal real-only seed (1 tenant, 1 user, 1 empty brand, default Auto-Protect policies). No demo content.");
+    await prisma.$disconnect();
+    return;
+  }
+
+  // --- Brands (DEMO only) ----------------------------------------------------
   const coffee = await prisma.brand.create({
     data: {
       tenantId: tenant.id,

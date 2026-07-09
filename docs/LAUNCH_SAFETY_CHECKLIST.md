@@ -87,6 +87,23 @@ shadow into live is exactly this phase.
 - [ ] **Rate-limit handling** for write calls.
 - [ ] **Legal / safety review** signed off.
 
+### E1. Controlled Facebook auto-hide (V1.21B — default OFF, fail-closed)
+
+The ONLY live action seam. Facebook Page `hide_comment` only; reply/delete stay
+disabled; no Instagram.
+
+- [ ] Env gates default OFF: `LIVE_ACTIONS_ENABLED=false`,
+      `FACEBOOK_HIDE_ENABLED=false`, `LIVE_ACTIONS_DRY_RUN=true`.
+- [ ] Live hide requires ALL gates (env + brand live policy + real account +
+      facebook_page + `pages_manage_engagement` + confidence ≥ 0.8 + live-eligible
+      category + not normal_criticism).
+- [ ] Graph transport isolated + mockable; dry-run never calls it; failure never
+      faked; no tokens/secrets stored or logged.
+- [ ] **Live unhide/rollback implemented** (currently dry-run-only TODO) before
+      broader rollout.
+- [ ] Per-brand explicit opt-in + confirmation before enabling live for a category.
+- [ ] Manual controlled live test on a single test Page before any automatic live.
+
 ---
 
 Related: [DEMO_SCRIPT.md](./DEMO_SCRIPT.md) ·
