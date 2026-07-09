@@ -176,12 +176,17 @@ const LEXICON: ReadonlyArray<readonly [RiskCategory, number, readonly string[]]>
     "zabijem", "zabit ta", "i will kill", "kill you", "vyhrazam",
     "ublizim", "umresh", "toch dich", "i will hurt", "burn your store", "beat you up",
   ]],
-  // Scam / fraud / phishing → critical (SK/CZ/EN/DE/PL/HU).
+  // Scam / fraud / phishing / prize-bait → critical (SK/CZ/EN/DE/PL/HU).
   [RiskCategory.Scam, 0.9, [
     "podvod", "podvodnik", "scam", "fraud", "betrug", "betrueger",
     "oszustwo", "oszust", "atveres", "csalas", "csalo", "prevod",
     "free money", "click here", "crypto giveaway", "wire transfer", "prevod penazi",
     "verify your account", "click here to claim", "reset your password", "confirm your password",
+    // "click & win" prize bait (SK/CZ/EN/DE/PL/HU)
+    "klikni", "kliknite", "klikni sem", "kliknite sem", "click here to win",
+    "vyhraj", "vyhrajte", "vyhra", "sutaz", "vyhrajes", "free iphone", "iphone zadarmo",
+    "claim prize", "claim your prize", "gewinne", "gewinnen sie", "kostenloses iphone",
+    "wygraj", "darmowy iphone", "nyerj", "ingyen iphone",
   ]],
   // Spam → high.
   [RiskCategory.Spam, 0.7, [

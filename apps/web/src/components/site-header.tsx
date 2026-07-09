@@ -21,6 +21,7 @@ export function SiteHeader({
         <nav className="hidden items-center gap-8 text-sm text-[var(--color-muted)] md:flex">
           <a href="#platforms" className="transition hover:text-[var(--color-fg)]">{t.nav.platforms}</a>
           <a href="#features" className="transition hover:text-[var(--color-fg)]">{t.nav.features}</a>
+          <a href="#product" className="transition hover:text-[var(--color-fg)]">{t.nav.product}</a>
           <a href="#control" className="transition hover:text-[var(--color-fg)]">{t.nav.aiHuman}</a>
           <Link href={`${localePrefix(locale)}/case-studies`} className="transition hover:text-[var(--color-fg)]">{t.nav.caseStudies}</Link>
           <a href="#safety" className="transition hover:text-[var(--color-fg)]">{t.nav.security}</a>

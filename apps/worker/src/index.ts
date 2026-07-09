@@ -81,8 +81,8 @@ async function tick(): Promise<void> {
  */
 async function autoSyncTick(): Promise<void> {
   try {
-    const { created, accounts } = await syncConnectedMetaAccounts("automatic");
-    log.info("autosync.done", { accounts, createdItems: created });
+    const { created, accounts, skippedBackoff } = await syncConnectedMetaAccounts("automatic");
+    log.info("autosync.done", { eligibleAccounts: accounts, createdItems: created, skippedBackoff });
   } catch (err) {
     log.error("autosync.failed", {
       error: err instanceof Error ? err.message : String(err),
@@ -122,9 +122,13 @@ async function main(): Promise<void> {
   // Automatic read-only sync loop (independent cadence), only when enabled.
   const autosync = (async () => {
     if (!env.AUTO_SYNC_ENABLED) {
-      log.info("autosync.disabled", { hint: "set AUTO_SYNC_ENABLED=true to enable" });
+      log.info("autosync.DISABLED", {
+        reason: "AUTO_SYNC_ENABLED is not true in this worker's env",
+        hint: "set AUTO_SYNC_ENABLED=true in .env and restart the worker; manual 'Run read-only sync' still works",
+      });
       return;
     }
+    log.info("autosync.ENABLED", { intervalSeconds: env.AUTO_SYNC_INTERVAL_SECONDS });
     await autoSyncTick();
     while (state.running) {
       await sleep(autoSyncMs);

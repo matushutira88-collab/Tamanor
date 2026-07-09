@@ -54,21 +54,24 @@ export const AUTO_PROTECT_CATEGORIES: AutoProtectCategory[] = [
 
 /** Safe brand defaults — no live action anywhere; criticism stays monitor. */
 export const DEFAULT_AUTO_PROTECT_POLICIES: { category: AutoProtectCategory; mode: AutoProtectMode }[] = [
-  { category: "profanity", mode: "approval" },
-  { category: "personal_attack", mode: "approval" },
+  // Clearly-harmful categories default to shadow auto-hide (client can change).
+  { category: "profanity", mode: "auto_hide_shadow" },
+  { category: "personal_attack", mode: "auto_hide_shadow" },
   { category: "hate_speech", mode: "auto_hide_shadow" },
   { category: "racism", mode: "auto_hide_shadow" },
   { category: "scam", mode: "auto_hide_shadow" },
   { category: "phishing", mode: "auto_hide_shadow" },
-  { category: "spam", mode: "approval" },
+  { category: "spam", mode: "auto_hide_shadow" },
+  { category: "terrorism_extremism", mode: "auto_hide_shadow" },
+  // Judgement-call categories default to human approval.
   { category: "threat", mode: "approval" },
   { category: "violence", mode: "approval" },
-  { category: "terrorism_extremism", mode: "auto_hide_shadow" },
   { category: "sexual_vulgarity", mode: "approval" },
   { category: "competitor_promo", mode: "approval" },
   { category: "coordinated_attack", mode: "approval" },
   { category: "brand_impersonation", mode: "approval" },
   { category: "crisis_keyword", mode: "approval" },
+  // Normal criticism is NEVER auto-hidden.
   { category: "normal_criticism", mode: "monitor" },
 ];
 
@@ -93,7 +96,8 @@ const TERM_LEXICON: { category: AutoProtectCategory; terms: string[] }[] = [
 /** Promo/self-promotion markers that turn a competitor mention into competitor_promo. */
 const PROMO_MARKERS = [
   "dm me", "message me", "pm me", "join us", "come to us", "check my page", "follow me",
-  "subscribe", "we are cheaper", "piste dm", "podte ku mnu", "podte ku mne", "kupte u mna", "napiste mi",
+  "subscribe", "we are cheaper", "piste dm", "piste mi", "podte ku", "kupte u mna",
+  "napiste mi", "pisem vam dm", "schreib mir", "schreibt mir", "napisz do mnie",
 ];
 
 /** Signal → category, ordered by severity (most severe first). */

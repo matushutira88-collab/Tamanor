@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HeroMock } from "@/components/hero-mock";
 import { ShieldEmblem } from "@/components/logo";
+import { InboxMock, RiskDetailMock, ApprovalMock, TrendsMock } from "./app-mocks";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { IllusShield } from "@/components/illustrations";
 import type { Dictionary, Locale } from "@/i18n";
@@ -135,6 +136,30 @@ export function LandingContent({ dict, locale }: { dict: Dictionary; locale: Loc
               </article>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Product scenarios — illustrative, code-rendered UI mocks (demo data). */}
+      <section id="product" className="border-t border-[var(--color-border)]">
+        <div className="mx-auto max-w-7xl px-6 py-20">
+          <div className="mb-12 max-w-2xl">
+            <p className="text-sm font-semibold uppercase tracking-widest text-[var(--color-brand)]">
+              {t.productMocks.eyebrow}
+            </p>
+            <h2 className="gu-display mt-3 text-3xl md:text-4xl">{t.productMocks.title}</h2>
+            <p className="mt-4 text-[var(--color-muted)]">{t.productMocks.subtitle}</p>
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <InboxMock dict={dict} />
+            <RiskDetailMock dict={dict} />
+            <ApprovalMock dict={dict} />
+            <TrendsMock dict={dict} />
+          </div>
+
+          <p className="mt-8 text-center text-xs text-[var(--color-muted)]">
+            {t.productMocks.disclaimer}
+          </p>
         </div>
       </section>
 

@@ -120,6 +120,21 @@ See [LIVE_META_TEST.md](./LIVE_META_TEST.md).
 - [ ] Demo comments span EN/SK/DE/PL/HU/CZ; **no visible [MOCK]**; no claim that
       live auto-hide is enabled.
 
+## C9. Real Meta test blockers (V1.21A)
+
+- [ ] `pnpm realmeta:test` passes: "klikni a vyhraj iPhone" → high/critical +
+      scam/phishing/spam + approval + would_auto_hide; "nenažratý kokot" →
+      high/critical + profanity/personal_attack + would_auto_hide; normal
+      criticism → monitor, never auto-hide; low-confidence downgrade; no execution.
+- [ ] Worker `autosync.ENABLED` logs on boot when `AUTO_SYNC_ENABLED=true`;
+      `worker.autosync.eligible` + per-account `pageName/pageId` logged; auto-sync
+      runs `runReadOnlySync(..., "automatic")` with no UI click.
+- [ ] Accounts → **Connected accounts** shows the real page first, marked **Live**
+      (demo/mock marked **Demo**); Page ID, Read-only, permissions, last sync shown.
+- [ ] Accounts → **Auto-sync status**: enabled/disabled, worker-required, last
+      automatic sync, last manual sync, next-sync estimate, last error.
+- [ ] Follow `docs/REAL_META_TEST_CHECKLIST.md`; live actions executed = 0.
+
 ## D. i18n test
 
 - [ ] EN landing renders (`/`).

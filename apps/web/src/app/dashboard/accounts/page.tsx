@@ -7,14 +7,15 @@ import {
   Platform,
   can,
 } from "@guardora/core";
-import { getMetaConfig, getMetaSetupStatus } from "@guardora/config";
-import { PageHeader, Badge } from "@/components/dashboard/ui";
+import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig } from "@guardora/config";
+import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
+import { formatDateTime } from "@/lib/format";
 import { CONNECTOR_TONE } from "@/lib/ui-maps";
 import { connectMock, disconnect } from "./actions";
 
@@ -64,6 +65,24 @@ export default async function AccountsPage({
     include: { connectedAccounts: true },
   });
 
+  // Connected accounts summary — real (live) accounts first, demo/mock after.
+  const brandNameById = new Map(brands.map((b) => [b.id, b.name]));
+  const connectedAccounts = brands
+    .flatMap((b) => b.connectedAccounts)
+    .filter((a) => a.status === ConnectorStatus.Active || a.status === ConnectorStatus.MockConnected)
+    .sort((a, b) => {
+      const live = (x: typeof a) => (x.status === ConnectorStatus.Active ? 0 : 1);
+      return live(a) - live(b) || (b.lastSuccessfulSyncAt?.getTime() ?? 0) - (a.lastSuccessfulSyncAt?.getTime() ?? 0);
+    });
+
+  const autoSync = getAutoSyncConfig();
+  const [lastAutoRow, lastManualRow] = await Promise.all([
+    prisma.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "automatic" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    prisma.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "manual" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+  ]);
+  const lastErrorAccount = connectedAccounts.find((a) => a.lastError);
+  const nextSyncEstimate = autoSync.enabled && lastAutoRow ? new Date(lastAutoRow.createdAt.getTime() + autoSync.intervalSeconds * 1000) : null;
+
   return (
     <>
       <PageHeader
@@ -82,6 +101,63 @@ export default async function AccountsPage({
           <span className="text-sm text-[var(--color-muted)]">{metaNotice.text}</span>
         </div>
       ) : null}
+
+      {/* Connected accounts + Auto-sync status (V1.21A) */}
+      <div className="mb-6 grid gap-4 lg:grid-cols-[1fr_320px]">
+        <Card>
+          <h3 className="mb-3 text-sm font-semibold">{hdrT.dash.connectedAccountsTitle}</h3>
+          {connectedAccounts.length === 0 ? (
+            <p className="text-sm text-[var(--color-muted)]">{hdrT.dash.noConnectedAccounts}</p>
+          ) : (
+            <div className="space-y-2.5">
+              {connectedAccounts.map((a) => {
+                const live = a.status === ConnectorStatus.Active;
+                return (
+                  <div key={a.id} className="rounded-lg border border-[var(--color-border)] p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{a.externalName ?? PLATFORM_META[a.platform as Platform].label}</span>
+                      <Badge tone={live ? "ok" : "neutral"}>{live ? hdrT.dash.liveAccount : hdrT.dash.demoAccount}</Badge>
+                      <Badge>{PLATFORM_META[a.platform as Platform].label}</Badge>
+                      <Badge tone={CONNECTOR_TONE[a.status as keyof typeof CONNECTOR_TONE] ?? "neutral"}>{tEnum(hdrT, "health", a.health)}</Badge>
+                      <Badge tone="neutral">{hdrT.dash.syncModeReadOnly}</Badge>
+                    </div>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-[var(--color-muted)]">
+                      <div>{hdrT.dash.pageIdLabel}: <span className="text-[var(--color-fg)]">{a.pageId ?? a.externalId}</span></div>
+                      <div>{hdrT.dash.brand}: <span className="text-[var(--color-fg)]">{brandNameById.get(a.brandId) ?? ""}</span></div>
+                      <div>{hdrT.dash.lastSync}: <span className="text-[var(--color-fg)]">{a.lastSuccessfulSyncAt ? formatDateTime(a.lastSuccessfulSyncAt) : "—"}</span></div>
+                      <div>{hdrT.dash.connectedAtLabel}: <span className="text-[var(--color-fg)]">{formatDateTime(a.createdAt)}</span></div>
+                    </dl>
+                    {a.grantedPermissions.length > 0 ? (
+                      <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">{hdrT.dash.grantedPermsLabel}: {a.grantedPermissions.join(", ")}</p>
+                    ) : null}
+                    {a.lastError ? (
+                      <p className="mt-1.5 text-[11px] text-[var(--color-danger)]">{hdrT.dash.lastSyncErrorLabel}: {a.lastError}</p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        <Card className="h-fit">
+          <div className="mb-2 flex items-center gap-2">
+            <h3 className="text-sm font-semibold">{hdrT.dash.autoSyncStatusTitle}</h3>
+            <Badge tone={autoSync.enabled ? "ok" : "warn"}>{autoSync.enabled ? hdrT.dash.autoSyncEnabled : hdrT.dash.autoSyncDisabled}</Badge>
+          </div>
+          <dl className="space-y-1.5 text-xs">
+            <div className="text-[var(--color-muted)]">{hdrT.dash.workerRequired}</div>
+            <div>{hdrT.dash.lastAutomaticSync}: <span className="font-medium">{lastAutoRow ? formatDateTime(lastAutoRow.createdAt) : hdrT.dash.noAutomaticSyncYet}</span></div>
+            <div>{hdrT.dash.lastManualSync}: <span className="font-medium">{lastManualRow ? formatDateTime(lastManualRow.createdAt) : "—"}</span></div>
+            {autoSync.enabled ? (
+              <div>{hdrT.dash.nextSyncEstimate}: <span className="font-medium">{nextSyncEstimate ? formatDateTime(nextSyncEstimate) : "—"}</span></div>
+            ) : null}
+            {lastErrorAccount?.lastError ? (
+              <div className="text-[var(--color-danger)]">{hdrT.dash.lastSyncErrorLabel}: {lastErrorAccount.lastError}</div>
+            ) : null}
+          </dl>
+        </Card>
+      </div>
 
       {brands.length === 0 ? (
         <div className="gu-card p-6 text-sm text-[var(--color-muted)]">

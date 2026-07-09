@@ -33,6 +33,7 @@ export const en = {
   nav: {
     platforms: "Platforms",
     features: "Features",
+    product: "Product",
     aiHuman: "AI + Human",
     caseStudies: "Case studies",
     security: "Security",
@@ -61,6 +62,59 @@ export const en = {
       { tag: "Respond", body: "Generate safe suggested replies in your brand tone, ready for human review." },
       { tag: "Approve", body: "Every sensitive action goes through a controlled approval workflow with a full audit trail." },
     ],
+  },
+
+  // Illustrative product mocks on the landing page (demo data, code-rendered).
+  productMocks: {
+    eyebrow: "Inside Guardora",
+    title: "What it looks like when a threat shows up",
+    subtitle:
+      "Four moments from a single incident — detected, assessed, proposed, and held for a human. Nothing is moderated automatically.",
+    disclaimer:
+      "Illustrative interface with demo data. Screens show read-only sync and proposed actions only — moderation is disabled by default.",
+    inbox: {
+      title: "Reputation inbox",
+      status: "Read-only sync",
+      caption: "One queue for every public channel — nothing is actioned automatically.",
+      items: [
+        { author: "anon_user_88", meta: "Facebook · 2m ago", text: "This brand is a total scam — don’t waste your money." },
+        { author: "deals_bot_xyz", meta: "Instagram · 11m ago", text: "Free crypto giveaway 🎁 click my link now!!" },
+        { author: "M. Kováč", meta: "Google · 1h ago", text: "Waited 40 minutes and nobody helped. Disappointed." },
+        { author: "petra.h", meta: "YouTube · 3h ago", text: "Does this ship to Slovakia? Can’t find it anywhere." },
+      ],
+    },
+    risk: {
+      title: "AI risk assessment",
+      status: "No action taken",
+      confidenceLabel: "Confidence",
+      tags: ["Brand attack", "Scam", "Vulgarity"],
+      rowRiskLevel: "Risk level",
+      rowSentiment: "Sentiment",
+      rowPriority: "Priority",
+      priorityValue: "P1 · review now",
+      rowLanguage: "Language",
+      languageValue: "English",
+      caption: "The engine classifies. It never moderates on its own.",
+    },
+    approval: {
+      title: "Human approval",
+      status: "Awaiting review",
+      steps: ["AI proposes action", "Human reviews", "Execute on platform"],
+      disabled: "Disabled",
+      auditTitle: "Audit log",
+      audit: ["Item classified · High", "Action proposed · Hide", "Execution blocked · read-only"],
+      caption: "Moderation stays off until you explicitly enable it.",
+    },
+    trends: {
+      title: "Reputation analytics",
+      status: "Last 12 weeks",
+      legendSentiment: "Positive sentiment",
+      legendRisk: "High-risk items",
+      statTopics: "Topics",
+      statChannels: "Channels",
+      statFlagged: "Flagged",
+      caption: "Spot recurring concerns before they turn into a crisis.",
+    },
   },
 
   control: {
@@ -771,6 +825,24 @@ export const en = {
     autoSyncOff: "Auto-sync off",
     nextSync: "Next sync",
     runReadOnlySync: "Run read-only sync",
+    // auto-sync status + connected accounts (V1.21A)
+    autoSyncStatusTitle: "Auto-sync status",
+    autoSyncEnabled: "Auto-sync enabled",
+    autoSyncDisabled: "Auto-sync disabled",
+    workerRequired: "Requires the worker running (pnpm dev:worker)",
+    lastAutomaticSync: "Last automatic sync",
+    lastManualSync: "Last manual sync",
+    noAutomaticSyncYet: "No automatic sync yet",
+    nextSyncEstimate: "Next sync (estimate)",
+    lastSyncErrorLabel: "Last error",
+    connectedAccountsTitle: "Connected accounts",
+    liveAccount: "Live",
+    demoAccount: "Demo",
+    pageIdLabel: "Page ID",
+    syncModeReadOnly: "Read-only",
+    grantedPermsLabel: "Granted permissions",
+    connectedAtLabel: "Connected",
+    noConnectedAccounts: "No connected accounts yet.",
     // rules page
     rulesSubtitle: "Deterministic, phrase-based policies that shape how the AI Risk Engine scores your content.",
     rulesEmptyBody: "Brand rules belong to a brand. Create your first brand, then define blocked words, competitors, and crisis keywords.",
