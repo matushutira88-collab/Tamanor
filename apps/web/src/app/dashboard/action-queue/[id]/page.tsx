@@ -4,14 +4,15 @@ import { Permission, PLATFORM_META, Platform, can } from "@guardora/core";
 import { NEVER_AUTONOMOUS } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
 import { predictHideOutcome } from "@guardora/sync";
-import { PageHeader, Card, Badge, SecondaryButton, PrimaryButton } from "@/components/dashboard/ui";
+import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
+import { SubmitButton } from "@/components/dashboard/submit-button";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { formatDateTime } from "@/lib/format";
-import { approveQueueItem, rejectQueueItem, markSafeQueueItem, markHarmfulQueueItem, createIncidentFromQueue } from "./actions";
+import { approveQueueItem, retryQueueItem, rejectQueueItem, markSafeQueueItem, markHarmfulQueueItem, createIncidentFromQueue } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -26,10 +27,11 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   const q = await prisma.actionQueueItem.findFirst({ where: { id, tenantId: session.tenantId } });
   if (!q) notFound();
 
-  const [item, policy, audits] = await Promise.all([
+  const [item, policy, audits, lastExec] = await Promise.all([
     prisma.reputationItem.findFirst({ where: { id: q.itemId }, include: { contentItem: { include: { connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, pageId: true, externalId: true, externalName: true, platform: true } } } }, brand: { select: { name: true } } } }),
     prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true } }),
     prisma.auditLog.findMany({ where: { tenantId: session.tenantId, OR: [{ targetId: q.id }, { targetId: q.itemId }] }, orderBy: { createdAt: "desc" }, take: 10, select: { event: true, createdAt: true } }),
+    prisma.platformActionExecution.findFirst({ where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "approval" }, orderBy: { createdAt: "desc" }, select: { status: true, reason: true, createdAt: true } }),
   ]);
   const meta = item ? PLATFORM_META[item.platform as Platform] : null;
   const neverAuto = NEVER_AUTONOMOUS.has(q.category as never);
@@ -96,6 +98,20 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
                   <span className="ml-2 text-xs text-[var(--color-muted)]">{(t.autoProtect.blockReason as Record<string, string>)[predicted.reason] ?? predicted.reason}</span>
                 </Field>
               </dl>
+              {lastExec ? (
+                <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs">
+                  {lastExec.status === "executed" ? (
+                    <p className="font-medium">✅ {t.cc.alreadyExecuted}</p>
+                  ) : lastExec.status === "dry_run" ? (
+                    <p className="font-medium">🧪 {t.cc.dryRunAlreadyPrepared}</p>
+                  ) : lastExec.status === "failed" ? (
+                    <p className="font-medium text-[var(--color-danger)]">⚠️ {t.cc.lastAttemptFailed}</p>
+                  ) : (
+                    <p className="font-medium">🛡️ {(t.autoProtect.blockReason as Record<string, string>)[lastExec.reason ?? ""] ?? lastExec.reason}</p>
+                  )}
+                  <p className="mt-0.5 text-[var(--color-muted)]">{t.cc.lastAttemptAt}: {formatDateTime(lastExec.createdAt)}</p>
+                </div>
+              ) : null}
               <p className="mt-2 text-[11px] text-[var(--color-muted)]">✅ {t.cc.stillVisible}</p>
             </Card>
           ) : null}
@@ -131,8 +147,11 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
             <div className="space-y-2">
               {canApprove ? (
                 <>
-                  <form action={approveQueueItem}><input type="hidden" name="id" value={q.id} /><PrimaryButton type="submit" className="w-full">{t.cc.approve}</PrimaryButton></form>
-                  <form action={rejectQueueItem}><input type="hidden" name="id" value={q.id} /><SecondaryButton type="submit" className="w-full">{t.cc.reject}</SecondaryButton></form>
+                  <form action={approveQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton pendingLabel={t.cc.approving} className="w-full">{t.cc.approve}</SubmitButton></form>
+                  {lastExec?.status === "failed" ? (
+                    <form action={retryQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" pendingLabel={t.cc.approving} className="w-full">{t.cc.retry}</SubmitButton></form>
+                  ) : null}
+                  <form action={rejectQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" className="w-full">{t.cc.reject}</SubmitButton></form>
                 </>
               ) : null}
               {canAct ? (

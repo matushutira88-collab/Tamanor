@@ -680,6 +680,13 @@ export const de: Dictionary = {
     liveConfirmNeeded: "LIVE_HIDE_TEST_CONFIRM=YES erforderlich",
     liveConfirmSet: "Live-Bestätigung gesetzt",
     stillVisible: "Der Facebook-Kommentar ist weiterhin sichtbar (nichts wurde ausgeblendet).",
+    // V1.25B — Ausführungs-Idempotenz
+    dryRunAlreadyPrepared: "Dry-run bereits vorbereitet — erneutes Genehmigen erzeugt keine zweite Ausführung.",
+    alreadyExecuted: "Diese Aktion wurde bereits ausgeführt.",
+    lastAttemptFailed: "Der letzte Versuch ist fehlgeschlagen. Mit Erneut versuchen wiederholen.",
+    lastAttemptAt: "Letzter Versuch",
+    approving: "Wird verarbeitet…",
+    retry: "Erneut versuchen",
   },
 
   memory: {

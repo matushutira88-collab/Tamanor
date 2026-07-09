@@ -18,6 +18,16 @@ import { AUTONOMOUS_ELIGIBLE, NEVER_AUTONOMOUS, FACEBOOK_HIDE_PERMISSION } from 
 
 export type HideExecutionStatus = "blocked" | "dry_run" | "executed" | "failed";
 
+export interface HideExecutionResult {
+  id: string;
+  status: HideExecutionStatus;
+  reason: string;
+  /** True when this result reuses a prior execution instead of creating a new row. */
+  idempotent?: boolean;
+  /** createdAt of the reused row (for "last dry-run at …" in the UI). */
+  createdAt?: Date;
+}
+
 export interface HideContext {
   tenantId: string;
   brandId: string;
@@ -85,21 +95,57 @@ function gate(ctx: HideContext, cfg: ReturnType<typeof getLiveActionsConfig>): {
   return { blockedReason: null };
 }
 
-async function record(ctx: HideContext, status: HideExecutionStatus, reason: string, provider?: HideCommentResult): Promise<{ id: string; status: HideExecutionStatus; reason: string }> {
-  const exec = await prisma.platformActionExecution.create({
-    data: {
-      tenantId: ctx.tenantId, brandId: ctx.brandId, itemId: ctx.itemId,
-      queueItemId: ctx.queueItemId ?? null, policyId: ctx.policyId ?? null,
-      connectedAccountId: ctx.connectedAccountId, platform: ctx.platform, actionType: "hide_comment",
-      requestedBy: ctx.requestedBy ?? "system", trigger: ctx.trigger,
-      status, reason, policyCategory: ctx.matchedCategory, confidence: ctx.confidence,
-      externalCommentId: ctx.externalCommentId, externalPostId: ctx.externalPostId ?? null,
-      providerResponseCode: provider?.providerResponseCode ?? null,
-      providerErrorCode: provider?.providerErrorCode ?? null,
-      providerErrorMessage: provider?.providerErrorMessage ?? null,
-      executedAt: status === "executed" ? new Date() : null,
-    },
+/**
+ * Idempotency key for one logical action: a queue item + its action + trigger,
+ * scoped to the same item/account/policy. Repeated Approve clicks share this key.
+ */
+function attemptWhere(ctx: HideContext) {
+  return {
+    tenantId: ctx.tenantId,
+    itemId: ctx.itemId,
+    queueItemId: ctx.queueItemId ?? null,
+    connectedAccountId: ctx.connectedAccountId,
+    actionType: "hide_comment",
+    trigger: ctx.trigger,
+    policyId: ctx.policyId ?? null,
+  };
+}
+
+/** Latest existing executions for this action key (newest first). */
+async function findExistingExecutions(ctx: HideContext) {
+  return prisma.platformActionExecution.findMany({
+    where: attemptWhere(ctx),
+    orderBy: { createdAt: "desc" },
   });
+}
+
+async function record(ctx: HideContext, status: HideExecutionStatus, reason: string, provider?: HideCommentResult): Promise<HideExecutionResult> {
+  let exec;
+  try {
+    exec = await prisma.platformActionExecution.create({
+      data: {
+        tenantId: ctx.tenantId, brandId: ctx.brandId, itemId: ctx.itemId,
+        queueItemId: ctx.queueItemId ?? null, policyId: ctx.policyId ?? null,
+        connectedAccountId: ctx.connectedAccountId, platform: ctx.platform, actionType: "hide_comment",
+        requestedBy: ctx.requestedBy ?? "system", trigger: ctx.trigger,
+        status, reason, policyCategory: ctx.matchedCategory, confidence: ctx.confidence,
+        externalCommentId: ctx.externalCommentId, externalPostId: ctx.externalPostId ?? null,
+        providerResponseCode: provider?.providerResponseCode ?? null,
+        providerErrorCode: provider?.providerErrorCode ?? null,
+        providerErrorMessage: provider?.providerErrorMessage ?? null,
+        executedAt: status === "executed" ? new Date() : null,
+      },
+    });
+  } catch (e) {
+    // Race safety net: the partial unique index (queueItemId, actionType, trigger)
+    // over active (dry_run|executed) attempts rejects a concurrent duplicate. Fall
+    // back to the row that won the race instead of creating a second one.
+    if ((e as { code?: string }).code === "P2002" && (status === "dry_run" || status === "executed")) {
+      const existing = await prisma.platformActionExecution.findFirst({ where: { ...attemptWhere(ctx), status }, orderBy: { createdAt: "desc" } });
+      if (existing) return { id: existing.id, status, reason: existing.reason ?? reason, idempotent: true, createdAt: existing.createdAt };
+    }
+    throw e;
+  }
   const event = status === "executed" ? "platform_action.executed"
     : status === "failed" ? "platform_action.failed"
     : status === "dry_run" ? "platform_action.dry_run"
@@ -122,10 +168,39 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
  */
 export async function attemptFacebookHide(
   ctx: HideContext,
-  opts?: { transport?: FacebookHideTransport; config?: ReturnType<typeof getLiveActionsConfig> },
-): Promise<{ id: string; status: HideExecutionStatus; reason: string }> {
+  opts?: { transport?: FacebookHideTransport; config?: ReturnType<typeof getLiveActionsConfig>; retry?: boolean },
+): Promise<HideExecutionResult> {
   const cfg = opts?.config ?? getLiveActionsConfig();
   const transportOverride = opts?.transport;
+
+  // --- Idempotency (V1.25B): one approval must not create duplicate executions. ---
+  const existing = await findExistingExecutions(ctx);
+  if (existing.length > 0) {
+    const executed = existing.find((r) => r.status === "executed");
+    if (executed) {
+      // A live hide already ran — never execute again.
+      return { id: executed.id, status: "executed", reason: "already_executed", idempotent: true, createdAt: executed.createdAt };
+    }
+    const dry = existing.find((r) => r.status === "dry_run");
+    if (dry) {
+      // A dry-run was already prepared — return it, do not create a second row.
+      return { id: dry.id, status: "dry_run", reason: dry.reason ?? "dry_run_mode", idempotent: true, createdAt: dry.createdAt };
+    }
+    const latest = existing[0]!;
+    if (latest.status === "failed" && !opts?.retry) {
+      // A failed attempt only retries via an explicit Retry — never a repeated Approve.
+      return { id: latest.id, status: "failed", reason: latest.reason ?? "provider_error", idempotent: true, createdAt: latest.createdAt };
+    }
+    if (latest.status === "blocked") {
+      // A blocked attempt re-runs only if env gates / permissions actually changed.
+      const { blockedReason: nowReason } = gate(ctx, cfg);
+      if (nowReason && nowReason === latest.reason) {
+        return { id: latest.id, status: "blocked", reason: nowReason, idempotent: true, createdAt: latest.createdAt };
+      }
+      // else: gates changed (unblocked or a different reason) → fall through to a fresh attempt.
+    }
+  }
+
   const { blockedReason } = gate(ctx, cfg);
   if (blockedReason) {
     return record(ctx, "blocked", blockedReason);

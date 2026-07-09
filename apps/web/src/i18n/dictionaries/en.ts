@@ -708,6 +708,13 @@ export const en = {
     liveConfirmNeeded: "LIVE_HIDE_TEST_CONFIRM=YES required",
     liveConfirmSet: "Live confirmation set",
     stillVisible: "The Facebook comment is still visible (nothing was hidden).",
+    // V1.25B — execution idempotency
+    dryRunAlreadyPrepared: "Dry-run already prepared — approving again will not create a second execution.",
+    alreadyExecuted: "This action was already performed.",
+    lastAttemptFailed: "The last attempt failed. Use Retry to try again.",
+    lastAttemptAt: "Last attempt",
+    approving: "Processing…",
+    retry: "Retry",
   },
 
   // Brand risk memory + feedback (V1.17).

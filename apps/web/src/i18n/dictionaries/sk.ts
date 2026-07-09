@@ -680,6 +680,13 @@ export const sk: Dictionary = {
     liveConfirmNeeded: "Vyžaduje sa LIVE_HIDE_TEST_CONFIRM=YES",
     liveConfirmSet: "Živé potvrdenie nastavené",
     stillVisible: "Komentár na Facebooku je stále viditeľný (nič sa neskrylo).",
+    // V1.25B — idempotencia vykonania
+    dryRunAlreadyPrepared: "Dry-run už bol pripravený — opätovné schválenie nevytvorí druhé vykonanie.",
+    alreadyExecuted: "Táto akcia už bola vykonaná.",
+    lastAttemptFailed: "Posledný pokus zlyhal. Skúste to znova cez Retry.",
+    lastAttemptAt: "Posledný pokus",
+    approving: "Spracúva sa…",
+    retry: "Skúsiť znova",
   },
 
   memory: {
