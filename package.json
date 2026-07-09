@@ -31,6 +31,7 @@
     "autoprotect:value-test": "pnpm --filter @guardora/db exec tsx scripts/autoprotect-value.test.ts",
     "realmeta:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/real-meta-blockers.test.ts",
     "fbhide:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/facebook-hide.test.ts",
+    "live-ux:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/live-ux.test.ts",
     "real:cleanup-demo": "pnpm --filter @guardora/db exec tsx scripts/cleanup-demo.ts",
     "real:reset-content": "pnpm --filter @guardora/db exec tsx scripts/reset-content.ts",
     "demo:seed": "SEED_DEMO=true pnpm --filter @guardora/db seed",

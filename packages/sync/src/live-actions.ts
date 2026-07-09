@@ -75,6 +75,31 @@ export function predictHideOutcome(
   return { expected: "live_possible", reason: "all_gates_passed_and_confirmed" };
 }
 
+export type PrimaryAction = "live_hide" | "prepare_dryrun" | "approve" | "hard_stop";
+
+/**
+ * V1.26B — decide the PRIMARY action for a queue item's detail. When the item is
+ * "live_possible", the live hide (not Approve) is primary; Approve is demoted to a
+ * secondary "approve without hiding". Pure + exported so the UI and tests agree.
+ */
+export function resolvePrimaryAction(input: {
+  proposedAction: string;
+  expected?: PredictedOutcome | null;
+  hasPreflight: boolean;
+  alreadyExecuted: boolean;
+}): { primary: PrimaryAction; approveIsPrimary: boolean; showLiveForm: boolean } {
+  const { proposedAction, expected, hasPreflight, alreadyExecuted } = input;
+  const isHide = proposedAction === "hide_comment";
+  if (isHide && alreadyExecuted) return { primary: "hard_stop", approveIsPrimary: false, showLiveForm: false };
+  const liveMode = isHide && !alreadyExecuted && expected === "live_possible";
+  if (liveMode) {
+    return hasPreflight
+      ? { primary: "live_hide", approveIsPrimary: false, showLiveForm: true }
+      : { primary: "prepare_dryrun", approveIsPrimary: false, showLiveForm: false };
+  }
+  return { primary: "approve", approveIsPrimary: true, showLiveForm: false };
+}
+
 /** Determine why a live hide is (not) allowed. Fail-closed, ordered gates. */
 function gate(ctx: HideContext, cfg: ReturnType<typeof getLiveActionsConfig>): { blockedReason: string | null } {
   if (!cfg.liveEnabled) return { blockedReason: "global_disabled" };

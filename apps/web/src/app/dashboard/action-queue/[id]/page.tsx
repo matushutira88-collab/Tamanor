@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Permission, PLATFORM_META, Platform, can } from "@guardora/core";
 import { NEVER_AUTONOMOUS, AUTONOMOUS_ELIGIBLE, FACEBOOK_HIDE_PERMISSION } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
-import { predictHideOutcome, findPreflightDryRun } from "@guardora/sync";
+import { predictHideOutcome, findPreflightDryRun, resolvePrimaryAction } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { SubmitButton } from "@/components/dashboard/submit-button";
 import { LiveHideForm } from "@/components/dashboard/live-hide-form";
@@ -13,7 +13,7 @@ import { prisma } from "@/server/db";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { formatDateTime } from "@/lib/format";
-import { approveQueueItem, retryQueueItem, rejectQueueItem, markSafeQueueItem, markHarmfulQueueItem, createIncidentFromQueue } from "./actions";
+import { approveQueueItem, approveWithoutHide, retryQueueItem, rejectQueueItem, markSafeQueueItem, markHarmfulQueueItem, createIncidentFromQueue } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -69,11 +69,11 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
     idempotency: !alreadyExecuted,
     safety: eligibleCategory && q.confidence >= 0.8,
   };
-  const allReady = Object.values(readiness).every(Boolean);
-  // The live form shows only when it is safe & wired to actually be usable; the
-  // server still re-checks every gate. Retry surfaces only after a failed live hide.
-  const showLiveForm = q.proposedAction === "hide_comment" && !alreadyExecuted && live.canExecuteLive
-    && permGranted && eligibleCategory && !!preflight;
+  // V1.26B — when the item predicts "live_possible", the LIVE hide is the PRIMARY
+  // action (not Approve). Single source of truth shared with the UX test.
+  const decision = resolvePrimaryAction({ proposedAction: q.proposedAction, expected: predicted?.expected ?? null, hasPreflight: !!preflight, alreadyExecuted });
+  const liveMode = decision.primary === "live_hide" || decision.primary === "prepare_dryrun";
+  const showLiveForm = decision.showLiveForm;
   const showRetry = showLiveForm && lastExec?.status === "failed";
   const R = ({ ok, label }: { ok: boolean; label: string }) => (
     <li className="flex items-center gap-1.5">{ok ? "✅" : "⛔"} <span className={ok ? "" : "text-[var(--color-muted)]"}>{label}</span></li>
@@ -144,48 +144,21 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
             </Card>
           ) : null}
 
-          {predicted && q.proposedAction === "hide_comment" ? (
+          {predicted && q.proposedAction === "hide_comment" && !alreadyExecuted ? (
             <Card>
               <h3 className="mb-2 text-sm font-semibold">🔴 {t.cc.liveHideTitle}</h3>
-
-              {alreadyExecuted ? (
-                <div className="rounded-lg border-2 border-[var(--color-danger)] bg-[var(--color-surface-2)] p-3 text-sm">
-                  <p className="font-bold">✅ {t.cc.liveDone}</p>
-                  <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.liveDoneRollback}</p>
-                  {lastExec?.createdAt ? <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.lastAttemptAt}: {formatDateTime(lastExec.createdAt)}</p> : null}
-                </div>
-              ) : (
-                <>
-                  <p className="mb-2 text-xs font-medium">{t.cc.liveReadiness}</p>
-                  <ul className="mb-3 space-y-0.5 text-xs">
-                    <R ok={readiness.liveEnabled} label="LIVE_ACTIONS_ENABLED=true" />
-                    <R ok={readiness.facebookHideEnabled} label="FACEBOOK_HIDE_ENABLED=true" />
-                    <R ok={readiness.dryRunOff} label="LIVE_ACTIONS_DRY_RUN=false" />
-                    <R ok={readiness.liveConfirmed} label="LIVE_HIDE_TEST_CONFIRM=YES" />
-                    <R ok={readiness.permission} label="pages_manage_engagement" />
-                    <R ok={readiness.preflight} label={t.cc.preflightDryRun} />
-                    <R ok={readiness.idempotency} label={t.cc.idempotencyOk} />
-                    <R ok={readiness.safety} label={t.cc.safetyOk} />
-                  </ul>
-
-                  {!preflight ? (
-                    <p className="rounded-lg border border-[var(--color-warn)] p-2 text-xs">⚠️ {t.cc.runDryRunFirst}</p>
-                  ) : showLiveForm ? (
-                    <LiveHideForm
-                      id={q.id}
-                      retry={showRetry}
-                      warning={t.cc.liveHideWarning}
-                      ackLabel={t.cc.liveHideAck}
-                      phraseLabel={t.cc.liveHidePhrase}
-                      phrasePlaceholder="LIVE HIDE"
-                      buttonLabel={showRetry ? t.cc.liveHideRetryButton : t.cc.liveHideButton}
-                      pendingLabel={t.cc.approving}
-                    />
-                  ) : (
-                    <p className="rounded-lg border border-[var(--color-border)] p-2 text-xs text-[var(--color-muted)]">{allReady ? t.cc.liveNotAvailable : t.cc.liveGatesNotMet}</p>
-                  )}
-                </>
-              )}
+              <p className="mb-2 text-xs font-medium">{t.cc.liveReadiness}</p>
+              <ul className="space-y-0.5 text-xs">
+                <R ok={readiness.liveEnabled} label="LIVE_ACTIONS_ENABLED=true" />
+                <R ok={readiness.facebookHideEnabled} label="FACEBOOK_HIDE_ENABLED=true" />
+                <R ok={readiness.dryRunOff} label="LIVE_ACTIONS_DRY_RUN=false" />
+                <R ok={readiness.liveConfirmed} label="LIVE_HIDE_TEST_CONFIRM=YES" />
+                <R ok={readiness.permission} label="pages_manage_engagement" />
+                <R ok={readiness.preflight} label={t.cc.preflightDryRun} />
+                <R ok={readiness.idempotency} label={t.cc.idempotencyOk} />
+                <R ok={readiness.safety} label={t.cc.safetyOk} />
+              </ul>
+              <p className="mt-2 text-[11px] text-[var(--color-muted)]">{liveMode ? t.cc.liveReadyPrimary : t.cc.liveGatesNotMet}</p>
             </Card>
           ) : null}
 
@@ -214,11 +187,48 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
         </div>
 
         <aside className="space-y-3">
+          {alreadyExecuted ? (
+            <Card>
+              <div className="rounded-lg border-2 border-[var(--color-danger)] bg-[var(--color-surface-2)] p-3 text-sm">
+                <p className="font-bold">✅ {t.cc.liveDone}</p>
+                <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.liveDoneRollback}</p>
+                {lastExec?.createdAt ? <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.lastAttemptAt}: {formatDateTime(lastExec.createdAt)}</p> : null}
+              </div>
+            </Card>
+          ) : liveMode ? (
+            <Card>
+              <p className="mb-2 text-sm font-semibold text-[var(--color-danger)]">🔴 {t.cc.liveReadyPrimary}</p>
+              {canApprove ? (
+                <div className="space-y-2">
+                  {showLiveForm ? (
+                    <LiveHideForm
+                      id={q.id}
+                      retry={showRetry}
+                      warning={t.cc.liveHideWarning}
+                      ackLabel={t.cc.liveHideAck}
+                      phraseLabel={t.cc.liveHidePhrase}
+                      phrasePlaceholder="LIVE HIDE"
+                      buttonLabel={showRetry ? t.cc.liveHideRetryButton : t.cc.liveHideButton}
+                      pendingLabel={t.cc.approving}
+                    />
+                  ) : (
+                    <>
+                      <p className="rounded-lg border border-[var(--color-warn)] p-2 text-xs">⚠️ {t.cc.runDryRunFirst}</p>
+                      <form action={approveQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton pendingLabel={t.cc.approving} className="w-full">{t.cc.prepareDryRun}</SubmitButton></form>
+                    </>
+                  )}
+                  <form action={approveWithoutHide}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" pendingLabel={t.cc.approving} className="w-full">{t.cc.approveWithoutHide}</SubmitButton></form>
+                  <form action={rejectQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" className="w-full">{t.cc.reject}</SubmitButton></form>
+                </div>
+              ) : null}
+            </Card>
+          ) : null}
+
           <Card>
             <p className="mb-1 text-xs font-medium">{t.cc.approveExplains}</p>
             <p className="mb-3 text-[11px] text-[var(--color-muted)]">{t.cc.approveExplainsBody} {t.cc.approveNote}</p>
             <div className="space-y-2">
-              {canApprove ? (
+              {canApprove && !liveMode && !alreadyExecuted ? (
                 <>
                   <form action={approveQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton pendingLabel={t.cc.approving} className="w-full">{t.cc.approve}</SubmitButton></form>
                   {lastExec?.status === "failed" && !live.canExecuteLive ? (

@@ -88,6 +88,21 @@ export async function approveQueueItem(formData: FormData): Promise<void> {
 }
 
 /**
+ * V1.26B — "Approve without hiding". Records the decision as approved but never
+ * creates any execution or touches Facebook. Used as the secondary action when the
+ * item is live-ready, so the operator can explicitly approve WITHOUT a live hide.
+ */
+export async function approveWithoutHide(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.ProposalApprove);
+  const id = String(formData.get("id") ?? "");
+  const q = await loadQueueItem(session.tenantId, id);
+  await prisma.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "approved", approvedByUserId: session.userId } });
+  await writeAudit({ session, event: "approval.approved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, proposedAction: q.proposedAction, executed: false, hidden: false } });
+  back(q.id, "The decision was approved, but the comment was not hidden. Use the “Execute live hide on Facebook” button to hide it.");
+}
+
+/**
  * Explicit Retry for a previously FAILED hide execution. This is the ONLY path
  * that re-attempts a failed action — a repeated Approve does not. Idempotency
  * for dry_run/executed still holds (those never re-run here either).

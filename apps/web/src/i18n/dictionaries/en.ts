@@ -734,6 +734,9 @@ export const en = {
     liveGatesNotMet: "Live gates are not all met — hide stays blocked.",
     liveDone: "The comment was hidden on Facebook.",
     liveDoneRollback: "First live hide completed. Return to dry-run mode before further testing.",
+    liveReadyPrimary: "This item is ready for a live hide on Facebook.",
+    prepareDryRun: "Prepare dry-run test",
+    approveWithoutHide: "Approve without hiding",
   },
 
   // Brand risk memory + feedback (V1.17).

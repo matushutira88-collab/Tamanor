@@ -706,6 +706,9 @@ export const sk: Dictionary = {
     liveGatesNotMet: "Nie sú splnené všetky živé podmienky — skrytie zostáva blokované.",
     liveDone: "Komentár bol skrytý na Facebooku.",
     liveDoneRollback: "Prvé živé skrytie dokončené. Pred ďalším testovaním sa vráťte do režimu nanečisto.",
+    liveReadyPrimary: "Táto položka je pripravená na živé skrytie na Facebooku.",
+    prepareDryRun: "Pripraviť test nanečisto",
+    approveWithoutHide: "Schváliť bez skrytia",
   },
 
   memory: {

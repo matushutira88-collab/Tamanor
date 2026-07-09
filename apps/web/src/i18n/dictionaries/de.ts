@@ -706,6 +706,9 @@ export const de: Dictionary = {
     liveGatesNotMet: "Nicht alle Live-Bedingungen erfüllt — Ausblenden bleibt blockiert.",
     liveDone: "Der Kommentar wurde auf Facebook ausgeblendet.",
     liveDoneRollback: "Erstes Live-Ausblenden abgeschlossen. Vor weiteren Tests in den Dry-run-Modus zurückkehren.",
+    liveReadyPrimary: "Dieses Element ist bereit für ein Live-Ausblenden auf Facebook.",
+    prepareDryRun: "Dry-run-Test vorbereiten",
+    approveWithoutHide: "Genehmigen ohne Ausblenden",
   },
 
   memory: {
