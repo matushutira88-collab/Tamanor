@@ -33,7 +33,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
     prisma.reputationItem.findFirst({ where: { id: q.itemId }, include: { contentItem: { include: { connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, pageId: true, externalId: true, externalName: true, platform: true } } } }, brand: { select: { name: true } } } }),
     prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true } }),
     prisma.auditLog.findMany({ where: { tenantId: session.tenantId, OR: [{ targetId: q.id }, { targetId: q.itemId }] }, orderBy: { createdAt: "desc" }, take: 10, select: { event: true, createdAt: true } }),
-    prisma.platformActionExecution.findFirst({ where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "approval" }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, reason: true, createdAt: true } }),
+    prisma.platformActionExecution.findFirst({ where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "approval" }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, reason: true, providerErrorCode: true, createdAt: true } }),
   ]);
   // V1.27 — autonomous (auto-hide) execution for this item, if any.
   const autoExec = await prisma.platformActionExecution.findFirst({
@@ -84,6 +84,10 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   const showLiveForm = decision.showLiveForm;
   const showRetry = showLiveForm && lastExec?.status === "failed";
   const isDev = process.env.NODE_ENV !== "production";
+  // V1.27B — a token_expired failure must show a reconnect CTA and block retry.
+  const tokenExpired = lastExec?.status === "failed" && (lastExec.reason === "token_expired" || lastExec.providerErrorCode === "token_expired")
+    || autoExec?.status === "failed" && (autoExec.reason === "token_expired" || autoExec.providerErrorCode === "token_expired");
+  const reconnectHref = acct ? `/api/connectors/meta/start?brandId=${q.brandId}&accountId=${acct.id}` : "/dashboard/accounts";
   const R = ({ ok, label }: { ok: boolean; label: string }) => (
     <li className="flex items-center gap-1.5">{ok ? "✅" : "⛔"} <span className={ok ? "" : "text-[var(--color-muted)]"}>{label}</span></li>
   );
@@ -139,8 +143,17 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
               ) : (
                 <>
                   <div className="mb-2 flex items-center gap-2"><Badge tone="danger">⚠️ {t.cc.autoHiddenFailed}</Badge></div>
-                  <p className="text-xs text-[var(--color-danger)]">{autoExec.providerErrorMessage ?? autoExec.providerErrorCode ?? autoExec.reason}</p>
-                  <p className="mt-1 text-[11px] text-[var(--color-muted)]">{t.cc.lastAttemptFailed}</p>
+                  {autoExec.providerErrorCode === "token_expired" || autoExec.reason === "token_expired" ? (
+                    <>
+                      <p className="text-xs font-medium text-[var(--color-danger)]">{t.cc.tokenExpired}</p>
+                      <a href={reconnectHref} className="mt-2 inline-block rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-brand-strong)]">{t.cc.reconnectPage}</a>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-[var(--color-danger)]">{autoExec.providerErrorMessage ?? autoExec.providerErrorCode ?? autoExec.reason}</p>
+                      <p className="mt-1 text-[11px] text-[var(--color-muted)]">{t.cc.lastAttemptFailed}</p>
+                    </>
+                  )}
                 </>
               )}
             </Card>
@@ -249,7 +262,14 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
               ) : null}
               {canApprove ? (
                 <div className="space-y-2">
-                  {/* V1.26C — live form renders directly whenever live_possible. */}
+                  {tokenExpired ? (
+                    <div className="rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs">
+                      <p className="font-medium text-[var(--color-danger)]">{t.cc.tokenExpired}</p>
+                      <p className="mt-1 text-[var(--color-muted)]">{t.cc.reconnectFirst}</p>
+                      <a href={reconnectHref} className="mt-2 inline-block rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-brand-strong)]">{t.cc.reconnectPage}</a>
+                    </div>
+                  ) : (
+                  /* V1.26C — live form renders directly whenever live_possible. */
                   <LiveHideForm
                     id={q.id}
                     retry={showRetry}
@@ -260,6 +280,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
                     buttonLabel={showRetry ? t.cc.liveHideRetryButton : t.cc.liveHideButton}
                     pendingLabel={t.cc.approving}
                   />
+                  )}
                   <form action={approveWithoutHide}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" pendingLabel={t.cc.approving} className="w-full">{t.cc.approveWithoutHide}</SubmitButton></form>
                   <form action={rejectQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" className="w-full">{t.cc.reject}</SubmitButton></form>
                 </div>
@@ -274,7 +295,12 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
               {canApprove && !liveMode && !alreadyExecuted ? (
                 <>
                   <form action={approveQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton pendingLabel={t.cc.approving} className="w-full">{t.cc.approve}</SubmitButton></form>
-                  {lastExec?.status === "failed" && !live.canExecuteLive ? (
+                  {tokenExpired ? (
+                    <div className="rounded-lg border border-[var(--color-danger)] p-2 text-xs">
+                      <p className="font-medium text-[var(--color-danger)]">{t.cc.reconnectFirst}</p>
+                      <a href={reconnectHref} className="mt-1 inline-block text-[var(--color-brand)] hover:underline">{t.cc.reconnectPage} →</a>
+                    </div>
+                  ) : lastExec?.status === "failed" && !live.canExecuteLive ? (
                     <form action={retryQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" pendingLabel={t.cc.approving} className="w-full">{t.cc.retry}</SubmitButton></form>
                   ) : null}
                   <form action={rejectQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" className="w-full">{t.cc.reject}</SubmitButton></form>

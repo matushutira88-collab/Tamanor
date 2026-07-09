@@ -53,6 +53,10 @@ export default async function CommandCenterPage() {
     prisma.platformActionExecution.findFirst({ where: { ...where, status: "executed", trigger: "autonomous" }, orderBy: { executedAt: "desc" }, select: { executedAt: true } }),
     prisma.platformActionExecution.findFirst({ where: { ...where, status: "failed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, providerErrorCode: true, providerErrorMessage: true } }),
   ]);
+  const reconnectAccounts = await prisma.connectedAccount.findMany({
+    where: { tenantId: session.tenantId, status: ConnectorStatus.Active, OR: [{ lastError: "token_expired" }, { health: ConnectorHealth.Error }] },
+    select: { externalName: true },
+  });
   const anyKillSwitch = liveSafety.globalKillSwitch || killedBrands > 0 || killedAccounts > 0;
 
   // Next recommended setup step.
@@ -155,6 +159,9 @@ export default async function CommandCenterPage() {
             </div>
             {anyKillSwitch ? (
               <p className="mb-3 rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs font-bold text-[var(--color-danger)]">🛑 {t.cc.killSwitchActive}</p>
+            ) : null}
+            {reconnectAccounts.length > 0 ? (
+              <Link href="/dashboard/accounts" className="mb-3 block rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs font-bold text-[var(--color-danger)]">🔌 {reconnectAccounts.map((a) => a.externalName ?? "Account").join(", ")}: {t.cc.reconnectNeeded}</Link>
             ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
               <div><p className="text-xs text-[var(--color-muted)]">{t.cc.safeLiveMode}</p><Badge tone={liveCfg.canExecuteLive ? "warn" : "ok"}>{liveCfg.canExecuteLive ? t.cc.safeLiveEnabled : t.cc.safeLiveDisabled}</Badge></div>

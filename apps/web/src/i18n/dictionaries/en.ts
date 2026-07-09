@@ -781,6 +781,10 @@ export const en = {
     autoHideEnabled: "Safe auto-hide enabled",
     autoHideLimitsNote: "Never on normal criticism · legal/refund complaints always go to a human · within hourly/daily limits · only above the confidence threshold.",
     disableAutoHide: "Disable auto-hide",
+    tokenExpired: "Facebook token expired. Reconnect the Facebook Page.",
+    reconnectPage: "Reconnect Facebook Page",
+    reconnectFirst: "Reconnect the Facebook Page first.",
+    reconnectNeeded: "This account requires reconnection.",
   },
 
   // Brand risk memory + feedback (V1.17).

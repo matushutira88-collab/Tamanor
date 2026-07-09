@@ -27,7 +27,7 @@ async function runHideForQueueItem(
 ): Promise<{ note: string; kind: "ok" | "error" }> {
   const item = await prisma.reputationItem.findFirst({
     where: { id: q.itemId, tenantId: session.tenantId },
-    select: { riskLevel: true, contentItem: { select: { externalId: true, externalParentId: true, connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, accessToken: true, pageId: true, externalId: true, platform: true } } } } },
+    select: { riskLevel: true, contentItem: { select: { externalId: true, externalParentId: true, connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, accessToken: true, pageId: true, externalId: true, platform: true, tokenExpiresAt: true, lastError: true } } } } },
   });
   const acct = item?.contentItem.connectedAccount;
   if (!acct) return { note: "Approved. No live action was executed (live execution is disabled).", kind: "ok" };
@@ -38,7 +38,7 @@ async function runHideForQueueItem(
     externalCommentId: item!.contentItem.externalId, externalPostId: item!.contentItem.externalParentId ?? null,
     matchedCategory: q.category, confidence: q.confidence, riskLevel: item!.riskLevel as unknown as string,
     mode: policy?.mode ?? "approval", trigger: "approval",
-    account: { status: acct.status as unknown as string, health: acct.health as unknown as string, grantedPermissions: acct.grantedPermissions, accessToken: acct.accessToken, pageId: acct.pageId, externalId: acct.externalId },
+    account: { status: acct.status as unknown as string, health: acct.health as unknown as string, grantedPermissions: acct.grantedPermissions, accessToken: acct.accessToken, pageId: acct.pageId, externalId: acct.externalId, tokenExpiresAt: acct.tokenExpiresAt, needsReconnect: acct.lastError === "token_expired" },
     requestedBy: "user",
   }, { retry: opts?.retry, liveAttempt: opts?.liveAttempt });
 
@@ -49,6 +49,7 @@ async function runHideForQueueItem(
         ? "This action was already performed. The comment was not hidden again. Return to dry-run mode before further testing."
         : "The comment was hidden on Facebook. First live hide completed — return to dry-run mode before further testing.", kind: "ok" };
     }
+    if (res.reason === "token_expired") return { note: "Facebook token expired. Reconnect the Facebook Page, then try again.", kind: "error" };
     if (res.status === "failed") return { note: "The hide failed. The comment may still be visible. Use Retry (explicit) to try again.", kind: "error" };
     return { note: `Live hide blocked (${res.reason}). No Facebook comment was hidden.`, kind: "error" };
   }

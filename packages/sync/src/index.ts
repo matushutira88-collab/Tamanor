@@ -479,6 +479,7 @@ async function persistItem(
           status: account.status as unknown as string, health: account.health as unknown as string,
           grantedPermissions: account.grantedPermissions, accessToken: account.accessToken,
           pageId: account.pageId, externalId: account.externalId,
+          tokenExpiresAt: account.tokenExpiresAt, needsReconnect: account.lastError === "token_expired",
         },
         requestedBy: "system",
       }, { safety });

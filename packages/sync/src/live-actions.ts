@@ -54,6 +54,10 @@ export interface HideContext {
     accessToken?: string | null;
     pageId?: string | null;
     externalId: string;
+    /** Page token expiry, if known. Past → token_expired preflight block. */
+    tokenExpiresAt?: Date | string | null;
+    /** Account already flagged as needing reconnect (e.g. prior token_expired). */
+    needsReconnect?: boolean;
   };
   requestedBy?: "system" | "user";
 }
@@ -106,6 +110,11 @@ function gate(ctx: HideContext, cfg: ReturnType<typeof getLiveActionsConfig>): {
   if (ctx.platform !== "facebook_page") return { blockedReason: "unsupported_platform" };
   if (ctx.account.status === "mock_connected") return { blockedReason: "account_is_demo" };
   if (ctx.account.status !== "active") return { blockedReason: "account_not_active" };
+  // V1.27B token preflight — before the generic health check so the reason is precise.
+  // A past expiry or an account already flagged for reconnect blocks with token_expired
+  // and never calls the Graph API.
+  if (ctx.account.needsReconnect) return { blockedReason: "token_expired" };
+  if (ctx.account.tokenExpiresAt && new Date(ctx.account.tokenExpiresAt).getTime() <= Date.now()) return { blockedReason: "token_expired" };
   if (ctx.account.health !== "healthy") return { blockedReason: "unhealthy_account" };
   if (!ctx.account.grantedPermissions.includes(FACEBOOK_HIDE_PERMISSION)) return { blockedReason: "missing_permission" };
   // Hard safety floor: customer-voice categories are never auto-hidden.
@@ -186,6 +195,14 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
       if (existing) return { id: existing.id, status: "executed", reason: existing.reason ?? reason, idempotent: true, createdAt: existing.createdAt };
     }
     throw e;
+  }
+  // V1.27B — a token_expired failure marks the account for reconnect so the next
+  // hide preflight blocks precisely and the UI can surface a reconnect CTA.
+  if (status === "failed" && provider?.providerErrorCode === "token_expired") {
+    await prisma.connectedAccount.updateMany({
+      where: { id: ctx.connectedAccountId },
+      data: { health: "error", lastError: "token_expired", lastErrorAt: new Date() },
+    });
   }
   const event = status === "executed" ? "platform_action.executed"
     : status === "failed" ? "platform_action.failed"

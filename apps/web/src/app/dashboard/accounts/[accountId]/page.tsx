@@ -267,6 +267,14 @@ export default async function AccountDetailPage({
           ) : null}
         </div>
         {anyKill ? <p className="mb-3 rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs font-bold text-[var(--color-danger)]">🛑 {t.cc.killSwitchActive}</p> : null}
+        {account.lastError === "token_expired" ? (
+          <div className="mb-3 rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs">
+            <p className="font-bold text-[var(--color-danger)]">🔑 {t.cc.tokenExpired}</p>
+            {manage && meta.configured ? (
+              <a href={`/api/connectors/meta/start?brandId=${account.brand.id}&accountId=${account.id}`} className="mt-1 inline-block text-[var(--color-brand)] hover:underline">{t.cc.reconnectPage} →</a>
+            ) : null}
+          </div>
+        ) : null}
         <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <div><p className="text-xs text-[var(--color-muted)]">{t.cc.capRead}</p><Badge tone="ok">{t.cc.safeLiveEnabled}</Badge></div>
           <div><p className="text-xs text-[var(--color-muted)]">{t.cc.capHide}</p><Badge tone={account.grantedPermissions.includes(HIDE_PERMISSION) ? "ok" : "warn"}>{account.grantedPermissions.includes(HIDE_PERMISSION) ? HIDE_PERMISSION : t.cc.safeLiveDisabled}</Badge></div>

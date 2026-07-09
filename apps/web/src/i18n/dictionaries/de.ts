@@ -753,6 +753,10 @@ export const de: Dictionary = {
     autoHideEnabled: "Sicheres Auto-Ausblenden aktiviert",
     autoHideLimitsNote: "Nie bei normaler Kritik · Rechts-/Reklamationsfälle immer an einen Menschen · innerhalb der Stunden-/Tageslimits · nur über der Konfidenzschwelle.",
     disableAutoHide: "Auto-Ausblenden deaktivieren",
+    tokenExpired: "Facebook-Token abgelaufen. Facebook-Seite erneut verbinden.",
+    reconnectPage: "Facebook-Seite erneut verbinden",
+    reconnectFirst: "Verbinden Sie zuerst die Facebook-Seite erneut.",
+    reconnectNeeded: "Dieses Konto muss erneut verbunden werden.",
   },
 
   memory: {

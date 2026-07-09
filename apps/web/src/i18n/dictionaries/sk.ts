@@ -753,6 +753,10 @@ export const sk: Dictionary = {
     autoHideEnabled: "Bezpečné automatické skrytie zapnuté",
     autoHideLimitsNote: "Nikdy na bežnú kritiku · právne/reklamácie vždy rieši človek · v rámci hodinových/denných limitov · iba nad prahom istoty.",
     disableAutoHide: "Vypnúť automatické skrytie",
+    tokenExpired: "Facebook token expiroval. Znovu pripojte Facebook Page.",
+    reconnectPage: "Znovu pripojiť Facebook Page",
+    reconnectFirst: "Najprv znovu pripojte Facebook Page.",
+    reconnectNeeded: "Tento účet vyžaduje znovu pripojenie.",
   },
 
   memory: {
