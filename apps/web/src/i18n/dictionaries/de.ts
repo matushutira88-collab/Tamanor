@@ -775,6 +775,9 @@ export const de: Dictionary = {
     tokenOk: "OK",
     tokenInvalidLabel: "Ungültig — neu verbinden",
     tokenUnknown: "Noch nicht geprüft",
+    commentDeleted: "Der Kommentar existiert nicht mehr oder ist auf Facebook nicht verfügbar.",
+    commentDeletedResolved: "Nichts zu tun — dieses Element ist erledigt.",
+    markHandled: "Als erledigt markieren",
   },
 
   memory: {

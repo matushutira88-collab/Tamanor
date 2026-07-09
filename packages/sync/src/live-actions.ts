@@ -1,4 +1,4 @@
-import { prisma, ActorKind } from "@guardora/db";
+import { prisma, ActorKind, decryptToken } from "@guardora/db";
 import { getLiveActionsConfig } from "@guardora/config";
 import {
   hideComment,
@@ -208,6 +208,10 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
       data: { health: "error", lastError: "token_expired", lastErrorAt: new Date() },
     });
   }
+  // V1.27E — a completed live hide resolves the queue item out of approval_required.
+  if (status === "executed") {
+    await resolveQueueItem(ctx.queueItemId, "executed");
+  }
   const event = status === "executed" ? "platform_action.executed"
     : status === "failed" ? "platform_action.failed"
     : status === "dry_run" ? "platform_action.dry_run"
@@ -275,6 +279,19 @@ async function revalidateAndRepair(ctx: HideContext, transport: FacebookHideTran
   ctx.account.tokenHealth = tokenHealth;
 }
 
+/**
+ * V1.27E — move a handled queue item out of the active approval queue. A successful
+ * hide (or an already-hidden / deleted comment) must not linger as approval_required.
+ * Never touches a rejected item.
+ */
+async function resolveQueueItem(queueItemId: string | null | undefined, state: "executed" | "no_action"): Promise<void> {
+  if (!queueItemId) return;
+  await prisma.actionQueueItem.updateMany({
+    where: { id: queueItemId, queueState: { notIn: ["rejected"] } },
+    data: { queueState: state },
+  });
+}
+
 /** V1.27C — flag an account as needing reconnect after a live token failure. */
 async function markAccountReconnect(connectedAccountId: string, errorCode: string): Promise<void> {
   const tokenHealth = errorCode === "token_expired" ? "expired" : errorCode === "revoked" ? "revoked" : "invalid";
@@ -293,6 +310,12 @@ async function commentPreflight(ctx: HideContext, transport: FacebookHideTranspo
   if (!transport.getCommentState || !ctx.externalCommentId) return null;
   const st = await transport.getCommentState(ctx.externalCommentId, ctx.account.accessToken ?? "");
   if (!st.ok) {
+    // V1.27E — the comment was deleted/unavailable on Facebook. Terminal + neutral:
+    // NOT a token error, NOT reconnect. Resolve the queue item.
+    if (st.errorCode === "not_found") {
+      await resolveQueueItem(ctx.queueItemId, "no_action");
+      return record(ctx, "blocked", "comment_deleted_or_unavailable");
+    }
     // The token failed the live check → mark for reconnect, never POST.
     if (st.errorCode === "token_expired" || st.errorCode === "token_invalid" || st.errorCode === "revoked") {
       await markAccountReconnect(ctx.connectedAccountId, st.errorCode === "token_invalid" ? "token_invalid" : st.errorCode);
@@ -301,7 +324,7 @@ async function commentPreflight(ctx: HideContext, transport: FacebookHideTranspo
     if (st.errorCode === "permission") return record(ctx, "blocked", "missing_permission");
     return record(ctx, "failed", st.errorCode);
   }
-  if (st.isHidden) return record(ctx, "executed", "already_hidden");
+  if (st.isHidden) return record(ctx, "executed", "already_hidden"); // record() resolves the queue item
   if (!st.canHide) return record(ctx, "blocked", "facebook_can_hide_false");
   return null;
 }
@@ -461,6 +484,33 @@ export async function attemptFacebookHide(
   );
   if (r.status === "executed") return record(ctx, "executed", "live_hide_executed", r);
   return record(ctx, "failed", r.providerErrorCode ?? "provider_error", r);
+}
+
+export type CommentLifecycle = "visible" | "hidden" | "deleted" | "cannot_hide" | "token_error" | "unknown";
+
+/**
+ * V1.27E — read a comment's lifecycle state from Facebook (read-only; no hide).
+ * `deleted` = removed/unavailable on Facebook (not a token error). Used by the UI
+ * to resolve items whose comment no longer exists. Never logs a token.
+ */
+export async function getCommentLifecycle(
+  input: { accountId: string; commentId: string },
+  opts?: { transport?: FacebookHideTransport },
+): Promise<{ status: CommentLifecycle }> {
+  if (!input.commentId) return { status: "unknown" };
+  const acct = await prisma.connectedAccount.findUnique({ where: { id: input.accountId }, select: { accessToken: true, longLivedToken: true } });
+  const token = decryptToken(acct?.longLivedToken ?? acct?.accessToken);
+  const transport = opts?.transport ?? new GraphFacebookHideTransport();
+  if (!token || !transport.getCommentState) return { status: "unknown" };
+  const st = await transport.getCommentState(input.commentId, token);
+  if (!st.ok) {
+    if (st.errorCode === "not_found") return { status: "deleted" };
+    if (st.errorCode === "token_expired" || st.errorCode === "token_invalid" || st.errorCode === "revoked") return { status: "token_error" };
+    return { status: "unknown" };
+  }
+  if (st.isHidden) return { status: "hidden" };
+  if (!st.canHide) return { status: "cannot_hide" };
+  return { status: "visible" };
 }
 
 export interface RollbackResult {

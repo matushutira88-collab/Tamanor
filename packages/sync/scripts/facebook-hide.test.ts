@@ -39,7 +39,7 @@ const baseCtx = (over: Partial<HideContext> = {}): HideContext => {
 };
 
 async function cleanup() {
-  await prisma.platformActionExecution.deleteMany({ where: { tenantId: T } });
+  await prisma.platformActionExecution.deleteMany({ where: { tenantId: T, connectedAccountId: "A1" } });
   await prisma.auditLog.deleteMany({ where: { tenantId: T, targetType: "platform_action_execution" } });
 }
 

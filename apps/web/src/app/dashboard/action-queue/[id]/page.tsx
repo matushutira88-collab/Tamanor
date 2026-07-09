@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Permission, PLATFORM_META, Platform, can } from "@guardora/core";
 import { NEVER_AUTONOMOUS, AUTONOMOUS_ELIGIBLE, FACEBOOK_HIDE_PERMISSION } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
-import { predictHideOutcome, findPreflightDryRun, resolvePrimaryAction, checkAccountToken } from "@guardora/sync";
+import { predictHideOutcome, findPreflightDryRun, resolvePrimaryAction, checkAccountToken, getCommentLifecycle, ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { SubmitButton } from "@/components/dashboard/submit-button";
 import { LiveHideForm } from "@/components/dashboard/live-hide-form";
@@ -13,7 +13,7 @@ import { prisma } from "@/server/db";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { formatDateTime } from "@/lib/format";
-import { approveQueueItem, approveWithoutHide, retryQueueItem, rejectQueueItem, markSafeQueueItem, markHarmfulQueueItem, createIncidentFromQueue } from "./actions";
+import { approveQueueItem, approveWithoutHide, retryQueueItem, rejectQueueItem, markSafeQueueItem, markHarmfulQueueItem, markHandledQueueItem, createIncidentFromQueue } from "./actions";
 import { rollbackExecution } from "../../safety-actions";
 
 export const dynamic = "force-dynamic";
@@ -92,18 +92,33 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   // V1.26C — when the item predicts "live_possible", the LIVE hide is the PRIMARY
   // action and its form renders directly (not conditioned on preflight). Single
   // source of truth shared with the UX test.
-  // V1.27C — Facebook may refuse to hide a specific comment (can_hide=false). That is
-  // only known after asking Meta, so we react to the last attempt's reason.
-  const canHideFalse = lastExec?.reason === "facebook_can_hide_false" || autoExec?.reason === "facebook_can_hide_false";
+  // V1.27E — proactively read the comment's lifecycle from Facebook when relevant, so
+  // the panel reflects deleted/hidden/cannot_hide BEFORE any attempt. One read-only GET,
+  // only for a live-capable hide item that would otherwise offer a live action.
+  let commentDeleted = false;
+  let commentCannotHide = false;
+  if (acct && q.proposedAction === "hide_comment" && live.canExecuteLive && item?.contentItem.externalId &&
+      (predicted?.expected === "live_possible" || alreadyExecuted)) {
+    try {
+      const lc = await getCommentLifecycle({ accountId: acct.id, commentId: item.contentItem.externalId });
+      commentDeleted = lc.status === "deleted";
+      commentCannotHide = lc.status === "cannot_hide";
+    } catch { /* best-effort; fall back to attempt-time detection */ }
+  }
+  // V1.27C — Facebook may refuse to hide a specific comment (can_hide=false); V1.27E
+  // adds proactive detection (commentCannotHide) alongside the last attempt's reason.
+  const canHideFalse = commentCannotHide || lastExec?.reason === "facebook_can_hide_false" || autoExec?.reason === "facebook_can_hide_false";
   const decision = resolvePrimaryAction({ proposedAction: q.proposedAction, expected: predicted?.expected ?? null, alreadyExecuted });
-  const liveMode = decision.primary === "live_hide" && !canHideFalse;
+  // A deleted comment is a resolved, neutral state — never live/reconnect/token.
+  const liveMode = decision.primary === "live_hide" && !canHideFalse && !commentDeleted;
   const showLiveForm = decision.showLiveForm;
   const showRetry = showLiveForm && lastExec?.status === "failed";
   const isDev = process.env.NODE_ENV !== "production";
   // V1.27B/D — show a reconnect CTA only when the account is ACTUALLY unhealthy now.
   // A self-healed (connected/ok) account must never show a stale reconnect CTA.
   const accountUnhealthyNow = effConn !== "connected" || effTok === "expired" || effTok === "invalid" || effTok === "revoked";
-  const tokenExpired = accountUnhealthyNow && (
+  // A deleted comment is a resolved state — never surface reconnect/token error for it.
+  const tokenExpired = !commentDeleted && accountUnhealthyNow && (
     (lastExec?.status === "failed" && (lastExec.reason === "token_expired" || lastExec.providerErrorCode === "token_expired"))
     || (autoExec?.status === "failed" && (autoExec.reason === "token_expired" || autoExec.providerErrorCode === "token_expired")));
   const reconnectHref = acct ? `/api/connectors/meta/start?brandId=${q.brandId}&accountId=${acct.id}` : "/dashboard/accounts";
@@ -265,14 +280,24 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
         </div>
 
         <aside className="space-y-3">
-          {alreadyExecuted ? (
+          {commentDeleted ? (
+            <Card>
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm">
+                <p className="font-medium">✅ {t.cc.commentDeleted}</p>
+                <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.commentDeletedResolved}</p>
+              </div>
+              {canApprove ? (
+                <form action={markHandledQueueItem} className="mt-2"><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" pendingLabel={t.cc.approving} className="w-full">{t.cc.markHandled}</SubmitButton></form>
+              ) : null}
+            </Card>
+          ) : alreadyExecuted ? (
             <Card>
               <div className="rounded-lg border-2 border-[var(--color-danger)] bg-[var(--color-surface-2)] p-3 text-sm">
                 <p className="font-bold">✅ {t.cc.liveDone}</p>
                 <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.liveDoneRollback}</p>
                 {lastExec?.createdAt ? <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.lastAttemptAt}: {formatDateTime(lastExec.createdAt)}</p> : null}
               </div>
-              {canApprove && lastExec?.id ? (
+              {canApprove && lastExec?.id && ROLLBACK_AVAILABLE ? (
                 <form action={rollbackExecution} className="mt-2">
                   <input type="hidden" name="executionId" value={lastExec.id} />
                   <input type="hidden" name="backTo" value={`/dashboard/action-queue/${q.id}`} />
@@ -318,7 +343,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
             <p className="mb-1 text-xs font-medium">{t.cc.approveExplains}</p>
             <p className="mb-3 text-[11px] text-[var(--color-muted)]">{t.cc.approveExplainsBody} {t.cc.approveNote}</p>
             <div className="space-y-2">
-              {canApprove && !liveMode && !alreadyExecuted ? (
+              {canApprove && !liveMode && !alreadyExecuted && !commentDeleted ? (
                 <>
                   <form action={approveQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton pendingLabel={t.cc.approving} className="w-full">{t.cc.approve}</SubmitButton></form>
                   {tokenExpired ? (

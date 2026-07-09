@@ -57,7 +57,7 @@ const ctx = (over: Partial<HideContext> = {}): HideContext => {
 };
 
 async function cleanup() {
-  await prisma.platformActionExecution.deleteMany({ where: { tenantId: T } });
+  await prisma.platformActionExecution.deleteMany({ where: { tenantId: T, connectedAccountId: "A1" } });
   await prisma.auditLog.deleteMany({ where: { tenantId: T, event: { startsWith: "autonomous_hide" } } });
   await prisma.auditLog.deleteMany({ where: { tenantId: T, event: { in: ["safety_floor.blocked", "rate_limit.triggered", "kill_switch.blocked"] } } });
 }

@@ -775,6 +775,9 @@ export const sk: Dictionary = {
     tokenOk: "OK",
     tokenInvalidLabel: "Neplatný — znovu pripojte",
     tokenUnknown: "Zatiaľ neoverené",
+    commentDeleted: "Komentár už na Facebooku neexistuje alebo nie je dostupný.",
+    commentDeletedResolved: "Nič netreba robiť — položka je vyriešená.",
+    markHandled: "Označiť ako vybavené",
   },
 
   memory: {

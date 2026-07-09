@@ -803,6 +803,9 @@ export const en = {
     tokenOk: "OK",
     tokenInvalidLabel: "Invalid — reconnect",
     tokenUnknown: "Not checked yet",
+    commentDeleted: "The comment no longer exists or is unavailable on Facebook.",
+    commentDeletedResolved: "Nothing to do — this item is resolved.",
+    markHandled: "Mark as handled",
   },
 
   // Brand risk memory + feedback (V1.17).

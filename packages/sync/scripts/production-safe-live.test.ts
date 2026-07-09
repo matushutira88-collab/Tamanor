@@ -61,7 +61,7 @@ const SAFETY_EVENTS = [
   "live_hide.rolled_back", "live_hide.failed",
 ];
 async function cleanup() {
-  await prisma.platformActionExecution.deleteMany({ where: { tenantId: T } });
+  await prisma.platformActionExecution.deleteMany({ where: { tenantId: T, connectedAccountId: "A1" } });
   // Scoped: only remove audit rows this test writes — never unrelated tenant history.
   await prisma.auditLog.deleteMany({ where: { tenantId: T, event: { in: SAFETY_EVENTS } } });
 }

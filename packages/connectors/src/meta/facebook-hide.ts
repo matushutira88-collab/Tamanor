@@ -137,6 +137,9 @@ export class GraphFacebookHideTransport implements FacebookHideTransport {
     if (status === 429 || code === 4 || code === 17 || code === 32 || code === 613) return "rate_limit";
     if (code === 190) return "token_expired";
     if (code === 467) return "revoked";
+    // V1.27E — a deleted/unavailable object (comment removed on Facebook). Graph
+    // returns code 100 (often subcode 33) or HTTP 404. NOT a token/permission error.
+    if (code === 100 || status === 404) return "not_found";
     if (code === 10 || code === 200 || code === 803) return "permission";
     if (status === 403) return "permission";
     return "generic";

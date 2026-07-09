@@ -47,6 +47,15 @@ async function runHideForQueueItem(
     requestedBy: "user",
   }, { retry: opts?.retry, liveAttempt: opts?.liveAttempt });
 
+  // V1.27F — a completed hide (or an already-hidden / deleted comment) is resolved:
+  // move it out of the active approval queue and attribute the approving user. Belt
+  // and suspenders alongside the sync-layer resolve, and adds approvedByUserId.
+  if (res.status === "executed") {
+    await prisma.actionQueueItem.updateMany({ where: { id: q.id, queueState: { notIn: ["rejected"] } }, data: { queueState: "executed", approvedByUserId: session.userId } });
+  } else if (res.reason === "comment_deleted_or_unavailable") {
+    await prisma.actionQueueItem.updateMany({ where: { id: q.id, queueState: { notIn: ["rejected"] } }, data: { queueState: "no_action" } });
+  }
+
   // --- Explicit LIVE attempt notices (V1.26) ---
   if (opts?.liveAttempt) {
     if (res.status === "executed") {
@@ -54,6 +63,7 @@ async function runHideForQueueItem(
         ? "This action was already performed. The comment was not hidden again. Return to dry-run mode before further testing."
         : "The comment was hidden on Facebook. First live hide completed — return to dry-run mode before further testing.", kind: "ok" };
     }
+    if (res.reason === "comment_deleted_or_unavailable") return { note: "The comment no longer exists on Facebook. Nothing to hide — the item was resolved.", kind: "ok" };
     if (res.reason === "token_expired") return { note: "Facebook token expired. Reconnect the Facebook Page, then try again.", kind: "error" };
     if (res.status === "failed") return { note: "The hide failed. The comment may still be visible. Use Retry (explicit) to try again.", kind: "error" };
     return { note: `Live hide blocked (${res.reason}). No Facebook comment was hidden.`, kind: "error" };
@@ -161,6 +171,20 @@ export async function executeLiveHide(formData: FormData): Promise<void> {
 
   const result = await runHideForQueueItem(session, q, { liveAttempt: true, retry: isRetry });
   back(q.id, result.note, result.kind);
+}
+
+/**
+ * V1.27E — mark a handled item as resolved (archive it out of the active approval
+ * queue). Used when the comment was hidden or no longer exists on Facebook.
+ */
+export async function markHandledQueueItem(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.ProposalApprove);
+  const id = String(formData.get("id") ?? "");
+  const q = await loadQueueItem(session.tenantId, id);
+  await prisma.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "no_action" } });
+  await writeAudit({ session, event: "approval.resolved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, resolved: true } });
+  back(q.id, "Marked as handled.");
 }
 
 export async function rejectQueueItem(formData: FormData): Promise<void> {

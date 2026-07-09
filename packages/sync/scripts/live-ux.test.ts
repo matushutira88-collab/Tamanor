@@ -34,7 +34,7 @@ const ctx = (over: Partial<HideContext> = {}): HideContext => ({
 });
 
 async function cleanup() {
-  await prisma.platformActionExecution.deleteMany({ where: { tenantId: T } });
+  await prisma.platformActionExecution.deleteMany({ where: { tenantId: T, connectedAccountId: "A1" } });
   await prisma.auditLog.deleteMany({ where: { tenantId: T, targetType: "platform_action_execution" } });
 }
 
@@ -68,7 +68,7 @@ async function run() {
   const liveHideButtonLabel = /liveHideButton:\s*"([^"]+)"/.exec(enSrc)?.[1] ?? "";
   check("R1) live_possible renders the live-hide button (t.cc.liveHideButton)", pageSrc.includes("liveMode ?") && pageSrc.includes("<LiveHideForm") && /buttonLabel=\{showRetry \? t\.cc\.liveHideRetryButton : t\.cc\.liveHideButton\}/.test(pageSrc) && liveHideButtonLabel.length > 0, liveHideButtonLabel);
   check("R2) LiveHideForm is NOT conditioned on preflight/showLiveForm when liveMode", !/showLiveForm \?[\s\S]*?<LiveHideForm/.test(pageSrc));
-  check("R3) primary Approve button is gated behind !liveMode", /canApprove && !liveMode && !alreadyExecuted \?/.test(pageSrc));
+  check("R3) primary Approve button is gated behind !liveMode", /canApprove && !liveMode && !alreadyExecuted\b/.test(pageSrc));
   check("R4) approveWithoutHide is a secondary action", /action=\{approveWithoutHide\}[\s\S]*?variant="secondary"/.test(pageSrc));
   check("R5) executeLiveHide is wired to the live form", /action=\{executeLiveHide\}/.test(formSrc) && formSrc.includes("REQUIRED_PHRASE") && formSrc.includes('name="understood"') && formSrc.includes('name="confirmPhrase"'));
   check("R6) dev debug text present (primaryAction/expectedResult)", pageSrc.includes("primaryAction=") && pageSrc.includes("expectedResult="));

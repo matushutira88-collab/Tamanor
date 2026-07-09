@@ -46,20 +46,41 @@ async function main() {
   const expired = !!acct.tokenExpiresAt && acct.tokenExpiresAt.getTime() <= Date.now();
   console.log("token health        :", acct.lastError === "token_expired" || expired ? "EXPIRED — reconnect" : "ok");
 
+  // V1.27F — a successful execution is the source of truth. Load the latest one
+  // FIRST; a comment GET is only secondary verification after that.
+  const latest = await prisma.platformActionExecution.findFirst({
+    where: { queueItemId: q.id, actionType: "hide_comment" },
+    orderBy: { createdAt: "desc" },
+    select: { status: true, reason: true, providerResponseCode: true, executedAt: true },
+  });
+  const executedOk = latest?.status === "executed" && (latest.reason === "live_hide_executed" || latest.reason === "already_hidden");
+  console.log("latest_execution    :", latest ? `${latest.status}/${latest.reason}` : "none");
+  if (latest) console.log("provider            :", latest.providerResponseCode ?? "—");
+
   const token = decryptToken(acct.longLivedToken ?? acct.accessToken);
   const commentId = item?.contentItem.externalId;
   if (token && commentId && !expired) {
     const st = await new GraphFacebookHideTransport().getCommentState!(commentId, token);
     if (!st.ok) {
-      // A token/permission failure — NOT a can_hide result.
-      console.log("GET comment         :", `token/permission issue (${st.errorCode})`);
-      console.log("result              :", st.errorCode === "token_expired" || st.errorCode === "token_invalid" ? "blocked/reconnect_required" : `blocked/${st.errorCode}`);
+      if (st.errorCode === "not_found") {
+        console.log("GET comment         :", "not found / unavailable");
+        // V1.27F — after a successful execution this is expected, not a failure.
+        console.log("result              :", executedOk ? "hidden_or_unavailable_after_execution" : "comment_deleted_or_unavailable");
+      } else if (executedOk) {
+        // A generic/limited GET AFTER a confirmed 200 hide is not a fresh failure.
+        console.log("GET comment         :", `secondary GET ${st.errorCode} (post-execution)`);
+        console.log("result              :", "hidden_or_unavailable_after_execution");
+      } else {
+        console.log("GET comment         :", `token/permission issue (${st.errorCode})`);
+        console.log("result              :", st.errorCode === "token_expired" || st.errorCode === "token_invalid" ? "blocked/reconnect_required" : `blocked/${st.errorCode}`);
+      }
     } else {
       console.log("GET comment         :", `ok — can_hide=${st.canHide} is_hidden=${st.isHidden}`);
-      // V1.27C — can_hide=false is a Facebook policy result, not a token issue.
-      const result = st.isHidden ? "already_hidden" : !st.canHide ? "blocked/facebook_can_hide_false" : "hide_possible";
+      const result = st.isHidden ? "already_hidden" : executedOk ? "hidden_or_unavailable_after_execution" : !st.canHide ? "blocked/facebook_can_hide_false" : "hide_possible";
       console.log("result              :", result);
     }
+  } else if (executedOk) {
+    console.log("result              :", "hidden_or_unavailable_after_execution");
   } else {
     console.log("GET comment         :", token ? (expired ? "skipped (token expired)" : "skipped (no comment id)") : "skipped (no token)");
   }
