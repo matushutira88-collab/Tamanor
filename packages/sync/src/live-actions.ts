@@ -75,28 +75,25 @@ export function predictHideOutcome(
   return { expected: "live_possible", reason: "all_gates_passed_and_confirmed" };
 }
 
-export type PrimaryAction = "live_hide" | "prepare_dryrun" | "approve" | "hard_stop";
+export type PrimaryAction = "live_hide" | "approve" | "hard_stop";
 
 /**
- * V1.26B — decide the PRIMARY action for a queue item's detail. When the item is
- * "live_possible", the live hide (not Approve) is primary; Approve is demoted to a
- * secondary "approve without hiding". Pure + exported so the UI and tests agree.
+ * V1.26C — decide the PRIMARY action for a queue item's detail. When the item is
+ * "live_possible", the live hide (not Approve) is the primary action and the live
+ * form renders directly — it is NOT conditioned on a preflight or any other UI
+ * state (the server still self-preflights + re-checks every gate). Approve is
+ * demoted to a secondary "approve without hiding". Pure + exported so UI + tests agree.
  */
 export function resolvePrimaryAction(input: {
   proposedAction: string;
   expected?: PredictedOutcome | null;
-  hasPreflight: boolean;
   alreadyExecuted: boolean;
 }): { primary: PrimaryAction; approveIsPrimary: boolean; showLiveForm: boolean } {
-  const { proposedAction, expected, hasPreflight, alreadyExecuted } = input;
+  const { proposedAction, expected, alreadyExecuted } = input;
   const isHide = proposedAction === "hide_comment";
   if (isHide && alreadyExecuted) return { primary: "hard_stop", approveIsPrimary: false, showLiveForm: false };
   const liveMode = isHide && !alreadyExecuted && expected === "live_possible";
-  if (liveMode) {
-    return hasPreflight
-      ? { primary: "live_hide", approveIsPrimary: false, showLiveForm: true }
-      : { primary: "prepare_dryrun", approveIsPrimary: false, showLiveForm: false };
-  }
+  if (liveMode) return { primary: "live_hide", approveIsPrimary: false, showLiveForm: true };
   return { primary: "approve", approveIsPrimary: true, showLiveForm: false };
 }
 

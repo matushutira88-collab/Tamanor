@@ -69,12 +69,14 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
     idempotency: !alreadyExecuted,
     safety: eligibleCategory && q.confidence >= 0.8,
   };
-  // V1.26B — when the item predicts "live_possible", the LIVE hide is the PRIMARY
-  // action (not Approve). Single source of truth shared with the UX test.
-  const decision = resolvePrimaryAction({ proposedAction: q.proposedAction, expected: predicted?.expected ?? null, hasPreflight: !!preflight, alreadyExecuted });
-  const liveMode = decision.primary === "live_hide" || decision.primary === "prepare_dryrun";
+  // V1.26C — when the item predicts "live_possible", the LIVE hide is the PRIMARY
+  // action and its form renders directly (not conditioned on preflight). Single
+  // source of truth shared with the UX test.
+  const decision = resolvePrimaryAction({ proposedAction: q.proposedAction, expected: predicted?.expected ?? null, alreadyExecuted });
+  const liveMode = decision.primary === "live_hide";
   const showLiveForm = decision.showLiveForm;
   const showRetry = showLiveForm && lastExec?.status === "failed";
+  const isDev = process.env.NODE_ENV !== "production";
   const R = ({ ok, label }: { ok: boolean; label: string }) => (
     <li className="flex items-center gap-1.5">{ok ? "✅" : "⛔"} <span className={ok ? "" : "text-[var(--color-muted)]"}>{label}</span></li>
   );
@@ -198,25 +200,22 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
           ) : liveMode ? (
             <Card>
               <p className="mb-2 text-sm font-semibold text-[var(--color-danger)]">🔴 {t.cc.liveReadyPrimary}</p>
+              {isDev ? (
+                <pre className="mb-2 rounded bg-[var(--color-surface-2)] p-1 text-[10px] text-[var(--color-muted)]">primaryAction={decision.primary}{"\n"}expectedResult={predicted?.expected}</pre>
+              ) : null}
               {canApprove ? (
                 <div className="space-y-2">
-                  {showLiveForm ? (
-                    <LiveHideForm
-                      id={q.id}
-                      retry={showRetry}
-                      warning={t.cc.liveHideWarning}
-                      ackLabel={t.cc.liveHideAck}
-                      phraseLabel={t.cc.liveHidePhrase}
-                      phrasePlaceholder="LIVE HIDE"
-                      buttonLabel={showRetry ? t.cc.liveHideRetryButton : t.cc.liveHideButton}
-                      pendingLabel={t.cc.approving}
-                    />
-                  ) : (
-                    <>
-                      <p className="rounded-lg border border-[var(--color-warn)] p-2 text-xs">⚠️ {t.cc.runDryRunFirst}</p>
-                      <form action={approveQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton pendingLabel={t.cc.approving} className="w-full">{t.cc.prepareDryRun}</SubmitButton></form>
-                    </>
-                  )}
+                  {/* V1.26C — live form renders directly whenever live_possible. */}
+                  <LiveHideForm
+                    id={q.id}
+                    retry={showRetry}
+                    warning={t.cc.liveHideWarning}
+                    ackLabel={t.cc.liveHideAck}
+                    phraseLabel={t.cc.liveHidePhrase}
+                    phrasePlaceholder="LIVE HIDE"
+                    buttonLabel={showRetry ? t.cc.liveHideRetryButton : t.cc.liveHideButton}
+                    pendingLabel={t.cc.approving}
+                  />
                   <form action={approveWithoutHide}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" pendingLabel={t.cc.approving} className="w-full">{t.cc.approveWithoutHide}</SubmitButton></form>
                   <form action={rejectQueueItem}><input type="hidden" name="id" value={q.id} /><SubmitButton variant="secondary" className="w-full">{t.cc.reject}</SubmitButton></form>
                 </div>

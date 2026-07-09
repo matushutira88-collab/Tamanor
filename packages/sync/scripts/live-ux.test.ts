@@ -7,9 +7,15 @@
  *
  * Run via: pnpm live-ux:test
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { prisma } from "@guardora/db";
 import { MockFacebookHideTransport } from "@guardora/connectors";
 import { attemptFacebookHide, resolvePrimaryAction, findPreflightDryRun, type HideContext } from "../src/live-actions";
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const readSrc = (rel: string) => readFileSync(resolve(SCRIPT_DIR, "../../..", rel), "utf8");
 
 let failures = 0;
 function check(label: string, cond: boolean, detail = "") {
@@ -38,22 +44,34 @@ async function run() {
   T = tenant.id;
   await cleanup();
 
-  // 1) live_possible + preflight → live hide button is primary, Approve NOT primary.
-  const dReady = resolvePrimaryAction({ proposedAction: "hide_comment", expected: "live_possible", hasPreflight: true, alreadyExecuted: false });
-  check("1) live_possible + preflight → primary=live_hide, shows live button", dReady.primary === "live_hide" && dReady.showLiveForm === true, JSON.stringify(dReady));
+  // 1) live_possible → live hide button is primary + rendered, Approve NOT primary.
+  const dReady = resolvePrimaryAction({ proposedAction: "hide_comment", expected: "live_possible", alreadyExecuted: false });
+  check("1) live_possible → primary=live_hide, renders live button", dReady.primary === "live_hide" && dReady.showLiveForm === true, JSON.stringify(dReady));
   check("2) normal Approve is NOT primary in live_possible state", dReady.approveIsPrimary === false);
 
-  // live_possible without preflight → prepare dry-run is primary, Approve still not primary.
-  const dNoPre = resolvePrimaryAction({ proposedAction: "hide_comment", expected: "live_possible", hasPreflight: false, alreadyExecuted: false });
-  check("2b) live_possible, no preflight → primary=prepare_dryrun, Approve not primary", dNoPre.primary === "prepare_dryrun" && dNoPre.approveIsPrimary === false && dNoPre.showLiveForm === false);
+  // V1.26C — live_possible renders the live form regardless of preflight (unconditioned).
+  const dNoPre = resolvePrimaryAction({ proposedAction: "hide_comment", expected: "live_possible", alreadyExecuted: false });
+  check("2b) live_possible renders live form unconditioned (no preflight needed to show)", dNoPre.primary === "live_hide" && dNoPre.showLiveForm === true && dNoPre.approveIsPrimary === false);
 
-  // not live_possible (dry_run) → Approve is the normal primary action.
-  const dDry = resolvePrimaryAction({ proposedAction: "hide_comment", expected: "dry_run", hasPreflight: true, alreadyExecuted: false });
+  // not live_possible (dry_run) → Approve is the normal primary action, no live button.
+  const dDry = resolvePrimaryAction({ proposedAction: "hide_comment", expected: "dry_run", alreadyExecuted: false });
   check("2c) not live_possible → Approve primary, no live button", dDry.primary === "approve" && dDry.approveIsPrimary === true && dDry.showLiveForm === false);
 
   // already executed → hard stop, no primary action, no live button.
-  const dDone = resolvePrimaryAction({ proposedAction: "hide_comment", expected: "live_possible", hasPreflight: true, alreadyExecuted: true });
+  const dDone = resolvePrimaryAction({ proposedAction: "hide_comment", expected: "live_possible", alreadyExecuted: true });
   check("2d) already executed → hard_stop, no live button, Approve not primary", dDone.primary === "hard_stop" && dDone.showLiveForm === false && dDone.approveIsPrimary === false);
+
+  // --- Render / wiring assertions (spec item 5) ---
+  const pageSrc = readSrc("apps/web/src/app/dashboard/action-queue/[id]/page.tsx");
+  const formSrc = readSrc("apps/web/src/components/dashboard/live-hide-form.tsx");
+  const enSrc = readSrc("apps/web/src/i18n/dictionaries/en.ts");
+  const liveHideButtonLabel = /liveHideButton:\s*"([^"]+)"/.exec(enSrc)?.[1] ?? "";
+  check("R1) live_possible renders the live-hide button (t.cc.liveHideButton)", pageSrc.includes("liveMode ?") && pageSrc.includes("<LiveHideForm") && /buttonLabel=\{showRetry \? t\.cc\.liveHideRetryButton : t\.cc\.liveHideButton\}/.test(pageSrc) && liveHideButtonLabel.length > 0, liveHideButtonLabel);
+  check("R2) LiveHideForm is NOT conditioned on preflight/showLiveForm when liveMode", !/showLiveForm \?[\s\S]*?<LiveHideForm/.test(pageSrc));
+  check("R3) primary Approve button is gated behind !liveMode", /canApprove && !liveMode && !alreadyExecuted \?/.test(pageSrc));
+  check("R4) approveWithoutHide is a secondary action", /action=\{approveWithoutHide\}[\s\S]*?variant="secondary"/.test(pageSrc));
+  check("R5) executeLiveHide is wired to the live form", /action=\{executeLiveHide\}/.test(formSrc) && formSrc.includes("REQUIRED_PHRASE") && formSrc.includes('name="understood"') && formSrc.includes('name="confirmPhrase"'));
+  check("R6) dev debug text present (primaryAction/expectedResult)", pageSrc.includes("primaryAction=") && pageSrc.includes("expectedResult="));
 
   // 3) "Approve without hiding" must not create any execution row (it never calls the hide seam).
   //    Simulate: mark approved without invoking attemptFacebookHide → zero executions.

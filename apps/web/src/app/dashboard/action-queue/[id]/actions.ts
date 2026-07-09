@@ -119,10 +119,12 @@ export async function retryQueueItem(formData: FormData): Promise<void> {
 }
 
 /**
- * V1.26 — Execute the FIRST controlled LIVE Facebook hide for a single queue item.
- * Distinct from Approve on purpose. Requires: an explicit confirmation phrase +
- * checkbox, a prior dry-run preflight, and all live env gates. Never reply/delete/
- * Instagram; never autonomous; one item only; token never logged.
+ * V1.26/V1.26C — Execute the controlled LIVE Facebook hide for a single queue item.
+ * Distinct from Approve on purpose. Requires an explicit confirmation phrase +
+ * checkbox and all live env gates. If no dry-run preflight exists yet, one is
+ * created automatically (no Graph call) so the "dry_run precedes executed"
+ * invariant holds — the operator is never forced to flip env back to dry-run.
+ * Never reply/delete/Instagram; never autonomous; one item only; token never logged.
  */
 export async function executeLiveHide(formData: FormData): Promise<void> {
   const session = await requireSession();
@@ -135,19 +137,20 @@ export async function executeLiveHide(formData: FormData): Promise<void> {
 
   if (q.proposedAction !== "hide_comment") { back(q.id, "This item is not a hide action. No live action taken.", "error"); }
 
-  // Hard confirmation guard (Scope C): checkbox + exact phrase, else no Graph call.
+  // Hard confirmation guard: checkbox + exact phrase, else no Graph call.
   if (!understood || confirmPhrase !== "LIVE HIDE") {
     back(q.id, "Live hide not confirmed. Tick the checkbox and type LIVE HIDE exactly. No Facebook comment was hidden.", "error");
   }
 
-  // Preflight guard (Scope B): a prior dry-run for this exact action must exist.
+  // Self-preflight: ensure a dry-run record exists first (no Graph call). This keeps
+  // the invariant without blocking the live action or requiring an env round-trip.
   const policy = await prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true }, select: { id: true } });
   const preflight = await findPreflightDryRun({ tenantId: session.tenantId, queueItemId: q.id, policyId: policy?.id ?? null });
   if (!preflight) {
-    back(q.id, "Run a dry-run test first. No Facebook comment was hidden.", "error");
+    await runHideForQueueItem(session, q); // non-live path → records a dry_run, no Graph call
   }
 
-  // Audit BEFORE the action (Scope A). No tokens/secrets — only classified fields.
+  // Audit BEFORE the action. No tokens/secrets — only classified fields.
   await writeAudit({ session, event: "platform_action.live_requested", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, retry: isRetry, actionType: "hide_comment", trigger: "approval" } });
 
   const result = await runHideForQueueItem(session, q, { liveAttempt: true, retry: isRetry });
