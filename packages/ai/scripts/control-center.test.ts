@@ -30,10 +30,10 @@ function run() {
     const d = evalIt({ riskSignals: ["profanity"] }, [pol("profanity", "assist")]);
     check("7) assist → suggest_reply, not executable", d.proposedAction === "suggest_reply" && d.queueState === "suggested" && !d.wouldExecute, d.proposedAction);
   }
-  // 8) approval creates an approval request.
+  // 8) approval on a HARMFUL category → the target action is hide_comment (human approves the hide).
   {
     const d = evalIt({ riskSignals: ["personal_attack"], categories: ["harassment"] }, [pol("personal_attack", "approval")]);
-    check("8) approval → approval_required", d.queueState === "approval_required" && d.proposedAction === "request_approval", d.queueState);
+    check("8) approval (harmful) → approval_required + hide_comment", d.queueState === "approval_required" && d.proposedAction === "hide_comment", `${d.queueState}/${d.proposedAction}`);
   }
   // 9) autonomous only for an allowed category → candidate (dry-run), never live.
   {

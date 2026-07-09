@@ -124,14 +124,23 @@ export async function hideComment(
   return { status: "failed", providerResponseCode: r.responseCode, providerErrorCode: r.errorCode, providerErrorMessage: r.errorMessage };
 }
 
-/** Rollback seam — DRY-RUN ONLY in this phase. Live unhide is a documented TODO. */
+/**
+ * Rollback seam — unhide (is_hidden=false). In dry-run NO transport is called. In
+ * live mode the transport runs (V1.27 rollback). Failure is reported honestly.
+ */
 export async function unhideComment(
   input: HideCommentInput,
-  _opts: { transport: FacebookHideTransport },
+  opts: { dryRun: boolean; transport: FacebookHideTransport },
 ): Promise<HideCommentResult> {
   if (!input.commentId) {
     return { status: "failed", providerErrorCode: "invalid_input", providerErrorMessage: "Missing commentId." };
   }
-  // Intentionally does NOT call the transport — live unhide is not enabled yet.
-  return { status: "dry_run", providerResponseCode: "unhide_dry_run" };
+  if (opts.dryRun) {
+    return { status: "dry_run", providerResponseCode: "unhide_dry_run" };
+  }
+  const r = await opts.transport.unhide(input.commentId, input.pageAccessToken);
+  if (r.ok) {
+    return { status: "executed", providerResponseCode: r.responseCode };
+  }
+  return { status: "failed", providerResponseCode: r.responseCode, providerErrorCode: r.errorCode, providerErrorMessage: r.errorMessage };
 }

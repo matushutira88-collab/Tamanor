@@ -24,6 +24,7 @@ import {
 } from "@guardora/db";
 import { classifyHybrid, buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, type ClassifierRule } from "@guardora/ai";
 import { attemptFacebookHide } from "./live-actions";
+import { loadProductionSafetyContext } from "./production-safety";
 import {
   ConnectorMode as CoreMode,
   Platform as CorePlatform,
@@ -460,9 +461,14 @@ async function persistItem(
     });
 
     // Autonomous execution attempt — gated + fail-closed (default: dry_run/blocked, 0 live).
+    // V1.27: also passes the Production Safe Mode envelope (kill switches, limits,
+    // first-time category, crisis lock). A safety block/downgrade routes to approval.
     const matchedPolicy = controlPolicies.find((p) => p.category === decision.matchedCategory);
     if (matchedPolicy?.mode === "autonomous" && decision.wouldExecute) {
-      await attemptFacebookHide({
+      const safety = await loadProductionSafetyContext({
+        tenantId: account.tenantId, brandId: account.brandId, connectedAccountId: account.id, category: decision.matchedCategory,
+      });
+      const res = await attemptFacebookHide({
         tenantId: account.tenantId, brandId: account.brandId, itemId: repItem.id,
         queueItemId: queued.id, policyId: matchedPolicy.id,
         connectedAccountId: account.id, platform: account.platform,
@@ -475,7 +481,11 @@ async function persistItem(
           pageId: account.pageId, externalId: account.externalId,
         },
         requestedBy: "system",
-      });
+      }, { safety });
+      // Safety blocked/downgraded an autonomous hide → keep the item in approval, not live.
+      if (res.status === "blocked") {
+        await prisma.actionQueueItem.update({ where: { id: queued.id }, data: { queueState: "approval_required", safetyBlocked: true } });
+      }
     }
 
     if (decision.raisesIncident && (hybrid.level === "high" || hybrid.level === "critical")) {
@@ -663,3 +673,4 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
 
 export { mockMetaFetch } from "./mock-fetch";
 export * from "./live-actions";
+export * from "./production-safety";

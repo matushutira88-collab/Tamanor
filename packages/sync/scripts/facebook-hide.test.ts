@@ -116,8 +116,11 @@ async function run() {
   const r14 = await hideComment({ pageId: "P1", commentId: "C1", connectedAccountId: "A1", itemId: "I1", pageAccessToken: "x" }, { dryRun: false, transport: new MockFacebookHideTransport({ ok: false, responseCode: "429", errorCode: "rate_limit", errorMessage: "slow down" }) });
   check("14) rate limit → failed/rate_limit", r14.status === "failed" && r14.providerErrorCode === "rate_limit");
 
-  const ru = await unhideComment({ pageId: "P1", commentId: "C1", connectedAccountId: "A1", itemId: "I1", pageAccessToken: "x" }, { transport: new MockFacebookHideTransport() });
-  check("rollback unhide is dry-run only", ru.status === "dry_run");
+  const ru = await unhideComment({ pageId: "P1", commentId: "C1", connectedAccountId: "A1", itemId: "I1", pageAccessToken: "x" }, { dryRun: true, transport: new MockFacebookHideTransport() });
+  check("rollback unhide dry-run does not call transport", ru.status === "dry_run");
+  const ruLiveT = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
+  const ruLive = await unhideComment({ pageId: "P1", commentId: "C1", connectedAccountId: "A1", itemId: "I1", pageAccessToken: "x" }, { dryRun: false, transport: ruLiveT });
+  check("rollback unhide live calls transport (unhide op)", ruLive.status === "executed" && ruLiveT.calls.length === 1 && ruLiveT.calls[0]!.op === "unhide");
 
   // --- Data ---
   const rows = await prisma.platformActionExecution.findMany({ where: { tenantId: T } });

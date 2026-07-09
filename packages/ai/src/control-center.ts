@@ -202,6 +202,12 @@ export function evaluateControl(input: {
     return { ...base, mode, proposedAction: "suggest_reply", queueState: "suggested", reason: "Assist policy — reply suggested for review." };
   }
   if (mode === "approval") {
+    // For harmful/hide-eligible categories the TARGET action is hide_comment — the
+    // human approves the hide. request_approval is only a workflow state, never the
+    // target action. Non-harmful approval categories stay a plain human review.
+    if (AUTONOMOUS_ELIGIBLE.has(matchedCategory) && !NEVER_AUTONOMOUS.has(matchedCategory)) {
+      return { ...base, mode, proposedAction: "hide_comment", queueState: "approval_required", reason: "Approval policy — a human approves the hide." };
+    }
     return { ...base, mode, proposedAction: "request_approval", queueState: "approval_required", reason: "Approval policy — routed to a human." };
   }
 

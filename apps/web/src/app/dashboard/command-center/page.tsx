@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ConnectorStatus, ConnectorHealth } from "@guardora/core";
-import { getAutoSyncConfig } from "@guardora/config";
+import { getAutoSyncConfig, getProductionSafetyConfig, getLiveActionsConfig } from "@guardora/config";
+import { ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Card, StatCard, Badge, EmptyState, PrimaryButton } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -35,6 +36,24 @@ export default async function CommandCenterPage() {
   const safetyBlocks = q.get("blocked_by_safety") ?? 0;
   const healthy = accounts.filter((a) => a.health === ConnectorHealth.Healthy).length;
   const nextSync = autoSync.enabled && lastAutoRow ? new Date(lastAutoRow.createdAt.getTime() + autoSync.intervalSeconds * 1000) : null;
+
+  // V1.27 — Production Safe Mode: live-safety operational state.
+  const liveSafety = getProductionSafetyConfig();
+  const liveCfg = getLiveActionsConfig();
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const hourStart = new Date(Date.now() - 60 * 60 * 1000);
+  const [autoHidesToday, autoHidesThisHour, failedLive, blockedBySafetyExec, preservedCriticism, killedBrands, killedAccounts, lastAutoHide, lastFbError] = await Promise.all([
+    prisma.platformActionExecution.count({ where: { ...where, status: "executed", trigger: "autonomous", executedAt: { gte: dayStart } } }),
+    prisma.platformActionExecution.count({ where: { ...where, status: "executed", trigger: "autonomous", executedAt: { gte: hourStart } } }),
+    prisma.platformActionExecution.count({ where: { ...where, status: "failed" } }),
+    prisma.platformActionExecution.count({ where: { ...where, status: "blocked" } }),
+    prisma.actionQueueItem.count({ where: { ...where, category: "normal_criticism" } }),
+    prisma.brand.count({ where: { tenantId: session.tenantId, killSwitch: true } }),
+    prisma.connectedAccount.count({ where: { tenantId: session.tenantId, killSwitch: true } }),
+    prisma.platformActionExecution.findFirst({ where: { ...where, status: "executed", trigger: "autonomous" }, orderBy: { executedAt: "desc" }, select: { executedAt: true } }),
+    prisma.platformActionExecution.findFirst({ where: { ...where, status: "failed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, providerErrorCode: true, providerErrorMessage: true } }),
+  ]);
+  const anyKillSwitch = liveSafety.globalKillSwitch || killedBrands > 0 || killedAccounts > 0;
 
   // Next recommended setup step.
   const nextStep = accounts.length === 0 ? t.cc.nextConnect
@@ -128,6 +147,29 @@ export default async function CommandCenterPage() {
               <p className="mt-3 text-[11px] text-[var(--color-muted)]">✅ {t.cc.noLiveAction} · {t.cc.liveDisabled}</p>
             </Card>
           </div>
+
+          <Card className="mt-6">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">🛡️ {t.cc.safeLiveTitle}</h3>
+              <Badge tone={liveSafety.productionSafeMode ? "brand" : "neutral"}>{liveSafety.productionSafeMode ? t.cc.safeLiveOn : t.cc.safeLiveOff}</Badge>
+            </div>
+            {anyKillSwitch ? (
+              <p className="mb-3 rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs font-bold text-[var(--color-danger)]">🛑 {t.cc.killSwitchActive}</p>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.safeLiveMode}</p><Badge tone={liveCfg.canExecuteLive ? "warn" : "ok"}>{liveCfg.canExecuteLive ? t.cc.safeLiveEnabled : t.cc.safeLiveDisabled}</Badge></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.killSwitch}</p><Badge tone={anyKillSwitch ? "danger" : "ok"}>{anyKillSwitch ? t.cc.killSwitchOn : t.cc.killSwitchOff}</Badge></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.autoHidesToday}</p><p className="font-medium">{autoHidesToday}</p></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.hourlyUsage}</p><p className="font-medium">{autoHidesThisHour}</p></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.failedLive}</p><p className="font-medium">{failedLive}</p></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.blockedBySafety}</p><p className="font-medium">{blockedBySafetyExec}</p></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.preservedCriticism}</p><p className="font-medium">{preservedCriticism}</p></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.pendingApprovals}</p><p className="font-medium">{pendingApprovals}</p></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastAutoHide}</p><p className="font-medium">{lastAutoHide?.executedAt ? formatDateTime(lastAutoHide.executedAt) : "—"}</p></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastFbError}</p><p className="font-medium text-[var(--color-danger)]">{lastFbError ? (lastFbError.providerErrorCode ?? "error") : "—"}</p></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.rollbackAvailability}</p><Badge tone={ROLLBACK_AVAILABLE ? "ok" : "warn"}>{ROLLBACK_AVAILABLE ? t.cc.rollbackReady : t.cc.rollbackUnavailable}</Badge></div>
+            </div>
+          </Card>
         </>
       )}
     </>

@@ -215,6 +215,8 @@ model Brand {
   timezone      String      @default("UTC")
   defaultTone   BrandTone   @default(professional)
   status        BrandStatus @default(active)
+  // V1.27 Production Safe Mode — per-brand kill switch. When true, NO live action.
+  killSwitch    Boolean     @default(false)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -225,9 +227,39 @@ model Brand {
   decisions         ModerationDecision[]
   brandRules        BrandRule[]
   reportSnapshots   ReportSnapshot[]
+  liveSafety        BrandLiveSafetySettings?
 
   @@index([tenantId])
   @@map("brands")
+}
+
+/// V1.27 Production Safe Mode — per-brand live-action safety envelope. Fail-closed
+/// defaults: live off, autonomous off, low limits, high confidence, crisis lock on.
+model BrandLiveSafetySettings {
+  id                              String   @id @default(cuid())
+  tenantId                        String
+  brandId                         String   @unique
+  liveModeEnabled                 Boolean  @default(false)
+  autonomousHideEnabled           Boolean  @default(false)
+  approvalRequiredAboveDailyLimit Boolean  @default(true)
+  dailyAutoHideLimit              Int      @default(10)
+  hourlyAutoHideLimit             Int      @default(3)
+  perCategoryDailyLimit           Int      @default(5)
+  maxConsecutiveWithoutReview     Int      @default(5)
+  minConfidenceForAutoHide        Float    @default(0.85)
+  requireDryRunBeforeFirstLive    Boolean  @default(true)
+  requireHumanApprovalForNewCategory Boolean @default(true)
+  rollbackRequiredBeforeAutonomy  Boolean  @default(true)
+  crisisLockEnabled               Boolean  @default(true)
+  // Categories the brand has explicitly approved for autonomous auto-hide.
+  approvedAutoHideCategories      String[]
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("brand_live_safety_settings")
 }
 
 model ConnectedAccount {
@@ -246,6 +278,8 @@ model ConnectedAccount {
   scopes       String[]
   // Permissions the user actually granted (may differ from requested scopes).
   grantedPermissions String[]
+  // V1.27 Production Safe Mode — per-account kill switch. When true, NO live action.
+  killSwitch   Boolean         @default(false)
 
   // ---------------------------------------------------------------------------
   // TOKENS — obtained via official OAuth ONLY (never passwords/scraping).

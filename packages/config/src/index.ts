@@ -73,6 +73,11 @@ const EnvSchema = z.object({
   // Second lock against an accidental live hide: even with all env gates on and
   // dry-run off, a real Graph hide requires an explicit LIVE_HIDE_TEST_CONFIRM=YES.
   LIVE_HIDE_TEST_CONFIRM: z.string().optional().default("NO"),
+  // V1.27 Production Safe Mode. When enabled, live actions run for REAL under the
+  // full brand safety envelope (kill switches, limits, rollback, audit) — not test.
+  PRODUCTION_SAFE_MODE_ENABLED: boolFromEnv,
+  // Global emergency kill switch. When true, NO live action anywhere. Fail-closed.
+  GLOBAL_KILL_SWITCH: boolFromEnv,
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(4),
 
   // Meta (Facebook Page + Instagram Business) — official OAuth only.
@@ -136,6 +141,10 @@ export function getLiveActionsConfig(source: NodeJS.ProcessEnv = process.env): {
   canExecuteLive: boolean;
   /** Second lock: LIVE_HIDE_TEST_CONFIRM=YES. Required IN ADDITION to canExecuteLive. */
   liveConfirmed: boolean;
+  /** V1.27 — Production Safe Mode enabled (real live ops under the safety envelope). */
+  productionSafeMode: boolean;
+  /** V1.27 — global emergency kill switch. When true, NO live action anywhere. */
+  globalKillSwitch: boolean;
 } {
   const env = loadEnv(source);
   const liveEnabled = env.LIVE_ACTIONS_ENABLED;
@@ -147,7 +156,18 @@ export function getLiveActionsConfig(source: NodeJS.ProcessEnv = process.env): {
     dryRun,
     canExecuteLive: liveEnabled && facebookHideEnabled && !dryRun,
     liveConfirmed: env.LIVE_HIDE_TEST_CONFIRM === "YES",
+    productionSafeMode: env.PRODUCTION_SAFE_MODE_ENABLED,
+    globalKillSwitch: env.GLOBAL_KILL_SWITCH,
   };
+}
+
+/** V1.27 Production Safe Mode + global kill switch (env-level). */
+export function getProductionSafetyConfig(source: NodeJS.ProcessEnv = process.env): {
+  productionSafeMode: boolean;
+  globalKillSwitch: boolean;
+} {
+  const env = loadEnv(source);
+  return { productionSafeMode: env.PRODUCTION_SAFE_MODE_ENABLED, globalKillSwitch: env.GLOBAL_KILL_SWITCH };
 }
 
 /** Comment translation configuration (provider off by default). */

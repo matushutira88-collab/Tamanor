@@ -1,6 +1,7 @@
 import { Permission, can } from "@guardora/core";
 import { CONTROL_CATEGORIES, CONTROL_MODES, NEVER_AUTONOMOUS } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
+import { ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
@@ -10,6 +11,8 @@ import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { AutonomySave } from "@/components/dashboard/autonomy-save";
 import { updateControlPolicy, applyPreset } from "./actions";
+import { toggleBrandKillSwitch } from "../safety-actions";
+import { AutoHideOptIn } from "@/components/dashboard/auto-hide-optin";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +30,9 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
   const policies = await prisma.controlPolicy.findMany({ where: { tenantId: session.tenantId } });
   const modeFor = (brandId: string, cat: string) => policies.find((p) => p.brandId === brandId && p.category === cat)?.mode ?? "monitor";
   const confFor = (brandId: string, cat: string) => policies.find((p) => p.brandId === brandId && p.category === cat)?.minConfidence ?? 0.8;
+  // V1.27 — per-brand live safety settings for the "Autonomous Safe Live" section.
+  const safetyRows = await prisma.brandLiveSafetySettings.findMany({ where: { tenantId: session.tenantId } });
+  const safetyFor = (brandId: string) => safetyRows.find((s) => s.brandId === brandId);
 
   return (
     <>
@@ -81,6 +87,46 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
                 ) : null}
               </div>
               <p className="mb-2 text-xs text-[var(--color-muted)]">{t.cc.autonomyMatrixDesc} · {t.cc.presetsHint}</p>
+
+              {(() => {
+                const s = safetyFor(brand.id);
+                const live = getLiveActionsConfig();
+                const enabled = !!s?.liveModeEnabled && !!s?.autonomousHideEnabled;
+                return (
+                  <Card className="mb-3 border-[var(--color-danger)]">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-[var(--color-danger)]">🔴 {t.cc.autonomousSafeLive}</h3>
+                      <div className="flex items-center gap-2">
+                        <Badge tone={brand.killSwitch ? "danger" : enabled && live.canExecuteLive ? "danger" : "ok"}>{brand.killSwitch ? t.cc.killSwitchOn : enabled && live.canExecuteLive ? t.cc.safeLiveEnabled : t.cc.safeLiveDisabled}</Badge>
+                        {manage ? (
+                          <form action={toggleBrandKillSwitch}>
+                            <input type="hidden" name="brandId" value={brand.id} />
+                            <input type="hidden" name="on" value={brand.killSwitch ? "0" : "1"} />
+                            <button type="submit" className={`rounded-md border px-2 py-1 text-xs ${brand.killSwitch ? "border-[var(--color-ok)]" : "border-[var(--color-danger)] text-[var(--color-danger)]"}`}>
+                              {brand.killSwitch ? t.cc.killSwitchOffLabel : t.cc.killSwitchOnLabel}
+                            </button>
+                          </form>
+                        ) : null}
+                      </div>
+                    </div>
+                    <p className="mb-2 rounded-lg border border-[var(--color-warn)] p-2 text-xs">⚠️ {t.cc.autonomousSafeLiveWarn}</p>
+                    <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                      <div><span className="text-[var(--color-muted)]">{t.cc.categoryEligibility}:</span> scam · phishing · spam · hate_speech · racism · personal_attack · profanity · threat(high/critical)</div>
+                      <div><span className="text-[var(--color-muted)]">{t.cc.safeLiveMinConf}:</span> {((s?.minConfidenceForAutoHide ?? 0.85) * 100).toFixed(0)}%</div>
+                      <div><span className="text-[var(--color-muted)]">{t.cc.safeLiveLimits}:</span> {s?.dailyAutoHideLimit ?? 10}/day · {s?.hourlyAutoHideLimit ?? 3}/hour</div>
+                      <div><span className="text-[var(--color-muted)]">{t.cc.rollbackAvailability}:</span> <Badge tone={ROLLBACK_AVAILABLE ? "ok" : "warn"}>{ROLLBACK_AVAILABLE ? t.cc.rollbackReady : t.cc.rollbackUnavailable}</Badge></div>
+                      <div><span className="text-[var(--color-muted)]">{t.cc.crisisLock}:</span> <Badge tone={s?.crisisLockEnabled !== false ? "ok" : "warn"}>{s?.crisisLockEnabled !== false ? t.cc.on : t.cc.off}</Badge></div>
+                      <div><span className="text-[var(--color-muted)]">{t.cc.newCategoryApproval}:</span> <Badge tone={s?.requireHumanApprovalForNewCategory !== false ? "ok" : "warn"}>{s?.requireHumanApprovalForNewCategory !== false ? t.cc.on : t.cc.off}</Badge></div>
+                    </div>
+                    <p className="mt-2 text-[11px] text-[var(--color-muted)]">🛡️ {t.cc.autoHideLimitsNote}</p>
+                    {manage ? (
+                      <div className="mt-2">
+                        <AutoHideOptIn brandId={brand.id} enabled={enabled} ackLabel={t.cc.autoHideAck} enableLabel={t.cc.enableAutoHide} disableLabel={t.cc.disableAutoHide} />
+                      </div>
+                    ) : null}
+                  </Card>
+                );
+              })()}
 
               <Card className="overflow-x-auto">
                 <table className="w-full text-sm">

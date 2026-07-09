@@ -11,8 +11,11 @@ import {
   modeAllowsSync,
   modeAllowsActions,
 } from "@guardora/core";
-import { getMetaConfig, loadEnv, getAutoSyncConfig, getLiveActionsConfig } from "@guardora/config";
+import { getMetaConfig, loadEnv, getAutoSyncConfig, getLiveActionsConfig, getProductionSafetyConfig } from "@guardora/config";
+import { ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Badge, StatCard, Card } from "@/components/dashboard/ui";
+import { SubmitButton } from "@/components/dashboard/submit-button";
+import { toggleAccountKillSwitch } from "../../safety-actions";
 import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -68,6 +71,7 @@ export default async function AccountDetailPage({
       igBusinessId: true,
       scopes: true,
       grantedPermissions: true,
+      killSwitch: true,
       tokenExpiresAt: true,
       lastSyncedAt: true,
       lastSuccessfulSyncAt: true,
@@ -83,15 +87,19 @@ export default async function AccountDetailPage({
   if (!account) notFound();
 
   // V1.23 — action capability matrix + linked control policies + recent queue.
-  const live = getLiveActionsConfig();
   const HIDE_PERMISSION = "pages_manage_engagement";
-  const [linkedPolicies, recentQueue, lastDryRun, lastBlocked, lastExecuted] = await Promise.all([
+  const live = getLiveActionsConfig();
+  const safety = getProductionSafetyConfig();
+  const [linkedPolicies, recentQueue, lastDryRun, lastBlocked, lastExecuted, lastFailed] = await Promise.all([
     prisma.controlPolicy.count({ where: { brandId: account.brand.id, isActive: true } }),
     prisma.actionQueueItem.findMany({ where: { brandId: account.brand.id }, orderBy: { createdAt: "desc" }, take: 5 }),
     prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "dry_run" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "blocked" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, reason: true } }),
     prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "executed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "failed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, providerErrorCode: true, providerErrorMessage: true } }),
   ]);
+  const tokenHealthy = !account.tokenExpiresAt || account.tokenExpiresAt > new Date();
+  const anyKill = safety.globalKillSwitch || account.killSwitch;
   const hideCapKey = account.platform !== Platform.FacebookPage ? "capNotImplemented"
     : !live.facebookHideEnabled || !live.liveEnabled ? "capDisabledEnv"
     : account.grantedPermissions.includes(HIDE_PERMISSION) ? "capAvailable" : "capMissingPerm";
@@ -244,6 +252,31 @@ export default async function AccountDetailPage({
             )}
           </div>
         </div>
+      </div>
+
+      {/* V1.27 — Safe live operations for this account */}
+      <div className="mt-6 gu-card p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">🛡️ {t.cc.safeLiveTitle}</h3>
+          {manage ? (
+            <form action={toggleAccountKillSwitch}>
+              <input type="hidden" name="accountId" value={account.id} />
+              <input type="hidden" name="on" value={account.killSwitch ? "0" : "1"} />
+              <SubmitButton variant="secondary" className="text-xs">{account.killSwitch ? t.cc.killSwitchOffLabel : t.cc.killSwitchOnLabel}</SubmitButton>
+            </form>
+          ) : null}
+        </div>
+        {anyKill ? <p className="mb-3 rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs font-bold text-[var(--color-danger)]">🛑 {t.cc.killSwitchActive}</p> : null}
+        <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.capRead}</p><Badge tone="ok">{t.cc.safeLiveEnabled}</Badge></div>
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.capHide}</p><Badge tone={account.grantedPermissions.includes(HIDE_PERMISSION) ? "ok" : "warn"}>{account.grantedPermissions.includes(HIDE_PERMISSION) ? HIDE_PERMISSION : t.cc.safeLiveDisabled}</Badge></div>
+          <div><p className="text-xs text-[var(--color-muted)]">Token</p><Badge tone={tokenHealthy ? "ok" : "danger"}>{tokenHealthy ? t.cc.on : t.cc.off}</Badge></div>
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.killSwitch}</p><Badge tone={anyKill ? "danger" : "ok"}>{anyKill ? t.cc.killSwitchOn : t.cc.killSwitchOff}</Badge></div>
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastSuccessfulHide}</p><p className="font-medium">{lastExecuted ? formatDateTime(lastExecuted.createdAt) : "—"}</p></div>
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastFailedHide}</p><p className="font-medium">{lastFailed ? `${formatDateTime(lastFailed.createdAt)} · ${lastFailed.providerErrorCode ?? "error"}` : "—"}</p></div>
+          <div><p className="text-xs text-[var(--color-muted)]">{t.cc.rollbackAvailability}</p><Badge tone={ROLLBACK_AVAILABLE ? "ok" : "warn"}>{ROLLBACK_AVAILABLE ? t.cc.rollbackReady : t.cc.rollbackUnavailable}</Badge></div>
+        </div>
+        {lastFailed?.providerErrorMessage ? <p className="mt-2 text-xs text-[var(--color-danger)]">{lastFailed.providerErrorMessage}</p> : null}
       </div>
 
       {/* Sync control */}

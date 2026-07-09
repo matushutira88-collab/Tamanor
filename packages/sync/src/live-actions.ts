@@ -2,11 +2,13 @@ import { prisma, ActorKind } from "@guardora/db";
 import { getLiveActionsConfig } from "@guardora/config";
 import {
   hideComment,
+  unhideComment,
   GraphFacebookHideTransport,
   type FacebookHideTransport,
   type HideCommentResult,
 } from "@guardora/connectors";
 import { AUTONOMOUS_ELIGIBLE, NEVER_AUTONOMOUS, FACEBOOK_HIDE_PERMISSION } from "@guardora/ai";
+import { evaluateProductionSafety, type ProductionSafetyContext, type SafetyEvaluation } from "./production-safety";
 
 /**
  * Controlled Facebook comment hide, driven ONLY by ControlPolicy. Fail-closed:
@@ -205,9 +207,20 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
  * recorded PlatformActionExecution. Never throws on a provider error — records
  * `failed`. Never a live action unless every env gate + safety gate passes.
  */
+/** Write the safety-decision audit event (never tokens/secrets). */
+async function writeSafetyAudit(ctx: HideContext, ev: SafetyEvaluation): Promise<void> {
+  await prisma.auditLog.create({
+    data: {
+      tenantId: ctx.tenantId, brandId: ctx.brandId, event: ev.auditEvent, actorKind: ActorKind.system,
+      targetType: "action_queue_item", targetId: ctx.queueItemId ?? ctx.itemId,
+      metadata: { actionType: "hide_comment", trigger: ctx.trigger, category: ctx.matchedCategory, outcome: ev.outcome, reason: ev.reason } as never,
+    },
+  });
+}
+
 export async function attemptFacebookHide(
   ctx: HideContext,
-  opts?: { transport?: FacebookHideTransport; config?: ReturnType<typeof getLiveActionsConfig>; retry?: boolean; liveAttempt?: boolean },
+  opts?: { transport?: FacebookHideTransport; config?: ReturnType<typeof getLiveActionsConfig>; retry?: boolean; liveAttempt?: boolean; safety?: ProductionSafetyContext },
 ): Promise<HideExecutionResult> {
   const cfg = opts?.config ?? getLiveActionsConfig();
   const transportOverride = opts?.transport;
@@ -245,6 +258,18 @@ export async function attemptFacebookHide(
     }
   }
 
+  // --- V1.27 Production Safe Mode envelope (kill switches, limits, floor). ---
+  // Runs for BOTH manual + autonomous when a safety context is supplied. Blocks or
+  // downgrades to approval without ever calling the transport.
+  if (opts?.safety) {
+    const ev = evaluateProductionSafety({ trigger: ctx.trigger, category: ctx.matchedCategory, confidence: ctx.confidence, riskLevel: ctx.riskLevel, safety: opts.safety });
+    // Audit the safety decision BEFORE any action (allowed, blocked, or downgraded).
+    await writeSafetyAudit(ctx, ev);
+    if (ev.outcome !== "allow") {
+      return record(ctx, "blocked", ev.reason);
+    }
+  }
+
   const { blockedReason } = gate(ctx, cfg);
   if (blockedReason) {
     return record(ctx, "blocked", blockedReason);
@@ -274,9 +299,13 @@ export async function attemptFacebookHide(
     return record(ctx, "dry_run", "dry_run_mode", r);
   }
 
-  // SECOND LOCK: even with all env gates on and dry-run off, a real Graph hide
-  // requires an explicit LIVE_HIDE_TEST_CONFIRM=YES. Prevents an accidental live test.
-  if (!cfg.liveConfirmed) {
+  // SECOND LOCK: a real Graph hide needs either the test confirm (LIVE_HIDE_TEST_
+  // CONFIRM=YES) OR a production per-brand live opt-in. The brand opt-in is proven
+  // by a passing Production Safe Mode context on an autonomous trigger (the safety
+  // gate already required liveModeEnabled + autonomousHideEnabled). Prevents an
+  // accidental live hide while enabling real autonomous production operation.
+  const productionOptIn = ctx.trigger === "autonomous" && opts?.safety?.flags.productionSafeMode === true;
+  if (!cfg.liveConfirmed && !productionOptIn) {
     return record(ctx, "blocked", "live_confirm_required");
   }
 
@@ -300,4 +329,51 @@ export async function attemptFacebookHide(
   );
   if (r.status === "executed") return record(ctx, "executed", "live_hide_executed", r);
   return record(ctx, "failed", r.providerErrorCode ?? "provider_error", r);
+}
+
+export interface RollbackResult {
+  status: "rolled_back" | "dry_run" | "failed";
+  reason: string;
+}
+
+/**
+ * V1.27 rollback — restore ("unhide") a previously executed hide. Loads the
+ * executed row, calls the unhide seam (dry-run unless `live`), flips the execution
+ * to `rolled_back`, and writes rollback audit events. Failure is surfaced, never faked.
+ */
+export async function rollbackHide(
+  input: {
+    tenantId: string;
+    executionId: string;
+    account: { pageId?: string | null; externalId: string; accessToken?: string | null };
+    live: boolean;
+  },
+  opts?: { transport?: FacebookHideTransport },
+): Promise<RollbackResult> {
+  const exec = await prisma.platformActionExecution.findFirst({ where: { id: input.executionId, tenantId: input.tenantId, status: "executed" } });
+  if (!exec || !exec.externalCommentId) return { status: "failed", reason: "no_executed_row" };
+
+  const auditRollback = (event: string, reason: string) => prisma.auditLog.create({
+    data: {
+      tenantId: exec.tenantId, brandId: exec.brandId, event, actorKind: ActorKind.system,
+      targetType: "platform_action_execution", targetId: exec.id,
+      metadata: { actionType: "hide_comment", reason, executed: false } as never,
+    },
+  });
+
+  await auditRollback("live_hide.rollback_requested", "requested");
+  const r = await unhideComment(
+    { pageId: input.account.pageId ?? input.account.externalId, commentId: exec.externalCommentId, connectedAccountId: exec.connectedAccountId, itemId: exec.itemId, pageAccessToken: input.account.accessToken ?? "" },
+    { dryRun: !input.live, transport: opts?.transport ?? new GraphFacebookHideTransport() },
+  );
+  if (r.status === "executed" || r.status === "dry_run") {
+    if (r.status === "executed") {
+      await prisma.platformActionExecution.update({ where: { id: exec.id }, data: { status: "rolled_back", rolledBackAt: new Date() } });
+      await auditRollback("live_hide.rolled_back", "rolled_back");
+      return { status: "rolled_back", reason: "ok" };
+    }
+    return { status: "dry_run", reason: "rollback_dry_run" };
+  }
+  await auditRollback("live_hide.failed", r.providerErrorCode ?? "rollback_failed");
+  return { status: "failed", reason: r.providerErrorCode ?? "rollback_failed" };
 }

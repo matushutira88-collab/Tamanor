@@ -14,6 +14,7 @@ import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { formatDateTime } from "@/lib/format";
 import { approveQueueItem, approveWithoutHide, retryQueueItem, rejectQueueItem, markSafeQueueItem, markHarmfulQueueItem, createIncidentFromQueue } from "./actions";
+import { rollbackExecution } from "../../safety-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +33,14 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
     prisma.reputationItem.findFirst({ where: { id: q.itemId }, include: { contentItem: { include: { connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, pageId: true, externalId: true, externalName: true, platform: true } } } }, brand: { select: { name: true } } } }),
     prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true } }),
     prisma.auditLog.findMany({ where: { tenantId: session.tenantId, OR: [{ targetId: q.id }, { targetId: q.itemId }] }, orderBy: { createdAt: "desc" }, take: 10, select: { event: true, createdAt: true } }),
-    prisma.platformActionExecution.findFirst({ where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "approval" }, orderBy: { createdAt: "desc" }, select: { status: true, reason: true, createdAt: true } }),
+    prisma.platformActionExecution.findFirst({ where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "approval" }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, reason: true, createdAt: true } }),
   ]);
+  // V1.27 — autonomous (auto-hide) execution for this item, if any.
+  const autoExec = await prisma.platformActionExecution.findFirst({
+    where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "autonomous", status: { in: ["executed", "failed"] } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true, reason: true, confidence: true, policyCategory: true, providerErrorCode: true, providerErrorMessage: true, executedAt: true, createdAt: true },
+  });
   const meta = item ? PLATFORM_META[item.platform as Platform] : null;
   const neverAuto = NEVER_AUTONOMOUS.has(q.category as never);
   const fpRisk = q.confidence >= 0.85 ? "Low" : q.confidence >= 0.7 ? "Medium" : "High";
@@ -108,6 +115,36 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
               <Field label={t.cc.falsePositiveRisk}>{fpRisk}</Field>
             </dl>
           </Card>
+
+          {autoExec ? (
+            <Card>
+              {autoExec.status === "executed" ? (
+                <>
+                  <div className="mb-2 flex items-center gap-2"><Badge tone="danger">🤖 {t.cc.autoHidden}</Badge><span className="text-xs text-[var(--color-muted)]">{t.cc.autoHiddenBy}</span></div>
+                  <dl>
+                    <Field label={t.cc.whyLabel}><span className="text-xs">{(t.autoProtect.blockReason as Record<string, string>)[autoExec.reason ?? ""] ?? autoExec.reason}</span></Field>
+                    <Field label={t.cc.triggeredPolicy}>{autoExec.policyCategory ? tEnum(t, "autoProtectCategory", autoExec.policyCategory) : "—"}</Field>
+                    <Field label="Confidence">{((autoExec.confidence ?? 0) * 100).toFixed(0)}%</Field>
+                    <Field label="Execution ID"><span className="font-mono text-[11px]">{autoExec.id}</span></Field>
+                    <Field label={t.cc.lastAttemptAt}>{formatDateTime(autoExec.executedAt ?? autoExec.createdAt)}</Field>
+                  </dl>
+                  {canApprove ? (
+                    <form action={rollbackExecution} className="mt-2">
+                      <input type="hidden" name="executionId" value={autoExec.id} />
+                      <input type="hidden" name="backTo" value={`/dashboard/action-queue/${q.id}`} />
+                      <SubmitButton variant="secondary" pendingLabel={t.cc.approving} className="w-full">↩︎ {t.cc.restoreComment}</SubmitButton>
+                    </form>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div className="mb-2 flex items-center gap-2"><Badge tone="danger">⚠️ {t.cc.autoHiddenFailed}</Badge></div>
+                  <p className="text-xs text-[var(--color-danger)]">{autoExec.providerErrorMessage ?? autoExec.providerErrorCode ?? autoExec.reason}</p>
+                  <p className="mt-1 text-[11px] text-[var(--color-muted)]">{t.cc.lastAttemptFailed}</p>
+                </>
+              )}
+            </Card>
+          ) : null}
 
           {predicted ? (
             <Card>
@@ -196,6 +233,13 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
                 <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.liveDoneRollback}</p>
                 {lastExec?.createdAt ? <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.lastAttemptAt}: {formatDateTime(lastExec.createdAt)}</p> : null}
               </div>
+              {canApprove && lastExec?.id ? (
+                <form action={rollbackExecution} className="mt-2">
+                  <input type="hidden" name="executionId" value={lastExec.id} />
+                  <input type="hidden" name="backTo" value={`/dashboard/action-queue/${q.id}`} />
+                  <SubmitButton variant="secondary" pendingLabel={t.cc.approving} className="w-full">↩︎ {t.cc.restoreComment}</SubmitButton>
+                </form>
+              ) : null}
             </Card>
           ) : liveMode ? (
             <Card>
