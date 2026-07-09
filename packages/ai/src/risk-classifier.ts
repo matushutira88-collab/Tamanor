@@ -165,18 +165,23 @@ const LEXICON: ReadonlyArray<readonly [RiskCategory, number, readonly string[]]>
     "moron", "loser", "stupid", "dumb", "shut up", "you are idiots", "scumbag",
     "blodmann", "spinner", "vollidiot", "trottel", "hulye", "barom", "glupek",
   ]],
-  // Hate speech markers → critical.
-  [RiskCategory.HateSpeech, 0.9, ["hateful", "disgusting people", "nenavid"]],
+  // Hate speech / racism / extremism markers → critical.
+  [RiskCategory.HateSpeech, 0.9, [
+    "hateful", "disgusting people", "nenavid",
+    "go back to your country", "your race", "subhuman", "racial slur",
+    "plant a bomb", "jihad", "heil hitler", "terror attack",
+  ]],
   // Threats / violence (no dedicated enum) → map to Harassment, critical.
   [RiskCategory.Harassment, 0.92, [
     "zabijem", "zabit ta", "i will kill", "kill you", "vyhrazam",
-    "ublizim", "umresh", "toch dich",
+    "ublizim", "umresh", "toch dich", "i will hurt", "burn your store", "beat you up",
   ]],
-  // Scam / fraud → critical (SK/CZ/EN/DE/PL/HU).
+  // Scam / fraud / phishing → critical (SK/CZ/EN/DE/PL/HU).
   [RiskCategory.Scam, 0.9, [
     "podvod", "podvodnik", "scam", "fraud", "betrug", "betrueger",
     "oszustwo", "oszust", "atveres", "csalas", "csalo", "prevod",
     "free money", "click here", "crypto giveaway", "wire transfer", "prevod penazi",
+    "verify your account", "click here to claim", "reset your password", "confirm your password",
   ]],
   // Spam → high.
   [RiskCategory.Spam, 0.7, [

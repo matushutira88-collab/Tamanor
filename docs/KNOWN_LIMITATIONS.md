@@ -34,6 +34,17 @@ them plainly to testers so expectations are correct.
 - Demo **comment content** may be in English even when the UI is SK/DE — that is
   expected (only UI chrome is localized).
 
+## Auto-Protect value dashboard & demo (V1.19)
+
+- The **Auto-Protect value** dashboard and **Auto-Protect report** summarise what
+  Guardora *would* do in shadow mode. **Live actions executed is always 0** — no
+  content is hidden on any platform.
+- The demo dataset is **clearly-labelled demo/scenario data** (Demo Workspace, no
+  real client names) spanning EN/SK/DE/PL/HU/CZ. It exists to show category
+  coverage, not real customer activity.
+- "What Guardora did not hide" exists on purpose: **normal service criticism is
+  preserved**, never auto-hidden.
+
 ## Auto-Protect (V1.18)
 
 - Auto-Protect lets a brand choose per harmful-content category: **monitor**,

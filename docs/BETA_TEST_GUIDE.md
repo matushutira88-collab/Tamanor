@@ -195,6 +195,16 @@ Under **Rules → Auto-Protect** a brand chooses, per harmful-content category, 
 - The future **live action-enable phase is separate** — this release does not
   enable live auto-hide.
 
+**Value dashboard & report.** The main dashboard has an **"Auto-Protect value"**
+section (protected in shadow mode / would auto-hide / sent to approval / normal
+criticism preserved / **live actions executed = 0**). **Reports → Auto-Protect
+report** adds a category breakdown, a **"What Guardora did not hide"** list
+(preserved criticism), recent would-auto-hide items, and a **"No live action
+executed"** banner. In the **Inbox**, use the Auto-Protect quick filters
+(would auto-hide / requires approval / monitored / normal criticism preserved /
+blocked by safety). Demo comments span EN/SK/DE/PL/HU/CZ and are demo scenarios,
+not real customers.
+
 ## What to test on mobile
 
 - Marketing homepage (hero, CTAs full-width, language switcher reachable).

@@ -47,6 +47,17 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const risk = pick(RiskLevel, sp.risk);
   const priority = pick(Priority, sp.priority);
   const brandId = sp.brand || undefined;
+  const ap = sp.ap || undefined;
+
+  // Auto-Protect filter → resolve matching reputation item ids (brand-scoped).
+  let apItemIds: string[] | undefined;
+  if (ap) {
+    const apWhere = ap === "preserved" ? { matchedCategory: "normal_criticism" } : { decision: ap };
+    apItemIds = (await prisma.autoProtectDecision.findMany({
+      where: { tenantId: session.tenantId, ...apWhere },
+      select: { itemId: true },
+    })).map((d) => d.itemId);
+  }
 
   const baseFilters = {
     tenantId: session.tenantId,
@@ -54,6 +65,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
     ...(risk ? { riskLevel: risk as RiskLevel } : {}),
     ...(priority ? { priority: priority as Priority } : {}),
     ...(brandId ? { brandId } : {}),
+    ...(apItemIds ? { id: { in: apItemIds } } : {}),
   };
 
   const [brands, grouped, items] = await Promise.all([
@@ -75,7 +87,25 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   if (platform) qs.set("platform", platform);
   if (risk) qs.set("risk", risk);
   if (priority) qs.set("priority", priority);
+  if (ap) qs.set("ap", ap);
   const suffix = qs.toString() ? `&${qs.toString()}` : "";
+
+  const apChips: { key: string; label: string }[] = [
+    { key: "", label: hdrT.autoProtect.filterAll },
+    { key: "would_auto_hide", label: tEnum(hdrT, "autoProtectDecision", "would_auto_hide") },
+    { key: "requires_approval", label: tEnum(hdrT, "autoProtectDecision", "requires_approval") },
+    { key: "monitor", label: tEnum(hdrT, "autoProtectDecision", "monitor") },
+    { key: "preserved", label: hdrT.autoProtect.mCriticism },
+    { key: "blocked_by_safety", label: tEnum(hdrT, "autoProtectDecision", "blocked_by_safety") },
+  ];
+  const chipSuffix = (() => {
+    const q = new URLSearchParams();
+    if (brandId) q.set("brand", brandId);
+    if (platform) q.set("platform", platform);
+    if (risk) q.set("risk", risk);
+    if (priority) q.set("priority", priority);
+    return q.toString() ? `&${q.toString()}` : "";
+  })();
 
   const brandOptions = [{ value: "", label: hdrT.dash.allBrands }, ...brands.map((b) => ({ value: b.id, label: b.name }))];
 
@@ -94,6 +124,23 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         active={tab}
         tabs={TAB_ORDER.map((t) => ({ key: t, label: tabLabel[t]!, href: `/dashboard/inbox?tab=${t}${suffix}`, count: tabCount(t) }))}
       />
+
+      {/* Auto-Protect quick filters (shadow mode) */}
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-xs font-medium text-[var(--color-muted)]">🛡️ {hdrT.autoProtect.filterLabel}:</span>
+        {apChips.map((c) => {
+          const active = (ap ?? "") === c.key;
+          return (
+            <Link
+              key={c.key || "all"}
+              href={`/dashboard/inbox?tab=${tab}${c.key ? `&ap=${c.key}` : ""}${chipSuffix}`}
+              className={`rounded-full border px-2.5 py-1 text-xs transition ${active ? "border-[var(--color-brand)] bg-[var(--color-brand)] text-white" : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]"}`}
+            >
+              {c.label}
+            </Link>
+          );
+        })}
+      </div>
 
       {/* Filters */}
       <form className="mb-4 flex flex-wrap items-end gap-2.5">

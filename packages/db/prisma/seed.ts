@@ -89,6 +89,11 @@ async function main() {
 
   // --- Reset (dev only) ------------------------------------------------------
   await prisma.auditLog.deleteMany();
+  await prisma.autoProtectDecision.deleteMany();
+  await prisma.providerCall.deleteMany();
+  await prisma.brandAutoProtectPolicy.deleteMany();
+  await prisma.brandRiskMemoryRule.deleteMany();
+  await prisma.brandRiskFeedback.deleteMany();
   await prisma.moderationDecision.deleteMany();
   await prisma.reputationItem.deleteMany();
   await prisma.contentItem.deleteMany();
@@ -394,6 +399,27 @@ const DEMO_TEXTS: Array<{ text: string; author: string; cat: string; rating?: nu
   { text: "[MOCK] injury risk with this, someone will get hurt", author: "careful_cathy", cat: "brand_attack" },
   { text: "[MOCK] hateful people run this brand, disgusting", author: "hostile_hank", cat: "hate_speech" },
   { text: "[MOCK] neutral note: nice weather for the launch today", author: "random_rob", cat: "neutral" },
+  // --- V1.19 Auto-Protect category coverage (multilingual; demo scenario) ----
+  // would_auto_hide (shadow) — scam / phishing / hate / racism / extremism.
+  { text: "[MOCK] Toto je podvod, neposielajte im peniaze.", author: "varovanie_vlado", cat: "scam" },
+  { text: "[MOCK] Verify your account here and click here to claim your free iPhone", author: "phish_pete", cat: "scam" },
+  { text: "[MOCK] go back to your country, we don't want your race here", author: "vile_vic", cat: "hate_speech" },
+  { text: "[MOCK] hateful subhuman people, disgusting brand", author: "hater_hugo", cat: "hate_speech" },
+  { text: "[MOCK] we will plant a bomb at your next store opening", author: "threat_x", cat: "hate_speech" },
+  // requires_approval — personal attack / profanity / threat / violence / sexual / promo / impersonation / crisis / spam.
+  { text: "[MOCK] Kokot nenažratý, hnusná firma", author: "rude_rudo", cat: "profanity" },
+  { text: "[MOCK] I will hurt you and burn your store down", author: "angry_axel", cat: "harassment" },
+  { text: "[MOCK] send nudes or I flood your page with porn", author: "creep_carl", cat: "harassment" },
+  { text: "[MOCK] Come to us, we are cheaper, DM me for a deal", author: "poacher_pia", cat: "neutral" },
+  { text: "[MOCK] official account here, DM us your card to claim your prize", author: "fake_official", cat: "spam" },
+  { text: "[MOCK] a product recall and health inspection are underway at this company", author: "crisis_cora", cat: "brand_attack" },
+  // monitor / preserved — normal criticism (SK/DE/PL/HU/CZ) + questions.
+  { text: "[MOCK] Tovar mi prišiel neskoro, som nespokojný.", author: "zakaznik_zak", cat: "complaint", rating: 2 },
+  { text: "[MOCK] Die Lieferung war zu spät, sehr enttäuschend.", author: "kunde_kurt", cat: "complaint", rating: 2 },
+  { text: "[MOCK] Zamówienie dotarło uszkodzone, słaba obsługa.", author: "klient_kamil", cat: "complaint", rating: 2 },
+  { text: "[MOCK] A csomag késve érkezett, csalódott vagyok.", author: "vasarlo_vera", cat: "complaint", rating: 2 },
+  { text: "[MOCK] Doručení bylo pomalé, nejsem spokojený.", author: "zakaznik_zdenek", cat: "complaint", rating: 2 },
+  { text: "[MOCK] Máte otvorené aj cez víkend?", author: "otazka_olga", cat: "neutral" },
 ];
 
 interface MockAccount {

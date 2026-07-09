@@ -27,6 +27,7 @@
     "memory:db-test": "pnpm --filter @guardora/db exec tsx scripts/brand-memory.test.ts",
     "autoprotect:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/auto-protect.test.ts",
     "autoprotect:db-test": "pnpm --filter @guardora/db exec tsx scripts/auto-protect.test.ts",
+    "autoprotect:value-test": "pnpm --filter @guardora/db exec tsx scripts/autoprotect-value.test.ts",
     "risk:reclassify-demo": "pnpm --filter @guardora/db reclassify-demo",
     "db:studio": "pnpm --filter @guardora/db studio",
     "clean": "pnpm -r clean"

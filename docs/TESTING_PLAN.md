@@ -105,6 +105,21 @@ See [LIVE_META_TEST.md](./LIVE_META_TEST.md).
       monitored / criticism preserved).
 - [ ] No content is hidden on any platform; every decision is audited.
 
+## C8. Auto-Protect value dashboard + report (V1.19)
+
+- [ ] `pnpm autoprotect:value-test` passes (all 16 categories in demo, criticism
+      never would-hide, live actions = 0, value metrics, category breakdown, inbox
+      filters).
+- [ ] Dashboard **"Auto-Protect value"** shows 5 cards incl. **Live actions
+      executed = 0** + the shadow-mode paragraph.
+- [ ] Reports **"Auto-Protect report"**: shadow summary, category breakdown,
+      **"What Guardora did not hide"**, recent would-auto-hide, **"No live action
+      executed"** banner.
+- [ ] Inbox **Auto-Protect quick filters** (would auto-hide / requires approval /
+      monitored / normal criticism preserved / blocked by safety) filter the list.
+- [ ] Demo comments span EN/SK/DE/PL/HU/CZ; **no visible [MOCK]**; no claim that
+      live auto-hide is enabled.
+
 ## D. i18n test
 
 - [ ] EN landing renders (`/`).

@@ -103,6 +103,22 @@ synced item):
 Say plainly: most of this is **demo data**; the Facebook item is from the **real
 read-only sync**.
 
+## H2. Auto-Protect value demo (`/dashboard`, `/dashboard/reports#auto-protect`)
+
+The headline value story. On the dashboard, show the **"Auto-Protect value"**
+cards: what Guardora **would** hide, what it sent to approval, **normal criticism
+preserved**, and **Live actions executed = 0**. Say it plainly:
+
+> "Guardora protects the brand in **shadow mode**: it identifies harmful content —
+> scams, phishing, hate, threats — while **preserving normal criticism**, and it
+> executes **no live platform action**."
+
+Open **Reports → Auto-Protect report**: category breakdown, **"What Guardora did
+not hide"** (preserved criticism), recent would-auto-hide items, and the **"No
+live action executed"** banner. In the **Inbox**, click the Auto-Protect quick
+filters (e.g. *Would auto-hide*, *Normal criticism preserved*). Demo comments span
+EN/SK/DE/PL/HU/CZ — **demo scenarios, not real customers.**
+
 ## I. Safety close
 
 Reiterate the guarantees:
@@ -120,6 +136,9 @@ Reiterate the guarantees:
 - ❌ Do **not** claim real customers when showing example/demo scenarios.
 - ❌ Do **not** cite fake percentages or savings (e.g. "saved 40%").
 - ❌ Do **not** say moderation actions are live — they are **disabled**.
+- ❌ Do **not** say Guardora "already hides content", "removes all harmful
+  content", or has "perfect detection" — Auto-Protect is **shadow mode** (would
+  auto-hide), best-effort, and **live actions executed = 0**.
 - ❌ Do **not** say all platforms are live — several are placeholder/mock
   connectors today (only Meta read-only is really verified).
 

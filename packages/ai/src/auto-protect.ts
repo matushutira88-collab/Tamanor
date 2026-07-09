@@ -86,7 +86,8 @@ const TERM_LEXICON: { category: AutoProtectCategory; terms: string[] }[] = [
   { category: "violence", terms: ["i will kill you", "kill you", "beat you up", "i will hurt", "stab you", "shoot you", "zabijem ta", "zbijem ta"] },
   { category: "phishing", terms: ["verify your account", "confirm your password", "reset your password", "login here", "click here to claim", "bank details", "wire transfer"] },
   { category: "sexual_vulgarity", terms: ["send nudes", "porn", "explicit sexual"] },
-  { category: "brand_impersonation", terms: ["official account", "i am the ceo", "real owner", "verified official"] },
+  { category: "brand_impersonation", terms: ["official account", "i am the ceo", "real owner", "verified official", "this page impersonates"] },
+  { category: "crisis_keyword", terms: ["class action lawsuit", "data breach", "health inspection", "product recall", "regulatory complaint"] },
 ];
 
 /** Promo/self-promotion markers that turn a competitor mention into competitor_promo. */
@@ -129,10 +130,11 @@ export function matchAutoProtectCategory(text: string, signals: string[]): AutoP
   for (const [sig, c] of SIGNAL_MAP) {
     if (signals.includes(sig)) category = pickHigher(category, c);
   }
-  if (signals.includes("competitor")) {
-    const promo = PROMO_MARKERS.some((m) => containsFuzzy(norm, m));
-    category = pickHigher(category, promo ? "competitor_promo" : "normal_criticism");
-  }
+  // Promo/self-promotion markers → competitor_promo (with or without a competitor
+  // signal). A bare competitor mention without promo is a normal comparison.
+  const promo = PROMO_MARKERS.some((m) => containsFuzzy(norm, m));
+  if (promo) category = pickHigher(category, "competitor_promo");
+  else if (signals.includes("competitor")) category = pickHigher(category, "normal_criticism");
   return category;
 }
 

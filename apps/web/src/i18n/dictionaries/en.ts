@@ -416,6 +416,26 @@ export const en = {
     mSentApproval: "Sent to approval",
     mMonitored: "Monitored only",
     mCriticism: "Normal criticism preserved",
+    // executive value dashboard (V1.19)
+    valueTitle: "Auto-Protect value",
+    valueIntro: "Guardora protects your brand in shadow mode: harmful content is identified, normal criticism is preserved, and no live platform action is executed.",
+    mProtectedShadow: "Protected in shadow mode",
+    mLiveActions: "Live actions executed",
+    // report + breakdown
+    reportTitle: "Auto-Protect report",
+    summaryTitle: "Shadow-mode summary",
+    categoryBreakdown: "Category breakdown",
+    topHarmful: "Top harmful categories",
+    recentWouldHide: "Recent would-auto-hide",
+    colCount: "Count",
+    last7: "Last 7 days",
+    last30: "Last 30 days",
+    notHiddenTitle: "What Guardora did not hide",
+    notHiddenBody: "Normal criticism of the service is not auto-hidden. Guardora keeps it as feedback and separates it from insults, scams, hate, and spam.",
+    noItems: "No items in this view yet.",
+    // inbox filters
+    filterAll: "All",
+    filterLabel: "Auto-Protect",
   },
 
   // Brand risk memory + feedback (V1.17).

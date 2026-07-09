@@ -79,6 +79,26 @@ export default async function ReportsPage() {
   const healthy = accounts.filter((a) => a.health === ConnectorHealth.Healthy).length;
   const attention = accounts.filter((a) => a.health === ConnectorHealth.Degraded || a.health === ConnectorHealth.Error).length;
 
+  // Auto-Protect report (shadow mode — no live action).
+  const [apByDecision, apByCategory, apWouldHideItems, apPreservedItems] = await Promise.all([
+    prisma.autoProtectDecision.groupBy({ by: ["decision"], where, _count: true }),
+    prisma.autoProtectDecision.groupBy({ by: ["matchedCategory"], where, _count: true }),
+    prisma.autoProtectDecision.findMany({ where: { ...where, decision: "would_auto_hide" }, orderBy: { createdAt: "desc" }, take: 5, select: { matchedCategory: true, confidence: true, itemId: true } }),
+    prisma.autoProtectDecision.findMany({ where: { ...where, matchedCategory: "normal_criticism" }, orderBy: { createdAt: "desc" }, take: 5, select: { itemId: true } }),
+  ]);
+  const apDec = new Map(apByDecision.map((g) => [g.decision, g._count as unknown as number]));
+  const apCatRows = apByCategory
+    .map((g) => ({ category: g.matchedCategory, value: g._count as unknown as number }))
+    .filter((r) => r.category !== "normal_criticism")
+    .sort((a, b) => b.value - a.value);
+  const apPreservedCount = (apDec.get("monitor") ?? 0) + (apDec.get("no_action") ?? 0) + (apDec.get("blocked_by_safety") ?? 0);
+  const wouldHideItemIds = apWouldHideItems.map((d) => d.itemId);
+  const preservedItemIds = apPreservedItems.map((d) => d.itemId);
+  const apItemTexts = new Map(
+    (await prisma.reputationItem.findMany({ where: { id: { in: [...wouldHideItemIds, ...preservedItemIds] } }, select: { id: true, contentItem: { select: { text: true } } } }))
+      .map((r) => [r.id, r.contentItem.text]),
+  );
+
   return (
     <>
       <PageHeader
@@ -157,6 +177,73 @@ export default async function ReportsPage() {
                   </span>
                 ))}
               </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Auto-Protect report (shadow mode) */}
+      <div id="auto-protect" className="mt-8 scroll-mt-24">
+        <SectionHeader title={`🛡️ ${hdrT.autoProtect.reportTitle}`} description={hdrT.autoProtect.summaryTitle} action={<Badge tone="neutral">{hdrT.autoProtect.shadowOnly}</Badge>} />
+        <div className="mb-4 rounded-lg border border-[var(--color-ok)] bg-[var(--color-ok-soft,transparent)] px-3 py-2 text-xs">
+          ✅ <span className="font-medium">{hdrT.autoProtect.noLiveAction}</span> · {hdrT.autoProtect.liveDisabled}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric label={hdrT.autoProtect.mWouldHide} value={String(apDec.get("would_auto_hide") ?? 0)} tone="warn" />
+          <Metric label={hdrT.autoProtect.mSentApproval} value={String(apDec.get("requires_approval") ?? 0)} tone="warn" />
+          <Metric label={hdrT.autoProtect.mCriticism} value={String(apPreservedCount)} tone="ok" />
+          <Metric label={hdrT.autoProtect.mLiveActions} value="0" hint={hdrT.autoProtect.liveDisabled} tone="ok" />
+        </div>
+
+        <div className="mt-4 grid gap-6 lg:grid-cols-2">
+          <Card>
+            <SectionHeader title={hdrT.autoProtect.topHarmful} description={hdrT.autoProtect.categoryBreakdown} />
+            {apCatRows.length === 0 ? (
+              <p className="mt-3 text-sm text-[var(--color-muted)]">{hdrT.autoProtect.noItems}</p>
+            ) : (
+              <div className="mt-3 space-y-1.5">
+                {apCatRows.slice(0, 8).map((r) => (
+                  <div key={r.category} className="flex items-center justify-between text-sm">
+                    <span>{tEnum(hdrT, "autoProtectCategory", r.category)}</span>
+                    <span className="text-xs text-[var(--color-muted)]">{r.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <SectionHeader title={hdrT.autoProtect.notHiddenTitle} />
+            <p className="mt-1 text-xs text-[var(--color-muted)]">{hdrT.autoProtect.notHiddenBody}</p>
+            <div className="mt-3 space-y-1.5">
+              {preservedItemIds.length === 0 ? (
+                <p className="text-sm text-[var(--color-muted)]">{hdrT.autoProtect.noItems}</p>
+              ) : (
+                preservedItemIds.map((id) => (
+                  <Link key={id} href={`/dashboard/inbox/${id}`} className="block truncate rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:border-[var(--color-border-strong)]">
+                    ✅ {apItemTexts.get(id) ?? ""}
+                  </Link>
+                ))
+              )}
+            </div>
+          </Card>
+        </div>
+
+        <Card className="mt-4">
+          <SectionHeader title={hdrT.autoProtect.recentWouldHide} action={<Badge tone="warn">{hdrT.autoProtect.shadowOnly}</Badge>} />
+          <div className="mt-3 space-y-1.5">
+            {apWouldHideItems.length === 0 ? (
+              <p className="text-sm text-[var(--color-muted)]">{hdrT.autoProtect.noItems}</p>
+            ) : (
+              apWouldHideItems.map((d) => (
+                <Link key={d.itemId} href={`/dashboard/inbox/${d.itemId}`} className="flex items-center justify-between gap-2 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:border-[var(--color-border-strong)]">
+                  <span className="truncate">{apItemTexts.get(d.itemId) ?? ""}</span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <Badge tone="warn">{tEnum(hdrT, "autoProtectCategory", d.matchedCategory)}</Badge>
+                    <span className="text-[var(--color-muted)]">{(d.confidence * 100).toFixed(0)}%</span>
+                  </span>
+                </Link>
+              ))
             )}
           </div>
         </Card>
