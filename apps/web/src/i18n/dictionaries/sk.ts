@@ -534,6 +534,9 @@ export const sk: Dictionary = {
       policy_not_autonomous: "Pravidlo nie je v autonómnom režime",
       live_confirm_required: "Vyžaduje sa potvrdenie naživo (LIVE_HIDE_TEST_CONFIRM=YES)",
       all_gates_passed_and_confirmed: "Všetky kontroly prešli — živé skrytie by sa vykonalo",
+      dry_run_still_enabled: "Režim nanečisto je stále zapnutý (nastavte LIVE_ACTIONS_DRY_RUN=false)",
+      live_not_enabled: "Živé akcie nie sú v tomto prostredí povolené",
+      already_executed: "Táto akcia už bola vykonaná",
     },
   },
 
@@ -687,6 +690,22 @@ export const sk: Dictionary = {
     lastAttemptAt: "Posledný pokus",
     approving: "Spracúva sa…",
     retry: "Skúsiť znova",
+    // V1.26 — prvé kontrolované ŽIVÉ skrytie
+    liveHideTitle: "Kontrolované živé skrytie na Facebooku",
+    liveReadiness: "Pripravenosť na živý test",
+    preflightDryRun: "Existuje predchádzajúci test nanečisto",
+    idempotencyOk: "Ešte nevykonané (idempotencia OK)",
+    safetyOk: "Kategória je oprávnená + istota OK",
+    runDryRunFirst: "Najprv vykonajte test nanečisto.",
+    liveHideWarning: "Táto akcia reálne skryje komentár na Facebooku. Použite iba na testovací škodlivý komentár. Bežná kritika sa nikdy neskrýva automaticky.",
+    liveHideAck: "Rozumiem, že komentár sa skryje na Facebooku.",
+    liveHidePhrase: "Na potvrdenie napíšte LIVE HIDE:",
+    liveHideButton: "Vykonať živé skrytie na Facebooku",
+    liveHideRetryButton: "Zopakovať živé skrytie na Facebooku",
+    liveNotAvailable: "Živé skrytie nie je pre túto položku dostupné.",
+    liveGatesNotMet: "Nie sú splnené všetky živé podmienky — skrytie zostáva blokované.",
+    liveDone: "Komentár bol skrytý na Facebooku.",
+    liveDoneRollback: "Prvé živé skrytie dokončené. Pred ďalším testovaním sa vráťte do režimu nanečisto.",
   },
 
   memory: {

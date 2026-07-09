@@ -90,9 +90,26 @@ function gate(ctx: HideContext, cfg: ReturnType<typeof getLiveActionsConfig>): {
   // Autonomous execution requires the ControlPolicy to be in autonomous mode.
   if (ctx.trigger === "autonomous" && ctx.mode !== "autonomous") return { blockedReason: "policy_not_autonomous" };
   if (ctx.confidence < MIN_CONFIDENCE) return { blockedReason: "low_confidence" };
-  if (ctx.matchedCategory === "threat" && ctx.riskLevel !== "critical") return { blockedReason: "threat_requires_critical" };
+  // Threats are only hide-eligible at high or critical risk.
+  if (ctx.matchedCategory === "threat" && ctx.riskLevel !== "critical" && ctx.riskLevel !== "high") return { blockedReason: "threat_requires_critical" };
   if (!ctx.externalCommentId) return { blockedReason: "missing_comment_id" };
   return { blockedReason: null };
+}
+
+/**
+ * Preflight for a controlled LIVE hide (V1.26): a prior dry-run for the SAME
+ * queue item / policy / action must exist before a live attempt is allowed.
+ */
+export async function findPreflightDryRun(ctx: Pick<HideContext, "tenantId" | "queueItemId" | "policyId">) {
+  if (!ctx.queueItemId) return null;
+  return prisma.platformActionExecution.findFirst({
+    where: {
+      tenantId: ctx.tenantId, queueItemId: ctx.queueItemId, policyId: ctx.policyId ?? null,
+      actionType: "hide_comment", trigger: "approval", status: "dry_run", executedAt: null,
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true, reason: true, createdAt: true, executedAt: true },
+  });
 }
 
 /**
@@ -138,11 +155,11 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
     });
   } catch (e) {
     // Race safety net: the partial unique index (queueItemId, actionType, trigger)
-    // over active (dry_run|executed) attempts rejects a concurrent duplicate. Fall
-    // back to the row that won the race instead of creating a second one.
-    if ((e as { code?: string }).code === "P2002" && (status === "dry_run" || status === "executed")) {
-      const existing = await prisma.platformActionExecution.findFirst({ where: { ...attemptWhere(ctx), status }, orderBy: { createdAt: "desc" } });
-      if (existing) return { id: existing.id, status, reason: existing.reason ?? reason, idempotent: true, createdAt: existing.createdAt };
+    // over `executed` rows rejects a concurrent duplicate live execution. Fall back
+    // to the row that won the race instead of creating a second executed row.
+    if ((e as { code?: string }).code === "P2002" && status === "executed") {
+      const existing = await prisma.platformActionExecution.findFirst({ where: { ...attemptWhere(ctx), status: "executed" }, orderBy: { createdAt: "desc" } });
+      if (existing) return { id: existing.id, status: "executed", reason: existing.reason ?? reason, idempotent: true, createdAt: existing.createdAt };
     }
     throw e;
   }
@@ -168,27 +185,32 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
  */
 export async function attemptFacebookHide(
   ctx: HideContext,
-  opts?: { transport?: FacebookHideTransport; config?: ReturnType<typeof getLiveActionsConfig>; retry?: boolean },
+  opts?: { transport?: FacebookHideTransport; config?: ReturnType<typeof getLiveActionsConfig>; retry?: boolean; liveAttempt?: boolean },
 ): Promise<HideExecutionResult> {
   const cfg = opts?.config ?? getLiveActionsConfig();
   const transportOverride = opts?.transport;
+  const liveAttempt = opts?.liveAttempt === true;
 
-  // --- Idempotency (V1.25B): one approval must not create duplicate executions. ---
+  // --- Idempotency (V1.25B/V1.26): never create duplicate executions. ---
   const existing = await findExistingExecutions(ctx);
   if (existing.length > 0) {
     const executed = existing.find((r) => r.status === "executed");
     if (executed) {
-      // A live hide already ran — never execute again.
+      // HARD STOP: a live hide already ran for this action — never execute again
+      // (covers a double-click on the live button after a successful execution).
       return { id: executed.id, status: "executed", reason: "already_executed", idempotent: true, createdAt: executed.createdAt };
     }
-    const dry = existing.find((r) => r.status === "dry_run");
-    if (dry) {
-      // A dry-run was already prepared — return it, do not create a second row.
-      return { id: dry.id, status: "dry_run", reason: dry.reason ?? "dry_run_mode", idempotent: true, createdAt: dry.createdAt };
+    // A prior dry-run short-circuits the NON-live path (Approve/autonomous). An
+    // explicit live attempt intentionally bypasses it — the dry-run was the preflight.
+    if (!liveAttempt) {
+      const dry = existing.find((r) => r.status === "dry_run");
+      if (dry) {
+        return { id: dry.id, status: "dry_run", reason: dry.reason ?? "dry_run_mode", idempotent: true, createdAt: dry.createdAt };
+      }
     }
     const latest = existing[0]!;
     if (latest.status === "failed" && !opts?.retry) {
-      // A failed attempt only retries via an explicit Retry — never a repeated Approve.
+      // A failed attempt only retries via an explicit Retry — never a repeated Approve/live click.
       return { id: latest.id, status: "failed", reason: latest.reason ?? "provider_error", idempotent: true, createdAt: latest.createdAt };
     }
     if (latest.status === "blocked") {
@@ -206,7 +228,22 @@ export async function attemptFacebookHide(
     return record(ctx, "blocked", blockedReason);
   }
 
-  // All gates passed. Dry-run unless env explicitly permits real execution.
+  // --- Explicit LIVE attempt (V1.26 dedicated live-hide button) ---
+  if (liveAttempt) {
+    // Fail-closed: a live attempt never silently degrades to a dry-run row.
+    if (cfg.dryRun) return record(ctx, "blocked", "dry_run_still_enabled");
+    if (!cfg.canExecuteLive) return record(ctx, "blocked", "live_not_enabled");
+    if (!cfg.liveConfirmed) return record(ctx, "blocked", "live_confirm_required");
+    const transport = transportOverride ?? new GraphFacebookHideTransport();
+    const r = await hideComment(
+      { pageId: ctx.account.pageId ?? ctx.account.externalId, commentId: ctx.externalCommentId!, connectedAccountId: ctx.connectedAccountId, itemId: ctx.itemId, pageAccessToken: ctx.account.accessToken ?? "" },
+      { dryRun: false, transport },
+    );
+    if (r.status === "executed") return record(ctx, "executed", "live_hide_executed", r);
+    return record(ctx, "failed", r.providerErrorCode ?? "provider_error", r);
+  }
+
+  // --- NON-live path (plain Approve / autonomous). Dry-run unless env permits live. ---
   if (cfg.dryRun || !cfg.canExecuteLive) {
     const r = await hideComment(
       { pageId: ctx.account.pageId ?? ctx.account.externalId, commentId: ctx.externalCommentId!, connectedAccountId: ctx.connectedAccountId, itemId: ctx.itemId, pageAccessToken: "" },
@@ -221,7 +258,19 @@ export async function attemptFacebookHide(
     return record(ctx, "blocked", "live_confirm_required");
   }
 
-  // Live path — real transport (mock only via explicit override in a manual test).
+  // A MANUAL approval never goes live through this path (V1.26): a real hide must
+  // use the dedicated, explicitly-confirmed live button (liveAttempt). So a plain
+  // Approve caps at a dry-run even in a fully live env. Only an autonomous policy
+  // (trigger=autonomous) may execute here.
+  if (ctx.trigger !== "autonomous") {
+    const r = await hideComment(
+      { pageId: ctx.account.pageId ?? ctx.account.externalId, commentId: ctx.externalCommentId!, connectedAccountId: ctx.connectedAccountId, itemId: ctx.itemId, pageAccessToken: "" },
+      { dryRun: true, transport: transportOverride ?? new GraphFacebookHideTransport() },
+    );
+    return record(ctx, "dry_run", "dry_run_mode", r);
+  }
+
+  // Autonomous live path — real transport (mock only via explicit override in a test).
   const transport = transportOverride ?? new GraphFacebookHideTransport();
   const r = await hideComment(
     { pageId: ctx.account.pageId ?? ctx.account.externalId, commentId: ctx.externalCommentId!, connectedAccountId: ctx.connectedAccountId, itemId: ctx.itemId, pageAccessToken: ctx.account.accessToken ?? "" },

@@ -534,6 +534,9 @@ export const de: Dictionary = {
       policy_not_autonomous: "Richtlinie ist nicht im autonomen Modus",
       live_confirm_required: "Live-Bestätigung erforderlich (LIVE_HIDE_TEST_CONFIRM=YES)",
       all_gates_passed_and_confirmed: "Alle Prüfungen bestanden — ein Live-Ausblenden würde ausgeführt",
+      dry_run_still_enabled: "Dry-run ist noch aktiviert (LIVE_ACTIONS_DRY_RUN=false setzen)",
+      live_not_enabled: "Live-Aktionen sind in dieser Umgebung nicht aktiviert",
+      already_executed: "Diese Aktion wurde bereits ausgeführt",
     },
   },
 
@@ -687,6 +690,22 @@ export const de: Dictionary = {
     lastAttemptAt: "Letzter Versuch",
     approving: "Wird verarbeitet…",
     retry: "Erneut versuchen",
+    // V1.26 — erstes kontrolliertes LIVE-Ausblenden
+    liveHideTitle: "Kontrolliertes Live-Ausblenden auf Facebook",
+    liveReadiness: "Live-Test-Bereitschaft",
+    preflightDryRun: "Vorheriger Dry-run-Preflight vorhanden",
+    idempotencyOk: "Noch nicht ausgeführt (Idempotenz OK)",
+    safetyOk: "Kategorie zulässig + Konfidenz OK",
+    runDryRunFirst: "Führen Sie zuerst einen Dry-run-Test durch.",
+    liveHideWarning: "Diese Aktion blendet den Kommentar wirklich auf Facebook aus. Nur für einen schädlichen Testkommentar verwenden. Normale Kritik wird nie automatisch ausgeblendet.",
+    liveHideAck: "Ich verstehe, dass der Kommentar auf Facebook ausgeblendet wird.",
+    liveHidePhrase: "Zum Bestätigen LIVE HIDE eingeben:",
+    liveHideButton: "Live-Ausblenden auf Facebook ausführen",
+    liveHideRetryButton: "Live-Ausblenden auf Facebook wiederholen",
+    liveNotAvailable: "Live-Ausblenden ist für dieses Element nicht verfügbar.",
+    liveGatesNotMet: "Nicht alle Live-Bedingungen erfüllt — Ausblenden bleibt blockiert.",
+    liveDone: "Der Kommentar wurde auf Facebook ausgeblendet.",
+    liveDoneRollback: "Erstes Live-Ausblenden abgeschlossen. Vor weiteren Tests in den Dry-run-Modus zurückkehren.",
   },
 
   memory: {

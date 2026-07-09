@@ -547,6 +547,9 @@ export const en = {
       policy_not_autonomous: "Policy is not in autonomous mode",
       live_confirm_required: "Live confirmation required (LIVE_HIDE_TEST_CONFIRM=YES)",
       all_gates_passed_and_confirmed: "All gates passed — a live hide would execute",
+      dry_run_still_enabled: "Dry-run is still enabled (set LIVE_ACTIONS_DRY_RUN=false)",
+      live_not_enabled: "Live actions are not enabled in this environment",
+      already_executed: "This action was already executed",
     },
   },
 
@@ -715,6 +718,22 @@ export const en = {
     lastAttemptAt: "Last attempt",
     approving: "Processing…",
     retry: "Retry",
+    // V1.26 — first controlled LIVE hide
+    liveHideTitle: "Controlled live Facebook hide",
+    liveReadiness: "Live test readiness",
+    preflightDryRun: "Prior dry-run preflight exists",
+    idempotencyOk: "Not yet executed (idempotency OK)",
+    safetyOk: "Category eligible + confidence OK",
+    runDryRunFirst: "Run a dry-run test first.",
+    liveHideWarning: "This action really hides the comment on Facebook. Use only on a test harmful comment. Normal criticism is never hidden automatically.",
+    liveHideAck: "I understand the comment will be hidden on Facebook.",
+    liveHidePhrase: "Type LIVE HIDE to confirm:",
+    liveHideButton: "Execute live hide on Facebook",
+    liveHideRetryButton: "Retry live hide on Facebook",
+    liveNotAvailable: "Live hide is not available for this item.",
+    liveGatesNotMet: "Live gates are not all met — hide stays blocked.",
+    liveDone: "The comment was hidden on Facebook.",
+    liveDoneRollback: "First live hide completed. Return to dry-run mode before further testing.",
   },
 
   // Brand risk memory + feedback (V1.17).

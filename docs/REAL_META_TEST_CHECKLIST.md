@@ -255,23 +255,56 @@ gate stack through the **manual approval** flow (Action Queue detail), staying i
 
 Automated equivalent: `pnpm fbhide:test` and the controlled-hide dry-run tests.
 
-### Stage 2 — real live hide (LOCKED — explicit opt-in only)
+### Stage 2 — first live hide test (V1.26 — LOCKED, explicit opt-in only)
 
-**Do not perform Stage 2 until Stage 1 has been reviewed and you explicitly
-decide to hide a real comment.** Two independent locks must both be set:
+**Do not perform Stage 2 until Stage 1 has been reviewed and you explicitly decide
+to hide ONE real comment.** This is a single, manual, human-clicked live hide — not
+autonomous, not bulk, never reply/delete, never Instagram.
 
-```
-LIVE_ACTIONS_DRY_RUN=false
-LIVE_HIDE_TEST_CONFIRM=YES
-```
+1. Pick **one** test harmful comment on the Konfigurátor Page.
+2. Confirm the comment is **visible** on Facebook.
+3. Confirm a **Stage 1 dry-run** exists for that same queue item (the panel shows
+   *"Prior dry-run preflight exists"* ✅). Without it the live button is blocked with
+   *"Run a dry-run test first."*
+4. Set env — **both** locks are required:
+   ```
+   LIVE_ACTIONS_ENABLED=true
+   FACEBOOK_HIDE_ENABLED=true
+   LIVE_ACTIONS_DRY_RUN=false
+   LIVE_HIDE_TEST_CONFIRM=YES
+   ```
+5. **Restart the web app** so it re-reads the env.
+6. The **worker may be stopped** during the live test so nothing else mutates state.
+7. Open the **Action Queue → item detail**.
+8. Check the **🔴 Controlled live Facebook hide** card: every **Live test readiness**
+   row must be ✅ (env gates, `pages_manage_engagement`, preflight, idempotency, safety).
+9. Tick **"I understand the comment will be hidden on Facebook."** and type the exact
+   phrase **`LIVE HIDE`**. (The button stays disabled until both are done.)
+10. Click **"Execute live hide on Facebook"** — the dedicated red button, *not* Approve.
+11. Verify the DB:
+    - exactly **1** `platform_action_executions` row with `status=executed`,
+    - `executedAt` **not null**, `actionType=hide_comment`, `trigger=approval`.
+12. Verify **Facebook**: the comment is hidden / not visible to the public.
+13. Verify **Command Center**: *Live actions executed = 1*.
+14. Verify **audit + timeline**: a `platform_action.executed` event.
+15. **Roll back env** after the test:
+    ```
+    LIVE_ACTIONS_DRY_RUN=true
+    LIVE_HIDE_TEST_CONFIRM=NO
+    ```
 
-When `canExecuteLive` is true the Control Center and the Action Queue panel show a
-**bold red "Live Facebook hide is enabled"** warning. Until `LIVE_HIDE_TEST_CONFIRM
-=YES` is also set, every hide is recorded **blocked (`live_confirm_required`)** and
-**nothing is hidden** — this is the accidental-live-test guard. Approving with both
-locks set will hide the real comment via `POST /{comment-id}` `is_hidden=true`.
+The live hide calls the Graph connector **once** (`POST /{comment-id}` `is_hidden=true`)
+for that single comment; the page token is never logged or stored. On a provider error
+the row is `failed` and the UI offers an **explicit Retry** — a repeated click never
+auto-retries.
 
-After the test, restore `LIVE_ACTIONS_DRY_RUN=true` and `LIVE_HIDE_TEST_CONFIRM=NO`.
+**Hard stop after one live hide (Scope G):** once an `executed` row exists for the
+item, the detail shows *"First live hide completed. Return to dry-run mode before
+further testing."* and the live button disappears — no second live action without a
+fresh, deliberate opt-in.
+
+Automated equivalent: the `fbhide:test` **V1.26 controlled LIVE hide** block (live
+success calls the mock transport exactly once; default env keeps live actions = 0).
 
 ---
 

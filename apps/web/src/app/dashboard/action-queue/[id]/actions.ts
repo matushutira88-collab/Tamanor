@@ -3,14 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
-import { attemptFacebookHide } from "@guardora/sync";
+import { attemptFacebookHide, findPreflightDryRun } from "@guardora/sync";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
 
-function back(id: string, notice: string): never {
+function back(id: string, notice: string, kind: "ok" | "error" = "ok"): never {
   revalidatePath(`/dashboard/action-queue/${id}`);
-  redirect(`/dashboard/action-queue/${id}?kind=ok&notice=${encodeURIComponent(notice)}`);
+  redirect(`/dashboard/action-queue/${id}?kind=${kind}&notice=${encodeURIComponent(notice)}`);
 }
 
 async function loadQueueItem(tenantId: string, id: string) {
@@ -19,18 +19,18 @@ async function loadQueueItem(tenantId: string, id: string) {
   return q;
 }
 
-/** Run the gated hide for a queue item and return a user-facing notice. */
+/** Run the gated hide for a queue item and return a user-facing notice + kind. */
 async function runHideForQueueItem(
   session: Awaited<ReturnType<typeof requireSession>>,
   q: Awaited<ReturnType<typeof loadQueueItem>>,
-  opts?: { retry?: boolean },
-): Promise<string> {
+  opts?: { retry?: boolean; liveAttempt?: boolean },
+): Promise<{ note: string; kind: "ok" | "error" }> {
   const item = await prisma.reputationItem.findFirst({
     where: { id: q.itemId, tenantId: session.tenantId },
     select: { riskLevel: true, contentItem: { select: { externalId: true, externalParentId: true, connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, accessToken: true, pageId: true, externalId: true, platform: true } } } } },
   });
   const acct = item?.contentItem.connectedAccount;
-  if (!acct) return "Approved. No live action was executed (live execution is disabled).";
+  if (!acct) return { note: "Approved. No live action was executed (live execution is disabled).", kind: "ok" };
   const policy = await prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true }, select: { id: true, mode: true } });
   const res = await attemptFacebookHide({
     tenantId: session.tenantId, brandId: q.brandId, itemId: q.itemId, queueItemId: q.id, policyId: policy?.id ?? null,
@@ -40,19 +40,30 @@ async function runHideForQueueItem(
     mode: policy?.mode ?? "approval", trigger: "approval",
     account: { status: acct.status as unknown as string, health: acct.health as unknown as string, grantedPermissions: acct.grantedPermissions, accessToken: acct.accessToken, pageId: acct.pageId, externalId: acct.externalId },
     requestedBy: "user",
-  }, { retry: opts?.retry });
+  }, { retry: opts?.retry, liveAttempt: opts?.liveAttempt });
 
-  // Idempotent results (a prior identical attempt already exists) get their own copy.
+  // --- Explicit LIVE attempt notices (V1.26) ---
+  if (opts?.liveAttempt) {
+    if (res.status === "executed") {
+      return { note: res.idempotent
+        ? "This action was already performed. The comment was not hidden again. Return to dry-run mode before further testing."
+        : "The comment was hidden on Facebook. First live hide completed — return to dry-run mode before further testing.", kind: "ok" };
+    }
+    if (res.status === "failed") return { note: "The hide failed. The comment may still be visible. Use Retry (explicit) to try again.", kind: "error" };
+    return { note: `Live hide blocked (${res.reason}). No Facebook comment was hidden.`, kind: "error" };
+  }
+
+  // --- Non-live (Approve / dry-run) notices ---
   if (res.idempotent) {
-    return res.status === "executed" ? "This action was already performed. No Facebook comment was hidden again."
+    return { note: res.status === "executed" ? "This action was already performed. No Facebook comment was hidden again."
       : res.status === "dry_run" ? "Dry-run was already prepared. No new execution was created and no Facebook comment was hidden."
       : res.status === "failed" ? "The previous attempt failed. Use Retry to try again — a repeated Approve does not retry."
-      : `Still blocked (${res.reason}). No Facebook comment was hidden.`;
+      : `Still blocked (${res.reason}). No Facebook comment was hidden.`, kind: "ok" };
   }
-  return res.status === "executed" ? "Approved and live hide executed."
+  return { note: res.status === "executed" ? "Approved and live hide executed."
     : res.status === "dry_run" ? "Dry-run prepared. No Facebook comment was hidden."
     : res.status === "failed" ? "Approved. Live action failed (not faked)."
-    : `Approved. Live action blocked (${res.reason}). No Facebook comment was hidden.`;
+    : `Approved. Live action blocked (${res.reason}). No Facebook comment was hidden.`, kind: "ok" };
 }
 
 /**
@@ -69,11 +80,11 @@ export async function approveQueueItem(formData: FormData): Promise<void> {
   await prisma.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "approved", approvedByUserId: session.userId } });
   await writeAudit({ session, event: "approval.approved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, proposedAction: q.proposedAction, executed: false } });
 
-  let execNote = "Approved. No live action was executed (live execution is disabled).";
+  let result: { note: string; kind: "ok" | "error" } = { note: "Approved. No live action was executed (live execution is disabled).", kind: "ok" };
   if (q.proposedAction === "hide_comment") {
-    execNote = await runHideForQueueItem(session, q);
+    result = await runHideForQueueItem(session, q);
   }
-  back(q.id, execNote);
+  back(q.id, result.note, result.kind);
 }
 
 /**
@@ -88,8 +99,44 @@ export async function retryQueueItem(formData: FormData): Promise<void> {
   const q = await loadQueueItem(session.tenantId, id);
   if (q.proposedAction !== "hide_comment") { back(q.id, "Nothing to retry."); }
   await writeAudit({ session, event: "approval.retried", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category } });
-  const execNote = await runHideForQueueItem(session, q, { retry: true });
-  back(q.id, execNote);
+  const result = await runHideForQueueItem(session, q, { retry: true });
+  back(q.id, result.note, result.kind);
+}
+
+/**
+ * V1.26 — Execute the FIRST controlled LIVE Facebook hide for a single queue item.
+ * Distinct from Approve on purpose. Requires: an explicit confirmation phrase +
+ * checkbox, a prior dry-run preflight, and all live env gates. Never reply/delete/
+ * Instagram; never autonomous; one item only; token never logged.
+ */
+export async function executeLiveHide(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.ProposalApprove);
+  const id = String(formData.get("id") ?? "");
+  const q = await loadQueueItem(session.tenantId, id);
+  const confirmPhrase = String(formData.get("confirmPhrase") ?? "").trim();
+  const understood = formData.get("understood") === "on" || formData.get("understood") === "true";
+  const isRetry = formData.get("retry") === "1";
+
+  if (q.proposedAction !== "hide_comment") { back(q.id, "This item is not a hide action. No live action taken.", "error"); }
+
+  // Hard confirmation guard (Scope C): checkbox + exact phrase, else no Graph call.
+  if (!understood || confirmPhrase !== "LIVE HIDE") {
+    back(q.id, "Live hide not confirmed. Tick the checkbox and type LIVE HIDE exactly. No Facebook comment was hidden.", "error");
+  }
+
+  // Preflight guard (Scope B): a prior dry-run for this exact action must exist.
+  const policy = await prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true }, select: { id: true } });
+  const preflight = await findPreflightDryRun({ tenantId: session.tenantId, queueItemId: q.id, policyId: policy?.id ?? null });
+  if (!preflight) {
+    back(q.id, "Run a dry-run test first. No Facebook comment was hidden.", "error");
+  }
+
+  // Audit BEFORE the action (Scope A). No tokens/secrets — only classified fields.
+  await writeAudit({ session, event: "platform_action.live_requested", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, retry: isRetry, actionType: "hide_comment", trigger: "approval" } });
+
+  const result = await runHideForQueueItem(session, q, { liveAttempt: true, retry: isRetry });
+  back(q.id, result.note, result.kind);
 }
 
 export async function rejectQueueItem(formData: FormData): Promise<void> {
