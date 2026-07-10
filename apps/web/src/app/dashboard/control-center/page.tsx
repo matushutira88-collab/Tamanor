@@ -59,6 +59,11 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
           </>
         );
       })()}
+      {/* V1.29B — plain-language explanation of what the rules do. */}
+      <div className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm">
+        <p>{t.cc.controlExplainer}</p>
+        <p className="mt-1 text-xs text-[var(--color-muted)]">🛡️ {t.cc.neverHideCriticism}</p>
+      </div>
       <div className="mb-4 rounded-lg border border-[var(--color-warn)] p-3 text-xs">
         ⚠️ <span className="font-medium">{t.cc.autonomousWarn}</span>
       </div>

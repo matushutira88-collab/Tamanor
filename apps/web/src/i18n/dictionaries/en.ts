@@ -593,6 +593,7 @@ export const en = {
     applyPreset: "Apply preset",
     presetsHint: "Presets create rules only — never demo content or fake comments.",
     autonomousWarn: "Autonomous can hide comments (in shadow/dry-run until live is enabled). Never used for normal criticism, refunds, legal or safety complaints.",
+    controlExplainer: "Guardora can hide clearly harmful comments automatically. Sensitive or unclear cases are sent to you for approval.",
     save: "Save",
     // action queue
     queueTitle: "Action Queue",
@@ -600,6 +601,7 @@ export const en = {
     queueActiveSubtitle: "Items that still need a decision.",
     queueEmpty: "Nothing in the queue yet.",
     queueEmptyActive: "No items are waiting for action.",
+    queueEmptyActiveBody: "Guardora will hide clearly harmful comments automatically or send them here for approval, per your rules.",
     tabActive: "Active",
     tabApproval: "Needs approval",
     tabBlocked: "Blocked",
@@ -613,6 +615,7 @@ export const en = {
     incidentsTitle: "Incidents",
     incidentsSubtitle: "Crises, threats and coordinated attacks that need human attention.",
     incidentsEmpty: "No incidents. Your brand looks calm.",
+    incidentsEmptyBody: "If Guardora detects a coordinated attack or a crisis spike in risk, it will appear here.",
     severity: "Severity",
     status: "Status",
     related: "Related items",
@@ -878,6 +881,14 @@ export const en = {
     activeIncidentsTitle: "Active incidents",
     noIncidents: "No active incidents.",
     ctaOpenIncident: "Open incident",
+    // V1.29B — onboarding / empty states
+    onbConnectFirst: "Connect your first social account",
+    onbConnectBody: "Once an account is connected, Guardora starts watching comments, risky behavior and your brand's reputation.",
+    connectAccount: "Connect account",
+    onbPlatformNote: "We support Facebook Pages first. More platforms will be added over time.",
+    noDataTitle: "Account connected. Guardora is waiting for the first comments.",
+    noDataBody: "Once comments are processed, you'll see protection status, risks and a reputation overview here.",
+    noDataAction: "No action is needed yet.",
   },
 
   // V1.29 Reputation Analytics.
@@ -1294,6 +1305,7 @@ export const en = {
     grantedPermsLabel: "Granted permissions",
     connectedAtLabel: "Connected",
     noConnectedAccounts: "No connected accounts yet.",
+    noAccountsBody: "Connect a Facebook Page so Guardora can start protecting your comments.",
     // real test mode (V1.21C)
     realTestMode: "Real test mode",
     realTestModeHint: "Showing real accounts and data only. Demo data is hidden.",

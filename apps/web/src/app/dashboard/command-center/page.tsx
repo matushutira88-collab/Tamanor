@@ -48,7 +48,7 @@ export default async function CommandCenterPage() {
 
   const [accounts, activePolicies, pendingApprovals, failedRetryable, safetyBlocks, openIncidents,
     hidesToday, autoHidesToday, autoHidesThisHour, riskyToday, canHideFalseToday, deletedToday, failedToday,
-    safetyRows, killedBrands, killedAccounts, autoBrands, recentAudit, lastSyncRun, pendingItems] = await Promise.all([
+    safetyRows, killedBrands, killedAccounts, autoBrands, recentAudit, lastSyncRun, totalItems] = await Promise.all([
     prisma.connectedAccount.findMany({ where: { tenantId: session.tenantId, status: ConnectorStatus.Active }, select: { id: true, externalName: true, platform: true, connectionStatus: true, tokenHealth: true, grantedPermissions: true, killSwitch: true, lastTokenCheckAt: true } }),
     prisma.controlPolicy.count({ where: { tenantId: session.tenantId, isActive: true } }),
     prisma.actionQueueItem.count({ where: { ...where, queueState: "approval_required" } }),
@@ -68,7 +68,7 @@ export default async function CommandCenterPage() {
     prisma.brandLiveSafetySettings.count({ where: { tenantId: session.tenantId, liveModeEnabled: true, autonomousHideEnabled: true } }),
     prisma.auditLog.findMany({ where: { tenantId: session.tenantId }, orderBy: { createdAt: "desc" }, take: 40, select: { event: true, createdAt: true, metadata: true } }),
     prisma.syncRun.findFirst({ where, orderBy: { startedAt: "desc" }, select: { startedAt: true } }),
-    prisma.actionQueueItem.findMany({ where: { ...where, queueState: "approval_required" }, orderBy: { createdAt: "desc" }, take: 5, select: { id: true, category: true } }),
+    prisma.reputationItem.count({ where }),
   ]);
 
   const HIDE_PERM = "pages_manage_engagement";
@@ -115,8 +115,6 @@ export default async function CommandCenterPage() {
   // Today activity total (for the "no activity" line).
   const todayActivity = hidesToday + pendingApprovals + canHideFalseToday + deletedToday + failedToday;
 
-  const acctSummary = needsReconnect.length > 0 ? `${needsReconnect.length} ${t.cc.accountsAttention}` : `${accounts.length}/${accounts.length} OK`;
-
   return (
     <>
       <PageHeader eyebrow={t.cc.tagline} title={t.cc.commandTitle} description={t.cc.subTagline} />
@@ -131,19 +129,29 @@ export default async function CommandCenterPage() {
       </div>
 
       {accounts.length === 0 ? (
+        /* B) First-run — no connected account. */
         <Card className="p-6">
-          <h2 className="text-base font-semibold">{t.cc.onbTitle}</h2>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">{t.cc.emptyBody}</p>
-          <Link href="/dashboard/accounts" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{t.cc.connectFacebook}</Link>
+          <h2 className="text-base font-semibold">{t.cc.onbConnectFirst}</h2>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">{t.cc.onbConnectBody}</p>
+          <Link href="/dashboard/accounts" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{t.cc.connectAccount}</Link>
+          <p className="mt-3 text-xs text-[var(--color-muted)]">{t.cc.onbPlatformNote}</p>
+        </Card>
+      ) : totalItems === 0 ? (
+        /* C) Connected but no comments processed yet. */
+        <Card className="p-6">
+          <h2 className="text-base font-semibold">✅ {t.cc.noDataTitle}</h2>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">{t.cc.noDataBody}</p>
+          <p className="mt-2 text-sm">{t.cc.noDataAction}</p>
+          <p className="mt-3 rounded-lg border border-[var(--color-border)] p-2 text-xs text-[var(--color-muted)]">🛡️ {t.cc.neverHideCriticism}</p>
         </Card>
       ) : (
         <>
-          {/* B) Four primary metric cards */}
+          {/* B) Four primary metric cards — each links to the right page (product flow). */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.cc.hiddenToday}</p><p className="mt-1 text-2xl font-bold">{hidesToday}</p><p className="text-[11px] text-[var(--color-muted)]">{autoHidesToday} {t.cc.autoSuffix}</p></Card>
-            <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.cc.pendingDecision}</p><p className="mt-1 text-2xl font-bold">{pendingApprovals}</p></Card>
-            <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.cc.riskyComments}</p><p className="mt-1 text-2xl font-bold">{riskyToday}</p><p className="text-[11px] text-[var(--color-muted)]">{t.cc.today}</p></Card>
-            <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.cc.accountStatus}</p><p className={`mt-1 text-2xl font-bold ${needsReconnect.length > 0 ? "text-[var(--color-danger)]" : ""}`}>{needsReconnect.length > 0 ? needsReconnect.length : `${accounts.length}/${accounts.length}`}</p><p className="text-[11px] text-[var(--color-muted)]">{needsReconnect.length > 0 ? t.cc.accountsAttention : "OK"}</p></Card>
+            <Link href="/dashboard/action-queue?tab=resolved"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.hiddenToday}</p><p className="mt-1 text-2xl font-bold">{hidesToday}</p><p className="text-[11px] text-[var(--color-muted)]">{autoHidesToday} {t.cc.autoSuffix}</p></Card></Link>
+            <Link href="/dashboard/action-queue"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.pendingDecision}</p><p className="mt-1 text-2xl font-bold">{pendingApprovals}</p></Card></Link>
+            <Link href="/dashboard/reputation"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.riskyComments}</p><p className="mt-1 text-2xl font-bold">{riskyToday}</p><p className="text-[11px] text-[var(--color-muted)]">{t.cc.today}</p></Card></Link>
+            <Link href="/dashboard/accounts"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.accountStatus}</p><p className={`mt-1 text-2xl font-bold ${needsReconnect.length > 0 ? "text-[var(--color-danger)]" : ""}`}>{needsReconnect.length > 0 ? needsReconnect.length : `${accounts.length}/${accounts.length}`}</p><p className="text-[11px] text-[var(--color-muted)]">{needsReconnect.length > 0 ? t.cc.accountsAttention : "OK"}</p></Card></Link>
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-2">

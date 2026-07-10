@@ -124,7 +124,10 @@ export default async function AccountsPage({
         <Card>
           <h3 className="mb-3 text-sm font-semibold">{hdrT.dash.connectedAccountsTitle}</h3>
           {connectedAccounts.length === 0 ? (
-            <p className="text-sm text-[var(--color-muted)]">{hdrT.dash.noConnectedAccounts}</p>
+            <div>
+              <p className="text-sm font-medium">{hdrT.dash.noConnectedAccounts}</p>
+              <p className="mt-1 text-sm text-[var(--color-muted)]">{hdrT.dash.noAccountsBody}</p>
+            </div>
           ) : (
             <div className="space-y-2.5">
               {connectedAccounts.map((a) => {

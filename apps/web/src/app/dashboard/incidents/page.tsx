@@ -23,7 +23,10 @@ export default async function IncidentsPage() {
       <PageHeader title={t.cc.incidentsTitle} description={t.cc.incidentsSubtitle} />
 
       {incidents.length === 0 ? (
-        <Card className="p-6 text-sm text-[var(--color-muted)]">🛡️ {t.cc.incidentsEmpty}</Card>
+        <Card className="p-6">
+          <p className="text-sm font-medium">✅ {t.cc.noIncidents}</p>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">{t.cc.incidentsEmptyBody}</p>
+        </Card>
       ) : (
         <div className="space-y-3">
           {incidents.map((inc) => (

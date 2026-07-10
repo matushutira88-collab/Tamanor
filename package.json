@@ -42,6 +42,7 @@
     "dashboard-cleanup:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/dashboard-cleanup.test.ts",
     "command-center-product:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/command-center-product.test.ts",
     "reputation-analytics:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/reputation-analytics.test.ts",
+    "product-polish:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/product-polish.test.ts",
     "backfill:queue-states": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/backfill-queue-states.ts",
     "facebook-diagnose:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/facebook-diagnose.test.ts",
     "facebook-token:watchdog": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/facebook-token-watchdog.ts",

@@ -52,7 +52,10 @@ export default async function ActionQueuePage({ searchParams }: { searchParams: 
       </div>
 
       {items.length === 0 ? (
-        <Card className="p-6 text-sm text-[var(--color-muted)]">{tab === "active" ? t.cc.queueEmptyActive : t.cc.queueEmpty}</Card>
+        <Card className="p-6">
+          <p className="text-sm font-medium">✅ {tab === "active" ? t.cc.queueEmptyActive : t.cc.queueEmpty}</p>
+          {tab === "active" ? <p className="mt-1 text-sm text-[var(--color-muted)]">{t.cc.queueEmptyActiveBody}</p> : null}
+        </Card>
       ) : (
         <Card className="overflow-x-auto">
           <table className="w-full text-sm">
