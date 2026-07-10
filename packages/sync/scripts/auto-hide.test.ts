@@ -161,7 +161,7 @@ async function run() {
     check("W2) autonomous trigger + safety context in persistItem", /trigger: "autonomous"[\s\S]*?\}, \{ safety \}\)/.test(syncSrc) && syncSrc.includes("loadProductionSafetyContext"));
     check("W3) persistItem terminal blocks do not route to approval", syncSrc.includes("facebook_can_hide_false") && syncSrc.includes("comment_deleted_or_unavailable"));
     const cc = readSrc("apps/web/src/app/dashboard/command-center/page.tsx");
-    check("W4) Command Center shows automatic protection + can_hide blocked count", cc.includes("autoProtectionOn") && cc.includes("blockedByCanHide"));
+    check("W4) Command Center shows automatic protection + can_hide blocked count", cc.includes("autoProtection") && cc.includes("blockedByCanHide"));
     const aq = readSrc("apps/web/src/app/dashboard/action-queue/[id]/page.tsx");
     check("W5) auto-hidden detail shows public-hidden copy + gated Restore", aq.includes("t.cc.autoHiddenPublic") && /canApprove && ROLLBACK_AVAILABLE/.test(aq));
   } finally {

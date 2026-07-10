@@ -38,7 +38,7 @@ async function run() {
   // 3/4 are behavioral — covered by queue-tabs:test + auto-hide:test (queue resolution).
 
   // 5) Command Center does not duplicate the full Action Queue table — it links to it.
-  check("5) Command Center has no full queue table (links to Action Queue instead)", !cc.includes("actionQueueItem.findMany") && cc.includes('href="/dashboard/action-queue"'));
+  check("5) Command Center has no queue <table> (links to Action Queue instead)", !cc.includes("<table") && cc.includes("/dashboard/action-queue"));
 
   // 6) Sidebar fixed on desktop: full-height sidebar inside a fixed-height shell.
   check("6) sidebar is fixed-height (h-dvh) on desktop", sidebar.includes("h-dvh") && shell.includes("hidden lg:block"));

@@ -182,7 +182,7 @@ async function run() {
     const diag = readSrc("packages/sync/scripts/facebook-token-diagnose.ts");
     check("11) page token diagnosis does not rely on /me/accounts", diag.includes("getPageTokenState") && diag.includes("page_token_ok") && /\/me\/accounts.*secondary|secondary.*\/me\/accounts|user token check/i.test(diag));
     const cc = readSrc("apps/web/src/app/dashboard/command-center/page.tsx");
-    check("12) Command Center shows reconnect banner + connections", cc.includes("reconnectAccounts") && cc.includes("connectionsTitle"));
+    check("12) Command Center shows reconnect state + connections", cc.includes("needsReconnect") && cc.includes("connectionsTitle") && cc.includes("ctaReconnect"));
     const ad = readSrc("apps/web/src/app/dashboard/accounts/[accountId]/page.tsx");
     check("13) Account detail shows token health", ad.includes("tokenHealthLabel") && ad.includes("connectionStatusLabel"));
   } finally {
