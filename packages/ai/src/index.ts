@@ -13,3 +13,4 @@ export * from "./brand-memory";
 export * from "./auto-protect";
 export * from "./control-center";
 export * from "./pipeline";
+export * from "./reputation";

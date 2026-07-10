@@ -83,6 +83,13 @@ export const DASHBOARD_NAV: NavItem[] = [
     icon: "incidents",
   },
   {
+    href: "/dashboard/reputation",
+    label: "Reputation",
+    description: "Public mood, risk trends, topics and the riskiest posts for your brand.",
+    icon: "insights",
+    group: "More",
+  },
+  {
     href: "/dashboard/timeline",
     label: "Timeline",
     description: "Every event over time — syncs, matches, decisions and safety blocks.",
