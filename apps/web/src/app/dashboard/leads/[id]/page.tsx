@@ -85,7 +85,7 @@ export default async function LeadDetailPage({
               ))}
             </div>
             <p className="mt-3 text-xs text-[var(--color-muted)]">
-              No emails are sent from Guardora — reach out from your own inbox.
+              No emails are sent from Tamanor — reach out from your own inbox.
             </p>
           </Card>
 

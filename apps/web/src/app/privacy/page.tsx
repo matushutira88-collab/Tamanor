@@ -3,9 +3,9 @@ import { MarketingPage, Section, Bullets, DraftNote } from "@/components/marketi
 import { getTL } from "@/i18n/server";
 
 export const metadata: Metadata = {
-  title: "Privacy — Guardora.ai",
+  title: "Privacy — Tamanor",
   description:
-    "How Guardora.ai handles data: what we process, why, and the choices you have. Early-product privacy wording.",
+    "How Tamanor handles data: what we process, why, and the choices you have. Early-product privacy wording.",
 };
 
 export default async function PrivacyPage() {
@@ -14,16 +14,16 @@ export default async function PrivacyPage() {
     <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="Legal"
       title="Privacy"
-      subtitle="How Guardora handles data — described plainly."
+      subtitle="How Tamanor handles data — described plainly."
     >
       <DraftNote />
 
       <Section title="What we process">
         <p>
-          To provide the service, Guardora processes public content you connect
+          To provide the service, Tamanor processes public content you connect
           via official platform integrations (for example, comments and reviews),
           basic authorship metadata provided by those platforms, and the
-          moderation state you create inside Guardora. We also process account
+          moderation state you create inside Tamanor. We also process account
           information for the people who use the product.
         </p>
       </Section>

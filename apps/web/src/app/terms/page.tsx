@@ -3,9 +3,9 @@ import { MarketingPage, Section, DraftNote } from "@/components/marketing-page";
 import { getTL } from "@/i18n/server";
 
 export const metadata: Metadata = {
-  title: "Terms — Guardora.ai",
+  title: "Terms — Tamanor",
   description:
-    "The terms that govern use of Guardora.ai during its early-access period.",
+    "The terms that govern use of Tamanor during its early-access period.",
 };
 
 export default async function TermsPage() {
@@ -14,16 +14,16 @@ export default async function TermsPage() {
     <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="Legal"
       title="Terms of Service"
-      subtitle="The basics of using Guardora during early access."
+      subtitle="The basics of using Tamanor during early access."
     >
       <DraftNote />
 
       <Section title="Using the service">
         <p>
-          Guardora is provided for legitimate brand reputation management. You
+          Tamanor is provided for legitimate brand reputation management. You
           agree to use it in compliance with the terms and policies of the
           platforms you connect, and with applicable law. You are responsible for
-          the actions you approve inside Guardora.
+          the actions you approve inside Tamanor.
         </p>
       </Section>
 
@@ -31,14 +31,14 @@ export default async function TermsPage() {
         <p>
           You may only connect accounts you are authorized to manage. Connections
           use official OAuth and can be revoked by you at any time from the
-          platform or from Guardora.
+          platform or from Tamanor.
         </p>
       </Section>
 
       <Section title="Acceptable use">
         <p>
-          Guardora may not be used to harass, deceive, or evade platform rules.
-          Guardora operates in read-only mode by default and gates sensitive
+          Tamanor may not be used to harass, deceive, or evade platform rules.
+          Tamanor operates in read-only mode by default and gates sensitive
           actions behind human approval; you agree not to attempt to circumvent
           these controls.
         </p>

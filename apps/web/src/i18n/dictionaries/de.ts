@@ -2,15 +2,19 @@ import type { Dictionary } from "./en";
 
 export const de: Dictionary = {
   meta: {
-    landingTitle: "Guardora.ai — AI Reputation Firewall für moderne Marken",
+    landingTitle: "Tamanor — Social Account Firewall für moderne Marken",
     landingDescription:
-      "Guardora überwacht Kommentare, Bewertungen und Feedback auf Facebook, Instagram, YouTube, LinkedIn, TikTok und Google — erkennt Risiken, bereitet sichere Maßnahmen vor und behält die Entscheidung bei den Menschen.",
-    caseStudiesTitle: "Beispielszenarien — Guardora.ai",
+      "Tamanor überwacht Kommentare, Bewertungen und Feedback auf Facebook, Instagram, YouTube, LinkedIn, TikTok und Google — erkennt Risiken, bereitet sichere Maßnahmen vor und behält die Entscheidung bei den Menschen.",
+    caseStudiesTitle: "Beispielszenarien — Tamanor",
     caseStudiesDescription:
-      "Veranschaulichende Demo-Szenarien, wie Guardora die Markenreputation schützt. Nur Beispielszenarien — keine echten Kunden.",
+      "Veranschaulichende Demo-Szenarien, wie Tamanor die Markenreputation schützt. Nur Beispielszenarien — keine echten Kunden.",
   },
 
   common: {
+    // V1.33 — öffentliche Marke. Diese Schlüssel bevorzugen statt den Namen fest zu schreiben.
+    brand: "Tamanor",
+    brandTagline: "Social Account Firewall",
+    brandFull: "Tamanor — Social Account Firewall",
     startFreeTrial: "Kostenlos testen",
     bookDemo: "Demo buchen",
     contactSales: "Vertrieb kontaktieren",
@@ -46,11 +50,11 @@ export const de: Dictionary = {
   },
 
   hero: {
-    badge: "AI Reputation Firewall",
+    badge: "Social Account Firewall",
     titleBefore: "Schützen Sie Ihre Marke, bevor schädliche Kommentare zur",
     titleHighlight: "Krise",
     subtitle:
-      "Guardora überwacht Kommentare, Bewertungen und Feedback auf Facebook, Instagram, YouTube, LinkedIn, TikTok und Google — erkennt Risiken, bereitet sichere Maßnahmen vor und behält die Entscheidung bei den Menschen.",
+      "Tamanor überwacht Kommentare, Bewertungen und Feedback auf Facebook, Instagram, YouTube, LinkedIn, TikTok und Google — erkennt Risiken, bereitet sichere Maßnahmen vor und behält die Entscheidung bei den Menschen.",
   },
 
   platformsSection: {
@@ -59,7 +63,7 @@ export const de: Dictionary = {
   },
 
   features: {
-    eyebrow: "Was Guardora leistet",
+    eyebrow: "Was Tamanor leistet",
     title: "Von lautem Feedback zu kontrolliertem Handeln.",
     items: [
       { tag: "Schützen", body: "Erkennt Spam, Betrug, Hass, Vulgäres, Desinformation und Angriffe auf die Marke, bevor sie das Vertrauen beschädigen." },
@@ -71,7 +75,7 @@ export const de: Dictionary = {
 
   // Veranschaulichende Produkt-Mockups auf der Landingpage (Demo-Daten, im Code gerendert).
   productMocks: {
-    eyebrow: "Einblick in Guardora",
+    eyebrow: "Einblick in Tamanor",
     title: "So sieht es aus, wenn eine Bedrohung auftaucht",
     subtitle:
       "Vier Momente eines einzigen Vorfalls — erkannt, bewertet, vorgeschlagen und für einen Menschen zurückgehalten. Nichts wird automatisch moderiert.",
@@ -125,7 +129,7 @@ export const de: Dictionary = {
   control: {
     title: "Tempo der KI. Kontrolle des Menschen. Vollständiges Audit.",
     subtitle:
-      "Guardora kann Tausende Kommentare schnell einstufen, doch sensible Maßnahmen bleiben freigabepflichtig. Teams können Einträge freigeben, ablehnen, eskalieren oder lösen — mit lückenlosem Audit-Protokoll.",
+      "Tamanor kann Tausende Kommentare schnell einstufen, doch sensible Maßnahmen bleiben freigabepflichtig. Teams können Einträge freigeben, ablehnen, eskalieren oder lösen — mit lückenlosem Audit-Protokoll.",
     step: "Schritt",
     flow: ["Kommentar", "KI-Risikoanalyse", "Vorgeschlagene Maßnahme", "Freigabe durch Menschen", "Audit-Protokoll"],
   },
@@ -148,7 +152,7 @@ export const de: Dictionary = {
     eyebrow: "Vertrauen & Sicherheit",
     title: "Sicher durch Design.",
     subtitle:
-      "Guardora ist darauf ausgelegt, Ihre Marke zu schützen, ohne Ihre Konten oder Ihre Kundschaft jemals zu gefährden.",
+      "Tamanor ist darauf ausgelegt, Ihre Marke zu schützen, ohne Ihre Konten oder Ihre Kundschaft jemals zu gefährden.",
     items: [
       "Nur offizielle OAuth-/API-Konnektoren",
       "Kein Scraping",
@@ -181,7 +185,7 @@ export const de: Dictionary = {
   },
 
   footer: {
-    tagline: "AI Reputation Firewall. Schützen Sie Ihre Marke über soziale Medien, Kommentare und Bewertungen hinweg.",
+    tagline: "Social Account Firewall. Schützen Sie Ihre Marke über soziale Medien, Kommentare und Bewertungen hinweg.",
     product: "Produkt",
     platforms: "Plattformen",
     company: "Unternehmen",
@@ -196,22 +200,22 @@ export const de: Dictionary = {
     insights: "Insights",
     reports: "Berichte",
     auditLog: "Audit-Protokoll",
-    rights: "AI Reputation Firewall für moderne Marken",
+    rights: "Social Account Firewall für moderne Marken",
     badge: "Standardmäßig schreibgeschützt · Nur offizielles OAuth · Kein Scraping",
   },
 
   caseStudies: {
     eyebrow: "Beispielszenarien",
-    title: "Wie Marken Guardora einsetzen könnten.",
+    title: "Wie Marken Tamanor einsetzen könnten.",
     subtitle:
       "Veranschaulichende Demo-Szenarien — keine echten Kunden und keine echten Zahlen. Sie zeigen den Ablauf des Workflows, keine Ergebnisgarantie.",
     exampleBadge: "Beispielszenarien · nur zur Veranschaulichung",
     exampleLabel: "Beispiel",
     problemLabel: "Problem",
-    helpsLabel: "Wie Guardora hilft",
+    helpsLabel: "Wie Tamanor hilft",
     outcomeLabel: "Ergebnis",
     footerNote:
-      "Dies sind veranschaulichende Beispielszenarien. Guardora ist standardmäßig schreibgeschützt, behält sensible Maßnahmen unter menschlicher Kontrolle und nutzt ausschließlich offizielle OAuth-/API-Konnektoren — kein Scraping, keine geteilten Passwörter.",
+      "Dies sind veranschaulichende Beispielszenarien. Tamanor ist standardmäßig schreibgeschützt, behält sensible Maßnahmen unter menschlicher Kontrolle und nutzt ausschließlich offizielle OAuth-/API-Konnektoren — kein Scraping, keine geteilten Passwörter.",
     cases: [
       {
         tag: "Immobilienmarke",
@@ -266,8 +270,8 @@ export const de: Dictionary = {
   dashHeaders: {
     command: { title: "Kommandozentrale", desc: "Steuern Sie, wie Ihre Marke online reagiert." },
     timeline: { title: "Reputations-Zeitleiste", desc: "Jedes Ereignis im Zeitverlauf — Synchronisierungen, Treffer, Entscheidungen und Sicherheitsblockaden." },
-    control: { title: "Kontrollrichtlinien", desc: "Legen Sie fest, was Guardora bei jeder Risikokategorie tun darf." },
-    queue: { title: "Aktionswarteschlange", desc: "Alles, was Guardora tun möchte — innerhalb Ihrer Richtlinien." },
+    control: { title: "Kontrollrichtlinien", desc: "Legen Sie fest, was Tamanor bei jeder Risikokategorie tun darf." },
+    queue: { title: "Aktionswarteschlange", desc: "Alles, was Tamanor tun möchte — innerhalb Ihrer Richtlinien." },
     incidents: { title: "Vorfälle", desc: "Krisen, Drohungen und koordinierte Angriffe, die Aufmerksamkeit erfordern." },
     dashboard: { title: "Übersicht", desc: "Ihre Reputation auf einen Blick über jede Marke und Plattform hinweg." },
     inbox: { title: "Posteingang", desc: "Kommentare, Bewertungen und Erwähnungen an einem zentralen Ort sichten." },
@@ -457,7 +461,7 @@ export const de: Dictionary = {
   autoProtect: {
     title: "Automatischer Schutz",
     subtitle: "Legen Sie fest, was bei jeder Kategorie schädlicher Inhalte passiert. Automatisches Ausblenden läuft im Schattenmodus — keine Live-Aktion auf der Plattform.",
-    shadowExplain: "Guardora würde diesen Inhalt ausblenden, aber Live-Aktionen auf der Plattform sind derzeit deaktiviert.",
+    shadowExplain: "Tamanor würde diesen Inhalt ausblenden, aber Live-Aktionen auf der Plattform sind derzeit deaktiviert.",
     liveDisabled: "Live-Auto-Ausblenden ist deaktiviert",
     noLiveAction: "Keine Plattformaktion ausgeführt",
     reservedNote: "Reserviert für eine künftige Aktions-Freigabephase — noch nicht wählbar.",
@@ -489,7 +493,7 @@ export const de: Dictionary = {
     mMonitored: "Nur überwacht",
     mCriticism: "Normale Kritik beibehalten",
     valueTitle: "Wert des automatischen Schutzes",
-    valueIntro: "Guardora schützt Ihre Marke im Schattenmodus: schädliche Inhalte werden erkannt, normale Kritik bleibt erhalten und es wird keine Live-Aktion auf der Plattform ausgeführt.",
+    valueIntro: "Tamanor schützt Ihre Marke im Schattenmodus: schädliche Inhalte werden erkannt, normale Kritik bleibt erhalten und es wird keine Live-Aktion auf der Plattform ausgeführt.",
     mProtectedShadow: "Im Schattenmodus geschützt",
     mLiveActions: "Ausgeführte Live-Aktionen",
     reportTitle: "Auto-Protect-Bericht",
@@ -500,8 +504,8 @@ export const de: Dictionary = {
     colCount: "Anzahl",
     last7: "Letzte 7 Tage",
     last30: "Letzte 30 Tage",
-    notHiddenTitle: "Was Guardora nicht ausgeblendet hat",
-    notHiddenBody: "Normale Kritik am Service wird nicht automatisch ausgeblendet. Guardora bewahrt sie als Feedback und trennt sie von Beleidigungen, Betrug, Hass und Spam.",
+    notHiddenTitle: "Was Tamanor nicht ausgeblendet hat",
+    notHiddenBody: "Normale Kritik am Service wird nicht automatisch ausgeblendet. Tamanor bewahrt sie als Feedback und trennt sie von Beleidigungen, Betrug, Hass und Spam.",
     noItems: "Noch keine Einträge in dieser Ansicht.",
     filterAll: "Alle",
     filterLabel: "Automatischer Schutz",
@@ -555,7 +559,7 @@ export const de: Dictionary = {
     neverHideCriticism: "Normale Kritik wird nicht automatisch verborgen.",
     commandTitle: "Kommandozentrale",
     connectedAccounts: "Verbundene Konten",
-    controlling: "Was Guardora kontrolliert",
+    controlling: "Was Tamanor kontrolliert",
     recentRisky: "Jüngste Risiko-Ereignisse",
     pendingApprovals: "Ausstehende Freigaben",
     autonomousShadow: "Autonom (Schatten / Testlauf)",
@@ -571,7 +575,7 @@ export const de: Dictionary = {
     connectFacebook: "Facebook-Seite verbinden",
     createFirstPolicy: "Erste Kontrollrichtlinie erstellen",
     controlTitle: "Kontrollrichtlinien",
-    controlSubtitle: "Legen Sie fest, was Guardora bei jeder Risikokategorie tun darf. Autonom ist standardmäßig aus.",
+    controlSubtitle: "Legen Sie fest, was Tamanor bei jeder Risikokategorie tun darf. Autonom ist standardmäßig aus.",
     autonomyMatrix: "Autonomie-Matrix",
     autonomyMatrixDesc: "Zeilen sind Risikokategorien. Setzen Sie den Modus für jede. Autonom erfordert eine Bestätigung.",
     colCategory: "Kategorie",
@@ -585,19 +589,19 @@ export const de: Dictionary = {
     applyPreset: "Voreinstellung anwenden",
     presetsHint: "Voreinstellungen erstellen nur Regeln — nie Demo-Inhalte oder Fake-Kommentare.",
     autonomousWarn: "Autonom kann Kommentare ausblenden (im Schatten/Testlauf, bis Live aktiviert ist). Nie für normale Kritik, Erstattungen, rechtliche oder Sicherheitsbeschwerden.",
-    controlExplainer: "Sie legen die Regeln fest. Guardora schützt Ihre Social-Media-Konten automatisch nach Ihren Einstellungen. Eindeutig schädliche Kommentare können gemäß Ihrer Konfiguration verborgen werden. Sensible oder unklare Fälle werden zur Freigabe an Ihr Team gesendet.",
-    selfServiceNote: "Guardora ist keine Moderationsagentur. Es ist ein automatisiertes Schutzsystem, das nach den vom Kontoinhaber festgelegten Regeln handelt.",
-    hideUnsupportedNote: "Diese Plattform unterstützt das automatische Verbergen von Kommentaren nicht. Guardora markiert Kommentare und sendet sie gemäß Ihren Regeln zur Genehmigung.",
+    controlExplainer: "Sie legen die Regeln fest. Tamanor schützt Ihre Social-Media-Konten automatisch nach Ihren Einstellungen. Eindeutig schädliche Kommentare können gemäß Ihrer Konfiguration verborgen werden. Sensible oder unklare Fälle werden zur Freigabe an Ihr Team gesendet.",
+    selfServiceNote: "Tamanor ist keine Moderationsagentur. Es ist ein automatisiertes Schutzsystem, das nach den vom Kontoinhaber festgelegten Regeln handelt.",
+    hideUnsupportedNote: "Diese Plattform unterstützt das automatische Verbergen von Kommentaren nicht. Tamanor markiert Kommentare und sendet sie gemäß Ihren Regeln zur Genehmigung.",
     instagramMonitorNote: "Instagram befindet sich vorerst im Überwachungsmodus. Das Verbergen von Kommentaren kann erst nach Überprüfung der Berechtigungen und Tests aktiviert werden.",
     instagramQueueNote: "Instagram: wartet auf Prüfung. Automatisches Verbergen ist nicht aktiviert.",
     queueExplainer: "Diese Warteschlange zeigt Fälle, die gemäß Ihren Regeln eine Entscheidung erfordern.",
     save: "Speichern",
     queueTitle: "Aktionswarteschlange",
-    queueSubtitle: "Alles, was Guardora tun möchte — innerhalb Ihrer Richtlinien. Standardmäßig keine Live-Aktion.",
+    queueSubtitle: "Alles, was Tamanor tun möchte — innerhalb Ihrer Richtlinien. Standardmäßig keine Live-Aktion.",
     queueActiveSubtitle: "Elemente, die noch eine Entscheidung brauchen.",
     queueEmpty: "Noch nichts in der Warteschlange.",
     queueEmptyActive: "Keine Elemente warten auf eine Aktion.",
-    queueEmptyActiveBody: "Guardora blendet klar schädliche Kommentare automatisch aus oder sendet sie gemäß Ihren Regeln zur Freigabe hierher.",
+    queueEmptyActiveBody: "Tamanor blendet klar schädliche Kommentare automatisch aus oder sendet sie gemäß Ihren Regeln zur Freigabe hierher.",
     tabActive: "Aktiv",
     tabApproval: "Freigabe nötig",
     tabBlocked: "Blockiert",
@@ -610,7 +614,7 @@ export const de: Dictionary = {
     incidentsTitle: "Vorfälle",
     incidentsSubtitle: "Krisen, Drohungen und koordinierte Angriffe, die menschliche Aufmerksamkeit erfordern.",
     incidentsEmpty: "Keine Vorfälle. Ihre Marke wirkt ruhig.",
-    incidentsEmptyBody: "Wenn Guardora einen koordinierten Angriff oder einen Krisenanstieg erkennt, erscheint er hier.",
+    incidentsEmptyBody: "Wenn Tamanor einen koordinierten Angriff oder einen Krisenanstieg erkennt, erscheint er hier.",
     severity: "Schweregrad",
     status: "Status",
     related: "Zugehörige Einträge",
@@ -621,7 +625,7 @@ export const de: Dictionary = {
     noLiveAction: "Keine Live-Aktion ausgeführt",
     approvalTitle: "Freigabe",
     whatHappened: "Was passiert ist",
-    proposedActionLabel: "Was Guardora vorschlägt",
+    proposedActionLabel: "Was Tamanor vorschlägt",
     whyLabel: "Warum",
     triggeredPolicy: "Auslösende Richtlinie",
     ifAutonomous: "Was im autonomen Modus passieren würde",
@@ -667,11 +671,11 @@ export const de: Dictionary = {
     onbStep2Body: "Kommentare jetzt. Bewertungen und Erwähnungen später.",
     onbStep3: "Wählen Sie einen Schutzstil",
     onbStep4: "Sicherheitsregeln bestätigen",
-    onbSafety1: "Guardora verbirgt normale Kritik niemals automatisch.",
+    onbSafety1: "Tamanor verbirgt normale Kritik niemals automatisch.",
     onbSafety2: "Rechtliche, Erstattungs- und Sicherheitsbeschwerden erfordern immer menschliche Prüfung.",
     onbStep5: "Überwachung starten",
     onbDone: "Fertig",
-    doingNow: "Was Guardora gerade tut",
+    doingNow: "Was Tamanor gerade tut",
     needsAttention: "Was Ihre Aufmerksamkeit braucht",
     automated: "Was automatisiert ist",
     blockedSafety: "Was durch Sicherheit blockiert ist",
@@ -680,9 +684,9 @@ export const de: Dictionary = {
     nextPolicies: "Erstellen Sie Ihre Kontrollrichtlinien (Voreinstellung anwenden).",
     nextEnableSync: "Aktivieren Sie die automatische Synchronisierung für neue Kommentare.",
     nextReview: "Prüfen Sie Einträge, die auf Freigabe warten.",
-    allSet: "Alles bereit — Guardora überwacht innerhalb Ihrer Regeln.",
+    allSet: "Alles bereit — Tamanor überwacht innerhalb Ihrer Regeln.",
     modeMonitor: "Überwachen: nur verfolgt, nie ausgeführt.",
-    modeAssist: "Assistieren: Guardora schlägt eine Antwort zur Prüfung vor.",
+    modeAssist: "Assistieren: Tamanor schlägt eine Antwort zur Prüfung vor.",
     modeApproval: "Freigabe: geht an einen Menschen, bevor etwas passiert.",
     modeAutonomous: "Autonom: für Auto-Ausblenden im Testlauf vorbereitet (standardmäßig keine Live-Aktion).",
     autonomousExample: "Spam-Kommentare werden im Testlauf für autonomes Ausblenden vorbereitet.",
@@ -777,7 +781,7 @@ export const de: Dictionary = {
     autoHiddenFailed: "Automatisches Ausblenden fehlgeschlagen",
     autoHiddenBy: "Automatisch per Richtlinie ausgeblendet",
     enableAutoHide: "Sicheres Auto-Ausblenden aktivieren",
-    autoHideAck: "Ich verstehe, dass Guardora diese Kommentare automatisch ausblendet.",
+    autoHideAck: "Ich verstehe, dass Tamanor diese Kommentare automatisch ausblendet.",
     autoHideEnabled: "Sicheres Auto-Ausblenden aktiviert",
     autoHideLimitsNote: "Nie bei normaler Kritik · Rechts-/Reklamationsfälle immer an einen Menschen · innerhalb der Stunden-/Tageslimits · nur über der Konfidenzschwelle.",
     disableAutoHide: "Auto-Ausblenden deaktivieren",
@@ -815,7 +819,7 @@ export const de: Dictionary = {
     protectionState_partial: "Teilweise geschützt",
     protectionState_attention: "Erfordert Aufmerksamkeit",
     protectionState_off: "Schutz aus",
-    protectionProtected: "Guardora schützt derzeit Ihre Social-Media-Konten.",
+    protectionProtected: "Tamanor schützt derzeit Ihre Social-Media-Konten.",
     protectionPartial: "Das Monitoring ist aktiv, aber der automatische Schutz ist nicht für alle Konten aktiviert.",
     protectionAttention: "Einige Konten oder Aktionen erfordern Ihre Aufmerksamkeit.",
     protectionOff: "Der Schutz ist ausgeschaltet.",
@@ -843,7 +847,7 @@ export const de: Dictionary = {
     ctaSetRules: "Regeln festlegen",
     review: "Prüfen",
     partiallyOn: "Teilweise an",
-    autoOffNote: "Guardora markiert Kommentare oder sendet sie zur Freigabe, blendet sie aber nicht automatisch aus.",
+    autoOffNote: "Tamanor markiert Kommentare oder sendet sie zur Freigabe, blendet sie aber nicht automatisch aus.",
     autoCapNote: "Limit: {n} automatische Ausblendungen pro Stunde",
     connProtectedOn: "Schutz an",
     connProtectedOff: "Schutz aus",
@@ -869,10 +873,10 @@ export const de: Dictionary = {
     ctaOpenIncident: "Vorfall öffnen",
     // V1.29B — Onboarding / leere Zustände
     onbConnectFirst: "Verbinden Sie Ihr erstes Social-Konto",
-    onbConnectBody: "Sobald ein Konto verbunden ist, überwacht Guardora Kommentare, riskantes Verhalten und die Reputation Ihrer Marke.",
+    onbConnectBody: "Sobald ein Konto verbunden ist, überwacht Tamanor Kommentare, riskantes Verhalten und die Reputation Ihrer Marke.",
     connectAccount: "Konto verbinden",
     onbPlatformNote: "Wir unterstützen zunächst Facebook-Seiten. Weitere Plattformen folgen nach und nach.",
-    noDataTitle: "Konto verbunden. Guardora wartet auf die ersten Kommentare.",
+    noDataTitle: "Konto verbunden. Tamanor wartet auf die ersten Kommentare.",
     noDataBody: "Sobald Kommentare verarbeitet sind, sehen Sie hier Schutzstatus, Risiken und eine Reputationsübersicht.",
     noDataAction: "Es ist noch keine Aktion nötig.",
   },
@@ -915,7 +919,7 @@ export const de: Dictionary = {
     topic_satisfaction: "Allgemeine Zufriedenheit",
     topic_uncategorized: "Nicht zugeordnet",
     critVsHarmful: "Kritik vs. schädlicher Inhalt",
-    critNote: "Guardora erkennt negative Kommentare, kennzeichnet normale Kritik aber nicht als schädlich. Automatische Aktionen betreffen nur eindeutig riskante Inhalte gemäß Ihren Regeln.",
+    critNote: "Tamanor erkennt negative Kommentare, kennzeichnet normale Kritik aber nicht als schädlich. Automatische Aktionen betreffen nur eindeutig riskante Inhalte gemäß Ihren Regeln.",
     critLegit: "Legitime Kritik",
     critQuestions: "Kundenfragen",
     critComplaints: "Reklamationen",
@@ -935,7 +939,7 @@ export const de: Dictionary = {
     recComplaints: "Legitime Kundenbeschwerden häufen sich. Prüfen Sie die Kommunikation zu: Preis / Lieferung / Qualität.",
     recStable: "Die Reputation ist stabil. Keine signifikanten Risikotrends sichtbar.",
     reputationSummary: "Reputationsübersicht",
-    summaryTemplate: "In den letzten {days} Tagen hat Guardora {total} Kommentare verarbeitet. {risky} waren riskant, {hidden} wurden für die Öffentlichkeit ausgeblendet und {pending} warten auf eine Entscheidung. Die häufigsten Themen waren {topics}.",
+    summaryTemplate: "In den letzten {days} Tagen hat Tamanor {total} Kommentare verarbeitet. {risky} waren riskant, {hidden} wurden für die Öffentlichkeit ausgeblendet und {pending} warten auf eine Entscheidung. Die häufigsten Themen waren {topics}.",
     emptyNoComments: "Wir haben noch nicht genügend Kommentare für eine Reputationsübersicht.",
     emptyNoRisk: "In diesem Zeitraum wurden keine wesentlichen riskanten Inhalte erfasst.",
     actorRiskLink: "Wiederholtes riskantes Verhalten derselben Profile",
@@ -946,7 +950,7 @@ export const de: Dictionary = {
   actor: {
     eyebrow: "Risikoprofile",
     title: "Risikoprofile",
-    subtitle: "Guardora verfolgt wiederholtes riskantes Verhalten von Profilen in Kommentaren auf Ihren verbundenen Konten.",
+    subtitle: "Tamanor verfolgt wiederholtes riskantes Verhalten von Profilen in Kommentaren auf Ihren verbundenen Konten.",
     behaviorNote: "Die Bewertung basiert auf sichtbarem Verhalten, nicht auf einer Behauptung über die Identität einer Person.",
     trustNote: "Die Risikobewertung basiert auf dem Verhalten in Kommentaren auf Ihren verbundenen Konten. Sie ist keine rechtliche oder persönliche Kennzeichnung eines Profils.",
     rangeToday: "Heute",
@@ -1000,7 +1004,7 @@ export const de: Dictionary = {
   comments: {
     eyebrow: "Kommentare",
     title: "Kommentare",
-    subtitle: "Hier finden Sie alle Kommentare, die Guardora auf verbundenen Konten erfasst hat — positive, neutrale, negative und riskante Kommentare.",
+    subtitle: "Hier finden Sie alle Kommentare, die Tamanor auf verbundenen Konten erfasst hat — positive, neutrale, negative und riskante Kommentare.",
     secondary: "Kommentare, die eine Entscheidung erfordern, finden Sie auch in der Warteschlange. Diese Seite ist die Übersicht aller erfassten Kommentare.",
     rangeToday: "Heute",
     range7d: "7 Tage",
@@ -1046,7 +1050,7 @@ export const de: Dictionary = {
     cantHideNote: "Instagram ist noch nicht für automatisches Verbergen eingerichtet. Der Kommentar wurde gemäß Ihren Regeln zur Prüfung markiert.",
     trustNote: "Normale Kritik wird nicht automatisch verborgen. Kommentare, die eine Entscheidung erfordern, erscheinen gemäß Ihren Regeln in der Warteschlange.",
     emptyNoAccount: "Es ist noch kein Konto verbunden.",
-    emptyNoAccountBody: "Verbinden Sie eine Facebook-Seite, damit Guardora Kommentare erfassen kann.",
+    emptyNoAccountBody: "Verbinden Sie eine Facebook-Seite, damit Tamanor Kommentare erfassen kann.",
     emptyNoComments: "Es wurden noch keine Kommentare erfasst.",
     emptyNoCommentsBody: "Sobald auf Ihren verbundenen Konten Kommentare erscheinen, werden sie hier angezeigt.",
     emptyFilter: "Für diesen Filter wurden keine Kommentare gefunden.",
@@ -1055,7 +1059,7 @@ export const de: Dictionary = {
 
   // V1.31 Plattform-Funktionen — was eine verbundene Plattform/ein Konto tatsächlich kann.
   cap: {
-    summaryTitle: "Was Guardora hier kann",
+    summaryTitle: "Was Tamanor hier kann",
     commentsOn: "Kommentare: Überwachung aktiv",
     commentsOff: "Kommentare: Überwachung nicht verfügbar",
     hideSupported: "Öffentlich verbergen: unterstützt",
@@ -1076,7 +1080,7 @@ export const de: Dictionary = {
   },
 
   memory: {
-    improveTitle: "Guardora für diese Marke verbessern",
+    improveTitle: "Tamanor für diese Marke verbessern",
     improveHint: "Gilt nur für diese Marke. Es wird nie eine Plattformaktion ausgeführt.",
     correct_risk: "Als korrekt eingestuft markieren",
     false_positive: "Fehlalarm",
@@ -1213,7 +1217,7 @@ export const de: Dictionary = {
     escalate: "Eskalieren",
     ignore: "Ignorieren",
     proposePlatformAction: "Plattform-Aktion vorschlagen",
-    proposeActionDesc: "Erstellt einen Vorschlag zur Prüfung. Nichts läuft, bis ein berechtigter Prüfer freigibt und ausführt — Guardora ist standardmäßig schreibgeschützt.",
+    proposeActionDesc: "Erstellt einen Vorschlag zur Prüfung. Nichts läuft, bis ein berechtigter Prüfer freigibt und ausführt — Tamanor ist standardmäßig schreibgeschützt.",
     proposeHide: "Ausblenden vorschlagen",
     proposeDelete: "Löschen vorschlagen",
     proposeReply: "Antwort vorschlagen",
@@ -1272,13 +1276,13 @@ export const de: Dictionary = {
     platformBreakdown: "Aufschlüsselung nach Plattform",
     connectAccount: "Konto verbinden",
     noInsights: "Noch keine Insights",
-    noInsightsBody: "Sobald Elemente erfasst werden, zeigt Guardora hier Stimmung, Risikotrends, Themen und die riskantesten Beiträge.",
+    noInsightsBody: "Sobald Elemente erfasst werden, zeigt Tamanor hier Stimmung, Risikotrends, Themen und die riskantesten Beiträge.",
     noSentiment: "Noch keine Stimmungsdaten",
     noSentimentBody: "Die Stimmung wird beim Erfassen und Klassifizieren von Inhalten bewertet.",
     noEmotion: "Noch keine Emotionssignale",
     noEmotionBody: "Emotionen werden aus den KI-Risikokategorien und der Stimmung eingehender Inhalte abgeleitet.",
     noPosts: "Noch keine Beiträge",
-    noPostsBody: "Beim Erfassen von Kommentaren gruppiert Guardora sie nach dem zugehörigen Beitrag und zeigt die riskantesten.",
+    noPostsBody: "Beim Erfassen von Kommentaren gruppiert Tamanor sie nach dem zugehörigen Beitrag und zeigt die riskantesten.",
     noTopics: "Noch keine Themen",
     noTopicsBody: "Themen werden aus den KI-Risikokategorien der eingehenden Inhalte gebündelt.",
     emotions: { Anger: "Wut", Anxiety: "Angst", Sadness: "Traurigkeit", Happiness: "Freude", Warmth: "Wärme" },
@@ -1366,7 +1370,7 @@ export const de: Dictionary = {
     proposedAction: "Vorgeschlagene Aktion",
     apiSupported: "API unterstützt",
     apiUnsupported: "API nicht unterstützt",
-    guardoraSide: "Guardora-seitig",
+    guardoraSide: "Tamanor-seitig",
     proposedBy: "Vorgeschlagen von",
     aiRiskSnapshot: "KI-Risiko-Snapshot",
     capturedWhenCreated: "Erfasst bei Erstellung des Vorschlags.",
@@ -1409,7 +1413,7 @@ export const de: Dictionary = {
     grantedPermsLabel: "Erteilte Berechtigungen",
     connectedAtLabel: "Verbunden",
     noConnectedAccounts: "Noch keine verbundenen Konten.",
-    noAccountsBody: "Verbinden Sie eine Facebook-Seite, damit Guardora Ihre Kommentare schützen kann.",
+    noAccountsBody: "Verbinden Sie eine Facebook-Seite, damit Tamanor Ihre Kommentare schützen kann.",
     realTestMode: "Echttest-Modus",
     realTestModeHint: "Es werden nur echte Konten und Daten angezeigt. Demo-Daten sind ausgeblendet.",
     syncCadence: "Die automatische Synchronisierung prüft alle {n} Sekunden auf neue Kommentare.",

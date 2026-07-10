@@ -3,15 +3,19 @@
 
 export const en = {
   meta: {
-    landingTitle: "Guardora.ai — AI Reputation Firewall for modern brands",
+    landingTitle: "Tamanor — Social Account Firewall for modern brands",
     landingDescription:
-      "Guardora monitors comments, reviews and audience feedback across Facebook, Instagram, YouTube, LinkedIn, TikTok and Google — detects risk, prepares safe actions and keeps humans in control.",
-    caseStudiesTitle: "Example scenarios — Guardora.ai",
+      "Tamanor monitors comments, reviews and audience feedback across Facebook, Instagram, YouTube, LinkedIn, TikTok and Google — detects risk, prepares safe actions and keeps humans in control.",
+    caseStudiesTitle: "Example scenarios — Tamanor",
     caseStudiesDescription:
-      "Illustrative demo scenarios showing how Guardora protects brand reputation. Example scenarios only — not real customers.",
+      "Illustrative demo scenarios showing how Tamanor protects brand reputation. Example scenarios only — not real customers.",
   },
 
   common: {
+    // V1.33 — public brand. Prefer these keys over hardcoding the name.
+    brand: "Tamanor",
+    brandTagline: "Social Account Firewall",
+    brandFull: "Tamanor — Social Account Firewall",
     startFreeTrial: "Start free trial",
     bookDemo: "Book a demo",
     contactSales: "Contact sales",
@@ -48,11 +52,11 @@ export const en = {
   },
 
   hero: {
-    badge: "AI Reputation Firewall",
+    badge: "Social Account Firewall",
     titleBefore: "Protect your brand before harmful comments become a",
     titleHighlight: "crisis",
     subtitle:
-      "Guardora monitors comments, reviews and audience feedback across Facebook, Instagram, YouTube, LinkedIn, TikTok and Google — detects risk, prepares safe actions and keeps humans in control.",
+      "Tamanor monitors comments, reviews and audience feedback across Facebook, Instagram, YouTube, LinkedIn, TikTok and Google — detects risk, prepares safe actions and keeps humans in control.",
   },
 
   platformsSection: {
@@ -61,7 +65,7 @@ export const en = {
   },
 
   features: {
-    eyebrow: "What Guardora does",
+    eyebrow: "What Tamanor does",
     title: "From noisy feedback to controlled action.",
     items: [
       { tag: "Protect", body: "Detect spam, scams, hate, vulgarity, misinformation and brand attacks before they damage trust." },
@@ -73,7 +77,7 @@ export const en = {
 
   // Illustrative product mocks on the landing page (demo data, code-rendered).
   productMocks: {
-    eyebrow: "Inside Guardora",
+    eyebrow: "Inside Tamanor",
     title: "What it looks like when a threat shows up",
     subtitle:
       "Four moments from a single incident — detected, assessed, proposed, and held for a human. Nothing is moderated automatically.",
@@ -127,7 +131,7 @@ export const en = {
   control: {
     title: "AI speed. Human control. Full audit.",
     subtitle:
-      "Guardora can classify thousands of comments quickly, but sensitive actions remain approval-gated. Teams can approve, reject, escalate or resolve items with a complete audit log.",
+      "Tamanor can classify thousands of comments quickly, but sensitive actions remain approval-gated. Teams can approve, reject, escalate or resolve items with a complete audit log.",
     step: "Step",
     flow: ["Comment", "AI risk analysis", "Proposed action", "Human approval", "Audit log"],
   },
@@ -150,7 +154,7 @@ export const en = {
     eyebrow: "Trust & safety",
     title: "Safe by design.",
     subtitle:
-      "Guardora is built to protect your brand without ever putting your accounts or your customers at risk.",
+      "Tamanor is built to protect your brand without ever putting your accounts or your customers at risk.",
     items: [
       "Official OAuth / API connectors only",
       "No scraping",
@@ -183,7 +187,7 @@ export const en = {
   },
 
   footer: {
-    tagline: "AI Reputation Firewall. Protect your brand across social media, comments and reviews.",
+    tagline: "Social Account Firewall. Protect your brand across social media, comments and reviews.",
     product: "Product",
     platforms: "Platforms",
     company: "Company",
@@ -198,22 +202,22 @@ export const en = {
     insights: "Insights",
     reports: "Reports",
     auditLog: "Audit Log",
-    rights: "AI Reputation Firewall for modern brands",
+    rights: "Social Account Firewall for modern brands",
     badge: "Read-only by default · Official OAuth only · No scraping",
   },
 
   caseStudies: {
     eyebrow: "Example scenarios",
-    title: "How brands could use Guardora.",
+    title: "How brands could use Tamanor.",
     subtitle:
       "Illustrative demo scenarios — not real customers, and no real numbers. They show the shape of the workflow, not a guarantee of results.",
     exampleBadge: "Example scenarios · illustrative only",
     exampleLabel: "Example",
     problemLabel: "Problem",
-    helpsLabel: "How Guardora helps",
+    helpsLabel: "How Tamanor helps",
     outcomeLabel: "Outcome",
     footerNote:
-      "These are example scenarios for illustration. Guardora is read-only by default, keeps humans in control of sensitive actions, and uses official OAuth/API connectors only — no scraping, no shared passwords.",
+      "These are example scenarios for illustration. Tamanor is read-only by default, keeps humans in control of sensitive actions, and uses official OAuth/API connectors only — no scraping, no shared passwords.",
     cases: [
       {
         tag: "Real estate brand",
@@ -269,8 +273,8 @@ export const en = {
   dashHeaders: {
     command: { title: "Command Center", desc: "Control how your brand reacts online — in one place." },
     timeline: { title: "Timeline", desc: "Every event over time — syncs, matches, decisions and safety blocks." },
-    control: { title: "Control Policies", desc: "Define what Guardora may do for each risk category." },
-    queue: { title: "Action Queue", desc: "Everything Guardora wants to do — within your policies." },
+    control: { title: "Control Policies", desc: "Define what Tamanor may do for each risk category." },
+    queue: { title: "Action Queue", desc: "Everything Tamanor wants to do — within your policies." },
     incidents: { title: "Incidents", desc: "Crises, threats and coordinated attacks that need attention." },
     dashboard: { title: "Dashboard", desc: "Your reputation at a glance across every brand and platform." },
     inbox: { title: "Inbox", desc: "Triage comments, reviews, and mentions in one unified place." },
@@ -465,7 +469,7 @@ export const en = {
   autoProtect: {
     title: "Auto-Protect",
     subtitle: "Choose what happens for each harmful-content category. Auto-hide runs in shadow mode — no live platform action.",
-    shadowExplain: "Guardora would hide this content, but live platform actions are currently disabled.",
+    shadowExplain: "Tamanor would hide this content, but live platform actions are currently disabled.",
     liveDisabled: "Live auto-hide is disabled",
     noLiveAction: "No platform action executed",
     reservedNote: "Reserved for a future action-enable phase — not selectable yet.",
@@ -499,7 +503,7 @@ export const en = {
     mCriticism: "Normal criticism preserved",
     // executive value dashboard (V1.19)
     valueTitle: "Auto-Protect value",
-    valueIntro: "Guardora protects your brand in shadow mode: harmful content is identified, normal criticism is preserved, and no live platform action is executed.",
+    valueIntro: "Tamanor protects your brand in shadow mode: harmful content is identified, normal criticism is preserved, and no live platform action is executed.",
     mProtectedShadow: "Protected in shadow mode",
     mLiveActions: "Live actions executed",
     // report + breakdown
@@ -511,8 +515,8 @@ export const en = {
     colCount: "Count",
     last7: "Last 7 days",
     last30: "Last 30 days",
-    notHiddenTitle: "What Guardora did not hide",
-    notHiddenBody: "Normal criticism of the service is not auto-hidden. Guardora keeps it as feedback and separates it from insults, scams, hate, and spam.",
+    notHiddenTitle: "What Tamanor did not hide",
+    notHiddenBody: "Normal criticism of the service is not auto-hidden. Tamanor keeps it as feedback and separates it from insults, scams, hate, and spam.",
     noItems: "No items in this view yet.",
     // inbox filters
     filterAll: "All",
@@ -571,7 +575,7 @@ export const en = {
     // command center
     commandTitle: "Command Center",
     connectedAccounts: "Connected accounts",
-    controlling: "What Guardora is controlling",
+    controlling: "What Tamanor is controlling",
     recentRisky: "Recent risky events",
     pendingApprovals: "Pending approvals",
     autonomousShadow: "Autonomous (shadow / dry-run)",
@@ -588,7 +592,7 @@ export const en = {
     createFirstPolicy: "Create first control policy",
     // control policies / autonomy matrix
     controlTitle: "Control Policies",
-    controlSubtitle: "Define what Guardora may do for each risk category. Autonomous is off by default.",
+    controlSubtitle: "Define what Tamanor may do for each risk category. Autonomous is off by default.",
     autonomyMatrix: "Autonomy Matrix",
     autonomyMatrixDesc: "Rows are risk categories. Set the mode for each. Autonomous requires confirmation.",
     colCategory: "Category",
@@ -602,20 +606,20 @@ export const en = {
     applyPreset: "Apply preset",
     presetsHint: "Presets create rules only — never demo content or fake comments.",
     autonomousWarn: "Autonomous can hide comments (in shadow/dry-run until live is enabled). Never used for normal criticism, refunds, legal or safety complaints.",
-    controlExplainer: "You define the rules. Guardora automatically protects your social accounts based on your settings. Clearly harmful comments can be hidden according to your configuration. Sensitive or unclear cases are sent to your team for approval.",
-    selfServiceNote: "Guardora is not a moderation agency. It is an automated protection system that acts according to rules configured by the account owner.",
-    hideUnsupportedNote: "This platform does not support automatically hiding comments. Guardora will flag comments and send them for approval according to your rules.",
+    controlExplainer: "You define the rules. Tamanor automatically protects your social accounts based on your settings. Clearly harmful comments can be hidden according to your configuration. Sensitive or unclear cases are sent to your team for approval.",
+    selfServiceNote: "Tamanor is not a moderation agency. It is an automated protection system that acts according to rules configured by the account owner.",
+    hideUnsupportedNote: "This platform does not support automatically hiding comments. Tamanor will flag comments and send them for approval according to your rules.",
     instagramMonitorNote: "Instagram is in monitoring mode for now. Hiding comments can be enabled only after permissions are verified and tested.",
     instagramQueueNote: "Instagram: awaiting review. Automatic hiding is not enabled.",
     queueExplainer: "This queue shows cases that require a decision according to your rules.",
     save: "Save",
     // action queue
     queueTitle: "Action Queue",
-    queueSubtitle: "Everything Guardora wants to do — within your policies. No live action by default.",
+    queueSubtitle: "Everything Tamanor wants to do — within your policies. No live action by default.",
     queueActiveSubtitle: "Items that still need a decision.",
     queueEmpty: "Nothing in the queue yet.",
     queueEmptyActive: "No items are waiting for action.",
-    queueEmptyActiveBody: "Guardora will hide clearly harmful comments automatically or send them here for approval, per your rules.",
+    queueEmptyActiveBody: "Tamanor will hide clearly harmful comments automatically or send them here for approval, per your rules.",
     tabActive: "Active",
     tabApproval: "Needs approval",
     tabBlocked: "Blocked",
@@ -629,7 +633,7 @@ export const en = {
     incidentsTitle: "Incidents",
     incidentsSubtitle: "Crises, threats and coordinated attacks that need human attention.",
     incidentsEmpty: "No incidents. Your brand looks calm.",
-    incidentsEmptyBody: "If Guardora detects a coordinated attack or a crisis spike in risk, it will appear here.",
+    incidentsEmptyBody: "If Tamanor detects a coordinated attack or a crisis spike in risk, it will appear here.",
     severity: "Severity",
     status: "Status",
     related: "Related items",
@@ -642,7 +646,7 @@ export const en = {
     // approval detail (V1.23)
     approvalTitle: "Approval",
     whatHappened: "What happened",
-    proposedActionLabel: "What Guardora proposes",
+    proposedActionLabel: "What Tamanor proposes",
     whyLabel: "Why",
     triggeredPolicy: "Policy that triggered this",
     ifAutonomous: "What would happen in Autonomous mode",
@@ -691,12 +695,12 @@ export const en = {
     onbStep2Body: "Comments now. Reviews and mentions later.",
     onbStep3: "Choose a protection style",
     onbStep4: "Confirm safety rules",
-    onbSafety1: "Guardora never hides normal criticism automatically.",
+    onbSafety1: "Tamanor never hides normal criticism automatically.",
     onbSafety2: "Legal, refund and safety complaints always require human review.",
     onbStep5: "Start monitoring",
     onbDone: "Done",
     // command center polish (V1.23)
-    doingNow: "What Guardora is doing now",
+    doingNow: "What Tamanor is doing now",
     needsAttention: "What needs your attention",
     automated: "What is automated",
     blockedSafety: "What is blocked by safety",
@@ -705,10 +709,10 @@ export const en = {
     nextPolicies: "Create your control policies (apply a preset).",
     nextEnableSync: "Enable automatic sync so new comments arrive.",
     nextReview: "Review items waiting for approval.",
-    allSet: "You're all set — Guardora is monitoring within your rules.",
+    allSet: "You're all set — Tamanor is monitoring within your rules.",
     // policy explainers (V1.23)
     modeMonitor: "Monitor: only tracked, never acted on.",
-    modeAssist: "Assist: Guardora suggests a reply for you to review.",
+    modeAssist: "Assist: Tamanor suggests a reply for you to review.",
     modeApproval: "Approval: routed to a human before anything happens.",
     modeAutonomous: "Autonomous: prepared for auto-hide in dry-run (no live action by default).",
     autonomousExample: "Spam comments will be prepared for autonomous hide in dry-run mode.",
@@ -805,7 +809,7 @@ export const en = {
     autoHiddenFailed: "Automatic hide failed",
     autoHiddenBy: "Hidden automatically by policy",
     enableAutoHide: "Enable safe auto-hide",
-    autoHideAck: "I understand Guardora will hide these comments automatically.",
+    autoHideAck: "I understand Tamanor will hide these comments automatically.",
     autoHideEnabled: "Safe auto-hide enabled",
     autoHideLimitsNote: "Never on normal criticism · legal/refund complaints always go to a human · within hourly/daily limits · only above the confidence threshold.",
     disableAutoHide: "Disable auto-hide",
@@ -843,7 +847,7 @@ export const en = {
     protectionState_partial: "Partially protected",
     protectionState_attention: "Needs attention",
     protectionState_off: "Protection off",
-    protectionProtected: "Guardora is currently protecting your social accounts.",
+    protectionProtected: "Tamanor is currently protecting your social accounts.",
     protectionPartial: "Monitoring is active, but automatic protection is not on for all accounts.",
     protectionAttention: "Some accounts or actions need your attention.",
     protectionOff: "Protection is off.",
@@ -871,7 +875,7 @@ export const en = {
     ctaSetRules: "Set rules",
     review: "Review",
     partiallyOn: "Partially on",
-    autoOffNote: "Guardora will flag comments or send them for approval, but will not hide them automatically.",
+    autoOffNote: "Tamanor will flag comments or send them for approval, but will not hide them automatically.",
     autoCapNote: "Limit: {n} automatic hides per hour",
     connProtectedOn: "Protection on",
     connProtectedOff: "Protection off",
@@ -897,10 +901,10 @@ export const en = {
     ctaOpenIncident: "Open incident",
     // V1.29B — onboarding / empty states
     onbConnectFirst: "Connect your first social account",
-    onbConnectBody: "Once an account is connected, Guardora starts watching comments, risky behavior and your brand's reputation.",
+    onbConnectBody: "Once an account is connected, Tamanor starts watching comments, risky behavior and your brand's reputation.",
     connectAccount: "Connect account",
     onbPlatformNote: "We support Facebook Pages first. More platforms will be added over time.",
-    noDataTitle: "Account connected. Guardora is waiting for the first comments.",
+    noDataTitle: "Account connected. Tamanor is waiting for the first comments.",
     noDataBody: "Once comments are processed, you'll see protection status, risks and a reputation overview here.",
     noDataAction: "No action is needed yet.",
   },
@@ -943,7 +947,7 @@ export const en = {
     topic_satisfaction: "General satisfaction",
     topic_uncategorized: "Uncategorized",
     critVsHarmful: "Criticism vs harmful content",
-    critNote: "Guardora recognizes negative comments but does not label normal criticism as harmful. Automatic actions apply only to clearly risky content, per your rules.",
+    critNote: "Tamanor recognizes negative comments but does not label normal criticism as harmful. Automatic actions apply only to clearly risky content, per your rules.",
     critLegit: "Legitimate criticism",
     critQuestions: "Customer questions",
     critComplaints: "Complaints",
@@ -963,7 +967,7 @@ export const en = {
     recComplaints: "Legitimate customer complaints are recurring. Consider reviewing communication about: price / delivery / quality.",
     recStable: "Reputation is stable. No significant risk trends are visible.",
     reputationSummary: "Reputation summary",
-    summaryTemplate: "In the last {days} days Guardora processed {total} comments. {risky} were risky, {hidden} were hidden from the public and {pending} are awaiting a decision. The top topics were {topics}.",
+    summaryTemplate: "In the last {days} days Tamanor processed {total} comments. {risky} were risky, {hidden} were hidden from the public and {pending} are awaiting a decision. The top topics were {topics}.",
     emptyNoComments: "We don't have enough comments yet to build a reputation overview.",
     emptyNoRisk: "No significant risky content was recorded in this period.",
     actorRiskLink: "Repeated risky behavior from the same profiles",
@@ -974,7 +978,7 @@ export const en = {
   actor: {
     eyebrow: "Actor Risk",
     title: "Actor Risk",
-    subtitle: "Guardora tracks repeated risky behavior from profiles in comments on your connected accounts.",
+    subtitle: "Tamanor tracks repeated risky behavior from profiles in comments on your connected accounts.",
     behaviorNote: "The score is based on visible behavior, not on a claim about a person's identity.",
     trustNote: "The risk score is based on behavior in comments on your connected accounts. It is not a legal or personal designation of a profile.",
     rangeToday: "Today",
@@ -1028,7 +1032,7 @@ export const en = {
   comments: {
     eyebrow: "Comments",
     title: "Comments",
-    subtitle: "Here you can find all comments Guardora captured on connected accounts — positive, neutral, negative and risky.",
+    subtitle: "Here you can find all comments Tamanor captured on connected accounts — positive, neutral, negative and risky.",
     secondary: "Comments that require a decision are also in the Action Queue. This page is the overview of every captured comment.",
     rangeToday: "Today",
     range7d: "7 days",
@@ -1074,7 +1078,7 @@ export const en = {
     cantHideNote: "Instagram is not set up for automatic hiding yet. The comment was flagged for review according to your rules.",
     trustNote: "Normal criticism is not hidden automatically. Comments that require a decision appear in the queue, based on your rules.",
     emptyNoAccount: "No account is connected yet.",
-    emptyNoAccountBody: "Connect a Facebook Page so Guardora can start capturing comments.",
+    emptyNoAccountBody: "Connect a Facebook Page so Tamanor can start capturing comments.",
     emptyNoComments: "No comments have been captured yet.",
     emptyNoCommentsBody: "When comments appear on your connected accounts, they will show up here.",
     emptyFilter: "No comments were found for this filter.",
@@ -1083,7 +1087,7 @@ export const en = {
 
   // V1.31 Platform capabilities — what a connected platform/account can actually do.
   cap: {
-    summaryTitle: "What Guardora can do here",
+    summaryTitle: "What Tamanor can do here",
     commentsOn: "Comments: monitoring on",
     commentsOff: "Comments: monitoring unavailable",
     hideSupported: "Hide from public: supported",
@@ -1105,7 +1109,7 @@ export const en = {
 
   // Brand risk memory + feedback (V1.17).
   memory: {
-    improveTitle: "Improve Guardora for this brand",
+    improveTitle: "Improve Tamanor for this brand",
     improveHint: "Applied only to this brand. No platform action is ever run.",
     correct_risk: "Mark as correctly classified",
     false_positive: "Mark as false positive",
@@ -1248,7 +1252,7 @@ export const en = {
     escalate: "Escalate",
     ignore: "Ignore",
     proposePlatformAction: "Propose platform action",
-    proposeActionDesc: "Creates a proposal for review. Nothing runs until an authorized reviewer approves and executes it — Guardora is read-only by default.",
+    proposeActionDesc: "Creates a proposal for review. Nothing runs until an authorized reviewer approves and executes it — Tamanor is read-only by default.",
     proposeHide: "Propose hide",
     proposeDelete: "Propose delete",
     proposeReply: "Propose reply",
@@ -1310,13 +1314,13 @@ export const en = {
     platformBreakdown: "Platform breakdown",
     connectAccount: "Connect an account",
     noInsights: "No insights yet",
-    noInsightsBody: "Once items are ingested, Guardora surfaces sentiment, risk trends, topics, and the most risky posts here.",
+    noInsightsBody: "Once items are ingested, Tamanor surfaces sentiment, risk trends, topics, and the most risky posts here.",
     noSentiment: "No sentiment data yet",
     noSentimentBody: "Sentiment is scored as content is ingested and classified.",
     noEmotion: "No emotion signals yet",
     noEmotionBody: "Emotions are derived from the AI risk categories and sentiment on incoming content.",
     noPosts: "No posts yet",
-    noPostsBody: "As comments are ingested, Guardora groups them by the post they belong to and surfaces the riskiest.",
+    noPostsBody: "As comments are ingested, Tamanor groups them by the post they belong to and surfaces the riskiest.",
     noTopics: "No topics yet",
     noTopicsBody: "Topics are clustered from the AI risk categories assigned to incoming content.",
     emotions: { Anger: "Anger", Anxiety: "Anxiety", Sadness: "Sadness", Happiness: "Happiness", Warmth: "Warmth" },
@@ -1410,7 +1414,7 @@ export const en = {
     proposedAction: "Proposed action",
     apiSupported: "API supported",
     apiUnsupported: "API unsupported",
-    guardoraSide: "Guardora-side",
+    guardoraSide: "Tamanor-side",
     proposedBy: "Proposed by",
     aiRiskSnapshot: "AI risk snapshot",
     capturedWhenCreated: "Captured when the proposal was created.",
@@ -1454,7 +1458,7 @@ export const en = {
     grantedPermsLabel: "Granted permissions",
     connectedAtLabel: "Connected",
     noConnectedAccounts: "No connected accounts yet.",
-    noAccountsBody: "Connect a Facebook Page so Guardora can start protecting your comments.",
+    noAccountsBody: "Connect a Facebook Page so Tamanor can start protecting your comments.",
     // real test mode (V1.21C)
     realTestMode: "Real test mode",
     realTestModeHint: "Showing real accounts and data only. Demo data is hidden.",

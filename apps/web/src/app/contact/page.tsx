@@ -5,8 +5,8 @@ import { getTL } from "@/i18n/server";
 import { submitLead } from "../book-demo/actions";
 
 export const metadata: Metadata = {
-  title: "Contact — Guardora.ai",
-  description: "Get in touch with the Guardora team, or book a personalized demo.",
+  title: "Contact — Tamanor",
+  description: "Get in touch with the Tamanor team, or book a personalized demo.",
 };
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export default async function ContactPage({
   const error = sp.error;
 
   return (
-    <MarketingPage dict={_lp.t} locale={_lp.locale} eyebrow="Contact" title="Talk to the Guardora team." subtitle="Questions, partnerships, or a personalized walkthrough — we're here.">
+    <MarketingPage dict={_lp.t} locale={_lp.locale} eyebrow="Contact" title="Talk to the Tamanor team." subtitle="Questions, partnerships, or a personalized walkthrough — we're here.">
       <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
         <div className="space-y-4">
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
@@ -36,7 +36,7 @@ export default async function ContactPage({
           </div>
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
             <p className="text-sm font-semibold">Prefer a live walkthrough?</p>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">See Guardora protect a brand in read-only mode.</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">See Tamanor protect a brand in read-only mode.</p>
             <Link href="/book-demo" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
               Book a demo
             </Link>

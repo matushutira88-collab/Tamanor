@@ -59,7 +59,7 @@ async function run() {
   check("6) no visible Inbox label; inbox stays hidden", /href: "\/dashboard\/inbox"[^}]*hidden: true/.test(nav) && /href: "\/dashboard\/comments"[^}]*navKey: "comments"/.test(nav) && en.includes('comments: "Comments"') && sk.includes('comments: "Komentáre"'));
 
   // 7) Page explains it contains all captured comments.
-  check("7) page explains all captured comments", page.includes("subtitle") && page.includes("secondary") && sk.includes("všetky komentáre, ktoré Guardora zachytila") && en.includes("all comments Guardora captured"));
+  check("7) page explains all captured comments", page.includes("subtitle") && page.includes("secondary") && sk.includes("všetky komentáre, ktoré Tamanor zachytila") && en.includes("all comments Tamanor captured"));
 
   // 8) Date range default 7d.
   check("8) date range Today/7d/30d default 7d", /RANGES = \{ today: 1, "7d": 7, "30d": 30 \}/.test(page) && page.includes('? (sp.range as RangeKey) : "7d"'));

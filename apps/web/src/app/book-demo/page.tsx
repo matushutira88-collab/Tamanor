@@ -4,9 +4,9 @@ import { getTL } from "@/i18n/server";
 import { submitLead } from "./actions";
 
 export const metadata: Metadata = {
-  title: "Book a demo — Guardora.ai",
+  title: "Book a demo — Tamanor",
   description:
-    "See Guardora.ai in action. Tell us about your brand and channels and we'll set up a personalized walkthrough.",
+    "See Tamanor in action. Tell us about your brand and channels and we'll set up a personalized walkthrough.",
 };
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export default async function BookDemoPage({
   return (
     <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="Book a demo"
-      title="See Guardora protect a brand in real time."
+      title="See Tamanor protect a brand in real time."
       subtitle="Tell us about your brand and channels — we'll set up a personalized, read-only walkthrough."
     >
       {sent ? (
@@ -89,7 +89,7 @@ export default async function BookDemoPage({
             <label className="flex items-start gap-2.5 text-sm text-[var(--color-muted)]">
               <input type="checkbox" name="consent" className="mt-0.5 accent-[var(--color-brand)]" />
               <span>
-                I agree to be contacted about Guardora and accept the{" "}
+                I agree to be contacted about Tamanor and accept the{" "}
                 <a href="/privacy" className="text-[var(--color-brand)] hover:underline">privacy notice</a>.
               </span>
             </label>

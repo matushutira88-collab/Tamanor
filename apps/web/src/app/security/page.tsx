@@ -3,9 +3,9 @@ import { MarketingPage, Section, Bullets } from "@/components/marketing-page";
 import { getTL } from "@/i18n/server";
 
 export const metadata: Metadata = {
-  title: "Security — Guardora.ai",
+  title: "Security — Tamanor",
   description:
-    "How Guardora protects your accounts and data: official OAuth only, no scraping, no client passwords, approval workflow, audit log, and read-only by default.",
+    "How Tamanor protects your accounts and data: official OAuth only, no scraping, no client passwords, approval workflow, audit log, and read-only by default.",
 };
 
 export default async function SecurityPage() {
@@ -14,11 +14,11 @@ export default async function SecurityPage() {
     <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="Trust & safety"
       title="Safe by design."
-      subtitle="Guardora is built to protect your brand without ever putting your accounts or your customers at risk."
+      subtitle="Tamanor is built to protect your brand without ever putting your accounts or your customers at risk."
     >
       <Section title="Connections">
         <p>
-          Guardora connects to platforms exclusively through their official OAuth
+          Tamanor connects to platforms exclusively through their official OAuth
           and API integrations. We never scrape, and we never ask for or store
           your social passwords.
         </p>

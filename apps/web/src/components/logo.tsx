@@ -1,16 +1,15 @@
 /**
- * Guardora brand mark — a shield with a padlock, in the mint→teal gradient
- * from the brand mockup. `Logo` is the compact wordmark used in headers and the
- * sidebar; `ShieldEmblem` is the large, glowing hero emblem.
+ * Tamanor brand mark — a shield with a padlock, in the mint→teal gradient.
+ * `Logo` is the compact wordmark used in headers and the sidebar; `ShieldEmblem`
+ * is the large, glowing hero emblem. (Public brand: Tamanor. Internal package
+ * names may still use "guardora" during the transition.)
  */
 
 export function Logo({ className = "" }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
       <ShieldMark size={28} />
-      <span className="gu-display text-[18px] tracking-tight">
-        Guardora<span className="text-[var(--color-brand)]">.ai</span>
-      </span>
+      <span className="gu-display text-[18px] tracking-tight">Tamanor</span>
     </span>
   );
 }

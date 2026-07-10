@@ -63,7 +63,7 @@ export const DASHBOARD_NAV: NavItem[] = [
   {
     href: "/dashboard/comments",
     label: "Comments",
-    description: "Every comment Guardora captured on your connected accounts — positive, neutral, negative and risky.",
+    description: "Every comment Tamanor captured on your connected accounts — positive, neutral, negative and risky.",
     icon: "inbox",
     navKey: "comments",
   },
@@ -82,7 +82,7 @@ export const DASHBOARD_NAV: NavItem[] = [
   {
     href: "/dashboard/control-center",
     label: "Control Center",
-    description: "Define what Guardora may do for each risk category and platform.",
+    description: "Define what Tamanor may do for each risk category and platform.",
     icon: "control",
   },
   {

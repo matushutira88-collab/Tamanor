@@ -38,15 +38,15 @@ async function run() {
   // 1) No-account Command Center onboarding CTA.
   check("1) no-account CC has onboarding CTA + platform note", cc.includes("onbConnectFirst") && cc.includes("connectAccount") && cc.includes("onbPlatformNote") && sk.includes("Pripojte svoj prvý sociálny účet"));
   // 2) connected-no-data friendly empty state.
-  check("2) connected-no-data CC friendly state", cc.includes("totalItems === 0") && cc.includes("noDataTitle") && sk.includes("Guardora čaká na prvé komentáre"));
+  check("2) connected-no-data CC friendly state", cc.includes("totalItems === 0") && cc.includes("noDataTitle") && sk.includes("Tamanor čaká na prvé komentáre"));
   // 3) Action Queue empty product-friendly.
-  check("3) Action Queue empty product-friendly", aqList.includes("queueEmptyActiveBody") && sk.includes("Guardora bude škodlivé komentáre skrývať"));
+  check("3) Action Queue empty product-friendly", aqList.includes("queueEmptyActiveBody") && sk.includes("Tamanor bude škodlivé komentáre skrývať"));
   // 4) Reputation empty product-friendly.
   check("4) Reputation empty product-friendly", rep.includes("emptyNoComments") && sk.includes("Zatiaľ nemáme dostatok komentárov"));
   // 5) Incidents empty product-friendly.
   check("5) Incidents empty product-friendly", incidents.includes("incidentsEmptyBody") && sk.includes("koordinovaný útok alebo krízový nárast"));
   // 6) Accounts empty product-friendly.
-  check("6) Accounts empty product-friendly", accounts.includes("noAccountsBody") && sk.includes("Pripojte Facebook Page, aby Guardora"));
+  check("6) Accounts empty product-friendly", accounts.includes("noAccountsBody") && sk.includes("Pripojte Facebook Page, aby Tamanor"));
 
   // 7) exactly 5 primary visible entries (an entry with neither `group` nor `hidden`).
   const entries = nav.match(/\{\s*href: "\/dashboard[^{}]*?\}/gs) ?? [];
@@ -99,7 +99,7 @@ async function run() {
 
   // --- V1.29B-1 self-service wording ---
   check("S1) Control Center says the customer defines the rules", control.includes("controlExplainer") && sk.includes("Vy určujete pravidlá") && en.includes("You define the rules"));
-  check("S2) Control Center: Guardora acts per customer settings", sk.includes("podľa vašich nastavení") && en.includes("based on your settings"));
+  check("S2) Control Center: Tamanor acts per customer settings", sk.includes("podľa vašich nastavení") && en.includes("based on your settings"));
   check("S3) Control Center: unclear cases go to the customer's team", sk.includes("na schválenie vášmu tímu") && en.includes("sent to your team for approval"));
   check("S4) trust copy: normal criticism not hidden automatically", sk.includes("Normálna kritika nie je automaticky skrývaná") && en.includes("Normal criticism is not hidden automatically") && de.includes("Normale Kritik wird nicht automatisch verborgen"));
   check("S5) Action Queue: decisions based on customer rules", aqList.includes("queueExplainer") && sk.includes("podľa vašich pravidiel vyžadujú rozhodnutie"));

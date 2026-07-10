@@ -56,9 +56,7 @@ export function SiteFooter({
       <div className="mx-auto max-w-7xl px-6 py-14">
         <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
           <div>
-            <span className="text-lg font-semibold">
-              Guardora<span className="text-[var(--color-brand)]">.ai</span>
-            </span>
+            <span className="text-lg font-semibold">Tamanor</span>
             <p className="mt-3 max-w-xs text-sm text-[var(--color-muted)]">{t.footer.tagline}</p>
             <div className="mt-5 flex flex-wrap gap-2">
               <Link href="/login" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-xs font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
@@ -83,7 +81,7 @@ export function SiteFooter({
           ))}
         </div>
         <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-[var(--color-border)] pt-6 text-xs text-[var(--color-muted)] md:flex-row">
-          <span>© {new Date().getFullYear()} Guardora.ai — {t.footer.rights}</span>
+          <span>© {new Date().getFullYear()} Tamanor — {t.footer.rights}</span>
           <span>{t.footer.badge}</span>
         </div>
       </div>

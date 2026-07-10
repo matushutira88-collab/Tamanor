@@ -4,9 +4,9 @@ import { MarketingPage, Section } from "@/components/marketing-page";
 import { getTL } from "@/i18n/server";
 
 export const metadata: Metadata = {
-  title: "About — Guardora.ai",
+  title: "About — Tamanor",
   description:
-    "Guardora.ai is an AI Reputation Firewall that helps modern brands protect their reputation across social media, comments and reviews.",
+    "Tamanor is an Social Account Firewall that helps modern brands protect their reputation across social media, comments and reviews.",
 };
 
 export default async function AboutPage() {
@@ -14,14 +14,14 @@ export default async function AboutPage() {
   return (
     <MarketingPage dict={_lp.t} locale={_lp.locale}
       eyebrow="About"
-      title="An AI Reputation Firewall for modern brands."
-      subtitle="Guardora helps brands protect their reputation across social media, comments and reviews — with AI speed and human control."
+      title="An Social Account Firewall for modern brands."
+      subtitle="Tamanor helps brands protect their reputation across social media, comments and reviews — with AI speed and human control."
     >
-      <Section title="Why Guardora">
+      <Section title="Why Tamanor">
         <p>
           Public feedback moves fast. A single harmful comment, scam or
           coordinated attack can damage trust before a team even notices.
-          Guardora brings comments, reviews and mentions from every public
+          Tamanor brings comments, reviews and mentions from every public
           channel into one place, detects risk, and prepares safe actions — while
           keeping humans firmly in control.
         </p>
@@ -38,7 +38,7 @@ export default async function AboutPage() {
 
       <Section title="Where we are">
         <p>
-          Guardora is an early-stage product being built in the open with its
+          Tamanor is an early-stage product being built in the open with its
           first design partners. If that sounds like your team, we&rsquo;d love
           to talk.
         </p>

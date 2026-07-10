@@ -1,14 +1,18 @@
-# Guardora.ai
+# Tamanor — Social Account Firewall
 
-**AI Reputation Firewall for modern brands.**
+**Tamanor protects your social accounts.**
 
-Guardora protects the comments, reviews, and reputation of brands across every
-major social and review platform — Facebook, Instagram, YouTube, LinkedIn,
-TikTok, and Google Business Profile — from a single, unified reputation inbox.
+Tamanor protects social accounts from spam, scams, harmful comments and repeated
+risky behavior across social platforms — from a single, unified place. You define
+the rules; Tamanor applies them automatically, and unclear cases go to your team.
 
-Guardora is a **multi-tenant, multi-brand, multi-platform** SaaS built around an
-**AI Risk Engine**, a **human approval workflow**, and a complete **audit log**
-of every automated action.
+Tamanor is a **multi-tenant, multi-brand, multi-platform** self-service SaaS built
+around an **AI Risk Engine**, a **human approval workflow**, and a complete
+**audit log** of every automated action.
+
+> Public brand: **Tamanor**. Internal package names (`@guardora/*`), DB tables,
+> and Prisma models may still use "guardora" during the transition — this is
+> intentional and not user-visible.
 
 ---
 

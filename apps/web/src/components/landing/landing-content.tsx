@@ -31,11 +31,11 @@ const STATS: { value: string; label: string; note: string }[] = [
 const JSON_LD = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "Guardora.ai",
+  name: "Tamanor",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   description:
-    "AI Reputation Firewall for modern brands. Protect comments, reviews and reputation across social platforms with AI risk detection, human approval and a full audit log.",
+    "Tamanor — Social Account Firewall. Protect social accounts from spam, scams, harmful comments and repeated risky behavior with AI risk detection, human approval and a full audit log.",
   url: "https://guardora.ai",
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD", description: "Free trial" },
 };
