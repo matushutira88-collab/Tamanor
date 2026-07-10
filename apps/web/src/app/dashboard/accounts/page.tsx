@@ -154,17 +154,23 @@ export default async function AccountsPage({
                     </dl>
                     {/* V1.31 — capability summary in plain language (reads platform capabilities). */}
                     {(() => {
-                      const caps = getPlatformConnector(platformKeyFor(a.platform)).capabilities;
+                      const conn = getPlatformConnector(platformKeyFor(a.platform));
+                      const caps = conn.capabilities;
+                      // Hide wording: supported (FB) / not-yet-enabled (IG read-only) / unsupported.
+                      const hideLine = caps.canHideComment ? hdrT.cap.hideSupported : conn.supported ? hdrT.cap.hideNotYet : hdrT.cap.hideUnsupported;
                       return (
                         <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2">
                           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{hdrT.cap.summaryTitle}</p>
                           <ul className="space-y-0.5 text-xs">
                             <li>{caps.canReadComments ? "✅" : "⛔"} {caps.canReadComments ? hdrT.cap.commentsOn : hdrT.cap.commentsOff}</li>
-                            <li>{caps.canHideComment ? "✅" : "⛔"} {caps.canHideComment ? hdrT.cap.hideSupported : hdrT.cap.hideUnsupported}</li>
+                            <li>{caps.canHideComment ? "✅" : "🕓"} {hideLine}</li>
                             <li>{caps.canModerateAutomatically ? "✅" : "⛔"} {caps.canModerateAutomatically ? hdrT.cap.autoOn : hdrT.cap.autoOff}</li>
                           </ul>
                           {caps.publicHiddenStillVisibleToAuthorOrAdmin ? (
                             <p className="mt-1 text-[11px] text-[var(--color-muted)]">{hdrT.cap.visibilityNote}</p>
+                          ) : null}
+                          {conn.supported && !caps.canHideComment ? (
+                            <p className="mt-1 text-[11px] text-[var(--color-muted)]">{hdrT.cap.actionsDepend}</p>
                           ) : null}
                         </div>
                       );

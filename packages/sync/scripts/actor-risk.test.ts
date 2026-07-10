@@ -113,7 +113,7 @@ async function run() {
   // 22) No raw external ids rendered by default — the visible identity is the display
   //     name (or "Unknown profile"); the author id is only an opaque, prefixed group key.
   check("22) no raw author/comment ids rendered", page.includes("a.display") && page.includes("unknownProfile")
-    && page.includes("`id:${ci.authorExternalId}`") // used only as an internal key
+    && page.includes("actorIdentityKey(platformKeyFor(ci.platform)") // opaque, platform-scoped internal key
     && !/>\{[^{}]*authorExternalId[^{}]*\}</.test(page) // never inside a JSX text node
     && !page.includes("providerResponseCode") && !page.includes("providerErrorCode"));
 

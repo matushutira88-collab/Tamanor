@@ -3,6 +3,7 @@ import {
   buildActorSignals, actorRiskScore, actorRiskLevel, actorRiskReasons,
   sentimentBucket, type ActorComment, type ActorRiskLevel,
 } from "@guardora/ai";
+import { actorIdentityKey, platformKeyFor, PLATFORM_META, type Platform } from "@guardora/core";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -93,8 +94,9 @@ export default async function ActorRiskPage({ searchParams }: { searchParams: Pr
     const pending = queueMap.get(r.id) === "approval_required";
     const bucket = sentimentBucket({ categories: cats, sentiment: r.sentiment as string, riskLevel: r.riskLevel as string });
 
-    // Actor identity key: stable author id → display-name fallback. No raw id is rendered.
-    const key = ci.authorExternalId ? `id:${ci.authorExternalId}` : ci.authorDisplayName ? `name:${ci.authorDisplayName}` : null;
+    // Platform-scoped actor identity key: same id/username on two platforms is
+    // NEVER merged. Stable author id → display-name fallback. No raw id is rendered.
+    const key = actorIdentityKey(platformKeyFor(ci.platform), ci.authorExternalId, ci.authorDisplayName);
     if (!key) { if (bucket === "risky") unknownRisky++; continue; }
 
     let a = actors.get(key);
@@ -216,7 +218,7 @@ export default async function ActorRiskPage({ searchParams }: { searchParams: Pr
                           <Badge tone={LEVEL_TONE[level]}>{t.actor[`level_${level}` as "level_medium"]} · {score}</Badge>
                         </div>
                         <p className="mt-1 text-xs text-[var(--color-muted)]">
-                          {a.platform} · {a.account} · {a.comments.length} {t.actor.commentsWord} · <span className="text-[var(--color-danger)]">{signals.riskyComments} {t.actor.riskyWord}</span> · {a.hidden} {t.actor.hiddenWord} · {a.pending} {t.actor.pendingWord} · {signals.postsAppeared} {t.actor.postsWord}
+                          {PLATFORM_META[a.platform as Platform]?.label ?? a.platform} · {a.account} · {a.comments.length} {t.actor.commentsWord} · <span className="text-[var(--color-danger)]">{signals.riskyComments} {t.actor.riskyWord}</span> · {a.hidden} {t.actor.hiddenWord} · {a.pending} {t.actor.pendingWord} · {signals.postsAppeared} {t.actor.postsWord}
                         </p>
                         <p className="mt-1 text-xs text-[var(--color-muted)]">
                           {t.actor.topRisk}: {topCat ? tEnum(t, "autoProtectCategory", topCat) : "—"} · {t.actor.lastActivity}: {relativeTime(a.lastActivity, rel, now)}

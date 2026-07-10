@@ -45,10 +45,11 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   // only; it never blocks approval. Based on visible behavior, not identity.
   let actorLevel: ActorRiskLevel | null = null;
   if (item?.contentItem) {
+    // Platform-scoped so the same id/username on another platform is never merged.
     const authorKey = item.contentItem.authorExternalId
-      ? { authorExternalId: item.contentItem.authorExternalId }
+      ? { platform: item.contentItem.platform, authorExternalId: item.contentItem.authorExternalId }
       : item.contentItem.authorDisplayName
-      ? { authorDisplayName: item.contentItem.authorDisplayName }
+      ? { platform: item.contentItem.platform, authorDisplayName: item.contentItem.authorDisplayName }
       : null;
     if (authorKey) {
       const authorReps = await prisma.reputationItem.findMany({

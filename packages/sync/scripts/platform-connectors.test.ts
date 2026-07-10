@@ -37,7 +37,7 @@ async function run() {
   const de = readSrc("apps/web/src/i18n/dictionaries/de.ts");
 
   const fb = getPlatformConnector("facebook");
-  const ig = getPlatformConnector("instagram"); // reserved, unimplemented
+  const ig = getPlatformConnector("youtube"); // still unimplemented in V1.32A
 
   // 1) Foundation types/functions exist and are usable.
   check("1) connector foundation exists", typeof getPlatformConnector === "function" && typeof getCapabilities === "function" && typeof normalizeFacebookReason === "function" && !!FACEBOOK_CAPABILITIES);
@@ -50,6 +50,9 @@ async function run() {
 
   // 4) Unsupported platform returns controlled behavior, never crashes.
   check("4) unsupported platform is safe", ig.supported === false && ig.capabilities === UNSUPPORTED_CAPABILITIES && ig.normalizeReason("live_hide_executed") === "missing_capability" && getPlatformActionAdapter("youtube") === null && platformKeyFor(Platform.YouTube) === "youtube");
+
+  // 4b) Instagram is now a supported read-only connector (not the unsupported fallback).
+  check("4b) Instagram supported read-only", getPlatformConnector("instagram").supported === true && getPlatformConnector("instagram").capabilities.canReadComments === true && getPlatformConnector("instagram").capabilities.canHideComment === false);
 
   // 5) Facebook capabilities include read + hide.
   check("5) FB caps: read + hide", fb.capabilities.canReadComments === true && fb.capabilities.canHideComment === true);

@@ -683,5 +683,6 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
 export { mockMetaFetch } from "./mock-fetch";
 export * from "./live-actions";
 export * from "./facebook-connector";
+export * from "./instagram-connector";
 export * from "./production-safety";
 export * from "./connection-manager";

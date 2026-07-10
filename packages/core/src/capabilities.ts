@@ -106,14 +106,82 @@ export const FACEBOOK_CAPABILITIES: PlatformCapabilities = {
   canReportComment: false,
 };
 
+/**
+ * Instagram Business capabilities — V1.32A is READ-ONLY. Guardora can read and
+ * analyze comments, but no moderation action is enabled yet (no hide/unhide,
+ * delete, reply, like, ban or report). Meta's API can support IG comment
+ * moderation on owned media, but it stays OFF until connection + permissions +
+ * read sync are proven.
+ */
+export const INSTAGRAM_CAPABILITIES: PlatformCapabilities = {
+  canReadComments: true,
+  canReadPostComments: true,
+  canReadAdComments: false,
+  canHideComment: false,
+  canVerifyHiddenState: false,
+  canFetchAuthor: true,
+  canFetchPost: true,
+  canModerateAutomatically: false,
+  supportsPublicHiddenState: false,
+  publicHiddenStillVisibleToAuthorOrAdmin: false,
+  canDeleteComment: false,
+  canReplyToComment: false,
+  canLikeComment: false,
+  canBanAuthor: false,
+  canReportComment: false,
+};
+
 const CAPABILITIES: Record<PlatformKey, PlatformCapabilities> = {
   facebook: FACEBOOK_CAPABILITIES,
-  instagram: UNSUPPORTED_CAPABILITIES,
+  instagram: INSTAGRAM_CAPABILITIES,
   youtube: UNSUPPORTED_CAPABILITIES,
   tiktok: UNSUPPORTED_CAPABILITIES,
   linkedin: UNSUPPORTED_CAPABILITIES,
   google_business: UNSUPPORTED_CAPABILITIES,
 };
+
+/** A moderation action a platform may or may not support. */
+export type PlatformCapabilityAction = "hide_comment" | "delete_comment" | "reply" | "like" | "ban_author" | "report";
+
+/** Whether a capability set permits a given moderation action. */
+export function actionCapability(caps: PlatformCapabilities, action: PlatformCapabilityAction): boolean {
+  switch (action) {
+    case "hide_comment": return caps.canHideComment;
+    case "delete_comment": return caps.canDeleteComment;
+    case "reply": return caps.canReplyToComment;
+    case "like": return caps.canLikeComment;
+    case "ban_author": return caps.canBanAuthor;
+    case "report": return caps.canReportComment;
+  }
+}
+
+/**
+ * A comment normalized into Guardora's platform-agnostic shape. Product pages
+ * consume this — never platform-specific field names or raw ids in the UI.
+ */
+export interface NormalizedComment {
+  platform: PlatformKey;
+  accountId: string;
+  externalCommentId?: string;
+  externalPostId?: string;
+  authorExternalId?: string;
+  authorDisplayName?: string;
+  text: string;
+  createdAt: Date;
+  postSnippet?: string;
+  permalink?: string;
+}
+
+/**
+ * Stable, PLATFORM-SCOPED actor identity key. The same username/id on two
+ * platforms must NEVER be treated as one person — the platform is part of the
+ * key. Returns null for a nameless/idless author (aggregate-only).
+ */
+export function actorIdentityKey(platform: PlatformKey, authorExternalId?: string | null, authorDisplayName?: string | null): string | null {
+  if (authorExternalId) return `${platform}:id:${authorExternalId}`;
+  if (authorDisplayName) return `${platform}:name:${authorDisplayName}`;
+  return null;
+}
 
 export function getCapabilities(platform: PlatformKey): PlatformCapabilities {
   return CAPABILITIES[platform] ?? UNSUPPORTED_CAPABILITIES;
@@ -177,6 +245,31 @@ export function normalizeFacebookReason(reason: string | null | undefined, statu
   }
 }
 
+/**
+ * Product-level reasons a READ-ONLY sync can fail with (diagnostics only — the
+ * default UI shows friendly copy, raw provider errors stay under Advanced).
+ */
+export type PlatformSyncErrorReason =
+  | "missing_permission"
+  | "account_not_found"
+  | "media_not_found"
+  | "comment_unavailable"
+  | "rate_limited"
+  | "token_invalid"
+  | "provider_error";
+
+/** Map a raw Instagram/Graph sync error onto a product-level sync reason. */
+export function mapInstagramSyncError(raw: { code?: string | null; reason?: string | null }): PlatformSyncErrorReason {
+  const hay = `${(raw.code ?? "").toLowerCase()} ${(raw.reason ?? "").toLowerCase()}`;
+  if (/token|oauth|expired|session|reconnect/.test(hay)) return "token_invalid";
+  if (/permission|scope|instagram_manage|instagram_basic|not authorized/.test(hay)) return "missing_permission";
+  if (/rate|throttl|limit/.test(hay)) return "rate_limited";
+  if (/no.*instagram|ig.*not.*found|account.*not.*found|no linked/.test(hay)) return "account_not_found";
+  if (/media.*not.*found|no media/.test(hay)) return "media_not_found";
+  if (/comment.*unavailable|comment.*not.*found|deleted|gone/.test(hay)) return "comment_unavailable";
+  return "provider_error";
+}
+
 /** Map a raw Facebook/provider error onto a normalized reason. No raw text leaks out. */
 export function mapFacebookError(raw: { code?: string | null; reason?: string | null }): NormalizedActionReason {
   const code = (raw.code ?? "").toLowerCase();
@@ -209,15 +302,22 @@ export function hiddenStateWordingKey(caps: PlatformCapabilities): "hiddenFromPu
 
 export interface PlatformConnectorInfo {
   platform: PlatformKey;
-  /** True only for platforms with a real, implemented connector (Facebook today). */
+  /**
+   * True for platforms with a real, implemented connector. Facebook (moderation)
+   * and Instagram (read-only sync) are supported in V1.32A.
+   */
   supported: boolean;
   capabilities: PlatformCapabilities;
   normalizeReason(reason: string | null | undefined, status?: string | null): NormalizedActionReason;
   mapError(raw: { code?: string | null; reason?: string | null }): NormalizedActionReason;
   hiddenStateKey(): "hiddenFromPublic" | "flagged" | "manualReview";
+  /** Whether this platform/account can perform a moderation action right now. */
+  canPerform(action: PlatformCapabilityAction): boolean;
+  /** `missing_capability` if the action is not available, else null (allowed). */
+  blockedReason(action: PlatformCapabilityAction): NormalizedActionReason | null;
 }
 
-const IMPLEMENTED: Set<PlatformKey> = new Set(["facebook"]);
+const IMPLEMENTED: Set<PlatformKey> = new Set(["facebook", "instagram"]);
 
 export function isPlatformSupported(platform: PlatformKey): boolean {
   return IMPLEMENTED.has(platform);
@@ -239,5 +339,7 @@ export function getPlatformConnector(platform: PlatformKey): PlatformConnectorIn
     normalizeReason: (reason, status) => (supported ? normalizeFacebookReason(reason, status) : "missing_capability"),
     mapError: (rawErr) => (supported ? mapFacebookError(rawErr) : "missing_capability"),
     hiddenStateKey: () => hiddenStateWordingKey(capabilities),
+    canPerform: (action) => actionCapability(capabilities, action),
+    blockedReason: (action) => (actionCapability(capabilities, action) ? null : "missing_capability"),
   };
 }

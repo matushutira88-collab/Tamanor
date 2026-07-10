@@ -3,7 +3,7 @@ import {
   buildActorSignals, actorRiskScore, actorRiskLevel, sentimentBucket,
   type ActorComment, type ActorRiskLevel, type SentimentBucket,
 } from "@guardora/ai";
-import { getPlatformConnector, platformKeyFor } from "@guardora/core";
+import { getPlatformConnector, platformKeyFor, actorIdentityKey, PLATFORM_META, type Platform } from "@guardora/core";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -23,9 +23,10 @@ const HIDE_REASONS = ["live_hide_executed", "already_hidden"];
 const BUCKET_TONE: Record<SentimentBucket, "ok" | "neutral" | "warn" | "danger"> = { positive: "ok", neutral: "neutral", negative: "warn", risky: "danger" };
 
 interface Row {
-  id: string; text: string; author: string; authorKey: string | null; platform: string; account: string;
+  id: string; text: string; author: string; authorKey: string | null; platformLabel: string; account: string;
   permalink: string | null; createdAt: Date; bucket: SentimentBucket; riskLevel: string; category: string | null;
-  statusKey: string; hiddenPublic: boolean; pending: boolean; resolved: boolean; queueItemId: string | null; actorLevel: ActorRiskLevel | null;
+  statusKey: string; hiddenPublic: boolean; pending: boolean; resolved: boolean; queueItemId: string | null;
+  actorLevel: ActorRiskLevel | null; cantHide: boolean;
 }
 
 export default async function CommentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -74,7 +75,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const authorComments = new Map<string, ActorComment[]>();
   for (const r of repItems) {
     const ci = r.contentItem;
-    const key = ci.authorExternalId ? `id:${ci.authorExternalId}` : ci.authorDisplayName ? `name:${ci.authorDisplayName}` : null;
+    const key = actorIdentityKey(platformKeyFor(ci.platform), ci.authorExternalId, ci.authorDisplayName);
     if (!key) continue;
     (authorComments.get(key) ?? authorComments.set(key, []).get(key)!).push({ categories: r.riskCategories ?? [], riskLevel: r.riskLevel as string, sentiment: r.sentiment as string, postId: ci.externalParentId ?? null, text: ci.text, hidden: ci.externalId ? execState.get(ci.externalId) === "hidden" : false });
   }
@@ -104,12 +105,15 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       : qi?.queueState === "no_action" ? "st_noAction"
       : cats.includes("normal_criticism") ? "st_kept"
       : "st_captured";
-    const key = ci.authorExternalId ? `id:${ci.authorExternalId}` : ci.authorDisplayName ? `name:${ci.authorDisplayName}` : null;
+    const key = actorIdentityKey(platformKeyFor(ci.platform), ci.authorExternalId, ci.authorDisplayName);
+    const caps = getPlatformConnector(platformKeyFor(ci.platform)).capabilities;
     return {
       id: r.id, text: ci.text, author: ci.authorDisplayName ?? t.comments.unknownAuthor, authorKey: key,
-      platform: ci.platform, account: ci.connectedAccount?.externalName ?? "—", permalink: ci.permalink,
+      platformLabel: PLATFORM_META[ci.platform as Platform]?.label ?? ci.platform, account: ci.connectedAccount?.externalName ?? "—", permalink: ci.permalink,
       createdAt: r.createdAt, bucket, riskLevel: r.riskLevel as string, category: cats[0] ?? null,
       statusKey, hiddenPublic, pending, resolved, queueItemId: qi?.id ?? null, actorLevel: key ? authorLevel.get(key) ?? null : null,
+      // Risky comment on a platform that can't hide yet (e.g. Instagram in V1.32A).
+      cantHide: bucket === "risky" && !caps.canHideComment && !hiddenPublic && !resolved,
     };
   });
 
@@ -207,14 +211,14 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                         {r.actorLevel ? <Link href="/dashboard/actor-risk"><Badge tone={r.actorLevel === "medium" ? "warn" : "danger"}>{t.actor.badgePrefix}: {t.actor[`level_${r.actorLevel}` as "level_medium"]}</Badge></Link> : null}
                       </div>
                       <p className="text-sm">{r.text}</p>
-                      <p className="text-xs text-[var(--color-muted)]">{r.author} · {r.platform} · {r.account} · {relativeTime(r.createdAt, rel, now)} · {t.comments[r.statusKey as "st_captured"]}</p>
+                      <p className="text-xs text-[var(--color-muted)]">{r.author} · {r.platformLabel} · {r.account} · {relativeTime(r.createdAt, rel, now)} · {t.comments[r.statusKey as "st_captured"]}</p>
                     </summary>
 
                     <div className="border-t border-[var(--color-border)] p-4 text-sm">
                       <p className="mb-3 whitespace-pre-wrap">{r.text}</p>
                       <dl className="space-y-1.5 text-xs">
                         <Row2 label={t.comments.author}>{r.author}</Row2>
-                        <Row2 label={t.comments.platform}>{r.platform}</Row2>
+                        <Row2 label={t.comments.platform}>{r.platformLabel}</Row2>
                         <Row2 label={t.comments.account}>{r.account}</Row2>
                         <Row2 label={t.comments.sentiment}>{t.rep[`bucket_${r.bucket}` as "bucket_positive"]}</Row2>
                         <Row2 label={t.comments.risk}>{tEnum(t, "risk", r.riskLevel)}{r.category ? ` · ${tEnum(t, "autoProtectCategory", r.category)}` : ""}</Row2>
@@ -222,6 +226,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                         {r.permalink ? <Row2 label={t.comments.post}><a href={r.permalink} target="_blank" rel="noopener noreferrer" className="text-[var(--color-brand)] hover:underline">{t.comments.post} →</a></Row2> : null}
                       </dl>
                       {r.hiddenPublic ? <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs text-[var(--color-muted)]">{t.common.hiddenFromPublicHelp}</p> : null}
+                      {r.cantHide ? <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs text-[var(--color-muted)]">{t.comments.cantHideNote}</p> : null}
                       <div className="mt-3 flex flex-wrap gap-2">
                         {r.queueItemId ? <Link href={`/dashboard/action-queue/${r.queueItemId}`} className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:border-[var(--color-border-strong)]">{t.comments.openInQueue}</Link> : null}
                         {r.actorLevel ? <Link href="/dashboard/actor-risk" className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:border-[var(--color-border-strong)]">{t.comments.openActor}</Link> : null}
