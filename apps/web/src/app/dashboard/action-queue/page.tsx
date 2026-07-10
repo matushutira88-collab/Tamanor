@@ -42,6 +42,8 @@ export default async function ActionQueuePage({ searchParams }: { searchParams: 
     <>
       <PageHeader title={t.cc.queueTitle} description={tab === "active" ? t.cc.queueActiveSubtitle : t.cc.queueSubtitle} action={<Badge tone={activeCount > 0 ? "warn" : "ok"}>{activeCount} {t.cc.tabActive.toLowerCase()}</Badge>} />
 
+      <p className="mb-3 text-xs text-[var(--color-muted)]">{t.cc.queueExplainer}</p>
+
       <div className="mb-4 flex flex-wrap gap-1.5">
         {QUEUE_TABS.map((tb) => (
           <Link key={tb} href={`/dashboard/action-queue${tb === "active" ? "" : `?tab=${tb}`}`}

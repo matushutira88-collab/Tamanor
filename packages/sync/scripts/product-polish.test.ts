@@ -79,7 +79,7 @@ async function run() {
   check("14) reconnect CTA gated on account state", /lastError === "token_expired"/.test(acctDetail) && /!ok \?[\s\S]*?ctaReconnect/.test(cc));
 
   // 15) Control Center explains auto protection in plain language.
-  check("15) Control Center human explainer", control.includes("controlExplainer") && sk.includes("Jasne škodlivé komentáre môže Guardora skryť automaticky"));
+  check("15) Control Center human explainer", control.includes("controlExplainer") && sk.includes("Vy určujete pravidlá") && sk.includes("Jasne škodlivé komentáre môže skryť podľa vašich nastavení"));
 
   // 16) Active tab excludes resolved/history/dry-run.
   const active = queueTabStates("active")!;
@@ -96,6 +96,27 @@ async function run() {
 
   // 20) state truth (normal criticism never risky/hidden by classification).
   check("20) state truth: normal_criticism never risky", sentimentBucket({ categories: ["normal_criticism"], sentiment: "negative", riskLevel: "critical" }) !== "risky");
+
+  // --- V1.29B-1 self-service wording ---
+  check("S1) Control Center says the customer defines the rules", control.includes("controlExplainer") && sk.includes("Vy určujete pravidlá") && en.includes("You define the rules"));
+  check("S2) Control Center: Guardora acts per customer settings", sk.includes("podľa vašich nastavení") && en.includes("based on your settings"));
+  check("S3) Control Center: unclear cases go to the customer's team", sk.includes("na schválenie vášmu tímu") && en.includes("sent to your team for approval"));
+  check("S4) trust copy: normal criticism not hidden automatically", sk.includes("Normálna kritika nie je automaticky skrývaná") && en.includes("Normal criticism is not hidden automatically") && de.includes("Normale Kritik wird nicht automatisch verborgen"));
+  check("S5) Action Queue: decisions based on customer rules", aqList.includes("queueExplainer") && sk.includes("podľa vašich pravidiel vyžadujú rozhodnutie"));
+  check("S6) self-service note: not a moderation agency, acts on owner's rules", control.includes("selfServiceNote") && sk.includes("nie je moderátorská agentúra") && en.includes("not a moderation agency"));
+
+  // 6/7/8) No forbidden "human moderation / managed / decides for you" wording in the product UI.
+  const productSrc = [cc, aqList, aqDetail, rep, incidents, accounts, acctDetail, control].join("\n");
+  const dicts = [en, sk, de].join("\n");
+  const FORBIDDEN = [
+    /naši moderátori/i, /naši ľudskí moderátori/i, /guardora moderátori/i, /our moderators/i,
+    /human moderators from guardora/i, /moderated by guardora/i, /managed moderation/i,
+    /externá moderác/i, /outsourc/i, /rozhodne za vás/i, /we decide what to hide/i,
+  ];
+  check("6/7/8) no forbidden moderation-agency wording in product UI", FORBIDDEN.every((re) => !re.test(productSrc)));
+  // The only allowed use of "moderation agency" is the NEGATION in selfServiceNote.
+  const agencyHits = (dicts.match(/moderátorská agentúra|moderation agency|Moderationsagentur/gi) ?? []);
+  check("6b) 'moderation agency' appears only as a negation (self-service note)", agencyHits.length === 3, String(agencyHits.length));
 
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — Product polish & demo readiness`);
   await prisma.$disconnect();

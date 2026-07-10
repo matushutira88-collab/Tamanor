@@ -558,7 +558,7 @@ export const en = {
     // copywriting
     tagline: "Control how your brand reacts online.",
     subTagline: "Monitor everything. Approve what matters. Automate only what is safe.",
-    neverHideCriticism: "Guardora never hides normal criticism automatically.",
+    neverHideCriticism: "Normal criticism is not hidden automatically.",
     // command center
     commandTitle: "Command Center",
     connectedAccounts: "Connected accounts",
@@ -593,7 +593,9 @@ export const en = {
     applyPreset: "Apply preset",
     presetsHint: "Presets create rules only — never demo content or fake comments.",
     autonomousWarn: "Autonomous can hide comments (in shadow/dry-run until live is enabled). Never used for normal criticism, refunds, legal or safety complaints.",
-    controlExplainer: "Guardora can hide clearly harmful comments automatically. Sensitive or unclear cases are sent to you for approval.",
+    controlExplainer: "You define the rules. Guardora automatically protects your social accounts based on your settings. Clearly harmful comments can be hidden according to your configuration. Sensitive or unclear cases are sent to your team for approval.",
+    selfServiceNote: "Guardora is not a moderation agency. It is an automated protection system that acts according to rules configured by the account owner.",
+    queueExplainer: "This queue shows cases that require a decision according to your rules.",
     save: "Save",
     // action queue
     queueTitle: "Action Queue",
