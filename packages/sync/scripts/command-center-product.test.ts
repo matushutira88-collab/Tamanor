@@ -54,7 +54,7 @@ async function run() {
   // 14) can_hide=false shown as a Facebook limitation.
   check("14) can_hide=false shown as Facebook limitation", cc.includes("sumCanHideFalse") && /reason: "facebook_can_hide_false"/.test(cc));
   // 15) production SK copy present (no dry-run/provider as default label).
-  check("15) SK product copy present; no dry-run/provider default labels", sk.includes("Guardora aktuálne chráni") && sk.includes("Skryté dnes") && sk.includes("Dnešná ochrana") && !cc.includes("dry_run"));
+  check("15) SK product copy present; no dry-run/provider default labels", sk.includes("Guardora aktuálne chráni") && sk.includes("Skryté pre verejnosť dnes") && sk.includes("Dnešná ochrana") && !cc.includes("dry_run"));
   check("15b) EN keys exist", en.includes("protectionProtected") && en.includes("hiddenToday"));
 
   // Behavioral: relativeTime helper.

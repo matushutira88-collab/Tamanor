@@ -62,6 +62,7 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
       {/* V1.29B-1 — self-service explanation: the account owner sets the rules. */}
       <div className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm">
         <p>{t.cc.controlExplainer}</p>
+        <p className="mt-1 text-xs text-[var(--color-muted)]">🔒 {t.common.hideNotDeletion}</p>
         <p className="mt-1 text-xs text-[var(--color-muted)]">🛡️ {t.cc.neverHideCriticism}</p>
         <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.selfServiceNote}</p>
       </div>

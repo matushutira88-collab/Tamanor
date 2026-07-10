@@ -45,6 +45,7 @@
     "product-polish:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/product-polish.test.ts",
     "actor-risk:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/actor-risk.test.ts",
     "comments-visibility:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/comments-visibility.test.ts",
+    "public-visibility:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/public-visibility.test.ts",
     "backfill:queue-states": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/backfill-queue-states.ts",
     "facebook-diagnose:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/facebook-diagnose.test.ts",
     "facebook-token:watchdog": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/facebook-token-watchdog.ts",

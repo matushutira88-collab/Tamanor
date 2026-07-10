@@ -186,6 +186,7 @@ export default async function CommandCenterPage() {
                   <SummaryRow n={failedToday} label={t.cc.sumFailed} href="/dashboard/action-queue?tab=blocked" />
                 </ul>
               )}
+              {hidesToday > 0 ? <p className="mt-2 text-[11px] text-[var(--color-muted)]">{t.common.hiddenFromPublicShort}</p> : null}
             </Card>
           </div>
 

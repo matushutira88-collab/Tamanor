@@ -218,6 +218,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                         <Row2 label={t.comments.status}>{t.comments[r.statusKey as "st_captured"]}</Row2>
                         {r.permalink ? <Row2 label={t.comments.post}><a href={r.permalink} target="_blank" rel="noopener noreferrer" className="text-[var(--color-brand)] hover:underline">{t.comments.post} →</a></Row2> : null}
                       </dl>
+                      {r.hiddenPublic ? <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs text-[var(--color-muted)]">{t.common.hiddenFromPublicHelp}</p> : null}
                       <div className="mt-3 flex flex-wrap gap-2">
                         {r.queueItemId ? <Link href={`/dashboard/action-queue/${r.queueItemId}`} className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:border-[var(--color-border-strong)]">{t.comments.openInQueue}</Link> : null}
                         {r.actorLevel ? <Link href="/dashboard/actor-risk" className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:border-[var(--color-border-strong)]">{t.comments.openActor}</Link> : null}

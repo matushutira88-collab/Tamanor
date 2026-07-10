@@ -197,7 +197,8 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
                     <Field label="Execution ID"><span className="font-mono text-[11px]">{autoExec.id}</span></Field>
                     <Field label={t.cc.lastAttemptAt}>{formatDateTime(autoExec.executedAt ?? autoExec.createdAt)}</Field>
                   </dl>
-                  <p className="mt-2 text-[11px] text-[var(--color-muted)]">{t.cc.hiddenAdminNote}</p>
+                  <p className="mt-2 text-[11px] text-[var(--color-muted)]">{t.common.hiddenFromPublicQueue}</p>
+                  <p className="mt-1 text-[11px] text-[var(--color-muted)]">{t.cc.hiddenAdminNote}</p>
                   {canApprove && ROLLBACK_AVAILABLE ? (
                     <form action={rollbackExecution} className="mt-2">
                       <input type="hidden" name="executionId" value={autoExec.id} />
@@ -335,6 +336,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
                     <p className="mt-0.5 text-[var(--color-muted)]">{t.cc.hiddenVerified}</p>
                   </div>
                 ) : null}
+                <p className="mt-1 text-xs text-[var(--color-muted)]">{t.common.hiddenFromPublicQueue}</p>
                 <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.hiddenAdminNote}</p>
                 <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.liveDoneRollback}</p>
                 {lastExec?.createdAt ? <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.lastAttemptAt}: {formatDateTime(lastExec.createdAt)}</p> : null}
