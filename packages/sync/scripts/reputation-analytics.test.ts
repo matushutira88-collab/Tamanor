@@ -38,9 +38,11 @@ async function run() {
   check("RISKY_CATEGORIES excludes customer-voice", !RISKY_CATEGORIES.has("normal_criticism") && !RISKY_CATEGORIES.has("refund_complaint") && !RISKY_CATEGORIES.has("customer_question"));
   check("topicOf maps category + keywords", topicOf(["scam"], "") === "scam" && topicOf([], "aká je cena tohto?") === "price" && topicOf([], "kedy príde doručenie") === "delivery" && topicOf([], "nič konkrétne") === "uncategorized");
 
-  // --- Navigation ---
-  check("1) Reputation in More nav group", /href: "\/dashboard\/reputation"[\s\S]*?group: "More"/.test(nav) && en.includes('insights: "Reputation"'));
-  check("primary nav still 5 (Reputation not primary)", /href: "\/dashboard\/reputation"[\s\S]*?group: "More"/.test(nav));
+  // --- Navigation (V1.30B: Reputation is a primary page) ---
+  const repEntry = (nav.match(/\{\s*href: "\/dashboard\/reputation"[^{}]*?\}/s) ?? [""])[0];
+  check("1) Reputation is a primary nav page", repEntry.length > 0 && !repEntry.includes("group:") && !repEntry.includes("hidden:") && en.includes('insights: "Reputation"'));
+  const entries0 = nav.match(/\{\s*href: "\/dashboard[^{}]*?\}/gs) ?? [];
+  check("primary nav still 5", entries0.filter((e) => !e.includes("group:") && !e.includes("hidden:")).length === 5);
 
   // --- Route + sections (source) ---
   check("2) /dashboard/reputation route exists", page.includes("export default async function ReputationPage"));

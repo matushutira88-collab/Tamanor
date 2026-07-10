@@ -80,7 +80,7 @@ export function Sidebar({
                 >
                   <NavIconGlyph icon={item.icon} />
                 </span>
-                {navLabels?.[item.icon] ?? item.label}
+                {navLabels?.[item.navKey ?? item.icon] ?? item.label}
               </Link>
             </div>
           );

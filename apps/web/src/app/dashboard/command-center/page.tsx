@@ -148,9 +148,9 @@ export default async function CommandCenterPage() {
         <>
           {/* B) Four primary metric cards — each links to the right page (product flow). */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Link href="/dashboard/action-queue?tab=resolved"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.hiddenToday}</p><p className="mt-1 text-2xl font-bold">{hidesToday}</p><p className="text-[11px] text-[var(--color-muted)]">{autoHidesToday} {t.cc.autoSuffix}</p></Card></Link>
+            <Link href="/dashboard/comments?filter=hidden"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.hiddenToday}</p><p className="mt-1 text-2xl font-bold">{hidesToday}</p><p className="text-[11px] text-[var(--color-muted)]">{autoHidesToday} {t.cc.autoSuffix}</p></Card></Link>
             <Link href="/dashboard/action-queue"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.pendingDecision}</p><p className="mt-1 text-2xl font-bold">{pendingApprovals}</p></Card></Link>
-            <Link href="/dashboard/reputation"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.riskyComments}</p><p className="mt-1 text-2xl font-bold">{riskyToday}</p><p className="text-[11px] text-[var(--color-muted)]">{t.cc.today}</p></Card></Link>
+            <Link href="/dashboard/comments?filter=risky"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.riskyComments}</p><p className="mt-1 text-2xl font-bold">{riskyToday}</p><p className="text-[11px] text-[var(--color-muted)]">{t.cc.today}</p></Card></Link>
             <Link href="/dashboard/accounts"><Card className="p-4 transition hover:border-[var(--color-border-strong)]"><p className="text-xs text-[var(--color-muted)]">{t.cc.accountStatus}</p><p className={`mt-1 text-2xl font-bold ${needsReconnect.length > 0 ? "text-[var(--color-danger)]" : ""}`}>{needsReconnect.length > 0 ? needsReconnect.length : `${accounts.length}/${accounts.length}`}</p><p className="text-[11px] text-[var(--color-muted)]">{needsReconnect.length > 0 ? t.cc.accountsAttention : "OK"}</p></Card></Link>
           </div>
 
@@ -179,7 +179,7 @@ export default async function CommandCenterPage() {
                 <p className="text-sm text-[var(--color-muted)]">{t.cc.noActivityToday}</p>
               ) : (
                 <ul className="space-y-1.5 text-sm">
-                  <SummaryRow n={hidesToday} label={t.cc.sumHiddenPublic} href="/dashboard/action-queue?tab=resolved" />
+                  <SummaryRow n={hidesToday} label={t.cc.sumHiddenPublic} href="/dashboard/comments?filter=hidden" />
                   <SummaryRow n={pendingApprovals} label={t.cc.sumPending} href="/dashboard/action-queue" />
                   <SummaryRow n={canHideFalseToday} label={t.cc.sumCanHideFalse} href="/dashboard/action-queue?tab=resolved" />
                   <SummaryRow n={deletedToday} label={t.cc.sumDeleted} href="/dashboard/action-queue?tab=resolved" />

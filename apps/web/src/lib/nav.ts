@@ -33,6 +33,8 @@ export interface NavItem {
    * is intentionally small: 5 primary pages + Timeline/Audit/Settings.
    */
   hidden?: boolean;
+  /** V1.30 — override the dashboardNav dictionary key (defaults to `icon`). */
+  navKey?: string;
 }
 
 /** Look up a nav item by href (avoids brittle positional indexing). */
@@ -59,10 +61,23 @@ export const DASHBOARD_NAV: NavItem[] = [
     icon: "command",
   },
   {
+    href: "/dashboard/comments",
+    label: "Comments",
+    description: "Every comment Guardora captured on your connected accounts — positive, neutral, negative and risky.",
+    icon: "inbox",
+    navKey: "comments",
+  },
+  {
     href: "/dashboard/action-queue",
     label: "Action Queue",
     description: "Items that still need a decision.",
     icon: "queue",
+  },
+  {
+    href: "/dashboard/reputation",
+    label: "Reputation",
+    description: "Public mood, risk trends, topics and the riskiest posts for your brand.",
+    icon: "insights",
   },
   {
     href: "/dashboard/control-center",
@@ -75,18 +90,21 @@ export const DASHBOARD_NAV: NavItem[] = [
     label: "Accounts",
     description: "Connect platforms via official OAuth. No passwords, no scraping.",
     icon: "accounts",
+    group: "More",
   },
   {
     href: "/dashboard/incidents",
     label: "Incidents",
     description: "Crises, threats and coordinated attacks that need attention.",
     icon: "incidents",
+    group: "More",
   },
   {
-    href: "/dashboard/reputation",
-    label: "Reputation",
-    description: "Public mood, risk trends, topics and the riskiest posts for your brand.",
-    icon: "insights",
+    href: "/dashboard/actor-risk",
+    label: "Actor Risk",
+    description: "Profiles with repeated risky behavior in comments on connected accounts.",
+    icon: "incidents",
+    navKey: "actorRisk",
     group: "More",
   },
   {

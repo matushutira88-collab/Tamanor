@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Permission, PLATFORM_META, Platform, can } from "@guardora/core";
-import { NEVER_AUTONOMOUS, AUTONOMOUS_ELIGIBLE, FACEBOOK_HIDE_PERMISSION } from "@guardora/ai";
+import { NEVER_AUTONOMOUS, AUTONOMOUS_ELIGIBLE, FACEBOOK_HIDE_PERMISSION, buildActorSignals, actorRiskScore, actorRiskLevel, type ActorRiskLevel } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
 import { predictHideOutcome, findPreflightDryRun, resolvePrimaryAction, checkAccountToken, getCommentLifecycle, ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
@@ -41,6 +41,29 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
     orderBy: { createdAt: "desc" },
     select: { id: true, status: true, reason: true, confidence: true, policyCategory: true, providerErrorCode: true, providerErrorMessage: true, executedAt: true, createdAt: true },
   });
+  // V1.30 — lightweight actor-risk badge for this comment's author. Informational
+  // only; it never blocks approval. Based on visible behavior, not identity.
+  let actorLevel: ActorRiskLevel | null = null;
+  if (item?.contentItem) {
+    const authorKey = item.contentItem.authorExternalId
+      ? { authorExternalId: item.contentItem.authorExternalId }
+      : item.contentItem.authorDisplayName
+      ? { authorDisplayName: item.contentItem.authorDisplayName }
+      : null;
+    if (authorKey) {
+      const authorReps = await prisma.reputationItem.findMany({
+        where: { tenantId: session.tenantId, brandId: q.brandId, contentItem: { is: authorKey } },
+        select: { riskLevel: true, riskCategories: true, sentiment: true, contentItem: { select: { text: true, externalParentId: true } } },
+        take: 500,
+      });
+      if (authorReps.length > 1) {
+        const level = actorRiskLevel(actorRiskScore(buildActorSignals(
+          authorReps.map((r) => ({ categories: r.riskCategories ?? [], riskLevel: r.riskLevel as string, sentiment: r.sentiment as string, postId: r.contentItem.externalParentId ?? null, text: r.contentItem.text, hidden: false })),
+        )));
+        if (level !== "low") actorLevel = level;
+      }
+    }
+  }
   const meta = item ? PLATFORM_META[item.platform as Platform] : null;
   const neverAuto = NEVER_AUTONOMOUS.has(q.category as never);
   const fpRisk = q.confidence >= 0.85 ? "Low" : q.confidence >= 0.7 ? "Medium" : "High";
@@ -149,7 +172,10 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
             <dl className="mt-3">
               <Field label={t.cc.colCategory}>{tEnum(t, "autoProtectCategory", q.category)}</Field>
               <Field label="Confidence">{(q.confidence * 100).toFixed(0)}%</Field>
-              <Field label={meta?.label ?? "Platform"}>{item?.brand.name} · {item?.contentItem.authorDisplayName ?? "—"}</Field>
+              <Field label={meta?.label ?? "Platform"}>
+                {item?.brand.name} · {item?.contentItem.authorDisplayName ?? "—"}
+                {actorLevel ? <Link href="/dashboard/actor-risk" className="ml-2 align-middle"><Badge tone={actorLevel === "medium" ? "warn" : "danger"}>{t.actor.badgePrefix}: {t.actor[`level_${actorLevel}` as "level_medium"]}</Badge></Link> : null}
+              </Field>
               <Field label={t.cc.proposedActionLabel}>{q.proposedAction.replace(/_/g, " ")}</Field>
               <Field label={t.cc.colState}><Badge tone="warn">{tEnum(t, "queueState", q.queueState)}</Badge></Field>
               <Field label={t.cc.whyLabel}><span className="text-xs">{q.reason}</span></Field>

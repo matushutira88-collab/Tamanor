@@ -156,16 +156,22 @@ export default async function ReputationPage({ searchParams }: { searchParams: P
             <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.rep.pendingDecision}</p><p className="mt-1 text-2xl font-bold">{pendingApprovals}</p></Card>
           </div>
 
+          {/* Actor Risk preview link (V1.30) */}
+          <Link href="/dashboard/actor-risk" className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] p-3 text-sm hover:border-[var(--color-border-strong)]">
+            <span>{t.rep.actorRiskLink}</span>
+            <span className="shrink-0 text-xs font-medium text-[var(--color-brand)]">{t.rep.actorRiskLinkCta} →</span>
+          </Link>
+
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
             {/* E) Sentiment breakdown */}
             <Card>
               <h3 className="mb-2 text-sm font-semibold">{t.rep.sentimentBreakdown}</h3>
               <p className="mb-3 text-xs text-[var(--color-muted)]">{t.rep.riskyNote}</p>
               {([["positive", buckets.positive, "ok"], ["neutral", buckets.neutral, "neutral"], ["negative", buckets.negative, "warn"], ["risky", buckets.risky, "danger"]] as const).map(([k, n, tone]) => (
-                <div key={k} className="mb-2">
+                <Link key={k} href={`/dashboard/comments?filter=${k}`} className="mb-2 block hover:opacity-80">
                   <div className="mb-0.5 flex justify-between text-xs"><span>{t.rep[`bucket_${k}` as "bucket_positive"]}</span><span className="font-medium">{n}</span></div>
                   <div className="h-2 overflow-hidden rounded-full bg-[var(--color-surface-2)]"><div className={`h-full rounded-full ${tone === "ok" ? "bg-[var(--color-ok)]" : tone === "danger" ? "bg-[var(--color-danger)]" : tone === "warn" ? "bg-[var(--color-warn)]" : "bg-[var(--color-muted)]"}`} style={{ width: `${total ? Math.round((n / total) * 100) : 0}%` }} /></div>
-                </div>
+                </Link>
               ))}
             </Card>
 

@@ -14,3 +14,4 @@ export * from "./auto-protect";
 export * from "./control-center";
 export * from "./pipeline";
 export * from "./reputation";
+export * from "./actor";

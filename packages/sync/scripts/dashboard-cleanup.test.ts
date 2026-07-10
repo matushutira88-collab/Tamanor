@@ -57,7 +57,7 @@ async function run() {
 
   // F) Production nav: 5 primary + More; duplicates hidden but routes intact.
   const visibleCount = (nav.match(/href: "\/dashboard/g) ?? []).length - (nav.match(/hidden: true/g) ?? []).length;
-  check("F1) nav has 9 visible entries (5 primary + Reputation/Timeline/Audit/Settings)", visibleCount === 9, String(visibleCount));
+  check("F1) nav has 11 visible entries (5 primary + Accounts/Incidents/Actor Risk/Timeline/Audit/Settings)", visibleCount === 11, String(visibleCount));
   check("F2) duplicates hidden from nav (Approvals/Inbox/Dashboard/Brands/Rules...)", (nav.match(/hidden: true/g) ?? []).length >= 8);
   check("F3) sidebar filters hidden entries", sidebar.includes("filter((n) => !n.hidden)"));
 

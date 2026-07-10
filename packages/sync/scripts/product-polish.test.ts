@@ -52,8 +52,8 @@ async function run() {
   const entries = nav.match(/\{\s*href: "\/dashboard[^{}]*?\}/gs) ?? [];
   const primaryCount = entries.filter((e) => !e.includes("group:") && !e.includes("hidden:")).length;
   check("7) exactly 5 primary nav items", primaryCount === 5, String(primaryCount));
-  // 8) More includes Reputation.
-  check("8) More nav includes Reputation", /href: "\/dashboard\/reputation"[\s\S]*?group: "More"/.test(nav));
+  // 8) Comments is primary; More includes Accounts (V1.30B nav).
+  check("8) Comments primary + More includes Accounts", /href: "\/dashboard\/comments"/.test(nav) && !/href: "\/dashboard\/comments"[^{}]*group:/.test(nav) && /href: "\/dashboard\/accounts"[\s\S]*?group: "More"/.test(nav));
   // 9) hidden duplicate routes stay routable (hidden:true), not visible.
   for (const h of ["inbox", "approvals", "insights", "brands", "rules", "reports", "leads", "team", "billing"]) {
     check(`9) ${h} route hidden from nav but routable`, new RegExp(`href: "/dashboard/${h}"[^}]*hidden: true`).test(nav));
