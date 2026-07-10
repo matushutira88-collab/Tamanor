@@ -587,6 +587,7 @@ export const sk: Dictionary = {
     autonomousWarn: "Autonómne môže skryť komentáre (v tieni/nanečisto, kým nie je zapnuté live). Nikdy sa nepoužije na bežnú kritiku, reklamácie, právne ani bezpečnostné sťažnosti.",
     controlExplainer: "Vy určujete pravidlá. Guardora podľa nich automaticky chráni vaše sociálne účty. Jasne škodlivé komentáre môže skryť podľa vašich nastavení. Citlivé alebo nejasné prípady pošle na schválenie vášmu tímu.",
     selfServiceNote: "Guardora nie je moderátorská agentúra. Je to automatizovaný ochranný systém, ktorý koná podľa pravidiel nastavených vlastníkom účtu.",
+    hideUnsupportedNote: "Táto platforma nepodporuje automatické skrytie komentárov. Guardora bude komentáre označovať a posielať na schválenie podľa vašich pravidiel.",
     queueExplainer: "Tu sa zobrazujú prípady, ktoré podľa vašich pravidiel vyžadujú rozhodnutie.",
     save: "Uložiť",
     queueTitle: "Fronta akcií",
@@ -1038,6 +1039,8 @@ export const sk: Dictionary = {
     st_deleted: "Komentár už neexistuje alebo nie je dostupný",
     st_canHideFalse: "Facebook nedovolil skrytie",
     st_captured: "Zachytené",
+    st_flagged: "Označené",
+    st_manualReview: "Vyžaduje manuálnu kontrolu",
     trustNote: "Normálna kritika nie je automaticky skrývaná. Komentáre, ktoré vyžadujú rozhodnutie, sa zobrazia vo fronte podľa vašich pravidiel.",
     emptyNoAccount: "Zatiaľ nie je pripojený žiadny účet.",
     emptyNoAccountBody: "Pripojte Facebook Page, aby Guardora mohla začať zachytávať komentáre.",
@@ -1045,6 +1048,22 @@ export const sk: Dictionary = {
     emptyNoCommentsBody: "Keď sa na pripojených účtoch objavia komentáre, zobrazia sa tu.",
     emptyFilter: "Pre tento filter sa nenašli žiadne komentáre.",
     emptySearch: "Nenašli sa žiadne komentáre pre zadané hľadanie.",
+  },
+
+  // V1.31 Platform capabilities — čo dokáže pripojená platforma/účet reálne robiť.
+  cap: {
+    summaryTitle: "Čo tu Guardora dokáže",
+    commentsOn: "Komentáre: sledovanie zapnuté",
+    commentsOff: "Komentáre: sledovanie nedostupné",
+    hideSupported: "Skrytie pre verejnosť: podporované",
+    hideUnsupported: "Skrytie pre verejnosť: nepodporované",
+    autoOn: "Automatická ochrana: zapnutá",
+    autoOff: "Automatická ochrana: vypnutá",
+    flagsOnly: "Moderovanie: iba označovanie",
+    manualOnly: "Moderovanie: iba manuálna kontrola",
+    visibilityNote: "Poznámka: Autor komentára a správcovia stránky môžu skryté komentáre stále vidieť.",
+    unsupportedPlatform: "Táto platforma zatiaľ nie je pripojená pre automatické akcie.",
+    advanced: "Rozšírené",
   },
 
   memory: {

@@ -1,4 +1,4 @@
-import { Permission, can } from "@guardora/core";
+import { Permission, can, getPlatformConnector, platformKeyFor } from "@guardora/core";
 import { CONTROL_CATEGORIES, CONTROL_MODES, NEVER_AUTONOMOUS } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
 import { ROLLBACK_AVAILABLE } from "@guardora/sync";
@@ -28,6 +28,9 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
     orderBy: { createdAt: "asc" },
   });
   const policies = await prisma.controlPolicy.findMany({ where: { tenantId: session.tenantId } });
+  // V1.31 — capability awareness: does every connected platform support hiding?
+  const connectedPlatforms = await prisma.connectedAccount.findMany({ where: { tenantId: session.tenantId, ...realMode.brandWhere }, select: { platform: true }, distinct: ["platform"] });
+  const anyHideUnsupported = connectedPlatforms.some((p) => !getPlatformConnector(platformKeyFor(p.platform)).capabilities.canHideComment);
   const modeFor = (brandId: string, cat: string) => policies.find((p) => p.brandId === brandId && p.category === cat)?.mode ?? "monitor";
   const confFor = (brandId: string, cat: string) => policies.find((p) => p.brandId === brandId && p.category === cat)?.minConfidence ?? 0.8;
   // V1.27 — per-brand live safety settings for the "Autonomous Safe Live" section.
@@ -62,6 +65,7 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
       {/* V1.29B-1 — self-service explanation: the account owner sets the rules. */}
       <div className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm">
         <p>{t.cc.controlExplainer}</p>
+        {anyHideUnsupported ? <p className="mt-1 text-xs text-[var(--color-muted)]">ℹ️ {t.cc.hideUnsupportedNote}</p> : null}
         <p className="mt-1 text-xs text-[var(--color-muted)]">🔒 {t.common.hideNotDeletion}</p>
         <p className="mt-1 text-xs text-[var(--color-muted)]">🛡️ {t.cc.neverHideCriticism}</p>
         <p className="mt-1 text-xs text-[var(--color-muted)]">{t.cc.selfServiceNote}</p>

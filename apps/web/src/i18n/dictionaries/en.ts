@@ -604,6 +604,7 @@ export const en = {
     autonomousWarn: "Autonomous can hide comments (in shadow/dry-run until live is enabled). Never used for normal criticism, refunds, legal or safety complaints.",
     controlExplainer: "You define the rules. Guardora automatically protects your social accounts based on your settings. Clearly harmful comments can be hidden according to your configuration. Sensitive or unclear cases are sent to your team for approval.",
     selfServiceNote: "Guardora is not a moderation agency. It is an automated protection system that acts according to rules configured by the account owner.",
+    hideUnsupportedNote: "This platform does not support automatically hiding comments. Guardora will flag comments and send them for approval according to your rules.",
     queueExplainer: "This queue shows cases that require a decision according to your rules.",
     save: "Save",
     // action queue
@@ -1066,6 +1067,8 @@ export const en = {
     st_deleted: "Comment no longer exists or is unavailable",
     st_canHideFalse: "Facebook did not allow hiding",
     st_captured: "Captured",
+    st_flagged: "Flagged",
+    st_manualReview: "Requires manual review",
     trustNote: "Normal criticism is not hidden automatically. Comments that require a decision appear in the queue, based on your rules.",
     emptyNoAccount: "No account is connected yet.",
     emptyNoAccountBody: "Connect a Facebook Page so Guardora can start capturing comments.",
@@ -1073,6 +1076,22 @@ export const en = {
     emptyNoCommentsBody: "When comments appear on your connected accounts, they will show up here.",
     emptyFilter: "No comments were found for this filter.",
     emptySearch: "No comments were found for your search.",
+  },
+
+  // V1.31 Platform capabilities — what a connected platform/account can actually do.
+  cap: {
+    summaryTitle: "What Guardora can do here",
+    commentsOn: "Comments: monitoring on",
+    commentsOff: "Comments: monitoring unavailable",
+    hideSupported: "Hide from public: supported",
+    hideUnsupported: "Hide from public: not supported",
+    autoOn: "Automatic protection: on",
+    autoOff: "Automatic protection: off",
+    flagsOnly: "Moderation: flag / mark only",
+    manualOnly: "Moderation: manual review only",
+    visibilityNote: "Note: the comment author and page admins may still see hidden comments.",
+    unsupportedPlatform: "This platform is not connected for automatic actions yet.",
+    advanced: "Advanced",
   },
 
   // Brand risk memory + feedback (V1.17).

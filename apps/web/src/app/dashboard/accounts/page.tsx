@@ -6,6 +6,8 @@ import {
   Permission,
   Platform,
   can,
+  getPlatformConnector,
+  platformKeyFor,
 } from "@guardora/core";
 import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsConfig } from "@guardora/config";
 import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
@@ -146,13 +148,35 @@ export default async function AccountsPage({
                       })() : null}
                     </div>
                     <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-[var(--color-muted)]">
-                      <div>{hdrT.dash.pageIdLabel}: <span className="text-[var(--color-fg)]">{a.pageId ?? a.externalId}</span></div>
                       <div>{hdrT.dash.brand}: <span className="text-[var(--color-fg)]">{brandNameById.get(a.brandId) ?? ""}</span></div>
                       <div>{hdrT.dash.lastSync}: <span className="text-[var(--color-fg)]">{a.lastSuccessfulSyncAt ? formatDateTime(a.lastSuccessfulSyncAt) : "—"}</span></div>
                       <div>{hdrT.dash.connectedAtLabel}: <span className="text-[var(--color-fg)]">{formatDateTime(a.createdAt)}</span></div>
                     </dl>
-                    {a.grantedPermissions.length > 0 ? (
-                      <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">{hdrT.dash.grantedPermsLabel}: {a.grantedPermissions.join(", ")}</p>
+                    {/* V1.31 — capability summary in plain language (reads platform capabilities). */}
+                    {(() => {
+                      const caps = getPlatformConnector(platformKeyFor(a.platform)).capabilities;
+                      return (
+                        <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2">
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{hdrT.cap.summaryTitle}</p>
+                          <ul className="space-y-0.5 text-xs">
+                            <li>{caps.canReadComments ? "✅" : "⛔"} {caps.canReadComments ? hdrT.cap.commentsOn : hdrT.cap.commentsOff}</li>
+                            <li>{caps.canHideComment ? "✅" : "⛔"} {caps.canHideComment ? hdrT.cap.hideSupported : hdrT.cap.hideUnsupported}</li>
+                            <li>{caps.canModerateAutomatically ? "✅" : "⛔"} {caps.canModerateAutomatically ? hdrT.cap.autoOn : hdrT.cap.autoOff}</li>
+                          </ul>
+                          {caps.publicHiddenStillVisibleToAuthorOrAdmin ? (
+                            <p className="mt-1 text-[11px] text-[var(--color-muted)]">{hdrT.cap.visibilityNote}</p>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
+                    {a.grantedPermissions.length > 0 || a.pageId ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] font-medium text-[var(--color-muted)]">{hdrT.cap.advanced}</summary>
+                        <div className="mt-1 space-y-1 text-[11px] text-[var(--color-muted)]">
+                          <div>{hdrT.dash.pageIdLabel}: <span className="font-mono text-[var(--color-fg)]">{a.pageId ?? a.externalId}</span></div>
+                          {a.grantedPermissions.length > 0 ? <div>{hdrT.dash.grantedPermsLabel}: {a.grantedPermissions.join(", ")}</div> : null}
+                        </div>
+                      </details>
                     ) : null}
                     {a.lastError ? (
                       <p className="mt-1.5 text-[11px] text-[var(--color-danger)]">{hdrT.dash.lastSyncErrorLabel}: {a.lastError}</p>

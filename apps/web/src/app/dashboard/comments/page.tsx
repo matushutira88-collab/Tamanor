@@ -3,6 +3,7 @@ import {
   buildActorSignals, actorRiskScore, actorRiskLevel, sentimentBucket,
   type ActorComment, type ActorRiskLevel, type SentimentBucket,
 } from "@guardora/ai";
+import { getPlatformConnector, platformKeyFor } from "@guardora/core";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -93,8 +94,10 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     const hiddenPublic = st === "hidden";
     const resolved = st === "deleted";
     const pending = qi?.queueState === "approval_required";
+    // V1.31 — capability-aware hidden wording (Facebook → "hidden from public").
+    const hiddenKey = ({ hiddenFromPublic: "st_hidden", flagged: "st_flagged", manualReview: "st_manualReview" } as const)[getPlatformConnector(platformKeyFor(ci.platform)).hiddenStateKey()];
     const statusKey = resolved ? "st_deleted"
-      : hiddenPublic ? "st_hidden"
+      : hiddenPublic ? hiddenKey
       : st === "cannot_hide" ? "st_canHideFalse"
       : pending ? "st_pending"
       : qi?.queueState === "monitor" ? "st_monitored"

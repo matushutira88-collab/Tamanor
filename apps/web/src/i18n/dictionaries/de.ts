@@ -587,6 +587,7 @@ export const de: Dictionary = {
     autonomousWarn: "Autonom kann Kommentare ausblenden (im Schatten/Testlauf, bis Live aktiviert ist). Nie für normale Kritik, Erstattungen, rechtliche oder Sicherheitsbeschwerden.",
     controlExplainer: "Sie legen die Regeln fest. Guardora schützt Ihre Social-Media-Konten automatisch nach Ihren Einstellungen. Eindeutig schädliche Kommentare können gemäß Ihrer Konfiguration verborgen werden. Sensible oder unklare Fälle werden zur Freigabe an Ihr Team gesendet.",
     selfServiceNote: "Guardora ist keine Moderationsagentur. Es ist ein automatisiertes Schutzsystem, das nach den vom Kontoinhaber festgelegten Regeln handelt.",
+    hideUnsupportedNote: "Diese Plattform unterstützt das automatische Verbergen von Kommentaren nicht. Guardora markiert Kommentare und sendet sie gemäß Ihren Regeln zur Genehmigung.",
     queueExplainer: "Diese Warteschlange zeigt Fälle, die gemäß Ihren Regeln eine Entscheidung erfordern.",
     save: "Speichern",
     queueTitle: "Aktionswarteschlange",
@@ -1038,6 +1039,8 @@ export const de: Dictionary = {
     st_deleted: "Kommentar existiert nicht mehr oder ist nicht verfügbar",
     st_canHideFalse: "Facebook hat das Verbergen nicht erlaubt",
     st_captured: "Erfasst",
+    st_flagged: "Markiert",
+    st_manualReview: "Manuelle Prüfung erforderlich",
     trustNote: "Normale Kritik wird nicht automatisch verborgen. Kommentare, die eine Entscheidung erfordern, erscheinen gemäß Ihren Regeln in der Warteschlange.",
     emptyNoAccount: "Es ist noch kein Konto verbunden.",
     emptyNoAccountBody: "Verbinden Sie eine Facebook-Seite, damit Guardora Kommentare erfassen kann.",
@@ -1045,6 +1048,22 @@ export const de: Dictionary = {
     emptyNoCommentsBody: "Sobald auf Ihren verbundenen Konten Kommentare erscheinen, werden sie hier angezeigt.",
     emptyFilter: "Für diesen Filter wurden keine Kommentare gefunden.",
     emptySearch: "Für Ihre Suche wurden keine Kommentare gefunden.",
+  },
+
+  // V1.31 Plattform-Funktionen — was eine verbundene Plattform/ein Konto tatsächlich kann.
+  cap: {
+    summaryTitle: "Was Guardora hier kann",
+    commentsOn: "Kommentare: Überwachung aktiv",
+    commentsOff: "Kommentare: Überwachung nicht verfügbar",
+    hideSupported: "Öffentlich verbergen: unterstützt",
+    hideUnsupported: "Öffentlich verbergen: nicht unterstützt",
+    autoOn: "Automatischer Schutz: aktiv",
+    autoOff: "Automatischer Schutz: aus",
+    flagsOnly: "Moderation: nur Markieren",
+    manualOnly: "Moderation: nur manuelle Prüfung",
+    visibilityNote: "Hinweis: Der Autor des Kommentars und Seitenadministratoren können verborgene Kommentare weiterhin sehen.",
+    unsupportedPlatform: "Diese Plattform ist noch nicht für automatische Aktionen verbunden.",
+    advanced: "Erweitert",
   },
 
   memory: {
