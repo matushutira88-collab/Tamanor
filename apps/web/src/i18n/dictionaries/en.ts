@@ -605,7 +605,8 @@ export const en = {
     controlExplainer: "You define the rules. Guardora automatically protects your social accounts based on your settings. Clearly harmful comments can be hidden according to your configuration. Sensitive or unclear cases are sent to your team for approval.",
     selfServiceNote: "Guardora is not a moderation agency. It is an automated protection system that acts according to rules configured by the account owner.",
     hideUnsupportedNote: "This platform does not support automatically hiding comments. Guardora will flag comments and send them for approval according to your rules.",
-    instagramMonitorNote: "Instagram is in monitoring mode for now. Guardora will evaluate comments and send them for review according to your rules, but will not hide them automatically.",
+    instagramMonitorNote: "Instagram is in monitoring mode for now. Hiding comments can be enabled only after permissions are verified and tested.",
+    instagramQueueNote: "Instagram: awaiting review. Automatic hiding is not enabled.",
     queueExplainer: "This queue shows cases that require a decision according to your rules.",
     save: "Save",
     // action queue
@@ -1088,6 +1089,7 @@ export const en = {
     hideSupported: "Hide from public: supported",
     hideUnsupported: "Hide from public: not supported",
     hideNotYet: "Hide from public: not enabled yet",
+    hideTestOnly: "Hide from public: available for testing, not enabled",
     autoOn: "Automatic protection: on",
     autoOff: "Automatic protection: off",
     flagsOnly: "Moderation: flag / mark only",

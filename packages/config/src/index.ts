@@ -73,6 +73,12 @@ const EnvSchema = z.object({
   // Second lock against an accidental live hide: even with all env gates on and
   // dry-run off, a real Graph hide requires an explicit LIVE_HIDE_TEST_CONFIRM=YES.
   LIVE_HIDE_TEST_CONFIRM: z.string().optional().default("NO"),
+  // V1.32B Instagram moderation research/test gates. ALL fail-closed: no IG
+  // hide/unhide ever executes unless INSTAGRAM_HIDE_TEST_ENABLED=true AND
+  // INSTAGRAM_HIDE_TEST_CONFIRM=YES. Instagram auto-hide is NEVER enabled in V1.32B.
+  INSTAGRAM_HIDE_TEST_ENABLED: boolFromEnv,
+  INSTAGRAM_HIDE_TEST_CONFIRM: z.string().optional().default("NO"),
+  INSTAGRAM_AUTO_HIDE_ENABLED: boolFromEnv,
   // V1.27 Production Safe Mode. When enabled, live actions run for REAL under the
   // full brand safety envelope (kill switches, limits, rollback, audit) — not test.
   PRODUCTION_SAFE_MODE_ENABLED: boolFromEnv,
@@ -159,6 +165,27 @@ export function getLiveActionsConfig(source: NodeJS.ProcessEnv = process.env): {
     productionSafeMode: env.PRODUCTION_SAFE_MODE_ENABLED,
     globalKillSwitch: env.GLOBAL_KILL_SWITCH,
   };
+}
+
+/**
+ * V1.32B Instagram moderation (hide/unhide) test gates. Fail-closed and read
+ * DIRECTLY from the source env (not the cached loadEnv) so a test can inject
+ * different values. `canExecuteTest` requires BOTH the enable flag and the
+ * explicit confirm lock. Instagram auto-hide is captured but NEVER wired to any
+ * execution path in V1.32B.
+ */
+export function getInstagramActionsConfig(source: NodeJS.ProcessEnv = process.env): {
+  hideTestEnabled: boolean;
+  hideTestConfirmed: boolean;
+  autoHideEnabled: boolean;
+  /** True only when a live IG hide/unhide TEST is explicitly enabled AND confirmed. */
+  canExecuteTest: boolean;
+} {
+  const isTrue = (v: string | undefined) => v === "true" || v === "1";
+  const hideTestEnabled = isTrue(source.INSTAGRAM_HIDE_TEST_ENABLED);
+  const hideTestConfirmed = source.INSTAGRAM_HIDE_TEST_CONFIRM === "YES";
+  const autoHideEnabled = isTrue(source.INSTAGRAM_AUTO_HIDE_ENABLED);
+  return { hideTestEnabled, hideTestConfirmed, autoHideEnabled, canExecuteTest: hideTestEnabled && hideTestConfirmed };
 }
 
 /** V1.27 Production Safe Mode + global kill switch (env-level). */

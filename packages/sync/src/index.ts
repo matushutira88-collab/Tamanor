@@ -684,5 +684,6 @@ export { mockMetaFetch } from "./mock-fetch";
 export * from "./live-actions";
 export * from "./facebook-connector";
 export * from "./instagram-connector";
+export * from "./instagram-moderation";
 export * from "./production-safety";
 export * from "./connection-manager";

@@ -8,6 +8,7 @@ import {
   can,
   getPlatformConnector,
   platformKeyFor,
+  hideCapabilityState,
 } from "@guardora/core";
 import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsConfig } from "@guardora/config";
 import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
@@ -156,8 +157,12 @@ export default async function AccountsPage({
                     {(() => {
                       const conn = getPlatformConnector(platformKeyFor(a.platform));
                       const caps = conn.capabilities;
-                      // Hide wording: supported (FB) / not-yet-enabled (IG read-only) / unsupported.
-                      const hideLine = caps.canHideComment ? hdrT.cap.hideSupported : conn.supported ? hdrT.cap.hideNotYet : hdrT.cap.hideUnsupported;
+                      // Hide wording driven by capability state: enabled (FB) /
+                      // test_only (IG research-gated) / not-yet / unsupported.
+                      const hideState = hideCapabilityState(conn.platform);
+                      const hideLine = hideState === "enabled" ? hdrT.cap.hideSupported
+                        : hideState === "test_only" ? hdrT.cap.hideTestOnly
+                        : conn.supported ? hdrT.cap.hideNotYet : hdrT.cap.hideUnsupported;
                       return (
                         <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2">
                           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{hdrT.cap.summaryTitle}</p>

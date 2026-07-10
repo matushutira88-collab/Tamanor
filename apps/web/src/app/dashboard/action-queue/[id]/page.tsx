@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Permission, PLATFORM_META, Platform, can } from "@guardora/core";
+import { Permission, PLATFORM_META, Platform, can, platformKeyFor } from "@guardora/core";
 import { NEVER_AUTONOMOUS, AUTONOMOUS_ELIGIBLE, FACEBOOK_HIDE_PERMISSION, buildActorSignals, actorRiskScore, actorRiskLevel, type ActorRiskLevel } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
 import { predictHideOutcome, findPreflightDryRun, resolvePrimaryAction, checkAccountToken, getCommentLifecycle, ROLLBACK_AVAILABLE } from "@guardora/sync";
@@ -137,8 +137,10 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   // adds proactive detection (commentCannotHide) alongside the last attempt's reason.
   const canHideFalse = commentCannotHide || lastExec?.reason === "facebook_can_hide_false" || autoExec?.reason === "facebook_can_hide_false";
   const decision = resolvePrimaryAction({ proposedAction: q.proposedAction, expected: predicted?.expected ?? null, alreadyExecuted });
+  // V1.32B — Instagram moderation is research/test-gated; NO production live-hide UI.
+  const isInstagram = item ? platformKeyFor(item.platform) === "instagram" : false;
   // A deleted comment is a resolved, neutral state — never live/reconnect/token.
-  const liveMode = decision.primary === "live_hide" && !canHideFalse && !commentDeleted;
+  const liveMode = decision.primary === "live_hide" && !canHideFalse && !commentDeleted && !isInstagram;
   const showLiveForm = decision.showLiveForm;
   const showRetry = showLiveForm && lastExec?.status === "failed";
   const isDev = process.env.NODE_ENV !== "production";
@@ -184,6 +186,12 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
               <Field label={t.cc.falsePositiveRisk}>{fpRisk}</Field>
             </dl>
           </Card>
+
+          {isInstagram ? (
+            <Card>
+              <div className="flex items-center gap-2"><Badge tone="neutral">📷 Instagram</Badge><span className="text-sm text-[var(--color-muted)]">{t.cc.instagramQueueNote}</span></div>
+            </Card>
+          ) : null}
 
           {autoExec ? (
             <Card>

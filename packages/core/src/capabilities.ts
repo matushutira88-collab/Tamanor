@@ -196,17 +196,42 @@ export type NormalizedActionStatus = "executed" | "blocked" | "failed" | "no_act
 export type NormalizedActionReason =
   | "live_hide_executed"
   | "already_hidden"
+  // V1.32B Instagram moderation (research/test) — kept SEPARATE from Facebook's
+  // live_hide_executed so Instagram hides never fold into production hidden counts.
+  | "instagram_hide_executed"
+  | "instagram_unhide_executed"
+  | "already_visible"
   | "comment_deleted_or_unavailable"
+  | "comment_unavailable"
+  | "media_not_found"
+  | "account_not_found"
+  | "missing_permission"
   | "platform_did_not_allow"
   | "missing_capability"
   | "token_invalid"
   | "rate_limited"
   | "dry_run"
+  | "blocked_by_safety_gate"
+  | "provider_error"
   | "unknown_error";
+
+/**
+ * V1.32B — a capability may exist but not be turned on. This lets the UI stay
+ * honest about Instagram moderation (research/test-gated) without flipping a
+ * blunt boolean to true in production.
+ */
+export type CapabilityState = "unsupported" | "supported_but_not_enabled" | "test_only" | "enabled";
+
+/** Moderation (hide) capability state per platform. */
+export function hideCapabilityState(platform: PlatformKey): CapabilityState {
+  if (platform === "facebook") return "enabled";
+  if (platform === "instagram") return "test_only"; // API may support it; gated to internal test in V1.32B
+  return "unsupported";
+}
 
 export interface PlatformActionResult {
   platform: PlatformKey;
-  actionType: "hide_comment";
+  actionType: "hide_comment" | "unhide_comment";
   status: NormalizedActionStatus;
   reason: NormalizedActionReason;
   externalCommentId?: string;
