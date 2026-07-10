@@ -206,9 +206,12 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
             </Card>
           ) : null}
 
+          {/* V1.28B — env gates / expected-result are diagnostics, not the default UI. */}
           {predicted ? (
             <Card>
-              <h3 className="mb-2 text-sm font-semibold">🧪 {t.cc.controlledHideTest}</h3>
+              <details>
+              <summary className="cursor-pointer text-sm font-semibold">🧪 {t.cc.advanced}</summary>
+              <h3 className="mb-2 mt-3 text-sm font-semibold">{t.cc.controlledHideTest}</h3>
               {live.canExecuteLive ? (
                 <div className="mb-3 rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs">
                   <p className="font-bold text-[var(--color-danger)]">🚨 {t.cc.liveWarningTitle}</p>
@@ -240,24 +243,25 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
                 </div>
               ) : null}
               <p className="mt-2 text-[11px] text-[var(--color-muted)]">✅ {t.cc.stillVisible}</p>
-            </Card>
-          ) : null}
 
-          {predicted && q.proposedAction === "hide_comment" && !alreadyExecuted ? (
-            <Card>
-              <h3 className="mb-2 text-sm font-semibold">🔴 {t.cc.liveHideTitle}</h3>
-              <p className="mb-2 text-xs font-medium">{t.cc.liveReadiness}</p>
-              <ul className="space-y-0.5 text-xs">
-                <R ok={readiness.liveEnabled} label="LIVE_ACTIONS_ENABLED=true" />
-                <R ok={readiness.facebookHideEnabled} label="FACEBOOK_HIDE_ENABLED=true" />
-                <R ok={readiness.dryRunOff} label="LIVE_ACTIONS_DRY_RUN=false" />
-                <R ok={readiness.liveConfirmed} label="LIVE_HIDE_TEST_CONFIRM=YES" />
-                <R ok={readiness.permission} label="pages_manage_engagement" />
-                <R ok={readiness.preflight} label={t.cc.preflightDryRun} />
-                <R ok={readiness.idempotency} label={t.cc.idempotencyOk} />
-                <R ok={readiness.safety} label={t.cc.safetyOk} />
-              </ul>
-              <p className="mt-2 text-[11px] text-[var(--color-muted)]">{liveMode ? t.cc.liveReadyPrimary : t.cc.liveGatesNotMet}</p>
+              {q.proposedAction === "hide_comment" && !alreadyExecuted ? (
+                <div className="mt-4">
+                  <h3 className="mb-2 text-sm font-semibold">🔴 {t.cc.liveHideTitle}</h3>
+                  <p className="mb-2 text-xs font-medium">{t.cc.liveReadiness}</p>
+                  <ul className="space-y-0.5 text-xs">
+                    <R ok={readiness.liveEnabled} label="LIVE_ACTIONS_ENABLED=true" />
+                    <R ok={readiness.facebookHideEnabled} label="FACEBOOK_HIDE_ENABLED=true" />
+                    <R ok={readiness.dryRunOff} label="LIVE_ACTIONS_DRY_RUN=false" />
+                    <R ok={readiness.liveConfirmed} label="LIVE_HIDE_TEST_CONFIRM=YES" />
+                    <R ok={readiness.permission} label="pages_manage_engagement" />
+                    <R ok={readiness.preflight} label={t.cc.preflightDryRun} />
+                    <R ok={readiness.idempotency} label={t.cc.idempotencyOk} />
+                    <R ok={readiness.safety} label={t.cc.safetyOk} />
+                  </ul>
+                  <p className="mt-2 text-[11px] text-[var(--color-muted)]">{liveMode ? t.cc.liveReadyPrimary : t.cc.liveGatesNotMet}</p>
+                </div>
+              ) : null}
+              </details>
             </Card>
           ) : null}
 
@@ -270,8 +274,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
             <h3 className="mb-2 text-sm font-semibold">{t.cc.safetyChecks}</h3>
             <ul className="space-y-1 text-xs">
               <li>{neverAuto ? "🛡️" : "✅"} {t.cc.neverHideCriticism}</li>
-              <li>✅ {t.cc.liveDisabled} · {t.cc.noLiveAction}</li>
-              <li>{q.safetyBlocked ? "🛡️ " + tEnum(t, "queueState", "blocked_by_safety") : "✅ " + t.cc.dryRun}</li>
+              <li>{q.safetyBlocked ? "🛡️ " + tEnum(t, "queueState", "blocked_by_safety") : "✅ " + t.cc.safetyOk}</li>
             </ul>
           </Card>
 

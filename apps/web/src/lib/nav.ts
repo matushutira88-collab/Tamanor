@@ -28,6 +28,11 @@ export interface NavItem {
   icon: NavIcon;
   /** Sidebar section header (rendered when the group changes). */
   group?: string;
+  /**
+   * V1.28B — hidden from the sidebar (route stays available). The production nav
+   * is intentionally small: 5 primary pages + Timeline/Audit/Settings.
+   */
+  hidden?: boolean;
 }
 
 /** Look up a nav item by href (avoids brittle positional indexing). */
@@ -37,6 +42,15 @@ export function navItem(href: string): NavItem {
   return found;
 }
 
+/**
+ * V1.28B production nav — 5 primary pages with clear ownership, a small "More"
+ * section, and everything else hidden (routes remain available via links).
+ *   Command Center  = executive overview
+ *   Action Queue    = active work queue (human decisions)
+ *   Control Center  = policy & automation settings
+ *   Accounts        = connection health
+ *   Incidents       = crises & escalations
+ */
 export const DASHBOARD_NAV: NavItem[] = [
   {
     href: "/dashboard/command-center",
@@ -45,119 +59,59 @@ export const DASHBOARD_NAV: NavItem[] = [
     icon: "command",
   },
   {
-    href: "/dashboard",
-    label: "Dashboard",
-    description: "Your reputation at a glance across every brand and platform.",
-    icon: "dashboard",
+    href: "/dashboard/action-queue",
+    label: "Action Queue",
+    description: "Items that still need a decision.",
+    icon: "queue",
   },
   {
-    href: "/dashboard/inbox",
-    label: "Inbox",
-    description: "Triage comments, reviews, and mentions in one unified place.",
-    icon: "inbox",
-  },
-  {
-    href: "/dashboard/approvals",
-    label: "Approvals",
-    description: "Review proposed actions. Nothing runs until approved and executed.",
-    icon: "approvals",
-  },
-  {
-    href: "/dashboard/brands",
-    label: "Brands",
-    description: "The brands you protect — language, timezone, tone, and status.",
-    icon: "brands",
-    group: "Manage",
+    href: "/dashboard/control-center",
+    label: "Control Center",
+    description: "Define what Guardora may do for each risk category and platform.",
+    icon: "control",
   },
   {
     href: "/dashboard/accounts",
     label: "Accounts",
     description: "Connect platforms via official OAuth. No passwords, no scraping.",
     icon: "accounts",
-    group: "Manage",
-  },
-  {
-    href: "/dashboard/rules",
-    label: "Rules",
-    description: "Deterministic brand policies layered on the AI Risk Engine.",
-    icon: "rules",
-    group: "Manage",
-  },
-  {
-    href: "/dashboard/control-center",
-    label: "Control Policies",
-    description: "Define what Guardora may do for each risk category and platform.",
-    icon: "control",
-    group: "Control",
-  },
-  {
-    href: "/dashboard/action-queue",
-    label: "Action Queue",
-    description: "Everything Guardora wants to do — suggested, pending, or shadow.",
-    icon: "queue",
-    group: "Control",
   },
   {
     href: "/dashboard/incidents",
     label: "Incidents",
     description: "Crises, threats and coordinated attacks that need attention.",
     icon: "incidents",
-    group: "Control",
   },
   {
     href: "/dashboard/timeline",
     label: "Timeline",
     description: "Every event over time — syncs, matches, decisions and safety blocks.",
     icon: "timeline",
-    group: "Analyze",
-  },
-  {
-    href: "/dashboard/insights",
-    label: "Insights",
-    description: "Sentiment, emotions, topics, and risk trends over time.",
-    icon: "insights",
-    group: "Analyze",
-  },
-  {
-    href: "/dashboard/reports",
-    label: "Reports",
-    description: "Reputation trends and moderation metrics over time.",
-    icon: "reports",
-    group: "Analyze",
+    group: "More",
   },
   {
     href: "/dashboard/audit",
     label: "Audit Log",
     description: "An append-only record of every automated and manual action.",
     icon: "audit",
-    group: "Analyze",
-  },
-  {
-    href: "/dashboard/leads",
-    label: "Leads",
-    description: "Demo requests and contact messages from your public pages.",
-    icon: "leads",
-    group: "Organization",
-  },
-  {
-    href: "/dashboard/team",
-    label: "Team",
-    description: "Members and roles across your workspace.",
-    icon: "team",
-    group: "Organization",
-  },
-  {
-    href: "/dashboard/billing",
-    label: "Billing",
-    description: "Your plan, usage, and trial.",
-    icon: "billing",
-    group: "Organization",
+    group: "More",
   },
   {
     href: "/dashboard/settings",
     label: "Settings",
     description: "Workspace profile, automations, webhooks, and security.",
     icon: "settings",
-    group: "Organization",
+    group: "More",
   },
+  // --- Hidden from the sidebar (routes stay available) ---
+  { href: "/dashboard", label: "Dashboard", description: "Your reputation at a glance across every brand and platform.", icon: "dashboard", hidden: true },
+  { href: "/dashboard/inbox", label: "Inbox", description: "Triage comments, reviews, and mentions in one unified place.", icon: "inbox", hidden: true },
+  { href: "/dashboard/approvals", label: "Approvals", description: "Review proposed actions. Nothing runs until approved and executed.", icon: "approvals", hidden: true },
+  { href: "/dashboard/brands", label: "Brands", description: "The brands you protect — language, timezone, tone, and status.", icon: "brands", hidden: true },
+  { href: "/dashboard/rules", label: "Rules", description: "Deterministic brand policies layered on the AI Risk Engine.", icon: "rules", hidden: true },
+  { href: "/dashboard/insights", label: "Insights", description: "Sentiment, emotions, topics, and risk trends over time.", icon: "insights", hidden: true },
+  { href: "/dashboard/reports", label: "Reports", description: "Reputation trends and moderation metrics over time.", icon: "reports", hidden: true },
+  { href: "/dashboard/leads", label: "Leads", description: "Demo requests and contact messages from your public pages.", icon: "leads", hidden: true },
+  { href: "/dashboard/team", label: "Team", description: "Members and roles across your workspace.", icon: "team", hidden: true },
+  { href: "/dashboard/billing", label: "Billing", description: "Your plan, usage, and trial.", icon: "billing", hidden: true },
 ];

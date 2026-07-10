@@ -47,13 +47,14 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">
-        {DASHBOARD_NAV.map((item, i) => {
+        {/* V1.28B — production nav: hidden entries are filtered out (routes remain). */}
+        {DASHBOARD_NAV.filter((n) => !n.hidden).map((item, i, visible) => {
           const active =
             item.href === "/dashboard"
               ? pathname === "/dashboard"
               : pathname.startsWith(item.href);
           const showGroup =
-            item.group && item.group !== DASHBOARD_NAV[i - 1]?.group;
+            item.group && item.group !== visible[i - 1]?.group;
           return (
             <div key={item.href}>
               {showGroup ? (

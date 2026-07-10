@@ -114,16 +114,17 @@ export default async function CommandCenterPage() {
             <span>{nextStep}</span>
           </div>
           <p className="mb-3 text-xs text-[var(--color-muted)]">
-            🟢 {t.cc.doingNow}: {activePolicies} {t.cc.controlTitle.toLowerCase()} · {autonomousShadow} {t.cc.automated.toLowerCase()} · {safetyBlocks} {t.cc.blockedSafety.toLowerCase()}
+            🟢 {t.cc.doingNow}: {activePolicies} {t.cc.controlTitle.toLowerCase()} · {autoHidesToday} {t.cc.autoHidesToday.toLowerCase()} · {safetyBlocks} {t.cc.blockedSafety.toLowerCase()}
           </p>
+          {/* Executive stats (V1.28B) — 8 human metrics; dry-run/shadow counts moved to Advanced. */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label={t.cc.connectedAccounts} value={String(accounts.length)} tone="ok" hint={`${healthy}/${accounts.length} ${t.cc.accountHealth}`} />
-            <StatCard label={t.cc.controlling} value={String(activePolicies)} tone="brand" hint={t.cc.controlTitle} />
+            <StatCard label={t.cc.autoProtection} value={autoProtectionOn ? t.cc.on : t.cc.off} tone={autoProtectionOn ? "brand" : "neutral"} hint={t.cc.controlTitle} />
             <StatCard label={t.cc.pendingApprovals} value={String(pendingApprovals)} tone="warn" />
             <StatCard label={t.cc.openIncidents} value={String(incidents)} tone={incidents > 0 ? "danger" : "ok"} />
-            <StatCard label={t.cc.autonomousShadow} value={String(autonomousShadow)} tone="neutral" hint={t.cc.shadowMode} />
+            <StatCard label={t.cc.autoHidesToday} value={String(autoHidesToday)} tone="neutral" />
             <StatCard label={t.cc.safetyBlocks} value={String(safetyBlocks)} tone="neutral" />
-            <StatCard label={t.cc.liveExecuted} value={String(liveExecuted)} tone={liveExecuted > 0 ? "warn" : "ok"} hint={t.cc.liveDisabled} />
+            <StatCard label={t.cc.liveExecuted} value={String(liveExecuted)} tone={liveExecuted > 0 ? "warn" : "ok"} />
             <StatCard label={t.cc.lastSync} value={lastSyncRun ? formatDateTime(lastSyncRun.startedAt) : "—"} hint={nextSync ? `${t.cc.nextSync}: ${formatDateTime(nextSync)}` : ""} />
           </div>
 
@@ -154,10 +155,9 @@ export default async function CommandCenterPage() {
               </div>
               <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between"><span>{tEnum(t, "queueState", "approval_required")}</span><span className="font-medium">{pendingApprovals}</span></div>
-                <div className="flex justify-between"><span>{tEnum(t, "queueState", "dry_run")}</span><span className="font-medium">{autonomousShadow}</span></div>
                 <div className="flex justify-between"><span>{tEnum(t, "queueState", "blocked_by_safety")}</span><span className="font-medium">{safetyBlocks}</span></div>
               </div>
-              <p className="mt-3 text-[11px] text-[var(--color-muted)]">✅ {t.cc.noLiveAction} · {t.cc.liveDisabled}</p>
+              <p className="mt-3 text-[11px] text-[var(--color-muted)]">🛡️ {t.cc.neverHideCriticism}</p>
             </Card>
           </div>
 
@@ -172,21 +172,28 @@ export default async function CommandCenterPage() {
             {reconnectAccounts.length > 0 ? (
               <Link href="/dashboard/accounts" className="mb-3 block rounded-lg border-2 border-[var(--color-danger)] p-2 text-xs font-bold text-[var(--color-danger)]">🔌 {reconnectAccounts.map((a) => a.externalName ?? "Account").join(", ")}: {t.cc.reconnectNeeded}</Link>
             ) : null}
+            {/* Executive view — human labels only (V1.28B). */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
               <div><p className="text-xs text-[var(--color-muted)]">{t.cc.autoProtection}</p><Badge tone={autoProtectionOn ? "danger" : "ok"}>{autoProtectionOn ? t.cc.on : t.cc.off}</Badge></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.blockedByCanHide}</p><p className="font-medium">{canHideFalseBlocked}</p></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.safeLiveMode}</p><Badge tone={liveCfg.canExecuteLive ? "warn" : "ok"}>{liveCfg.canExecuteLive ? t.cc.safeLiveEnabled : t.cc.safeLiveDisabled}</Badge></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.killSwitch}</p><Badge tone={anyKillSwitch ? "danger" : "ok"}>{anyKillSwitch ? t.cc.killSwitchOn : t.cc.killSwitchOff}</Badge></div>
               <div><p className="text-xs text-[var(--color-muted)]">{t.cc.autoHidesToday}</p><p className="font-medium">{autoHidesToday}</p></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.hourlyUsage}</p><p className="font-medium">{autoHidesThisHour}</p></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.failedLive}</p><p className="font-medium">{failedLive}</p></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.blockedBySafety}</p><p className="font-medium">{blockedBySafetyExec}</p></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.preservedCriticism}</p><p className="font-medium">{preservedCriticism}</p></div>
               <div><p className="text-xs text-[var(--color-muted)]">{t.cc.pendingApprovals}</p><p className="font-medium">{pendingApprovals}</p></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastAutoHide}</p><p className="font-medium">{lastAutoHide?.executedAt ? formatDateTime(lastAutoHide.executedAt) : "—"}</p></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastFbError}</p><p className="font-medium text-[var(--color-danger)]">{lastFbError ? (lastFbError.providerErrorCode ?? "error") : "—"}</p></div>
-              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.rollbackAvailability}</p><Badge tone={ROLLBACK_AVAILABLE ? "ok" : "warn"}>{ROLLBACK_AVAILABLE ? t.cc.rollbackReady : t.cc.rollbackUnavailable}</Badge></div>
+              <div><p className="text-xs text-[var(--color-muted)]">{t.cc.killSwitch}</p><Badge tone={anyKillSwitch ? "danger" : "ok"}>{anyKillSwitch ? t.cc.killSwitchOn : t.cc.killSwitchOff}</Badge></div>
             </div>
+            {/* Technical/operational metrics live behind Advanced — not the default view. */}
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs font-medium text-[var(--color-muted)] hover:text-[var(--color-fg)]">{t.cc.advanced}</summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                <div><p className="text-xs text-[var(--color-muted)]">{t.cc.safeLiveMode}</p><Badge tone={liveCfg.canExecuteLive ? "warn" : "ok"}>{liveCfg.canExecuteLive ? t.cc.safeLiveEnabled : t.cc.safeLiveDisabled}</Badge></div>
+                <div><p className="text-xs text-[var(--color-muted)]">{t.cc.blockedByCanHide}</p><p className="font-medium">{canHideFalseBlocked}</p></div>
+                <div><p className="text-xs text-[var(--color-muted)]">{t.cc.hourlyUsage}</p><p className="font-medium">{autoHidesThisHour}</p></div>
+                <div><p className="text-xs text-[var(--color-muted)]">{t.cc.failedLive}</p><p className="font-medium">{failedLive}</p></div>
+                <div><p className="text-xs text-[var(--color-muted)]">{t.cc.blockedBySafety}</p><p className="font-medium">{blockedBySafetyExec}</p></div>
+                <div><p className="text-xs text-[var(--color-muted)]">{t.cc.preservedCriticism}</p><p className="font-medium">{preservedCriticism}</p></div>
+                <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastAutoHide}</p><p className="font-medium">{lastAutoHide?.executedAt ? formatDateTime(lastAutoHide.executedAt) : "—"}</p></div>
+                <div><p className="text-xs text-[var(--color-muted)]">{t.cc.lastFbError}</p><p className="font-medium text-[var(--color-danger)]">{lastFbError ? formatDateTime(lastFbError.createdAt) : "—"}</p></div>
+                <div><p className="text-xs text-[var(--color-muted)]">{t.cc.rollbackAvailability}</p><Badge tone={ROLLBACK_AVAILABLE ? "ok" : "warn"}>{ROLLBACK_AVAILABLE ? t.cc.rollbackReady : t.cc.rollbackUnavailable}</Badge></div>
+              </div>
+            </details>
           </Card>
 
           {fbConnections.length > 0 ? (

@@ -29,7 +29,9 @@ export function DashboardShell({
   const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, demo, navLabels, sidebarStrings };
 
   return (
-    <div className="flex min-h-dvh bg-[var(--color-bg)]">
+    // V1.28B — fixed app shell: the sidebar stays put (h-dvh) while ONLY the main
+    // content scrolls (overflow-y-auto below). No body scroll, no horizontal overflow.
+    <div className="flex h-dvh overflow-hidden bg-[var(--color-bg)]">
       {/* Desktop sidebar */}
       <div className="hidden lg:block">
         <Sidebar {...sidebarProps} />
@@ -48,7 +50,7 @@ export function DashboardShell({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
         {/* Mobile top bar */}
         <div className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg-soft)] px-4 lg:hidden">
           <button

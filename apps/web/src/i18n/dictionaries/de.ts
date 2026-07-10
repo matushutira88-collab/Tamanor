@@ -792,6 +792,7 @@ export const de: Dictionary = {
     autoHiddenPublic: "Der Kommentar wurde auf Facebook automatisch für die Öffentlichkeit ausgeblendet.",
     autoProtection: "Automatischer Schutz",
     blockedByCanHide: "Von Facebook blockiert (can_hide=false)",
+    advanced: "Erweitert",
   },
 
   memory: {

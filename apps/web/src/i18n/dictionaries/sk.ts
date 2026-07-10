@@ -792,6 +792,7 @@ export const sk: Dictionary = {
     autoHiddenPublic: "Komentár bol automaticky skrytý pre verejnosť na Facebooku.",
     autoProtection: "Automatická ochrana",
     blockedByCanHide: "Blokované Facebookom (can_hide=false)",
+    advanced: "Rozšírené",
   },
 
   memory: {

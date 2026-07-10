@@ -820,6 +820,7 @@ export const en = {
     autoHiddenPublic: "The comment was automatically hidden from the public on Facebook.",
     autoProtection: "Automatic protection",
     blockedByCanHide: "Blocked by Facebook (can_hide=false)",
+    advanced: "Advanced",
   },
 
   // Brand risk memory + feedback (V1.17).
