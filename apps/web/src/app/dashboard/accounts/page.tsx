@@ -11,7 +11,7 @@ import {
   hideCapabilityState,
   platformSupportLevel,
 } from "@guardora/core";
-import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsConfig } from "@guardora/config";
+import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsConfig, getGoogleBusinessConfig } from "@guardora/config";
 import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
@@ -60,6 +60,7 @@ export default async function AccountsPage({
   const hdrT = await getT();
   const manage = can(session.role, Permission.ConnectorManage);
   const meta = getMetaConfig();
+  const gbp = getGoogleBusinessConfig();
   const setup = getMetaSetupStatus();
   const sp = await searchParams;
   const metaNotice = sp.meta ? META_NOTICES[sp.meta] : undefined;
@@ -232,6 +233,33 @@ export default async function AccountsPage({
           </dl>
         </Card>
       </div>
+
+      {/* V1.36 — Google Business Profile connection (review monitoring, read-only). */}
+      <Card className="mb-6">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <BrandIcon platform={Platform.GoogleBusiness} size={24} />
+          <h3 className="text-sm font-semibold">{PLATFORM_META[Platform.GoogleBusiness].label}</h3>
+          <Badge tone="neutral">{hdrT.gbp.reviewMonitoring}</Badge>
+          {sp.google ? <Badge tone={sp.google === "disconnected" ? "neutral" : "warn"}>{hdrT.gbp[(`state_${sp.google}` as "state_not_configured")] ?? hdrT.gbp.state_not_configured}</Badge> : null}
+        </div>
+        {gbp.status === "not_configured" ? (
+          <p className="text-sm text-[var(--color-muted)]">{hdrT.gbp.state_not_configured}</p>
+        ) : gbp.status === "api_disabled" ? (
+          <p className="text-sm text-[var(--color-muted)]">{hdrT.gbp.state_api_disabled}</p>
+        ) : (
+          <>
+            <p className="text-sm text-[var(--color-muted)]">{hdrT.gbp.readyToConnectBody}</p>
+            {manage ? (
+              <a href="/api/connectors/google-business/connect" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{hdrT.gbp.connect}</a>
+            ) : null}
+          </>
+        )}
+        <ul className="mt-3 space-y-0.5 text-xs text-[var(--color-muted)]">
+          <li>✅ {hdrT.cap.reviewsOn}</li>
+          <li>⛔ {hdrT.gbp.protectionUnavailable}</li>
+        </ul>
+        <p className="mt-2 text-[11px] text-[var(--color-muted)]">{hdrT.gbp.policyNote}</p>
+      </Card>
 
       {brands.length === 0 ? (
         <div className="gu-card p-6 text-sm text-[var(--color-muted)]">

@@ -26,7 +26,7 @@ interface Row {
   id: string; text: string; author: string; authorKey: string | null; platformLabel: string; account: string;
   permalink: string | null; createdAt: Date; bucket: SentimentBucket; riskLevel: string; category: string | null;
   statusKey: string; hiddenPublic: boolean; pending: boolean; resolved: boolean; queueItemId: string | null;
-  actorLevel: ActorRiskLevel | null; cantHide: boolean;
+  actorLevel: ActorRiskLevel | null; cantHide: boolean; isReview: boolean; rating: number | null;
 }
 
 export default async function CommentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -50,7 +50,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       where: { ...where, createdAt: { gte: rangeStart } },
       select: {
         id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true,
-        contentItem: { select: { text: true, externalId: true, externalParentId: true, permalink: true, authorDisplayName: true, authorExternalId: true, platform: true, connectedAccount: { select: { externalName: true } } } },
+        contentItem: { select: { text: true, kind: true, rating: true, externalId: true, externalParentId: true, permalink: true, authorDisplayName: true, authorExternalId: true, platform: true, connectedAccount: { select: { externalName: true } } } },
       },
       orderBy: { createdAt: "desc" },
       take: 500,
@@ -114,6 +114,8 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       statusKey, hiddenPublic, pending, resolved, queueItemId: qi?.id ?? null, actorLevel: key ? authorLevel.get(key) ?? null : null,
       // Risky comment on a platform that can't hide yet (e.g. Instagram in V1.32A).
       cantHide: bucket === "risky" && !caps.canHideComment && !hiddenPublic && !resolved,
+      isReview: ci.kind === "review",
+      rating: ci.rating ?? null,
     };
   });
 
@@ -204,6 +206,8 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                   <details className="group">
                     <summary className="flex cursor-pointer flex-col gap-2 p-4">
                       <div className="flex flex-wrap items-center gap-2">
+                        {r.isReview ? <Badge tone="brand">{t.gbp.reviewType}</Badge> : null}
+                        {r.isReview && r.rating ? <span className="text-xs font-semibold text-[var(--color-warn)]">{"★".repeat(Math.max(0, Math.min(5, r.rating)))}{"☆".repeat(Math.max(0, 5 - r.rating))}</span> : null}
                         <Badge tone={BUCKET_TONE[r.bucket]}>{t.rep[`bucket_${r.bucket}` as "bucket_positive"]}</Badge>
                         {r.category ? <Badge tone="neutral">{tEnum(t, "autoProtectCategory", r.category)}</Badge> : null}
                         {r.hiddenPublic ? <Badge tone="warn">{t.comments.hiddenPublic}</Badge> : null}

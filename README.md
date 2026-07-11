@@ -32,6 +32,23 @@ Tamanor is in **beta pilot**. First agencies/clients can request access at
 | **LinkedIn Company** | research | — | — |
 | **TikTok Business** | research | — | — |
 
+### Google Business Profile connector (V1.36 — review monitoring, read-only)
+
+Connector implementation is complete; **real provider verification is a separate
+gate** (approved GBP API access + OAuth client + a verified location + a real
+synced review). Until then the connector is fail-closed (`GOOGLE_BUSINESS_API_ENABLED=false`).
+
+Compliance:
+
+- Users manually connect **their own** Google account; only locations they are authorized to manage are accessed.
+- OAuth scope is **`business.manage` only** — nothing broader.
+- Tamanor **reads** reviews only. It does **not** reply, delete, report, buy, remove, suppress or otherwise manipulate reviews. There is no auto-reply in V1.
+- Review list operations run only for **verified** locations; unverified/unknown locations are shown honestly and cannot sync.
+- All review data is **tenant-scoped**; OAuth tokens are **encrypted** and never logged or shown.
+- Disconnect invalidates stored connector credentials (tokens cleared, account marked disconnected).
+- Tamanor does **not** bypass Google authorization and claims **no** Google partnership or certification.
+- Google reviews never count as "hidden from public" and are never auto-hidden; a low rating is not automatically risky and does not create Actor Risk on its own.
+
 Every platform must reach **READ → ANALYZE → REPUTATION → ACTOR RISK** before any
 moderation is considered. Moderation is only enabled after real API verification.
 Capabilities are never guessed: an unsupported action returns `capability = false`

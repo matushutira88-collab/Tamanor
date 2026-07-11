@@ -182,6 +182,7 @@ export function LandingContent({ dict, locale }: { dict: Dictionary; locale: Loc
             </div>
           </div>
           <p className="mt-6 text-center text-xs text-[var(--color-muted)]">{t.beta.plannedNote}</p>
+          <p className="mt-1 text-center text-xs text-[var(--color-muted)]">{t.beta.googleConnectorNote}</p>
         </div>
       </section>
 

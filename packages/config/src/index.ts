@@ -188,6 +188,34 @@ export function getInstagramActionsConfig(source: NodeJS.ProcessEnv = process.en
   return { hideTestEnabled, hideTestConfirmed, autoHideEnabled, canExecuteTest: hideTestEnabled && hideTestConfirmed };
 }
 
+/** Google Business Profile requires exactly this OAuth scope — nothing broader. */
+export const GOOGLE_BUSINESS_SCOPE = "https://www.googleapis.com/auth/business.manage";
+
+/**
+ * V1.36 Google Business Profile connector config. Fail-closed and read DIRECTLY
+ * from the source env (never cached) so tests can inject. The client secret is
+ * NEVER returned (only `hasSecret`); `apiEnabled` defaults to false. Missing
+ * config → `not_configured`; configured but flag off → `api_disabled`.
+ */
+export function getGoogleBusinessConfig(source: NodeJS.ProcessEnv = process.env): {
+  configured: boolean;
+  apiEnabled: boolean;
+  clientId?: string;
+  redirectUri?: string;
+  hasSecret: boolean;
+  scope: string;
+  status: "not_configured" | "api_disabled" | "oauth_ready";
+} {
+  const clientId = source.GOOGLE_BUSINESS_CLIENT_ID || undefined;
+  const clientSecret = source.GOOGLE_BUSINESS_CLIENT_SECRET || undefined;
+  const redirectUri = source.GOOGLE_BUSINESS_REDIRECT_URI || source.GOOGLE_BUSINESS_OAUTH_REDIRECT_URI || undefined;
+  const apiEnabled = source.GOOGLE_BUSINESS_API_ENABLED === "true" || source.GOOGLE_BUSINESS_API_ENABLED === "1";
+  const configured = !!(clientId && clientSecret && redirectUri);
+  const status = !configured ? "not_configured" : !apiEnabled ? "api_disabled" : "oauth_ready";
+  // clientId + redirectUri are public OAuth params; the secret is intentionally omitted.
+  return { configured, apiEnabled, clientId, redirectUri, hasSecret: !!clientSecret, scope: GOOGLE_BUSINESS_SCOPE, status };
+}
+
 /** V1.27 Production Safe Mode + global kill switch (env-level). */
 export function getProductionSafetyConfig(source: NodeJS.ProcessEnv = process.env): {
   productionSafeMode: boolean;
