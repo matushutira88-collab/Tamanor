@@ -135,6 +135,7 @@ export default async function CommandCenterPage() {
           <p className="mt-1 text-sm text-[var(--color-muted)]">{t.cc.onbConnectBody}</p>
           <Link href="/dashboard/accounts" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{t.cc.connectAccount}</Link>
           <p className="mt-3 text-xs text-[var(--color-muted)]">{t.cc.onbPlatformNote}</p>
+          <p className="mt-1 text-xs text-[var(--color-muted)]">📷 {t.cc.onbInstagramBeta}</p>
         </Card>
       ) : totalItems === 0 ? (
         /* C) Connected but no comments processed yet. */

@@ -16,6 +16,47 @@ around an **AI Risk Engine**, a **human approval workflow**, and a complete
 
 ---
 
+## Beta launch status (V1.34)
+
+Tamanor is in **beta pilot**. First agencies/clients can request access at
+`/book-demo`.
+
+**Current platform support (honest):**
+
+- **Facebook Page** — protection + automatic hidden-from-public (auto-hide), comments, reputation, actor risk.
+- **Instagram Business** — monitoring + analysis (comments, reputation, actor risk). Moderation is **research/test-only**; Instagram auto-hide is **not** enabled.
+- TikTok / YouTube / LinkedIn / Google Business — **not supported yet** (do not claim support).
+
+**Safe env gates (default, fail-closed):**
+
+```
+LIVE_ACTIONS_DRY_RUN=true
+LIVE_HIDE_TEST_CONFIRM=NO
+INSTAGRAM_HIDE_TEST_ENABLED=false
+INSTAGRAM_HIDE_TEST_CONFIRM=NO
+INSTAGRAM_AUTO_HIDE_ENABLED=false
+```
+
+**Beta demo checklist** (verify on a real connected Facebook Page — never with fake data):
+
+- [ ] Facebook Page connected
+- [ ] safe test comment available
+- [ ] positive comment visible in Comments
+- [ ] normal criticism visible but **not** hidden
+- [ ] risky comment goes to Action Queue or is hidden from public
+- [ ] hidden-from-public explanation visible ("author/admins may still see it")
+- [ ] Reputation shows sentiment and topics
+- [ ] Actor Risk only flags repeated risky behavior
+- [ ] Control Center shows customer-defined rules
+- [ ] mobile: no horizontal overflow
+- [ ] no raw provider/debug data visible by default
+
+**No fake data rule:** never seed fake demo comments, fake accounts, fake
+customers, testimonials or logos. Demo/QA data is scoped to test brands and
+cleaned up; real-data verification uses a real connected account only.
+
+---
+
 ## Principles (non-negotiable)
 
 - **No scraping.** Ever.

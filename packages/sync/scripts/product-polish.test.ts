@@ -114,9 +114,11 @@ async function run() {
     /externá moderác/i, /outsourc/i, /rozhodne za vás/i, /we decide what to hide/i,
   ];
   check("6/7/8) no forbidden moderation-agency wording in product UI", FORBIDDEN.every((re) => !re.test(productSrc)));
-  // The only allowed use of "moderation agency" is the NEGATION in selfServiceNote.
+  // "moderation agency" only ever appears as a NEGATION: Control Center selfServiceNote
+  // (×3 locales) + V1.34 landing beta.selfServiceBody (×3 locales) = 6.
   const agencyHits = (dicts.match(/moderátorská agentúra|moderation agency|Moderationsagentur/gi) ?? []);
-  check("6b) 'moderation agency' appears only as a negation (self-service note)", agencyHits.length === 3, String(agencyHits.length));
+  const agencyNegated = (dicts.match(/(nie je|not a|keine)\s+(moderátorská agentúra|moderation agency|Moderationsagentur)/gi) ?? []);
+  check("6b) 'moderation agency' appears only as a negation", agencyHits.length === 6 && agencyNegated.length === agencyHits.length, `${agencyNegated.length}/${agencyHits.length}`);
 
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — Product polish & demo readiness`);
   await prisma.$disconnect();

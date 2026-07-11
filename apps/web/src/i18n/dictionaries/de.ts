@@ -15,6 +15,7 @@ export const de: Dictionary = {
     brand: "Tamanor",
     brandTagline: "Social Account Firewall",
     brandFull: "Tamanor — Social Account Firewall",
+    requestBetaAccess: "Beta-Zugang anfragen",
     startFreeTrial: "Kostenlos testen",
     bookDemo: "Demo buchen",
     contactSales: "Vertrieb kontaktieren",
@@ -50,11 +51,11 @@ export const de: Dictionary = {
   },
 
   hero: {
-    badge: "Social Account Firewall",
-    titleBefore: "Schützen Sie Ihre Marke, bevor schädliche Kommentare zur",
-    titleHighlight: "Krise",
+    badge: "Beta · Social Account Firewall",
+    titleBefore: "Tamanor —",
+    titleHighlight: "Social Account Firewall",
     subtitle:
-      "Tamanor überwacht Kommentare, Bewertungen und Feedback auf Facebook, Instagram, YouTube, LinkedIn, TikTok und Google — erkennt Risiken, bereitet sichere Maßnahmen vor und behält die Entscheidung bei den Menschen.",
+      "Tamanor schützt Social-Media-Konten vor Spam, Scam, schädlichen Kommentaren und wiederholtem riskantem Verhalten.",
   },
 
   platformsSection: {
@@ -182,6 +183,48 @@ export const de: Dictionary = {
   cta: {
     title: "Stellen Sie eine Firewall vor die Reputation Ihrer Marke.",
     subtitle: "Starten Sie im schreibgeschützten Modus. Binden Sie Ihre Kanäle an. Behalten Sie jede Maßnahme unter menschlicher Kontrolle.",
+  },
+
+  // V1.34 Beta launch package.
+  beta: {
+    whoEyebrow: "Für wen Tamanor ist",
+    whoTitle: "Für Teams, die öffentliche Social-Media-Konten verwalten.",
+    whoBody: "Tamanor ist für Teams, die öffentliche Social-Media-Konten verwalten und nicht jeden Kommentar von Hand prüfen wollen.",
+    whoSegments: ["Marketing- & Social-Media-Agenturen", "E-Shops & Marken", "Influencer, Creator & Personen des öffentlichen Lebens", "Immobilien, Bauträger, Hotels & Restaurants", "Unternehmen mit bezahlten Social-Kampagnen"],
+    protectsTitle: "Wovor Tamanor schützt",
+    protectsItems: ["Spam", "Scam", "Phishing", "Vulgarität", "Persönliche Angriffe", "Schädliche Kommentare", "Wiederholtes riskantes Verhalten", "Reputationsrisiko"],
+    howEyebrow: "So funktioniert es",
+    howTitle: "Vier einfache Schritte.",
+    howSteps: ["Konto verbinden", "Regeln festlegen", "Tamanor überwacht Kommentare", "Klare Risiken werden nach Ihren Regeln behandelt; unklare Fälle gehen an Ihr Team"],
+    notCensorshipTitle: "Es ist keine Zensur.",
+    notCensorshipBody: "Normale Kritik wird nicht automatisch verborgen. Tamanor trennt Kundenfeedback von Spam, Scam, Vulgarität und Drohungen.",
+    selfServiceTitle: "Sie legen die Regeln fest. Tamanor setzt sie automatisch um.",
+    selfServiceBody: "Die Regeln gehören Ihnen. Unklare Fälle gehen an Ihr Team. Tamanor ist keine Moderationsagentur.",
+    platformEyebrow: "Aktuelle Plattform-Unterstützung",
+    platformTitle: "Ehrlich, was heute unterstützt wird.",
+    fbTitle: "Facebook Page",
+    fbBody: "Schutz, automatisch öffentlich verborgene Aktionen, Kommentare, Reputation und Risikoprofile.",
+    fbBadge: "Verfügbar",
+    igTitle: "Instagram Business",
+    igBody: "Monitoring, Kommentare, Reputation und Risikoprofile. Automatisches Verbergen ist noch nicht aktiviert.",
+    igBadge: "Beta · Monitoring",
+    plannedNote: "Weitere Plattformen sind geplant. Tamanor beansprucht noch keine Unterstützung für TikTok, YouTube oder LinkedIn.",
+    accessEyebrow: "Beta-Pilot",
+    accessTitle: "Tamanor ist im Beta-Pilot.",
+    accessBody: "Erste Kunden können Zugang anfragen und das Produkt mitgestalten.",
+    pricingTitle: "Beta-Pilot-Preise.",
+    pricingSubtitle: "Nur Preiskarten — noch kein Checkout und keine Abrechnung.",
+    perMonth: "/Mon.",
+    mostPopular: "Am beliebtesten",
+    betaNote: "Beta-Preise gelten für frühe Pilotkunden und können sich beim öffentlichen Start ändern.",
+    plans: [
+      { name: "Starter Beta", price: "49 €", tagline: "Für eine kleine Marke, Creator oder lokales Geschäft.", features: ["1 Marke", "1 Facebook Page", "Kommentare", "Aktions-Warteschlange", "Basis-Reputation", "Manuelle Prüfung", "Sicheres Auto-Schutz-Setup"] },
+      { name: "Growth Beta", price: "149 €", tagline: "Für einen aktiven E-Shop, Marke oder Agenturkunden.", features: ["Bis zu 3 verbundene Konten", "Facebook-Schutz", "Instagram-Monitoring", "Reputationsanalyse", "Risikoprofile", "Control-Center-Regeln", "Priorisiertes Onboarding"] },
+      { name: "Agency Beta", price: "399 €", tagline: "Für Agenturen mit mehreren Kunden.", features: ["Mehrere Marken/Kunden nach Vereinbarung", "Onboarding-Unterstützung", "Monitoring mehrerer Konten", "Reputation + Risikoprofile", "Beta-Feedback-Kanal", "Priorisierter Support"] },
+    ],
+    enterpriseName: "Enterprise / Individuell",
+    enterpriseTagline: "Für Medien, Personen des öffentlichen Lebens und größere Marken.",
+    enterpriseCta: "Kontaktieren Sie uns",
   },
 
   footer: {
@@ -875,7 +918,8 @@ export const de: Dictionary = {
     onbConnectFirst: "Verbinden Sie Ihr erstes Social-Konto",
     onbConnectBody: "Sobald ein Konto verbunden ist, überwacht Tamanor Kommentare, riskantes Verhalten und die Reputation Ihrer Marke.",
     connectAccount: "Konto verbinden",
-    onbPlatformNote: "Wir unterstützen zunächst Facebook-Seiten. Weitere Plattformen folgen nach und nach.",
+    onbPlatformNote: "Verbinden Sie eine Facebook-Seite, um Ihren ersten Kommentarschutz zu starten.",
+    onbInstagramBeta: "Instagram Business ist in der Beta für Monitoring und Analyse verfügbar.",
     noDataTitle: "Konto verbunden. Tamanor wartet auf die ersten Kommentare.",
     noDataBody: "Sobald Kommentare verarbeitet sind, sehen Sie hier Schutzstatus, Risiken und eine Reputationsübersicht.",
     noDataAction: "Es ist noch keine Aktion nötig.",

@@ -16,6 +16,7 @@ export const en = {
     brand: "Tamanor",
     brandTagline: "Social Account Firewall",
     brandFull: "Tamanor — Social Account Firewall",
+    requestBetaAccess: "Request beta access",
     startFreeTrial: "Start free trial",
     bookDemo: "Book a demo",
     contactSales: "Contact sales",
@@ -52,16 +53,16 @@ export const en = {
   },
 
   hero: {
-    badge: "Social Account Firewall",
-    titleBefore: "Protect your brand before harmful comments become a",
-    titleHighlight: "crisis",
+    badge: "Beta · Social Account Firewall",
+    titleBefore: "Tamanor —",
+    titleHighlight: "Social Account Firewall",
     subtitle:
-      "Tamanor monitors comments, reviews and audience feedback across Facebook, Instagram, YouTube, LinkedIn, TikTok and Google — detects risk, prepares safe actions and keeps humans in control.",
+      "Tamanor protects social accounts from spam, scams, harmful comments and repeated risky behavior.",
   },
 
   platformsSection: {
-    title: "One reputation inbox for every public channel.",
-    subtitle: "Connect official OAuth / API integrations. No scraping. No shared passwords.",
+    title: "Connect the accounts you already run.",
+    subtitle: "Official OAuth / API only. No scraping. No shared passwords.",
   },
 
   features: {
@@ -184,6 +185,48 @@ export const en = {
   cta: {
     title: "Put a firewall in front of your brand’s reputation.",
     subtitle: "Start in read-only mode. Connect your channels. Keep every action under human control.",
+  },
+
+  // V1.34 Beta launch package — landing sections + honest platform support + beta pricing.
+  beta: {
+    whoEyebrow: "Who it's for",
+    whoTitle: "Built for teams that manage public social accounts.",
+    whoBody: "Tamanor is for teams that manage public social accounts and don't want to check every comment by hand.",
+    whoSegments: ["Marketing & social media agencies", "E-shops & brands", "Influencers, creators & public figures", "Real estate, developers, hotels & restaurants", "Companies running paid social campaigns"],
+    protectsTitle: "What Tamanor protects against",
+    protectsItems: ["Spam", "Scams", "Phishing", "Vulgarity", "Personal attacks", "Harmful comments", "Repeated risky behavior", "Reputation risk"],
+    howEyebrow: "How it works",
+    howTitle: "Four simple steps.",
+    howSteps: ["Connect your account", "Set your rules", "Tamanor watches comments", "Clear risks are handled by your rules; unclear cases go to your team"],
+    notCensorshipTitle: "It's not censorship.",
+    notCensorshipBody: "Normal criticism is not hidden automatically. Tamanor separates customer feedback from spam, scams, profanity and threats.",
+    selfServiceTitle: "You define the rules. Tamanor applies them automatically.",
+    selfServiceBody: "You own the rules. Unclear cases go to your team. Tamanor is not a moderation agency.",
+    platformEyebrow: "Current platform support",
+    platformTitle: "Honest about what's supported today.",
+    fbTitle: "Facebook Page",
+    fbBody: "Protection, automatic hidden-from-public actions, comments, reputation and actor risk.",
+    fbBadge: "Available",
+    igTitle: "Instagram Business",
+    igBody: "Monitoring, comments, reputation and actor risk. Automatic hiding is not enabled yet.",
+    igBadge: "Beta · monitoring",
+    plannedNote: "More platforms are planned. Tamanor does not claim TikTok, YouTube or LinkedIn support yet.",
+    accessEyebrow: "Beta pilot",
+    accessTitle: "Tamanor is in beta pilot.",
+    accessBody: "First clients can request access and help shape the product.",
+    pricingTitle: "Beta pilot pricing.",
+    pricingSubtitle: "Pricing cards only — no checkout and no billing yet.",
+    perMonth: "/mo",
+    mostPopular: "Most popular",
+    betaNote: "Beta pricing applies to early pilot customers and may change at public launch.",
+    plans: [
+      { name: "Starter Beta", price: "€49", tagline: "For a small brand, creator or local business.", features: ["1 brand", "1 Facebook Page", "Comments", "Action Queue", "Basic Reputation", "Manual review", "Safe auto-protection setup"] },
+      { name: "Growth Beta", price: "€149", tagline: "For an active e-shop, brand or agency client.", features: ["Up to 3 connected accounts", "Facebook protection", "Instagram monitoring", "Reputation Analytics", "Actor Risk", "Control Center rules", "Priority onboarding"] },
+      { name: "Agency Beta", price: "€399", tagline: "For agencies managing multiple clients.", features: ["Multiple brands/clients by agreement", "Onboarding support", "Multi-account monitoring", "Reputation + Actor Risk", "Beta feedback channel", "Priority support"] },
+    ],
+    enterpriseName: "Enterprise / Custom",
+    enterpriseTagline: "For media, public figures and larger brands.",
+    enterpriseCta: "Contact us",
   },
 
   footer: {
@@ -903,7 +946,8 @@ export const en = {
     onbConnectFirst: "Connect your first social account",
     onbConnectBody: "Once an account is connected, Tamanor starts watching comments, risky behavior and your brand's reputation.",
     connectAccount: "Connect account",
-    onbPlatformNote: "We support Facebook Pages first. More platforms will be added over time.",
+    onbPlatformNote: "Connect a Facebook Page to start your first comment protection.",
+    onbInstagramBeta: "Instagram Business is available in beta for monitoring and analytics.",
     noDataTitle: "Account connected. Tamanor is waiting for the first comments.",
     noDataBody: "Once comments are processed, you'll see protection status, risks and a reputation overview here.",
     noDataAction: "No action is needed yet.",

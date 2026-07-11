@@ -12,7 +12,7 @@ const displaySerif = Playfair_Display({
 
 const TITLE = "Tamanor — Social Account Firewall";
 const DESCRIPTION =
-  "Tamanor protects social accounts from spam, scams, harmful comments and repeated risky behavior. You define the rules, Tamanor applies them automatically — with human approval and a full audit log.";
+  "Tamanor protects social accounts from spam, scams, harmful comments and repeated risky behavior with self-service rules, reputation analytics and actor risk.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://tamanor.com"),

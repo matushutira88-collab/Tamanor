@@ -15,6 +15,7 @@ export const sk: Dictionary = {
     brand: "Tamanor",
     brandTagline: "Social Account Firewall",
     brandFull: "Tamanor — Social Account Firewall",
+    requestBetaAccess: "Požiadať o beta prístup",
     startFreeTrial: "Vyskúšať zdarma",
     bookDemo: "Objednať demo",
     contactSales: "Kontaktovať obchod",
@@ -50,11 +51,11 @@ export const sk: Dictionary = {
   },
 
   hero: {
-    badge: "Social Account Firewall",
-    titleBefore: "Ochráňte svoju značku skôr, než sa škodlivé komentáre zmenia na",
-    titleHighlight: "krízu",
+    badge: "Beta · Social Account Firewall",
+    titleBefore: "Tamanor —",
+    titleHighlight: "Social Account Firewall",
     subtitle:
-      "Tamanor sleduje komentáre, recenzie a spätnú väzbu na Facebooku, Instagrame, YouTube, LinkedIne, TikToku a Google — vyhodnocuje riziko, pripravuje bezpečné kroky a rozhodnutie ponecháva ľuďom.",
+      "Tamanor chráni sociálne účty pred spamom, scamom, škodlivými komentármi a opakovaným rizikovým správaním.",
   },
 
   platformsSection: {
@@ -182,6 +183,48 @@ export const sk: Dictionary = {
   cta: {
     title: "Postavte firewall pred reputáciu svojej značky.",
     subtitle: "Začnite v režime iba na čítanie. Pripojte svoje kanály. Každú akciu majte pod kontrolou človeka.",
+  },
+
+  // V1.34 Beta launch package.
+  beta: {
+    whoEyebrow: "Pre koho je Tamanor",
+    whoTitle: "Pre tímy, ktoré spravujú verejné sociálne účty.",
+    whoBody: "Tamanor je určený pre tímy, ktoré spravujú verejné sociálne účty a nechcú ručne kontrolovať každý komentár.",
+    whoSegments: ["Marketingové a social media agentúry", "E-shopy a značky", "Influenceri, tvorcovia a verejné osoby", "Reality, developeri, hotely a reštaurácie", "Firmy s platenými social kampaňami"],
+    protectsTitle: "Pred čím Tamanor chráni",
+    protectsItems: ["Spam", "Scam", "Phishing", "Vulgarizmy", "Osobné útoky", "Škodlivé komentáre", "Opakované rizikové správanie", "Reputačné riziko"],
+    howEyebrow: "Ako to funguje",
+    howTitle: "Štyri jednoduché kroky.",
+    howSteps: ["Pripojíte účet", "Nastavíte pravidlá", "Tamanor sleduje komentáre", "Jasné riziká rieši podľa vašich pravidiel, nejasné prípady pošle vášmu tímu"],
+    notCensorshipTitle: "Nie je to cenzúra.",
+    notCensorshipBody: "Normálna kritika nie je automaticky skrývaná. Tamanor oddeľuje spätnú väzbu zákazníkov od spamu, scamu, vulgarity a vyhrážok.",
+    selfServiceTitle: "Vy určujete pravidlá. Tamanor ich automaticky vykonáva.",
+    selfServiceBody: "Pravidlá patria vám. Nejasné prípady idú vášmu tímu. Tamanor nie je moderátorská agentúra.",
+    platformEyebrow: "Aktuálna podpora platforiem",
+    platformTitle: "Úprimne o tom, čo je dnes podporované.",
+    fbTitle: "Facebook Page",
+    fbBody: "Ochrana, automatické skrytie pre verejnosť, komentáre, reputácia a rizikové profily.",
+    fbBadge: "Dostupné",
+    igTitle: "Instagram Business",
+    igBody: "Monitoring, komentáre, reputácia a rizikové profily. Automatické skrytie zatiaľ nie je zapnuté.",
+    igBadge: "Beta · monitoring",
+    plannedNote: "Ďalšie platformy sú v pláne. Tamanor zatiaľ netvrdí podporu TikTok, YouTube ani LinkedIn.",
+    accessEyebrow: "Beta pilot",
+    accessTitle: "Tamanor je v beta pilote.",
+    accessBody: "Prví klienti môžu požiadať o prístup a pomôcť formovať produkt.",
+    pricingTitle: "Beta pilotné ceny.",
+    pricingSubtitle: "Iba cenové karty — zatiaľ bez platby a fakturácie.",
+    perMonth: "/mes.",
+    mostPopular: "Najobľúbenejšie",
+    betaNote: "Beta ceny platia pre prvých pilotných klientov a môžu sa pri verejnom spustení zmeniť.",
+    plans: [
+      { name: "Starter Beta", price: "49 €", tagline: "Pre malú značku, tvorcu alebo lokálny biznis.", features: ["1 značka", "1 Facebook Page", "Komentáre", "Fronta akcií", "Základná Reputácia", "Manuálna kontrola", "Bezpečné nastavenie auto-ochrany"] },
+      { name: "Growth Beta", price: "149 €", tagline: "Pre aktívny e-shop, značku alebo klienta agentúry.", features: ["Až 3 pripojené účty", "Ochrana Facebooku", "Monitoring Instagramu", "Reputačná analytika", "Rizikové profily", "Pravidlá Control Center", "Prioritný onboarding"] },
+      { name: "Agency Beta", price: "399 €", tagline: "Pre agentúry spravujúce viacero klientov.", features: ["Viac značiek/klientov podľa dohody", "Podpora pri onboardingu", "Monitoring viacerých účtov", "Reputácia + Rizikové profily", "Kanál na beta spätnú väzbu", "Prioritná podpora"] },
+    ],
+    enterpriseName: "Enterprise / Na mieru",
+    enterpriseTagline: "Pre médiá, verejné osoby a väčšie značky.",
+    enterpriseCta: "Kontaktovať nás",
   },
 
   footer: {
@@ -875,7 +918,8 @@ export const sk: Dictionary = {
     onbConnectFirst: "Pripojte svoj prvý sociálny účet",
     onbConnectBody: "Tamanor začne sledovať komentáre, rizikové správanie a reputáciu značky po pripojení účtu.",
     connectAccount: "Pripojiť účet",
-    onbPlatformNote: "Najskôr podporujeme Facebook Page. Ďalšie platformy budú pridané postupne.",
+    onbPlatformNote: "Pripojte Facebook Page a spustite prvú ochranu komentárov.",
+    onbInstagramBeta: "Instagram Business je v beta režime dostupný na monitoring a analytiku.",
     noDataTitle: "Účet je pripojený. Tamanor čaká na prvé komentáre.",
     noDataBody: "Po spracovaní komentárov sa tu zobrazí stav ochrany, riziká a reputačný prehľad.",
     noDataAction: "Zatiaľ nie je potrebná žiadna akcia.",

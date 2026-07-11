@@ -50,6 +50,7 @@
     "platform-connectors:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/platform-connectors.test.ts",
     "instagram-connector:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-connector.test.ts",
     "rebrand:tamanor:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/rebrand-tamanor.test.ts",
+    "beta-launch:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/beta-launch.test.ts",
     "instagram-moderation:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-moderation.test.ts",
     "instagram-hide:diagnose": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-hide.ts diagnose",
     "instagram-hide:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-hide.ts test",
