@@ -139,8 +139,10 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   const decision = resolvePrimaryAction({ proposedAction: q.proposedAction, expected: predicted?.expected ?? null, alreadyExecuted });
   // V1.32B — Instagram moderation is research/test-gated; NO production live-hide UI.
   const isInstagram = item ? platformKeyFor(item.platform) === "instagram" : false;
+  // V1.35 — production live-hide is Facebook-only; every other platform is read-first.
+  const isFacebook = item ? platformKeyFor(item.platform) === "facebook" : false;
   // A deleted comment is a resolved, neutral state — never live/reconnect/token.
-  const liveMode = decision.primary === "live_hide" && !canHideFalse && !commentDeleted && !isInstagram;
+  const liveMode = decision.primary === "live_hide" && !canHideFalse && !commentDeleted && isFacebook;
   const showLiveForm = decision.showLiveForm;
   const showRetry = showLiveForm && lastExec?.status === "failed";
   const isDev = process.env.NODE_ENV !== "production";

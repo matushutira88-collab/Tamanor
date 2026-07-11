@@ -9,6 +9,7 @@ import {
   getPlatformConnector,
   platformKeyFor,
   hideCapabilityState,
+  platformSupportLevel,
 } from "@guardora/core";
 import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsConfig } from "@guardora/config";
 import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
@@ -153,12 +154,22 @@ export default async function AccountsPage({
                       <div>{hdrT.dash.lastSync}: <span className="text-[var(--color-fg)]">{a.lastSuccessfulSyncAt ? formatDateTime(a.lastSuccessfulSyncAt) : "—"}</span></div>
                       <div>{hdrT.dash.connectedAtLabel}: <span className="text-[var(--color-fg)]">{formatDateTime(a.createdAt)}</span></div>
                     </dl>
-                    {/* V1.31 — capability summary in plain language (reads platform capabilities). */}
+                    {/* V1.31/V1.35 — honest, capability-derived summary per platform. */}
                     {(() => {
                       const conn = getPlatformConnector(platformKeyFor(a.platform));
                       const caps = conn.capabilities;
-                      // Hide wording driven by capability state: enabled (FB) /
-                      // test_only (IG research-gated) / not-yet / unsupported.
+                      const level = platformSupportLevel(conn.platform);
+                      // Research / limited platforms: one honest line, no ⛔ noise.
+                      if (level === "research" || level === "limited") {
+                        return (
+                          <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2">
+                            <p className="text-xs">🔬 {level === "research" ? hdrT.cap.researchBeta : hdrT.cap.limited}</p>
+                          </div>
+                        );
+                      }
+                      // Monitoring line: comments (FB/IG/YT) or reviews (Google).
+                      const monitorLine = caps.canReviewSync ? hdrT.cap.reviewsOn : caps.canReadComments ? hdrT.cap.commentsOn : hdrT.cap.commentsOff;
+                      // Hide wording: enabled (FB) / test_only (IG) / not-yet / unsupported.
                       const hideState = hideCapabilityState(conn.platform);
                       const hideLine = hideState === "enabled" ? hdrT.cap.hideSupported
                         : hideState === "test_only" ? hdrT.cap.hideTestOnly
@@ -167,8 +178,8 @@ export default async function AccountsPage({
                         <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2">
                           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{hdrT.cap.summaryTitle}</p>
                           <ul className="space-y-0.5 text-xs">
-                            <li>{caps.canReadComments ? "✅" : "⛔"} {caps.canReadComments ? hdrT.cap.commentsOn : hdrT.cap.commentsOff}</li>
-                            <li>{caps.canHideComment ? "✅" : "🕓"} {hideLine}</li>
+                            <li>{caps.canReadComments || caps.canReviewSync ? "✅" : "⛔"} {monitorLine}</li>
+                            {level !== "reviews" ? <li>{caps.canHideComment ? "✅" : "🕓"} {hideLine}</li> : null}
                             <li>{caps.canModerateAutomatically ? "✅" : "⛔"} {caps.canModerateAutomatically ? hdrT.cap.autoOn : hdrT.cap.autoOff}</li>
                           </ul>
                           {caps.publicHiddenStillVisibleToAuthorOrAdmin ? (

@@ -21,11 +21,22 @@ around an **AI Risk Engine**, a **human approval workflow**, and a complete
 Tamanor is in **beta pilot**. First agencies/clients can request access at
 `/book-demo`.
 
-**Current platform support (honest):**
+**Platform matrix (V1.35 — read-first, capability-honest):**
 
-- **Facebook Page** — protection + automatic hidden-from-public (auto-hide), comments, reputation, actor risk.
-- **Instagram Business** — monitoring + analysis (comments, reputation, actor risk). Moderation is **research/test-only**; Instagram auto-hide is **not** enabled.
-- TikTok / YouTube / LinkedIn / Google Business — **not supported yet** (do not claim support).
+| Platform | Read / Monitoring | Reviews | Hide / Moderation |
+| --- | --- | --- | --- |
+| **Facebook Page** | ✓ comments | — | ✓ auto-hide + manual |
+| **Instagram Business** | ✓ comments | — | research/test only (not enabled) |
+| **YouTube** | ✓ comments | — | — (read-only) |
+| **Google Business Profile** | — | ✓ reviews | — (no auto-reply) |
+| **LinkedIn Company** | research | — | — |
+| **TikTok Business** | research | — | — |
+
+Every platform must reach **READ → ANALYZE → REPUTATION → ACTOR RISK** before any
+moderation is considered. Moderation is only enabled after real API verification.
+Capabilities are never guessed: an unsupported action returns `capability = false`
+and its UI control is never shown. Actor identity is **platform-scoped**
+(`facebook:id:X` ≠ `youtube:id:X`) — identities are never merged across platforms.
 
 **Safe env gates (default, fail-closed):**
 

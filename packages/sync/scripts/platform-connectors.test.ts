@@ -37,7 +37,7 @@ async function run() {
   const de = readSrc("apps/web/src/i18n/dictionaries/de.ts");
 
   const fb = getPlatformConnector("facebook");
-  const ig = getPlatformConnector("youtube"); // still unimplemented in V1.32A
+  const ig = getPlatformConnector("linkedin"); // research/unimplemented (V1.35)
 
   // 1) Foundation types/functions exist and are usable.
   check("1) connector foundation exists", typeof getPlatformConnector === "function" && typeof getCapabilities === "function" && typeof normalizeFacebookReason === "function" && !!FACEBOOK_CAPABILITIES);
@@ -49,7 +49,7 @@ async function run() {
   check("3) getPlatformConnector(facebook)", fb.platform === "facebook" && platformKeyFor(Platform.FacebookPage) === "facebook" && !!getPlatformActionAdapter("facebook"));
 
   // 4) Unsupported platform returns controlled behavior, never crashes.
-  check("4) unsupported platform is safe", ig.supported === false && ig.capabilities === UNSUPPORTED_CAPABILITIES && ig.normalizeReason("live_hide_executed") === "missing_capability" && getPlatformActionAdapter("youtube") === null && platformKeyFor(Platform.YouTube) === "youtube");
+  check("4) unsupported platform is safe", ig.supported === false && Object.values(ig.capabilities).every((v) => v === false) && ig.normalizeReason("live_hide_executed") === "missing_capability" && getPlatformActionAdapter("linkedin") === null && platformKeyFor(Platform.LinkedInCompany) === "linkedin");
 
   // 4b) Instagram is now a supported read-only connector (not the unsupported fallback).
   check("4b) Instagram supported read-only", getPlatformConnector("instagram").supported === true && getPlatformConnector("instagram").capabilities.canReadComments === true && getPlatformConnector("instagram").capabilities.canHideComment === false);
@@ -110,7 +110,7 @@ async function run() {
   check("19/20/21) state truth: hidden set unchanged", HIDDEN_FROM_PUBLIC_REASONS.length === 2 && HIDDEN_FROM_PUBLIC_REASONS.includes("live_hide_executed") && HIDDEN_FROM_PUBLIC_REASONS.includes("already_hidden") && normalizeFacebookReason(null, "dry_run") === "dry_run");
 
   // 22) No fake/demo data: unimplemented platforms are honestly unsupported (all caps off).
-  check("22) no fake connectors", Object.values(UNSUPPORTED_CAPABILITIES).every((v) => v === false) && getCapabilities("tiktok") === UNSUPPORTED_CAPABILITIES && getCapabilities("linkedin") === UNSUPPORTED_CAPABILITIES);
+  check("22) no fake connectors", Object.values(UNSUPPORTED_CAPABILITIES).every((v) => v === false) && Object.values(getCapabilities("tiktok")).every((v) => v === false) && Object.values(getCapabilities("linkedin")).every((v) => v === false));
 
   // 23) SK/EN/DE capability i18n keys present.
   check("23) i18n cap keys (SK/EN/DE)", [en, sk, de].every((d) => /\bcap: \{/.test(d) && d.includes("summaryTitle") && d.includes("visibilityNote")) && en.includes('hideSupported: "Hide from public: supported"') && de.includes("Öffentlich verbergen: unterstützt"));

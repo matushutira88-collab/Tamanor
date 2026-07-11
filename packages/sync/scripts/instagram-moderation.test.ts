@@ -100,7 +100,7 @@ async function run() {
   check("21) Accounts IG hide test-only", accounts.includes("hideCapabilityState") && accounts.includes("hdrT.cap.hideTestOnly") && sk.includes("dostupné na testovanie, nie je zapnuté") && hideCapabilityState("instagram") === "test_only");
 
   // 22) Action Queue shows no production approve-hide for IG (live UI gated off).
-  check("22) Action Queue no production IG hide", aqDetail.includes("isInstagram") && /liveMode = [^\n]*!isInstagram/.test(aqDetail) && aqDetail.includes("t.cc.instagramQueueNote"));
+  check("22) Action Queue no production IG hide", aqDetail.includes("isInstagram") && /liveMode = [^\n]*isFacebook/.test(aqDetail) && aqDetail.includes("t.cc.instagramQueueNote"));
 
   // 23) No delete/reply/like/ban/report actions enabled.
   check("23) no delete/reply/like/ban/report", ["delete_comment", "reply", "like", "ban_author", "report"].every((a) => ig.blockedReason(a as never) === "missing_capability") && [ig.capabilities.canDeleteComment, ig.capabilities.canReplyToComment, ig.capabilities.canLikeComment, ig.capabilities.canBanAuthor, ig.capabilities.canReportComment].every((v) => v === false));

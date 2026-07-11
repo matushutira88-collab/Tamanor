@@ -52,6 +52,8 @@ export interface PlatformCapabilities {
   canFetchAuthor: boolean;
   canFetchPost: boolean;
   canModerateAutomatically: boolean;
+  /** Platform exposes user REVIEWS (e.g. Google Business) synced as review content. */
+  canReviewSync: boolean;
   /** The platform exposes a "hidden from the public" state (vs. only flags/marks). */
   supportsPublicHiddenState: boolean;
   /** A publicly-hidden comment may still be visible to its author / page admins. */
@@ -74,6 +76,7 @@ export const UNSUPPORTED_CAPABILITIES: PlatformCapabilities = {
   canFetchAuthor: false,
   canFetchPost: false,
   canModerateAutomatically: false,
+  canReviewSync: false,
   supportsPublicHiddenState: false,
   publicHiddenStillVisibleToAuthorOrAdmin: false,
   canDeleteComment: false,
@@ -97,6 +100,7 @@ export const FACEBOOK_CAPABILITIES: PlatformCapabilities = {
   canFetchAuthor: true,
   canFetchPost: true,
   canModerateAutomatically: true,
+  canReviewSync: false,
   supportsPublicHiddenState: true,
   publicHiddenStillVisibleToAuthorOrAdmin: true,
   canDeleteComment: false,
@@ -122,6 +126,7 @@ export const INSTAGRAM_CAPABILITIES: PlatformCapabilities = {
   canFetchAuthor: true,
   canFetchPost: true,
   canModerateAutomatically: false,
+  canReviewSync: false,
   supportsPublicHiddenState: false,
   publicHiddenStillVisibleToAuthorOrAdmin: false,
   canDeleteComment: false,
@@ -131,13 +136,76 @@ export const INSTAGRAM_CAPABILITIES: PlatformCapabilities = {
   canReportComment: false,
 };
 
+/**
+ * YouTube capabilities — V1.35 READ-ONLY. The YouTube Data API exposes comment
+ * threads (comments + replies) on a channel's videos with author + video refs.
+ * Guardora reads and analyzes only; no moderation (hide/delete/reply/etc.) is
+ * enabled until officially supported and verified.
+ */
+export const YOUTUBE_CAPABILITIES: PlatformCapabilities = {
+  canReadComments: true,
+  canReadPostComments: true,
+  canReadAdComments: false,
+  canHideComment: false,
+  canVerifyHiddenState: false,
+  canFetchAuthor: true,
+  canFetchPost: true, // video reference
+  canModerateAutomatically: false,
+  canReviewSync: false,
+  supportsPublicHiddenState: false,
+  publicHiddenStillVisibleToAuthorOrAdmin: false,
+  canDeleteComment: false,
+  canReplyToComment: false,
+  canLikeComment: false,
+  canBanAuthor: false,
+  canReportComment: false,
+};
+
+/**
+ * Google Business Profile capabilities — V1.35 READ-ONLY REVIEWS. The Business
+ * Profile API exposes location reviews (reviewer, star rating, review text).
+ * Guardora syncs reviews into Comments/Reputation; it does NOT reply automatically.
+ */
+export const GOOGLE_BUSINESS_CAPABILITIES: PlatformCapabilities = {
+  canReadComments: false, // reviews, not comments
+  canReadPostComments: false,
+  canReadAdComments: false,
+  canHideComment: false,
+  canVerifyHiddenState: false,
+  canFetchAuthor: true, // reviewer
+  canFetchPost: false,
+  canModerateAutomatically: false,
+  canReviewSync: true,
+  supportsPublicHiddenState: false,
+  publicHiddenStillVisibleToAuthorOrAdmin: false,
+  canDeleteComment: false,
+  canReplyToComment: false, // no automatic reply
+  canLikeComment: false,
+  canBanAuthor: false,
+  canReportComment: false,
+};
+
+/**
+ * LinkedIn Company Page capabilities — V1.35 RESEARCH. LinkedIn's Marketing API
+ * heavily restricts organic comment/reaction read access (partner-gated). Until
+ * access is verified, Tamanor advertises NO capabilities and stays honest.
+ */
+export const LINKEDIN_CAPABILITIES: PlatformCapabilities = { ...UNSUPPORTED_CAPABILITIES };
+
+/**
+ * TikTok Business capabilities — V1.35 RESEARCH. Comment read/moderation via the
+ * official API is limited and app-review-gated. Connector exists but advertises
+ * no capabilities until proven.
+ */
+export const TIKTOK_CAPABILITIES: PlatformCapabilities = { ...UNSUPPORTED_CAPABILITIES };
+
 const CAPABILITIES: Record<PlatformKey, PlatformCapabilities> = {
   facebook: FACEBOOK_CAPABILITIES,
   instagram: INSTAGRAM_CAPABILITIES,
-  youtube: UNSUPPORTED_CAPABILITIES,
-  tiktok: UNSUPPORTED_CAPABILITIES,
-  linkedin: UNSUPPORTED_CAPABILITIES,
-  google_business: UNSUPPORTED_CAPABILITIES,
+  youtube: YOUTUBE_CAPABILITIES,
+  tiktok: TIKTOK_CAPABILITIES,
+  linkedin: LINKEDIN_CAPABILITIES,
+  google_business: GOOGLE_BUSINESS_CAPABILITIES,
 };
 
 /** A moderation action a platform may or may not support. */
@@ -342,7 +410,10 @@ export interface PlatformConnectorInfo {
   blockedReason(action: PlatformCapabilityAction): NormalizedActionReason | null;
 }
 
-const IMPLEMENTED: Set<PlatformKey> = new Set(["facebook", "instagram"]);
+// Platforms with a real, implemented connector. Facebook (moderation), Instagram
+// (read + research/test moderation), YouTube (read comments), Google Business
+// (read reviews). LinkedIn + TikTok remain RESEARCH — not implemented, safe-unsupported.
+const IMPLEMENTED: Set<PlatformKey> = new Set(["facebook", "instagram", "youtube", "google_business"]);
 
 export function isPlatformSupported(platform: PlatformKey): boolean {
   return IMPLEMENTED.has(platform);
@@ -367,4 +438,61 @@ export function getPlatformConnector(platform: PlatformKey): PlatformConnectorIn
     canPerform: (action) => actionCapability(capabilities, action),
     blockedReason: (action) => (actionCapability(capabilities, action) ? null : "missing_capability"),
   };
+}
+
+// ---------------------------------------------------------------------------
+// V1.35 — truthful capability matrix + UI support level (never guessed).
+// ---------------------------------------------------------------------------
+
+/**
+ * The public, spec-named capability matrix for a platform, derived ONLY from its
+ * real capability profile. Every field is a hard boolean — no guessing. Used by
+ * the platform-rollout test and any honest capability display.
+ */
+export interface PlatformCapabilityMatrix {
+  supportsRead: boolean;
+  supportsCommentSync: boolean;
+  supportsAuthor: boolean;
+  supportsPost: boolean;
+  supportsHide: boolean;
+  supportsDelete: boolean;
+  supportsReply: boolean;
+  supportsLike: boolean;
+  supportsReviewSync: boolean;
+  supportsVerification: boolean;
+}
+
+export function platformCapabilityMatrix(platform: PlatformKey): PlatformCapabilityMatrix {
+  const c = getCapabilities(platform);
+  return {
+    supportsRead: c.canReadComments || c.canReviewSync,
+    supportsCommentSync: c.canReadComments,
+    supportsAuthor: c.canFetchAuthor,
+    supportsPost: c.canFetchPost,
+    supportsHide: c.canHideComment,
+    supportsDelete: c.canDeleteComment,
+    supportsReply: c.canReplyToComment,
+    supportsLike: c.canLikeComment,
+    supportsReviewSync: c.canReviewSync,
+    supportsVerification: c.canVerifyHiddenState,
+  };
+}
+
+/**
+ * Product-level support level for the Accounts UI. Honest, capability-derived:
+ *   - "protection" — read + hide (Facebook)
+ *   - "monitoring" — read comments, no hide (Instagram, YouTube)
+ *   - "reviews"    — review sync (Google Business)
+ *   - "limited"    — a connector exists but the API is heavily restricted
+ *   - "research"   — not implemented / not verified yet (LinkedIn, TikTok)
+ */
+export type PlatformSupportLevel = "protection" | "monitoring" | "reviews" | "limited" | "research";
+
+export function platformSupportLevel(platform: PlatformKey): PlatformSupportLevel {
+  const c = getCapabilities(platform);
+  if (!isPlatformSupported(platform)) return "research";
+  if (c.canHideComment) return "protection";
+  if (c.canReviewSync) return "reviews";
+  if (c.canReadComments) return "monitoring";
+  return "limited";
 }
