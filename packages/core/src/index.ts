@@ -7,6 +7,7 @@
 export * from "./ids";
 export * from "./platform";
 export * from "./capabilities";
+export * from "./inbox";
 export * from "./tenant";
 export * from "./permissions";
 export * from "./brand";

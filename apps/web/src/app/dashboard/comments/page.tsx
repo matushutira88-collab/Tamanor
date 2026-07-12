@@ -3,7 +3,7 @@ import {
   buildActorSignals, actorRiskScore, actorRiskLevel, sentimentBucket,
   type ActorComment, type ActorRiskLevel, type SentimentBucket,
 } from "@guardora/ai";
-import { getPlatformConnector, platformKeyFor, actorIdentityKey, PLATFORM_META, type Platform } from "@guardora/core";
+import { getPlatformConnector, platformKeyFor, actorIdentityKey, PLATFORM_META, ALL_PLATFORMS, type Platform } from "@guardora/core";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -26,7 +26,7 @@ interface Row {
   id: string; text: string; author: string; authorKey: string | null; platformLabel: string; account: string;
   permalink: string | null; createdAt: Date; bucket: SentimentBucket; riskLevel: string; category: string | null;
   statusKey: string; hiddenPublic: boolean; pending: boolean; resolved: boolean; queueItemId: string | null;
-  actorLevel: ActorRiskLevel | null; cantHide: boolean; isReview: boolean; rating: number | null;
+  actorLevel: ActorRiskLevel | null; cantHide: boolean; isReview: boolean; rating: number | null; providerKey: string;
 }
 
 export default async function CommentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -39,6 +39,9 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
 
   const range: RangeKey = (["today", "7d", "30d"] as const).includes(sp.range as RangeKey) ? (sp.range as RangeKey) : "7d";
   const filter: FilterKey = (FILTERS as string[]).includes(sp.filter ?? "") ? (sp.filter as FilterKey) : "all";
+  // V1.37 — provider-neutral filters: provider (all|facebook|instagram|google_business|…) + content type.
+  const provider = (sp.provider ?? "all");
+  const typeFilter: "all" | "comment" | "review" = sp.type === "comment" || sp.type === "review" ? sp.type : "all";
   const q = (sp.q ?? "").trim();
   const days = RANGES[range];
   const now = new Date();
@@ -116,6 +119,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       cantHide: bucket === "risky" && !caps.canHideComment && !hiddenPublic && !resolved,
       isReview: ci.kind === "review",
       rating: ci.rating ?? null,
+      providerKey: platformKeyFor(ci.platform),
     };
   });
 
@@ -124,26 +128,40 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const mPositive = rows.filter((r) => r.bucket === "positive" || r.bucket === "neutral").length;
   const mNegative = rows.filter((r) => r.bucket === "negative").length;
   const mRiskyHidden = rows.filter((r) => r.bucket === "risky" || r.hiddenPublic).length;
+  // V1.37 — review stats (H): reviews count + average star rating (when reviews present).
+  const reviewRows = rows.filter((r) => r.isReview && r.rating);
+  const avgRating = reviewRows.length > 0 ? (reviewRows.reduce((s, r) => s + (r.rating ?? 0), 0) / reviewRows.length).toFixed(1) : null;
+  // Providers actually present (for provider-neutral filter chips).
+  const providersPresent = [...new Set(rows.map((r) => r.providerKey))];
 
-  // Apply filter + search.
+  // Apply provider + type + sentiment filters + search (identical across providers).
   const ql = q.toLowerCase();
   const shown = rows.filter((r) => {
+    if (provider !== "all" && r.providerKey !== provider) return false;
+    if (typeFilter === "review" && !r.isReview) return false;
+    if (typeFilter === "comment" && r.isReview) return false;
     const matchFilter = filter === "all" ? true
       : filter === "hidden" ? r.hiddenPublic
       : filter === "pending" ? r.pending
       : r.bucket === filter;
     if (!matchFilter) return false;
     if (!ql) return true;
-    return r.text.toLowerCase().includes(ql) || r.author.toLowerCase().includes(ql) || (r.category ?? "").toLowerCase().includes(ql) || tEnum(t, "autoProtectCategory", r.category ?? "").toLowerCase().includes(ql);
+    return r.text.toLowerCase().includes(ql) || r.author.toLowerCase().includes(ql) || (r.category ?? "").toLowerCase().includes(ql)
+      || tEnum(t, "autoProtectCategory", r.category ?? "").toLowerCase().includes(ql)
+      || r.platformLabel.toLowerCase().includes(ql) || r.account.toLowerCase().includes(ql); // provider + location(account)
   });
 
   const params = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
     const rg = over.range ?? (range !== "7d" ? range : undefined);
     const fl = over.filter ?? (filter !== "all" ? filter : undefined);
+    const pv = over.provider ?? (provider !== "all" ? provider : undefined);
+    const ty = over.type ?? (typeFilter !== "all" ? typeFilter : undefined);
     const qq = over.q ?? (q || undefined);
     if (rg && rg !== "7d") p.set("range", rg);
     if (fl && fl !== "all") p.set("filter", fl);
+    if (pv && pv !== "all") p.set("provider", pv);
+    if (ty && ty !== "all") p.set("type", ty);
     if (qq) p.set("q", qq);
     const s = p.toString();
     return `/dashboard/comments${s ? `?${s}` : ""}`;
@@ -181,13 +199,39 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
             <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mAll}</p><p className="mt-1 text-2xl font-bold">{mAll}</p></Card>
             <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mPositive}</p><p className="mt-1 text-2xl font-bold">{mPositive}</p></Card>
             <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mNegative}</p><p className="mt-1 text-2xl font-bold">{mNegative}</p></Card>
-            <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mRiskyHidden}</p><p className="mt-1 text-2xl font-bold">{mRiskyHidden}</p></Card>
+            {reviewRows.length > 0 ? (
+              <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mReviews}</p><p className="mt-1 text-2xl font-bold">{reviewRows.length}</p><p className="text-[11px] text-[var(--color-muted)]">{t.comments.avgRating}: {avgRating} ★</p></Card>
+            ) : (
+              <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mRiskyHidden}</p><p className="mt-1 text-2xl font-bold">{mRiskyHidden}</p></Card>
+            )}
           </div>
+
+          {/* V1.37 — provider filter (only when >1 provider present) */}
+          {providersPresent.length > 1 ? (
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              <Link href={params({ provider: "all" })} className={chipCls(provider === "all")}>{t.comments.allProviders}</Link>
+              {providersPresent.map((pk) => {
+                const plat = ALL_PLATFORMS.find((p) => platformKeyFor(p) === pk);
+                return <Link key={pk} href={params({ provider: pk })} className={chipCls(provider === pk)}>{plat ? PLATFORM_META[plat].label : pk}</Link>;
+              })}
+            </div>
+          ) : null}
+
+          {/* V1.37 — content-type filter (only when reviews present) */}
+          {reviewRows.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Link href={params({ type: "all" })} className={chipCls(typeFilter === "all")}>{t.comments.typeAll}</Link>
+              <Link href={params({ type: "comment" })} className={chipCls(typeFilter === "comment")}>{t.comments.typeComments}</Link>
+              <Link href={params({ type: "review" })} className={chipCls(typeFilter === "review")}>{t.comments.typeReviews}</Link>
+            </div>
+          ) : null}
 
           {/* Search */}
           <form className="mt-4 flex gap-2" action="/dashboard/comments">
             {range !== "7d" ? <input type="hidden" name="range" value={range} /> : null}
             {filter !== "all" ? <input type="hidden" name="filter" value={filter} /> : null}
+            {provider !== "all" ? <input type="hidden" name="provider" value={provider} /> : null}
+            {typeFilter !== "all" ? <input type="hidden" name="type" value={typeFilter} /> : null}
             <input name="q" defaultValue={q} placeholder={t.comments.searchPlaceholder} className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)]" />
             {q ? <Link href={params({ q: "" })} className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-2 text-xs font-medium hover:border-[var(--color-border-strong)]">{t.comments.searchClear}</Link> : null}
           </form>

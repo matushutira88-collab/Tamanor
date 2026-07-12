@@ -53,6 +53,7 @@
     "beta-launch:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/beta-launch.test.ts",
     "platform-rollout:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/platform-rollout.test.ts",
     "google-business-connector:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/google-business-connector.test.ts",
+    "unified-inbox:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/unified-inbox.test.ts",
     "instagram-moderation:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-moderation.test.ts",
     "instagram-hide:diagnose": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-hide.ts diagnose",
     "instagram-hide:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-hide.ts test",
