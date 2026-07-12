@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ActorKind, Permission } from "@guardora/core";
 import { PageHeader, Badge } from "@/components/dashboard/ui";
+import { withTenant } from "@guardora/db";
 import { requirePermission } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { humanize, formatDateTime } from "@/lib/format";
@@ -33,23 +33,27 @@ export default async function AuditPage({
       : undefined;
   const q = sp.q?.trim() || undefined;
 
-  const [brands, logs] = await Promise.all([
-    prisma.brand.findMany({
-      where: { tenantId: session.tenantId },
-      select: { id: true, name: true },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.auditLog.findMany({
-      where: {
-        tenantId: session.tenantId,
-        ...(brandId ? { brandId } : {}),
-        ...(actor ? { actorKind: actor as ActorKind } : {}),
-        ...(q ? { event: { contains: q, mode: "insensitive" } } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    }),
-  ]);
+  // V1.37.3 — runs on the RLS runtime client (tamanor_app) via withTenant. The
+  // explicit tenantId filters remain as defense-in-depth; RLS is the enforcement.
+  const [brands, logs] = await withTenant(session.tenantId, (db) =>
+    Promise.all([
+      db.brand.findMany({
+        where: { tenantId: session.tenantId },
+        select: { id: true, name: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      db.auditLog.findMany({
+        where: {
+          tenantId: session.tenantId,
+          ...(brandId ? { brandId } : {}),
+          ...(actor ? { actorKind: actor as ActorKind } : {}),
+          ...(q ? { event: { contains: q, mode: "insensitive" } } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      }),
+    ]),
+  );
 
   const brandOptions = [
     { value: "", label: hdrT.dash.allBrands },

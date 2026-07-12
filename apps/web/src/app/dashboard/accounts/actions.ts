@@ -10,6 +10,7 @@ import {
   assertCan,
 } from "@guardora/core";
 import { runReadOnlySync } from "@guardora/sync";
+import { disconnectConnectedAccount } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
@@ -84,15 +85,10 @@ export async function disconnect(accountId: string): Promise<void> {
   const session = await requireSession();
   assertCan(session.role, Permission.ConnectorManage);
 
-  const account = await prisma.connectedAccount.findFirst({
-    where: { id: accountId, tenantId: session.tenantId },
-  });
+  // V1.37.3 — tenant runtime (RLS): the account load + update run under the
+  // session's tenant context; a foreign/absent id returns null → not_found.
+  const account = await disconnectConnectedAccount(session.tenantId, accountId);
   if (!account) throw new Error("Account not found");
-
-  await prisma.connectedAccount.update({
-    where: { id: account.id },
-    data: { status: ConnectorStatus.Disconnected },
-  });
 
   await writeAudit({
     session,

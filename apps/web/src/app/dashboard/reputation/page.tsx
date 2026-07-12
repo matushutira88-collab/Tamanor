@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { sentimentBucket, topicOf, type SentimentBucket, type ReputationTopic } from "@guardora/ai";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
+import { withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 
@@ -26,21 +26,28 @@ export default async function ReputationPage({ searchParams }: { searchParams: P
   const prevStart = new Date(rangeStart); prevStart.setUTCDate(prevStart.getUTCDate() - days);
 
   const HIDE_REASONS = ["live_hide_executed", "already_hidden"];
-  const [repItems, pendingApprovals, hides, prevRepItems] = await Promise.all([
-    prisma.reputationItem.findMany({
-      where: { ...where, createdAt: { gte: rangeStart } },
-      select: { id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true, contentItem: { select: { text: true, externalParentId: true, connectedAccount: { select: { externalName: true } } } } },
-      take: 2000,
-    }),
-    prisma.actionQueueItem.count({ where: { ...where, queueState: "approval_required" } }),
-    prisma.platformActionExecution.findMany({ where: { ...where, status: "executed", reason: { in: HIDE_REASONS }, executedAt: { gte: rangeStart } }, select: { trigger: true, externalPostId: true, executedAt: true } }),
-    prisma.reputationItem.findMany({ where: { ...where, createdAt: { gte: prevStart, lt: rangeStart } }, select: { riskLevel: true, riskCategories: true, sentiment: true } }),
-  ]);
+  // V1.37.3 — all reads run under the RLS runtime client (tamanor_app) in one
+  // tenant transaction. Explicit tenantId filters stay as defense-in-depth.
+  const { repItems, pendingApprovals, hides, prevRepItems, queueRows } = await withTenant(
+    session.tenantId,
+    async (db) => {
+      const [repItems, pendingApprovals, hides, prevRepItems] = await Promise.all([
+        db.reputationItem.findMany({
+          where: { ...where, createdAt: { gte: rangeStart } },
+          select: { id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true, contentItem: { select: { text: true, externalParentId: true, connectedAccount: { select: { externalName: true } } } } },
+          take: 2000,
+        }),
+        db.actionQueueItem.count({ where: { ...where, queueState: "approval_required" } }),
+        db.platformActionExecution.findMany({ where: { ...where, status: "executed", reason: { in: HIDE_REASONS }, executedAt: { gte: rangeStart } }, select: { trigger: true, externalPostId: true, executedAt: true } }),
+        db.reputationItem.findMany({ where: { ...where, createdAt: { gte: prevStart, lt: rangeStart } }, select: { riskLevel: true, riskCategories: true, sentiment: true } }),
+      ]);
+      const queueRows = await db.actionQueueItem.findMany({ where: { ...where, itemId: { in: repItems.map((r) => r.id) } }, select: { itemId: true, queueState: true } });
+      return { repItems, pendingApprovals, hides, prevRepItems, queueRows };
+    },
+  );
 
   // itemId → queueState (for per-post pending + risky-post aggregation).
-  const queueMap = new Map<string, string>(
-    (await prisma.actionQueueItem.findMany({ where: { ...where, itemId: { in: repItems.map((r) => r.id) } }, select: { itemId: true, queueState: true } })).map((q) => [q.itemId, q.queueState]),
-  );
+  const queueMap = new Map<string, string>(queueRows.map((q) => [q.itemId, q.queueState]));
 
   // --- Sentiment buckets (state-truth aware) ---
   const buckets: Record<SentimentBucket, number> = { positive: 0, neutral: 0, negative: 0, risky: 0 };
