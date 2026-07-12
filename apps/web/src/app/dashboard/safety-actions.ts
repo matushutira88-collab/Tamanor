@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { getLiveActionsConfig } from "@guardora/config";
 import { rollbackHide } from "@guardora/sync";
+import { withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
 
 /**
@@ -21,10 +21,12 @@ export async function toggleBrandKillSwitch(formData: FormData): Promise<void> {
   assertCan(session.role, Permission.RuleManage);
   const brandId = String(formData.get("brandId") ?? "");
   const on = formData.get("on") === "1";
-  const brand = await prisma.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true } });
-  if (!brand) throw new Error("Brand not found");
-  await prisma.brand.update({ where: { id: brand.id }, data: { killSwitch: on } });
-  await writeAudit({ session, event: on ? "kill_switch.enabled" : "kill_switch.disabled", brandId, targetType: "brand", targetId: brandId, metadata: { scope: "brand", on } });
+  await withTenant(session.tenantId, async (db) => {
+    const brand = await db.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true } });
+    if (!brand) throw new Error("Brand not found");
+    await db.brand.update({ where: { id: brand.id }, data: { killSwitch: on } });
+    await writeAudit({ session, db, event: on ? "kill_switch.enabled" : "kill_switch.disabled", brandId, targetType: "brand", targetId: brandId, metadata: { scope: "brand", on } });
+  });
   revalidatePath("/dashboard/control-center");
   redirect(`/dashboard/control-center?kind=ok&notice=${encodeURIComponent(on ? "Live actions stopped for this brand." : "Live actions resumed for this brand.")}`);
 }
@@ -41,17 +43,20 @@ export async function setBrandAutoHide(formData: FormData): Promise<void> {
   const brandId = String(formData.get("brandId") ?? "");
   const on = formData.get("on") === "1";
   const acknowledged = formData.get("ack") === "on" || formData.get("ack") === "true";
-  const brand = await prisma.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true } });
+
+  const brand = await withTenant(session.tenantId, (db) => db.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true } }));
   if (!brand) throw new Error("Brand not found");
   if (on && !acknowledged) {
     redirect(`/dashboard/control-center?kind=error&notice=${encodeURIComponent("Please confirm you understand comments will be hidden automatically.")}`);
   }
-  await prisma.brandLiveSafetySettings.upsert({
-    where: { brandId },
-    create: { tenantId: session.tenantId, brandId, liveModeEnabled: on, autonomousHideEnabled: on },
-    update: { liveModeEnabled: on, autonomousHideEnabled: on },
+  await withTenant(session.tenantId, async (db) => {
+    await db.brandLiveSafetySettings.upsert({
+      where: { brandId },
+      create: { tenantId: session.tenantId, brandId, liveModeEnabled: on, autonomousHideEnabled: on },
+      update: { liveModeEnabled: on, autonomousHideEnabled: on },
+    });
+    await writeAudit({ session, db, event: on ? "live_safety.enabled" : "live_safety.disabled", brandId, targetType: "brand", targetId: brandId, metadata: { autonomousHideEnabled: on } });
   });
-  await writeAudit({ session, event: on ? "live_safety.enabled" : "live_safety.disabled", brandId, targetType: "brand", targetId: brandId, metadata: { autonomousHideEnabled: on } });
   revalidatePath("/dashboard/control-center");
   redirect(`/dashboard/control-center?kind=ok&notice=${encodeURIComponent(on ? "Safe auto-hide enabled for this brand." : "Safe auto-hide disabled for this brand.")}`);
 }
@@ -62,10 +67,12 @@ export async function toggleAccountKillSwitch(formData: FormData): Promise<void>
   assertCan(session.role, Permission.RuleManage);
   const accountId = String(formData.get("accountId") ?? "");
   const on = formData.get("on") === "1";
-  const acct = await prisma.connectedAccount.findFirst({ where: { id: accountId, tenantId: session.tenantId }, select: { id: true, brandId: true } });
-  if (!acct) throw new Error("Account not found");
-  await prisma.connectedAccount.update({ where: { id: acct.id }, data: { killSwitch: on } });
-  await writeAudit({ session, event: on ? "kill_switch.enabled" : "kill_switch.disabled", brandId: acct.brandId, targetType: "connected_account", targetId: accountId, metadata: { scope: "account", on } });
+  await withTenant(session.tenantId, async (db) => {
+    const acct = await db.connectedAccount.findFirst({ where: { id: accountId, tenantId: session.tenantId }, select: { id: true, brandId: true } });
+    if (!acct) throw new Error("Account not found");
+    await db.connectedAccount.update({ where: { id: acct.id }, data: { killSwitch: on } });
+    await writeAudit({ session, db, event: on ? "kill_switch.enabled" : "kill_switch.disabled", brandId: acct.brandId, targetType: "connected_account", targetId: accountId, metadata: { scope: "account", on } });
+  });
   revalidatePath(`/dashboard/accounts/${accountId}`);
   redirect(`/dashboard/accounts/${accountId}?kind=ok&notice=${encodeURIComponent(on ? "Live actions stopped for this account." : "Live actions resumed for this account.")}`);
 }
@@ -79,15 +86,23 @@ export async function rollbackExecution(formData: FormData): Promise<void> {
   assertCan(session.role, Permission.ProposalApprove);
   const executionId = String(formData.get("executionId") ?? "");
   const backTo = String(formData.get("backTo") ?? "/dashboard/action-queue");
-  const exec = await prisma.platformActionExecution.findFirst({
-    where: { id: executionId, tenantId: session.tenantId, status: "executed" },
-    select: { id: true, connectedAccountId: true },
+
+  // Phase 1 — tenant reads (short tx): the executed row + the account's token.
+  const { exec, acct } = await withTenant(session.tenantId, async (db) => {
+    const exec = await db.platformActionExecution.findFirst({
+      where: { id: executionId, tenantId: session.tenantId, status: "executed" },
+      select: { id: true, connectedAccountId: true },
+    });
+    if (!exec) return { exec: null, acct: null };
+    const acct = await db.connectedAccount.findFirst({ where: { id: exec.connectedAccountId }, select: { pageId: true, externalId: true, accessToken: true } });
+    return { exec, acct };
   });
   if (!exec) redirect(`${backTo}?kind=error&notice=${encodeURIComponent("Nothing to roll back.")}`);
-  const acct = await prisma.connectedAccount.findFirst({ where: { id: exec!.connectedAccountId }, select: { pageId: true, externalId: true, accessToken: true } });
+
+  // Phase 2 — provider HTTP (rollbackHide manages its own short tenant transactions).
   const live = getLiveActionsConfig();
   const res = await rollbackHide({
-    tenantId: session.tenantId, executionId: exec!.id,
+    tenantId: session.tenantId, executionId: exec.id,
     account: { pageId: acct?.pageId ?? null, externalId: acct?.externalId ?? "", accessToken: acct?.accessToken ?? null },
     live: live.canExecuteLive,
   });

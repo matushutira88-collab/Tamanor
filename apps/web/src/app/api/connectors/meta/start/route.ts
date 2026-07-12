@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import { getMetaConfig } from "@guardora/config";
 import { buildMetaAuthUrl } from "@guardora/connectors";
 import { Permission, can } from "@guardora/core";
+import { withTenant } from "@guardora/db";
 import { getSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
 
 export const runtime = "nodejs";
@@ -39,10 +39,12 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const brand = await prisma.brand.findFirst({
+  // Tenant from the validated SESSION (never from the query). RLS re-validates the
+  // brand belongs to this tenant; a foreign brandId reads back as not found.
+  const brand = await withTenant(session.tenantId, (db) => db.brand.findFirst({
     where: { id: brandId, tenantId: session.tenantId },
     select: { id: true },
-  });
+  }));
   if (!brand) {
     return NextResponse.redirect(
       new URL("/dashboard/accounts?meta=bad_brand", req.url),

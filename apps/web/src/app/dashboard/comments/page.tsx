@@ -6,7 +6,7 @@ import {
 import { getPlatformConnector, platformKeyFor, actorIdentityKey, PLATFORM_META, ALL_PLATFORMS, type Platform } from "@guardora/core";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -48,8 +48,8 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const dayStart = new Date(now); dayStart.setUTCHours(0, 0, 0, 0);
   const rangeStart = new Date(dayStart); rangeStart.setUTCDate(rangeStart.getUTCDate() - (days - 1));
 
-  const [repItems, executions, queueItems, accountCount] = await Promise.all([
-    prisma.reputationItem.findMany({
+  const [repItems, executions, queueItems, accountCount] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.reputationItem.findMany({
       where: { ...where, createdAt: { gte: rangeStart } },
       select: {
         id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true,
@@ -58,10 +58,10 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       orderBy: { createdAt: "desc" },
       take: 500,
     }),
-    prisma.platformActionExecution.findMany({ where: { ...where, status: "executed", reason: { in: [...HIDE_REASONS, "comment_deleted", "facebook_can_hide_false"] }, executedAt: { gte: rangeStart } }, select: { externalCommentId: true, reason: true } }),
-    prisma.actionQueueItem.findMany({ where, select: { id: true, itemId: true, queueState: true } }),
-    prisma.connectedAccount.count({ where }),
-  ]);
+    db.platformActionExecution.findMany({ where: { ...where, status: "executed", reason: { in: [...HIDE_REASONS, "comment_deleted", "facebook_can_hide_false"] }, executedAt: { gte: rangeStart } }, select: { externalCommentId: true, reason: true } }),
+    db.actionQueueItem.findMany({ where, select: { id: true, itemId: true, queueState: true } }),
+    db.connectedAccount.count({ where }),
+  ]));
 
   // External-comment-id → terminal state (state truth; deleted wins over hidden wins over can_hide_false).
   const execState = new Map<string, "deleted" | "hidden" | "cannot_hide">();

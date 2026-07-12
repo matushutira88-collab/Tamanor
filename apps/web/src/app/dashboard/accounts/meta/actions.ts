@@ -9,10 +9,10 @@ import {
   Platform,
   encryptToken,
   metaConnectedAccountFields,
+  withTenant,
 } from "@guardora/db";
 import type { AppSession } from "@/server/auth";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
 
@@ -43,12 +43,6 @@ async function upsertMetaAccount(
 ): Promise<string> {
   const { brandId, platform, externalId } = input;
 
-  // Determine reconnect vs. first connect (for the audit event only).
-  const existing = await prisma.connectedAccount.findFirst({
-    where: { brandId, platform, externalId },
-    select: { id: true },
-  });
-
   // Every field below is overwritten on BOTH create and update (shared builder),
   // so a reconnect can never keep stale scopes/permissions/tokens.
   const fields = metaConnectedAccountFields({
@@ -62,29 +56,37 @@ async function upsertMetaAccount(
     tokenExpiresAt: input.tokenExpiresAt,
   });
 
-  const account = await prisma.connectedAccount.upsert({
-    where: { brandId_platform_externalId: { brandId, platform, externalId } },
-    create: { tenantId: session.tenantId, brandId, platform, externalId, ...fields },
-    update: fields,
-  });
+  return withTenant(session.tenantId, async (db) => {
+    // Determine reconnect vs. first connect (for the audit event only).
+    const existing = await db.connectedAccount.findFirst({
+      where: { brandId, platform, externalId },
+      select: { id: true },
+    });
 
-  await writeAudit({
-    session,
-    event: existing ? "account.reconnected" : "account.connected",
-    brandId,
-    targetType: "connected_account",
-    targetId: account.id,
-    // NO token material — only non-secret context.
-    metadata: {
-      platform,
-      mode: "read_only",
-      reconnected: Boolean(existing),
-      scopes: input.scopes.length,
-      grantedPermissions: input.granted.length,
-    },
-  });
+    const account = await db.connectedAccount.upsert({
+      where: { brandId_platform_externalId: { brandId, platform, externalId } },
+      create: { tenantId: session.tenantId, brandId, platform, externalId, ...fields },
+      update: fields,
+    });
 
-  return account.id;
+    await writeAudit({
+      session, db,
+      event: existing ? "account.reconnected" : "account.connected",
+      brandId,
+      targetType: "connected_account",
+      targetId: account.id,
+      // NO token material — only non-secret context.
+      metadata: {
+        platform,
+        mode: "read_only",
+        reconnected: Boolean(existing),
+        scopes: input.scopes.length,
+        grantedPermissions: input.granted.length,
+      },
+    });
+
+    return account.id;
+  });
 }
 
 /**
@@ -106,10 +108,10 @@ export async function confirmMetaSelection(
     redirect("/dashboard/accounts/meta/select?flow=expired");
   }
 
-  const brand = await prisma.brand.findFirst({
+  const brand = await withTenant(session.tenantId, (db) => db.brand.findFirst({
     where: { id: row.brandId, tenantId: session.tenantId },
     select: { id: true },
-  });
+  }));
   if (!brand) {
     redirect("/dashboard/accounts?meta=bad_brand");
   }
@@ -158,13 +160,13 @@ export async function confirmMetaSelection(
     });
   }
 
-  await clearOnboarding(onboardingId);
+  await clearOnboarding(session, onboardingId);
 
   // V1.27C — verify the stored PAGE token against Graph (GET /{pageId}) right away,
   // so the account only shows fully healthy when the token actually works.
   let verify = "ok";
   try {
-    const res = await checkAccountToken(fbId);
+    const res = await checkAccountToken(session.tenantId, fbId);
     verify = res.result;
   } catch { /* verification is best-effort; account is still connected */ }
 
@@ -177,6 +179,6 @@ export async function cancelMetaSelection(onboardingId: string): Promise<void> {
   const session = await requireSession();
   assertCan(session.role, Permission.ConnectorManage);
   await loadOnboardingRaw(session, onboardingId); // tenant/user check
-  await clearOnboarding(onboardingId);
+  await clearOnboarding(session, onboardingId);
   redirect("/dashboard/accounts");
 }

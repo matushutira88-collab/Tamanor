@@ -71,13 +71,13 @@ async function run() {
   try {
     // 1) watchdog marks an OK token healthy.
     const okT = new MockFacebookHideTransport({ ok: true }, { pageToken: { ok: true, pageId: "TOK_PAGE", pageName: "Konfigurátor" } });
-    const r1 = await checkAccountToken(acct.id, { transport: okT });
+    const r1 = await checkAccountToken(T, acct.id, { transport: okT });
     const a1 = await prisma.connectedAccount.findUnique({ where: { id: acct.id }, select: { connectionStatus: true, tokenHealth: true, health: true, lastSuccessfulGraphCheckAt: true } });
     check("1) watchdog marks OK token healthy", r1.tokenHealth === "ok" && r1.connectionStatus === "connected" && a1?.tokenHealth === "ok" && a1?.health === "healthy" && a1?.lastSuccessfulGraphCheckAt != null, JSON.stringify(r1));
 
     // 2) watchdog marks an invalid token needs_reconnect.
     const badT = new MockFacebookHideTransport({ ok: true }, { pageToken: { ok: false, errorCode: "token_invalid" } });
-    const r2 = await checkAccountToken(acct.id, { transport: badT });
+    const r2 = await checkAccountToken(T, acct.id, { transport: badT });
     const a2 = await prisma.connectedAccount.findUnique({ where: { id: acct.id }, select: { connectionStatus: true, tokenHealth: true, health: true, lastError: true } });
     check("2) watchdog marks invalid token needs_reconnect", r2.connectionStatus === "needs_reconnect" && r2.tokenHealth === "invalid" && a2?.connectionStatus === "needs_reconnect" && a2?.lastError === "token_invalid", JSON.stringify(r2));
 
@@ -85,7 +85,7 @@ async function run() {
     const fields = metaConnectedAccountFields({ externalName: "Konfigurátor", pageId: "TOK_PAGE", igBusinessId: null, scopes: [], grantedPermissions: ["pages_manage_engagement"], encryptedToken: "x", tokenType: "page", tokenExpiresAt: null });
     check("3) reconnect resets connectionStatus=connected", fields.connectionStatus === "connected" && fields.tokenHealth === "unknown");
     await prisma.connectedAccount.update({ where: { id: acct.id }, data: fields });
-    const r3 = await checkAccountToken(acct.id, { transport: okT });
+    const r3 = await checkAccountToken(T, acct.id, { transport: okT });
     check("3b) post-reconnect page validation → tokenHealth ok", r3.tokenHealth === "ok" && r3.connectionStatus === "connected");
 
     // 4) reconnect clears token_expired/requiresReconnectReason.
@@ -150,7 +150,7 @@ async function run() {
 
     // UI) predictHideOutcome after a fresh page check repairs the row → live_possible.
     await prisma.connectedAccount.update({ where: { id: acct.id }, data: { connectionStatus: "needs_reconnect", tokenHealth: "expired", health: "error" } });
-    const repaired = await checkAccountToken(acct.id, { transport: new MockFacebookHideTransport({ ok: true }, { pageToken: { ok: true, pageId: "TOK_PAGE" } }) });
+    const repaired = await checkAccountToken(T, acct.id, { transport: new MockFacebookHideTransport({ ok: true }, { pageToken: { ok: true, pageId: "TOK_PAGE" } }) });
     const pred = predictHideOutcome({
       tenantId: T, brandId: "B", itemId: "X", queueItemId: "Y", policyId: "P", connectedAccountId: acct.id, platform: "facebook_page",
       externalCommentId: "C1", externalPostId: null, matchedCategory: "scam", confidence: 0.95, riskLevel: "critical", mode: "approval", trigger: "approval",

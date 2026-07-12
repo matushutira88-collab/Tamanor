@@ -9,8 +9,8 @@ import {
 } from "@guardora/core";
 import { normalize, LIVE_ELIGIBLE_CATEGORIES } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
+import { withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
 
 const MEMORY_TYPES = [
@@ -48,35 +48,26 @@ export async function createRule(formData: FormData): Promise<void> {
   assertCan(session.role, Permission.RuleManage);
 
   const brandId = String(formData.get("brandId") ?? "");
-  const brand = await prisma.brand.findFirst({
-    where: { id: brandId, tenantId: session.tenantId },
-    select: { id: true },
-  });
-  if (!brand) throw new Error("Brand not found");
-
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Rule name is required");
   const phrases = parsePhrases(formData.get("phrases"));
   if (phrases.length === 0) throw new Error("At least one phrase is required");
+  const category = asCategory(formData.get("category"));
+  const enabled = formData.get("enabled") === "on";
 
-  const rule = await prisma.brandRule.create({
-    data: {
-      tenantId: session.tenantId,
-      brandId,
-      name,
-      category: asCategory(formData.get("category")),
-      phrases,
-      enabled: formData.get("enabled") === "on",
-    },
-  });
-
-  await writeAudit({
-    session,
-    event: "rule.created",
-    brandId,
-    targetType: "brand_rule",
-    targetId: rule.id,
-    metadata: { name: rule.name, category: rule.category, phrases: phrases.length },
+  const rule = await withTenant(session.tenantId, async (db) => {
+    const brand = await db.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true } });
+    if (!brand) throw new Error("Brand not found");
+    const rule = await db.brandRule.create({
+      data: { tenantId: session.tenantId, brandId, name, category, phrases, enabled },
+    });
+    await writeAudit({
+      session, db,
+      event: "rule.created",
+      brandId, targetType: "brand_rule", targetId: rule.id,
+      metadata: { name: rule.name, category: rule.category, phrases: phrases.length },
+    });
+    return rule;
   });
 
   backWithNotice(`Rule "${rule.name}" created.`);
@@ -86,23 +77,17 @@ export async function toggleRule(ruleId: string, enabled: boolean): Promise<void
   const session = await requireSession();
   assertCan(session.role, Permission.RuleManage);
 
-  const rule = await prisma.brandRule.findFirst({
-    where: { id: ruleId, tenantId: session.tenantId },
-  });
-  if (!rule) throw new Error("Rule not found");
-
-  await prisma.brandRule.update({
-    where: { id: rule.id },
-    data: { enabled },
-  });
-
-  await writeAudit({
-    session,
-    event: enabled ? "rule.enabled" : "rule.disabled",
-    brandId: rule.brandId,
-    targetType: "brand_rule",
-    targetId: rule.id,
-    metadata: { name: rule.name },
+  const rule = await withTenant(session.tenantId, async (db) => {
+    const rule = await db.brandRule.findFirst({ where: { id: ruleId, tenantId: session.tenantId } });
+    if (!rule) throw new Error("Rule not found");
+    await db.brandRule.update({ where: { id: rule.id }, data: { enabled } });
+    await writeAudit({
+      session, db,
+      event: enabled ? "rule.enabled" : "rule.disabled",
+      brandId: rule.brandId, targetType: "brand_rule", targetId: rule.id,
+      metadata: { name: rule.name },
+    });
+    return rule;
   });
 
   backWithNotice(`Rule "${rule.name}" ${enabled ? "enabled" : "disabled"}.`);
@@ -112,20 +97,17 @@ export async function deleteRule(ruleId: string): Promise<void> {
   const session = await requireSession();
   assertCan(session.role, Permission.RuleManage);
 
-  const rule = await prisma.brandRule.findFirst({
-    where: { id: ruleId, tenantId: session.tenantId },
-  });
-  if (!rule) throw new Error("Rule not found");
-
-  await prisma.brandRule.delete({ where: { id: rule.id } });
-
-  await writeAudit({
-    session,
-    event: "rule.deleted",
-    brandId: rule.brandId,
-    targetType: "brand_rule",
-    targetId: rule.id,
-    metadata: { name: rule.name, category: rule.category },
+  const rule = await withTenant(session.tenantId, async (db) => {
+    const rule = await db.brandRule.findFirst({ where: { id: ruleId, tenantId: session.tenantId } });
+    if (!rule) throw new Error("Rule not found");
+    await db.brandRule.delete({ where: { id: rule.id } });
+    await writeAudit({
+      session, db,
+      event: "rule.deleted",
+      brandId: rule.brandId, targetType: "brand_rule", targetId: rule.id,
+      metadata: { name: rule.name, category: rule.category },
+    });
+    return rule;
   });
 
   backWithNotice(`Rule "${rule.name}" deleted.`);
@@ -138,41 +120,30 @@ export async function createMemoryRule(formData: FormData): Promise<void> {
   assertCan(session.role, Permission.RuleManage);
 
   const brandId = String(formData.get("brandId") ?? "");
-  const brand = await prisma.brand.findFirst({
-    where: { id: brandId, tenantId: session.tenantId },
-    select: { id: true },
-  });
-  if (!brand) throw new Error("Brand not found");
-
   const type = String(formData.get("type") ?? "");
   if (!(MEMORY_TYPES as readonly string[]).includes(type)) throw new Error("Unknown memory rule type");
   const phrase = String(formData.get("phrase") ?? "").trim();
   if (!phrase) throw new Error("Phrase is required");
   const severityRaw = String(formData.get("severity") ?? "medium");
   const severity = (SEVERITIES as readonly string[]).includes(severityRaw) ? severityRaw : "medium";
+  const language = String(formData.get("language") ?? "").trim() || null;
 
-  const rule = await prisma.brandRiskMemoryRule.create({
-    data: {
-      tenantId: session.tenantId,
-      brandId,
-      type,
-      phrase,
-      normalizedPhrase: normalize(phrase),
-      language: String(formData.get("language") ?? "").trim() || null,
-      severity,
-      source: "manual",
-      isActive: true,
-      createdBy: session.userId,
-    },
-  });
-
-  await writeAudit({
-    session,
-    event: "memory_rule.created",
-    brandId,
-    targetType: "brand_memory_rule",
-    targetId: rule.id,
-    metadata: { type, severity, source: "manual" },
+  await withTenant(session.tenantId, async (db) => {
+    const brand = await db.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true } });
+    if (!brand) throw new Error("Brand not found");
+    const rule = await db.brandRiskMemoryRule.create({
+      data: {
+        tenantId: session.tenantId, brandId, type, phrase,
+        normalizedPhrase: normalize(phrase), language, severity,
+        source: "manual", isActive: true, createdBy: session.userId,
+      },
+    });
+    await writeAudit({
+      session, db,
+      event: "memory_rule.created",
+      brandId, targetType: "brand_memory_rule", targetId: rule.id,
+      metadata: { type, severity, source: "manual" },
+    });
   });
 
   backWithNotice(`Brand memory rule added.`);
@@ -182,20 +153,16 @@ export async function toggleMemoryRule(ruleId: string, isActive: boolean): Promi
   const session = await requireSession();
   assertCan(session.role, Permission.RuleManage);
 
-  const rule = await prisma.brandRiskMemoryRule.findFirst({
-    where: { id: ruleId, tenantId: session.tenantId },
-  });
-  if (!rule) throw new Error("Memory rule not found");
-
-  await prisma.brandRiskMemoryRule.update({ where: { id: rule.id }, data: { isActive } });
-
-  await writeAudit({
-    session,
-    event: isActive ? "memory_rule.activated" : "memory_rule.deactivated",
-    brandId: rule.brandId,
-    targetType: "brand_memory_rule",
-    targetId: rule.id,
-    metadata: { type: rule.type },
+  await withTenant(session.tenantId, async (db) => {
+    const rule = await db.brandRiskMemoryRule.findFirst({ where: { id: ruleId, tenantId: session.tenantId } });
+    if (!rule) throw new Error("Memory rule not found");
+    await db.brandRiskMemoryRule.update({ where: { id: rule.id }, data: { isActive } });
+    await writeAudit({
+      session, db,
+      event: isActive ? "memory_rule.activated" : "memory_rule.deactivated",
+      brandId: rule.brandId, targetType: "brand_memory_rule", targetId: rule.id,
+      metadata: { type: rule.type },
+    });
   });
 
   backWithNotice(`Brand memory rule ${isActive ? "activated" : "deactivated"}.`);
@@ -205,20 +172,16 @@ export async function deleteMemoryRule(ruleId: string): Promise<void> {
   const session = await requireSession();
   assertCan(session.role, Permission.RuleManage);
 
-  const rule = await prisma.brandRiskMemoryRule.findFirst({
-    where: { id: ruleId, tenantId: session.tenantId },
-  });
-  if (!rule) throw new Error("Memory rule not found");
-
-  await prisma.brandRiskMemoryRule.delete({ where: { id: rule.id } });
-
-  await writeAudit({
-    session,
-    event: "memory_rule.deleted",
-    brandId: rule.brandId,
-    targetType: "brand_memory_rule",
-    targetId: rule.id,
-    metadata: { type: rule.type },
+  await withTenant(session.tenantId, async (db) => {
+    const rule = await db.brandRiskMemoryRule.findFirst({ where: { id: ruleId, tenantId: session.tenantId } });
+    if (!rule) throw new Error("Memory rule not found");
+    await db.brandRiskMemoryRule.delete({ where: { id: rule.id } });
+    await writeAudit({
+      session, db,
+      event: "memory_rule.deleted",
+      brandId: rule.brandId, targetType: "brand_memory_rule", targetId: rule.id,
+      metadata: { type: rule.type },
+    });
   });
 
   backWithNotice(`Brand memory rule deleted.`);
@@ -247,22 +210,20 @@ export async function updateAutoProtectPolicy(formData: FormData): Promise<void>
   const minConfidence = Number.isFinite(minConfidenceRaw) ? Math.min(1, Math.max(0, minConfidenceRaw)) : 0.7;
   const isActive = formData.get("isActive") === "on";
 
-  const brand = await prisma.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true } });
-  if (!brand) throw new Error("Brand not found");
-
-  await prisma.brandAutoProtectPolicy.upsert({
-    where: { brandId_category: { brandId, category } },
-    create: { tenantId: session.tenantId, brandId, category, mode, minConfidence, isActive, createdBy: session.userId },
-    update: { mode, minConfidence, isActive },
-  });
-
-  await writeAudit({
-    session,
-    event: liveEnabling ? "policy.live_enabled" : "auto_protect_policy.updated",
-    brandId,
-    targetType: "auto_protect_policy",
-    targetId: `${brandId}:${category}`,
-    metadata: { category, mode, minConfidence, isActive, live: liveEnabling },
+  await withTenant(session.tenantId, async (db) => {
+    const brand = await db.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true } });
+    if (!brand) throw new Error("Brand not found");
+    await db.brandAutoProtectPolicy.upsert({
+      where: { brandId_category: { brandId, category } },
+      create: { tenantId: session.tenantId, brandId, category, mode, minConfidence, isActive, createdBy: session.userId },
+      update: { mode, minConfidence, isActive },
+    });
+    await writeAudit({
+      session, db,
+      event: liveEnabling ? "policy.live_enabled" : "auto_protect_policy.updated",
+      brandId, targetType: "auto_protect_policy", targetId: `${brandId}:${category}`,
+      metadata: { category, mode, minConfidence, isActive, live: liveEnabling },
+    });
   });
 
   backWithNotice(`Auto-Protect updated for ${category}.`);

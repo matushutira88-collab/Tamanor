@@ -4,9 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { attemptFacebookHide, findPreflightDryRun } from "@guardora/sync";
-import { decryptToken } from "@guardora/db";
+import { decryptToken, withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
 
 function back(id: string, notice: string, kind: "ok" | "error" = "ok"): never {
@@ -15,7 +14,7 @@ function back(id: string, notice: string, kind: "ok" | "error" = "ok"): never {
 }
 
 async function loadQueueItem(tenantId: string, id: string) {
-  const q = await prisma.actionQueueItem.findFirst({ where: { id, tenantId } });
+  const q = await withTenant(tenantId, (db) => db.actionQueueItem.findFirst({ where: { id, tenantId } }));
   if (!q) throw new Error("Queue item not found");
   return q;
 }
@@ -26,17 +25,24 @@ async function runHideForQueueItem(
   q: Awaited<ReturnType<typeof loadQueueItem>>,
   opts?: { retry?: boolean; liveAttempt?: boolean },
 ): Promise<{ note: string; kind: "ok" | "error" }> {
-  const item = await prisma.reputationItem.findFirst({
-    where: { id: q.itemId, tenantId: session.tenantId },
-    select: { riskLevel: true, contentItem: { select: { externalId: true, externalParentId: true, connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, accessToken: true, longLivedToken: true, pageId: true, externalId: true, platform: true, tokenExpiresAt: true, lastError: true, connectionStatus: true, tokenHealth: true } } } } },
-  });
+  // Phase 1 — tenant reads (short tx): item + connected account + control policy.
+  const { item, policy } = await withTenant(session.tenantId, async (db) => ({
+    item: await db.reputationItem.findFirst({
+      where: { id: q.itemId, tenantId: session.tenantId },
+      select: { riskLevel: true, contentItem: { select: { externalId: true, externalParentId: true, connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, accessToken: true, longLivedToken: true, pageId: true, externalId: true, platform: true, tokenExpiresAt: true, lastError: true, connectionStatus: true, tokenHealth: true } } } } },
+    }),
+    policy: await db.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true }, select: { id: true, mode: true } }),
+  }));
   const acct = item?.contentItem.connectedAccount;
   if (!acct) return { note: "Approved. No live action was executed (live execution is disabled).", kind: "ok" };
-  const policy = await prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true }, select: { id: true, mode: true } });
+
   // CRITICAL: decrypt the stored Page token before the Graph call. The DB value is
   // tagged/encrypted (e.g. "plain:v1:…"); sending it raw makes Graph reject it as an
   // invalid OAuth token (code 190) → false token_expired / reconnect_required.
   const pageToken = decryptToken(acct.longLivedToken ?? acct.accessToken) ?? null;
+
+  // Phase 2 — provider HTTP (NO open transaction). attemptFacebookHide manages its
+  // own short tenant transactions for the execution record + audit.
   const res = await attemptFacebookHide({
     tenantId: session.tenantId, brandId: q.brandId, itemId: q.itemId, queueItemId: q.id, policyId: policy?.id ?? null,
     connectedAccountId: acct.id, platform: acct.platform as unknown as string,
@@ -47,13 +53,13 @@ async function runHideForQueueItem(
     requestedBy: "user",
   }, { retry: opts?.retry, liveAttempt: opts?.liveAttempt });
 
+  // Phase 3 — tenant write (short tx): resolve the queue item after the action.
   // V1.27F — a completed hide (or an already-hidden / deleted comment) is resolved:
-  // move it out of the active approval queue and attribute the approving user. Belt
-  // and suspenders alongside the sync-layer resolve, and adds approvedByUserId.
+  // move it out of the active approval queue and attribute the approving user.
   if (res.status === "executed") {
-    await prisma.actionQueueItem.updateMany({ where: { id: q.id, queueState: { notIn: ["rejected"] } }, data: { queueState: "executed", approvedByUserId: session.userId } });
+    await withTenant(session.tenantId, (db) => db.actionQueueItem.updateMany({ where: { id: q.id, queueState: { notIn: ["rejected"] } }, data: { queueState: "executed", approvedByUserId: session.userId } }));
   } else if (res.reason === "comment_deleted_or_unavailable") {
-    await prisma.actionQueueItem.updateMany({ where: { id: q.id, queueState: { notIn: ["rejected"] } }, data: { queueState: "no_action" } });
+    await withTenant(session.tenantId, (db) => db.actionQueueItem.updateMany({ where: { id: q.id, queueState: { notIn: ["rejected"] } }, data: { queueState: "no_action" } }));
   }
 
   // --- Explicit LIVE attempt notices (V1.26) ---
@@ -93,8 +99,10 @@ export async function approveQueueItem(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const q = await loadQueueItem(session.tenantId, id);
 
-  await prisma.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "approved", approvedByUserId: session.userId } });
-  await writeAudit({ session, event: "approval.approved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, proposedAction: q.proposedAction, executed: false } });
+  await withTenant(session.tenantId, async (db) => {
+    await db.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "approved", approvedByUserId: session.userId } });
+    await writeAudit({ session, db, event: "approval.approved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, proposedAction: q.proposedAction, executed: false } });
+  });
 
   let result: { note: string; kind: "ok" | "error" } = { note: "Approved. No live action was executed (live execution is disabled).", kind: "ok" };
   if (q.proposedAction === "hide_comment") {
@@ -113,8 +121,10 @@ export async function approveWithoutHide(formData: FormData): Promise<void> {
   assertCan(session.role, Permission.ProposalApprove);
   const id = String(formData.get("id") ?? "");
   const q = await loadQueueItem(session.tenantId, id);
-  await prisma.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "approved", approvedByUserId: session.userId } });
-  await writeAudit({ session, event: "approval.approved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, proposedAction: q.proposedAction, executed: false, hidden: false } });
+  await withTenant(session.tenantId, async (db) => {
+    await db.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "approved", approvedByUserId: session.userId } });
+    await writeAudit({ session, db, event: "approval.approved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, proposedAction: q.proposedAction, executed: false, hidden: false } });
+  });
   back(q.id, "The decision was approved, but the comment was not hidden. Use the “Execute live hide on Facebook” button to hide it.");
 }
 
@@ -160,7 +170,7 @@ export async function executeLiveHide(formData: FormData): Promise<void> {
 
   // Self-preflight: ensure a dry-run record exists first (no Graph call). This keeps
   // the invariant without blocking the live action or requiring an env round-trip.
-  const policy = await prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true }, select: { id: true } });
+  const policy = await withTenant(session.tenantId, (db) => db.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true }, select: { id: true } }));
   const preflight = await findPreflightDryRun({ tenantId: session.tenantId, queueItemId: q.id, policyId: policy?.id ?? null });
   if (!preflight) {
     await runHideForQueueItem(session, q); // non-live path → records a dry_run, no Graph call
@@ -182,8 +192,10 @@ export async function markHandledQueueItem(formData: FormData): Promise<void> {
   assertCan(session.role, Permission.ProposalApprove);
   const id = String(formData.get("id") ?? "");
   const q = await loadQueueItem(session.tenantId, id);
-  await prisma.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "no_action" } });
-  await writeAudit({ session, event: "approval.resolved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, resolved: true } });
+  await withTenant(session.tenantId, async (db) => {
+    await db.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "no_action" } });
+    await writeAudit({ session, db, event: "approval.resolved", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category, resolved: true } });
+  });
   back(q.id, "Marked as handled.");
 }
 
@@ -193,8 +205,10 @@ export async function rejectQueueItem(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const q = await loadQueueItem(session.tenantId, id);
 
-  await prisma.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "rejected", rejectedByUserId: session.userId } });
-  await writeAudit({ session, event: "approval.rejected", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category } });
+  await withTenant(session.tenantId, async (db) => {
+    await db.actionQueueItem.update({ where: { id: q.id }, data: { queueState: "rejected", rejectedByUserId: session.userId } });
+    await writeAudit({ session, db, event: "approval.rejected", brandId: q.brandId, targetType: "action_queue_item", targetId: q.id, metadata: { category: q.category } });
+  });
   back(q.id, "Rejected.");
 }
 
@@ -203,12 +217,14 @@ async function markFeedback(formData: FormData, feedbackType: "mark_safe" | "mar
   assertCan(session.role, Permission.InboxAct);
   const id = String(formData.get("id") ?? "");
   const q = await loadQueueItem(session.tenantId, id);
-  const item = await prisma.reputationItem.findFirst({ where: { id: q.itemId, tenantId: session.tenantId }, select: { id: true, riskLevel: true } });
 
-  await prisma.brandRiskFeedback.create({
-    data: { tenantId: session.tenantId, brandId: q.brandId, itemId: q.itemId, actorId: session.userId, feedbackType, originalRiskLevel: (item?.riskLevel as unknown as string) ?? null, originalCategory: q.category },
+  await withTenant(session.tenantId, async (db) => {
+    const item = await db.reputationItem.findFirst({ where: { id: q.itemId, tenantId: session.tenantId }, select: { id: true, riskLevel: true } });
+    await db.brandRiskFeedback.create({
+      data: { tenantId: session.tenantId, brandId: q.brandId, itemId: q.itemId, actorId: session.userId, feedbackType, originalRiskLevel: (item?.riskLevel as unknown as string) ?? null, originalCategory: q.category },
+    });
+    await writeAudit({ session, db, event: "feedback.created", brandId: q.brandId, targetType: "reputation_item", targetId: q.itemId, metadata: { feedbackType, category: q.category } });
   });
-  await writeAudit({ session, event: "feedback.created", brandId: q.brandId, targetType: "reputation_item", targetId: q.itemId, metadata: { feedbackType, category: q.category } });
   back(q.id, notice);
 }
 
@@ -225,16 +241,18 @@ export async function createIncidentFromQueue(formData: FormData): Promise<void>
   assertCan(session.role, Permission.InboxAct);
   const id = String(formData.get("id") ?? "");
   const q = await loadQueueItem(session.tenantId, id);
-  const item = await prisma.reputationItem.findFirst({ where: { id: q.itemId, tenantId: session.tenantId }, select: { platform: true, riskLevel: true } });
 
-  const inc = await prisma.incident.create({
-    data: {
-      tenantId: session.tenantId, brandId: q.brandId,
-      title: `${q.category.replace(/_/g, " ")} — manual incident`, category: q.category,
-      severity: item?.riskLevel === "critical" ? "critical" : "high", status: "open",
-      sourcePlatform: (item?.platform as unknown as string) ?? null, relatedItemIds: [q.itemId],
-    },
+  await withTenant(session.tenantId, async (db) => {
+    const item = await db.reputationItem.findFirst({ where: { id: q.itemId, tenantId: session.tenantId }, select: { platform: true, riskLevel: true } });
+    const inc = await db.incident.create({
+      data: {
+        tenantId: session.tenantId, brandId: q.brandId,
+        title: `${q.category.replace(/_/g, " ")} — manual incident`, category: q.category,
+        severity: item?.riskLevel === "critical" ? "critical" : "high", status: "open",
+        sourcePlatform: (item?.platform as unknown as string) ?? null, relatedItemIds: [q.itemId],
+      },
+    });
+    await writeAudit({ session, db, event: "incident.created", brandId: q.brandId, targetType: "incident", targetId: inc.id, metadata: { category: q.category, manual: true } });
   });
-  await writeAudit({ session, event: "incident.created", brandId: q.brandId, targetType: "incident", targetId: inc.id, metadata: { category: q.category, manual: true } });
   back(q.id, "Incident created.");
 }

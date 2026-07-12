@@ -19,7 +19,7 @@ import { toggleAccountKillSwitch } from "../../safety-actions";
 import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
-import { prisma } from "@/server/db";
+import { withTenant, getLatestWebhookForPlatform } from "@guardora/db";
 import { humanize, formatDate, formatDateTime } from "@/lib/format";
 import { CONNECTOR_TONE } from "@/lib/ui-maps";
 import { runSyncAction } from "../actions";
@@ -57,7 +57,7 @@ export default async function AccountDetailPage({
   const manage = can(session.role, Permission.ConnectorManage);
 
   // NOTE: token columns are intentionally NOT selected — never exposed to the UI.
-  const account = await prisma.connectedAccount.findFirst({
+  const account = await withTenant(session.tenantId, (db) => db.connectedAccount.findFirst({
     where: { id: accountId, tenantId: session.tenantId },
     select: {
       id: true,
@@ -88,21 +88,21 @@ export default async function AccountDetailPage({
       brand: { select: { id: true, name: true } },
       syncRuns: { orderBy: { startedAt: "desc" }, take: 10 },
     },
-  });
+  }));
   if (!account) notFound();
 
   // V1.23 — action capability matrix + linked control policies + recent queue.
   const HIDE_PERMISSION = "pages_manage_engagement";
   const live = getLiveActionsConfig();
   const safety = getProductionSafetyConfig();
-  const [linkedPolicies, recentQueue, lastDryRun, lastBlocked, lastExecuted, lastFailed] = await Promise.all([
-    prisma.controlPolicy.count({ where: { brandId: account.brand.id, isActive: true } }),
-    prisma.actionQueueItem.findMany({ where: { brandId: account.brand.id }, orderBy: { createdAt: "desc" }, take: 5 }),
-    prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "dry_run" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "blocked" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, reason: true } }),
-    prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "executed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    prisma.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "failed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, providerErrorCode: true, providerErrorMessage: true } }),
-  ]);
+  const [linkedPolicies, recentQueue, lastDryRun, lastBlocked, lastExecuted, lastFailed] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.controlPolicy.count({ where: { brandId: account.brand.id, isActive: true } }),
+    db.actionQueueItem.findMany({ where: { brandId: account.brand.id }, orderBy: { createdAt: "desc" }, take: 5 }),
+    db.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "dry_run" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    db.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "blocked" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, reason: true } }),
+    db.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "executed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    db.platformActionExecution.findFirst({ where: { connectedAccountId: account.id, status: "failed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, providerErrorCode: true, providerErrorMessage: true } }),
+  ]));
   const tokenHealthy = !account.tokenExpiresAt || account.tokenExpiresAt > new Date();
   const anyKill = safety.globalKillSwitch || account.killSwitch;
   const hideCapKey = account.platform !== Platform.FacebookPage ? "capNotImplemented"
@@ -116,13 +116,9 @@ export default async function AccountDetailPage({
     { labelKey: "capDelete", key: "capNotImplemented" },
   ];
 
-  // Latest inbound webhook for this platform (global; not tenant-scoped).
+  // Latest inbound webhook for this platform (global; not tenant-scoped) — system repo.
   const lastWebhook = META_PLATFORMS.has(account.platform)
-    ? await prisma.webhookEvent.findFirst({
-        where: { platform: account.platform },
-        orderBy: { receivedAt: "desc" },
-        select: { receivedAt: true, eventType: true, signatureValid: true },
-      })
+    ? await getLatestWebhookForPlatform(account.platform)
     : null;
 
   const platformMeta = PLATFORM_META[account.platform as Platform];

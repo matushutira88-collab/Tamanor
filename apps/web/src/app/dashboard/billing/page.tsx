@@ -1,6 +1,6 @@
 import { PageHeader, Card, SectionHeader, Badge, PrimaryButton, SecondaryButton } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 
@@ -19,7 +19,7 @@ export default async function BillingPage() {
     { name: "Agency", note: hdrT.dash.comingSoon, tagline: hdrT.pricing.plans[2]?.tagline ?? "For multi-brand teams", features: [f.unlimitedBrands, f.teamRolesSeats, f.auditExports, f.prioritySupport], cta: hdrT.common.getNotified, highlight: false, current: false },
     { name: "Enterprise", note: hdrT.dash.talkToUs, tagline: hdrT.pricing.plans[3]?.tagline ?? "For scale & compliance", features: [f.ssoSaml, f.dataResidency, f.sla, f.dedicatedSupport], cta: hdrT.common.contactSales, highlight: false, current: false },
   ];
-  const used = await prisma.reputationItem.count({ where: { tenantId: session.tenantId } });
+  const used = await withTenant(session.tenantId, (db) => db.reputationItem.count({ where: { tenantId: session.tenantId } }));
   const pct = Math.min(100, Math.round((used / TRIAL_LIMIT) * 100));
 
   return (

@@ -94,6 +94,14 @@ export function countMockMetaAccounts(): Promise<number> {
   });
 }
 
+/** Active Facebook Page accounts for the token watchdog. Cross-tenant discovery; trusted tenantId. */
+export function findActiveFacebookAccounts(): Promise<Array<{ id: string; tenantId: string }>> {
+  return systemDb.connectedAccount.findMany({
+    where: { platform: "facebook_page" as never, status: "active" as never },
+    select: { id: true, tenantId: true },
+  });
+}
+
 /** Accounts whose OAuth token has an expiry and are currently healthy/unknown. No token material returned. */
 export function findAccountsForTokenCheck(): Promise<Array<{ id: string; tenantId: string; brandId: string; platform: string; tokenExpiresAt: Date | null }>> {
   return systemDb.connectedAccount.findMany({
@@ -148,9 +156,60 @@ export function listUnprocessedFacebookWebhooks(take: number): Promise<Array<{ i
   }) as Promise<Array<{ id: string; payload: unknown }>>;
 }
 
+/** Latest inbound webhook for a platform (GLOBAL diagnostic; no tenant column). */
+export function getLatestWebhookForPlatform(platform: string): Promise<{ receivedAt: Date; eventType: string | null; signatureValid: boolean } | null> {
+  return systemDb.webhookEvent.findFirst({
+    where: { platform: platform as never },
+    orderBy: { receivedAt: "desc" },
+    select: { receivedAt: true, eventType: true, signatureValid: true },
+  }) as Promise<{ receivedAt: Date; eventType: string | null; signatureValid: boolean } | null>;
+}
+
 export function markWebhookProcessed(id: string, matched: boolean, error?: string): Promise<unknown> {
   return systemDb.webhookEvent.update({
     where: { id },
     data: { processed: true, matched, ...(error !== undefined ? { error } : {}) },
   });
+}
+
+/** Record an inbound provider webhook event (global ingestion table, pre-tenant). */
+export function recordWebhookEvent(data: Prisma.WebhookEventCreateInput): Promise<{ id: string }> {
+  return systemDb.webhookEvent.create({ data, select: { id: true } });
+}
+
+// --------------------- Session bootstrap (system, pre-auth) ---------------------
+// Used ONLY by the login screen's dev sign-in picker (before any session exists).
+// Real auth replaces this; it never runs inside a tenant request.
+
+export function listDevLoginUsers() {
+  return systemDb.user.findMany({
+    include: { memberships: { include: { tenant: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+// ------------------------- Global `Lead` table (no tenant) -------------------------
+// `leads` is a GLOBAL marketing-capture table with NO tenantId column and NO RLS
+// (platform-admin/system scope; per-tenant ownership is a documented future gap —
+// V1.37.x Lead ownership). These narrow, named system functions are the ONLY
+// sanctioned access; request code must not import the raw client.
+
+export function createLead(data: Prisma.LeadCreateInput): Promise<{ id: string }> {
+  return systemDb.lead.create({ data, select: { id: true } });
+}
+
+export function listLeads(args: Prisma.LeadFindManyArgs) {
+  return systemDb.lead.findMany(args);
+}
+
+export function groupLeadsByStatus() {
+  return systemDb.lead.groupBy({ by: ["status"], _count: true });
+}
+
+export function getLeadById(id: string) {
+  return systemDb.lead.findUnique({ where: { id } });
+}
+
+export function updateLead(id: string, data: Prisma.LeadUpdateInput): Promise<unknown> {
+  return systemDb.lead.update({ where: { id }, data });
 }

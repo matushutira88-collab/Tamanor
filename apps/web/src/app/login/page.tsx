@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Logo } from "@/components/logo";
-import { prisma } from "@/server/db";
+import { listDevLoginUsers } from "@guardora/db";
 import { getSession } from "@/server/auth";
 import { signInAs } from "@/server/session-actions";
 
@@ -9,11 +9,9 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage() {
   if (await getSession()) redirect("/dashboard");
 
-  // Dev/mock: list existing users to sign in as. Real auth replaces this.
-  const users = await prisma.user.findMany({
-    include: { memberships: { include: { tenant: true } } },
-    orderBy: { createdAt: "asc" },
-  });
+  // Dev/mock: list existing users to sign in as (system bootstrap, pre-session).
+  // Real auth replaces this.
+  const users = await listDevLoginUsers();
 
   return (
     <main className="gu-grid flex min-h-dvh items-center justify-center px-6">

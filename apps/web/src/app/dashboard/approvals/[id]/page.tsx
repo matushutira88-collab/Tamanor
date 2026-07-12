@@ -14,7 +14,7 @@ import {
 } from "@guardora/core";
 import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { requirePermission } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { withEmoji } from "@/lib/enum-emoji";
@@ -53,7 +53,7 @@ export default async function ProposalDetailPage({
   const session = await requirePermission(Permission.ProposalView);
   const t = await getT();
 
-  const d = await prisma.moderationDecision.findFirst({
+  const d = await withTenant(session.tenantId, (db) => db.moderationDecision.findFirst({
     where: { id, tenantId: session.tenantId },
     include: {
       reputationItem: { include: { contentItem: true } },
@@ -61,7 +61,7 @@ export default async function ProposalDetailPage({
       proposer: { select: { name: true, email: true } },
       reviewer: { select: { name: true, email: true } },
     },
-  });
+  }));
   if (!d) notFound();
 
   const meta = PLATFORM_META[d.reputationItem.platform as Platform];

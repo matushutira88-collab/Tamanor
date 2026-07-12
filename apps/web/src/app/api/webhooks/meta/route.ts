@@ -1,8 +1,7 @@
 import { type NextRequest } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getMetaConfig } from "@guardora/config";
-import { Platform } from "@guardora/db";
-import { prisma } from "@/server/db";
+import { Platform, recordWebhookEvent } from "@guardora/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,14 +70,14 @@ export async function POST(req: NextRequest) {
     payload = { unparsed: true };
   }
 
-  await prisma.webhookEvent.create({
-    data: {
-      platform: Platform.facebook_page,
-      eventType,
-      signatureValid,
-      payload: payload as never,
-      processed: false,
-    },
+  // System ingestion into the GLOBAL webhook_events table (pre-tenant). The worker
+  // later resolves the trusted tenant per account and processes under RLS.
+  await recordWebhookEvent({
+    platform: Platform.facebook_page,
+    eventType,
+    signatureValid,
+    payload: payload as never,
+    processed: false,
   });
 
   return new Response("EVENT_RECEIVED", { status: 200 });

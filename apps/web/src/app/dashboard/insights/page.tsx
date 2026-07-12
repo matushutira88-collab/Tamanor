@@ -4,7 +4,7 @@ import { PageHeader, Card, SectionHeader, StatCard, Badge, EmptyState, Tabs } fr
 import { TrendChart, BarList } from "@/components/dashboard/trend-chart";
 import { PlatformBreakdown } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -56,12 +56,12 @@ const cta = (label: string) => (
 /* ---------------------------------------------------------------- Overview */
 async function Overview({ where }: { where: Where }) {
   const t = await getT();
-  const [total, sentiments, risky, byPlatform] = await Promise.all([
-    prisma.reputationItem.count({ where }),
-    prisma.reputationItem.groupBy({ by: ["sentiment"], where, _count: true }),
-    prisma.reputationItem.count({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] } } }),
-    prisma.reputationItem.groupBy({ by: ["platform"], where, _count: true }),
-  ]);
+  const [total, sentiments, risky, byPlatform] = await withTenant(where.tenantId, (db) => Promise.all([
+    db.reputationItem.count({ where }),
+    db.reputationItem.groupBy({ by: ["sentiment"], where, _count: true }),
+    db.reputationItem.count({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] } } }),
+    db.reputationItem.groupBy({ by: ["platform"], where, _count: true }),
+  ]));
   if (total === 0) {
     return <EmptyState title={t.dash.noInsights} body={t.dash.noInsightsBody} action={cta(t.dash.connectAccount)} />;
   }
@@ -91,10 +91,10 @@ async function Overview({ where }: { where: Where }) {
 /* --------------------------------------------------------------- Sentiment */
 async function SentimentTab({ where }: { where: Where }) {
   const t = await getT();
-  const [groups, negRows] = await Promise.all([
-    prisma.reputationItem.groupBy({ by: ["sentiment"], where, _count: true }),
-    prisma.reputationItem.findMany({ where: { ...where, sentiment: Sentiment.Negative, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }, select: { createdAt: true } }),
-  ]);
+  const [groups, negRows] = await withTenant(where.tenantId, (db) => Promise.all([
+    db.reputationItem.groupBy({ by: ["sentiment"], where, _count: true }),
+    db.reputationItem.findMany({ where: { ...where, sentiment: Sentiment.Negative, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }, select: { createdAt: true } }),
+  ]));
   const map = new Map(groups.map((g) => [g.sentiment, g._count as unknown as number]));
   const pos = map.get(Sentiment.Positive) ?? 0;
   const neg = map.get(Sentiment.Negative) ?? 0;
@@ -137,7 +137,7 @@ const EMOTION_TONE: Record<string, string> = { Anger: "danger", Anxiety: "warn",
 
 async function EmotionsTab({ where }: { where: Where }) {
   const t = await getT();
-  const items = await prisma.reputationItem.findMany({ where, select: { riskCategories: true }, take: 1000 });
+  const items = await withTenant(where.tenantId, (db) => db.reputationItem.findMany({ where, select: { riskCategories: true }, take: 1000 }));
   if (items.length === 0) {
     return <EmptyState title={t.dash.noEmotion} body={t.dash.noEmotionBody} action={cta(t.dash.connectAccount)} />;
   }
@@ -167,11 +167,11 @@ async function EmotionsTab({ where }: { where: Where }) {
 /* ------------------------------------------------------------------ Posts */
 async function PostsTab({ where }: { where: Where }) {
   const t = await getT();
-  const items = await prisma.reputationItem.findMany({
+  const items = await withTenant(where.tenantId, (db) => db.reputationItem.findMany({
     where,
     select: { riskLevel: true, platform: true, contentItem: { select: { externalParentId: true, permalink: true } } },
     take: 1000,
-  });
+  }));
   if (items.length === 0) {
     return <EmptyState title={t.dash.noPosts} body={t.dash.noPostsBody} action={cta(t.dash.connectAccount)} />;
   }
@@ -207,7 +207,7 @@ async function PostsTab({ where }: { where: Where }) {
 /* ----------------------------------------------------------------- Topics */
 async function TopicsTab({ where }: { where: Where }) {
   const t = await getT();
-  const items = await prisma.reputationItem.findMany({ where, select: { riskCategories: true }, take: 1000 });
+  const items = await withTenant(where.tenantId, (db) => db.reputationItem.findMany({ where, select: { riskCategories: true }, take: 1000 }));
   const counts = new Map<string, number>();
   for (const it of items) for (const c of it.riskCategories) counts.set(c, (counts.get(c) ?? 0) + 1);
   const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([label, value]) => ({ label: withEmoji("category", label, tEnum(t, "category", label)), value }));

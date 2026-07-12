@@ -18,7 +18,7 @@ import {
 } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -64,11 +64,11 @@ export default async function RulesPage({
   }));
 
   const realMode = await getRealModeFilter(session.tenantId);
-  const brands = await prisma.brand.findMany({
+  const brands = await withTenant(session.tenantId, (db) => db.brand.findMany({
     where: { tenantId: session.tenantId, ...(realMode.isRealMode ? { id: { in: realMode.realBrandIds } } : {}) },
     orderBy: { createdAt: "asc" },
     include: { brandRules: { orderBy: { createdAt: "asc" } } },
-  });
+  }));
 
   const brandOptions = brands.map((b) => ({ value: b.id, label: b.name }));
   const brandNameById = new Map(brands.map((b) => [b.id, b.name]));
@@ -76,14 +76,15 @@ export default async function RulesPage({
     b.brandRules.map((r) => ({ id: r.id, name: r.name, category: r.category, phrases: r.phrases, enabled: r.enabled, brandName: b.name })),
   );
 
-  const memoryRules = await prisma.brandRiskMemoryRule.findMany({
-    where: { tenantId: session.tenantId, ...realMode.brandWhere },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const autoPolicies = await prisma.brandAutoProtectPolicy.findMany({
-    where: { tenantId: session.tenantId },
-  });
+  const { memoryRules, autoPolicies } = await withTenant(session.tenantId, async (db) => ({
+    memoryRules: await db.brandRiskMemoryRule.findMany({
+      where: { tenantId: session.tenantId, ...realMode.brandWhere },
+      orderBy: { createdAt: "desc" },
+    }),
+    autoPolicies: await db.brandAutoProtectPolicy.findMany({
+      where: { tenantId: session.tenantId },
+    }),
+  }));
   const liveCfg = getLiveActionsConfig();
   const policyKey = (brandId: string, category: string) => `${brandId}:${category}`;
   const policyMap = new Map(autoPolicies.map((p) => [policyKey(p.brandId, p.category), p]));

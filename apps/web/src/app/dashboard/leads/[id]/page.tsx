@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Permission, can } from "@guardora/core";
-import { LeadStatus } from "@guardora/db";
+import { LeadStatus, getLeadById } from "@guardora/db";
 import { PageHeader, Card, SectionHeader, Badge, Textarea, PrimaryButton } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { humanize, formatDateTime } from "@/lib/format";
 import { updateLeadStatus, saveLeadNotes } from "../actions";
 
@@ -33,7 +32,7 @@ export default async function LeadDetailPage({
     );
   }
 
-  const lead = await prisma.lead.findUnique({ where: { id } });
+  const lead = await getLeadById(id);
   if (!lead) notFound();
 
   return (

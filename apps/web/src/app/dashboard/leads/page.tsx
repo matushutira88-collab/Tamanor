@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { Permission, can } from "@guardora/core";
-import { LeadStatus } from "@guardora/db";
+import { LeadStatus, listLeads, groupLeadsByStatus } from "@guardora/db";
 import { PageHeader, Badge, EmptyState, Tabs, Card } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { humanize, formatDate } from "@/lib/format";
@@ -42,13 +41,10 @@ export default async function LeadsPage({
       ? (sp.status as LeadStatus)
       : undefined;
 
+  // Global leads table (no tenant) — system reads via narrow named repos.
   const [groups, leads] = await Promise.all([
-    prisma.lead.groupBy({ by: ["status"], _count: true }),
-    prisma.lead.findMany({
-      where: status ? { status } : {},
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    }),
+    groupLeadsByStatus(),
+    listLeads({ where: status ? { status } : {}, orderBy: { createdAt: "desc" }, take: 200 }),
   ]);
 
   const count = new Map(groups.map((g) => [g.status, g._count as unknown as number]));

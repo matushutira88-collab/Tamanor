@@ -1,6 +1,6 @@
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getLocale } from "@/i18n/locale-server";
 import { getDictionary } from "@/i18n";
 
@@ -14,10 +14,10 @@ export default async function DashboardLayout({
   const session = await requireSession();
   const locale = await getLocale();
   const dict = getDictionary(locale);
-  const [itemsProcessed, tenant] = await Promise.all([
-    prisma.reputationItem.count({ where: { tenantId: session.tenantId } }),
-    prisma.tenant.findUnique({ where: { id: session.tenantId }, select: { name: true } }),
-  ]);
+  const [itemsProcessed, tenant] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.reputationItem.count({ where: { tenantId: session.tenantId } }),
+    db.tenant.findUnique({ where: { id: session.tenantId }, select: { name: true } }),
+  ]));
 
   // The demo badge shows ONLY for an actual demo workspace (name contains "Demo").
   // The default real-only seed uses a neutral workspace name → no badge.

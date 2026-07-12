@@ -6,7 +6,7 @@ import {
 import { actorIdentityKey, platformKeyFor, PLATFORM_META, type Platform } from "@guardora/core";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -50,8 +50,8 @@ export default async function ActorRiskPage({ searchParams }: { searchParams: Pr
   const dayStart = new Date(now); dayStart.setUTCHours(0, 0, 0, 0);
   const rangeStart = new Date(dayStart); rangeStart.setUTCDate(rangeStart.getUTCDate() - (days - 1));
 
-  const [repItems, executions, openIncidents] = await Promise.all([
-    prisma.reputationItem.findMany({
+  const [repItems, executions, openIncidents] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.reputationItem.findMany({
       where: { ...where, createdAt: { gte: rangeStart } },
       select: {
         id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true,
@@ -65,16 +65,16 @@ export default async function ActorRiskPage({ searchParams }: { searchParams: Pr
       },
       take: 3000,
     }),
-    prisma.platformActionExecution.findMany({
+    db.platformActionExecution.findMany({
       where: { ...where, status: "executed", reason: { in: [...HIDE_REASONS, "comment_deleted"] }, executedAt: { gte: rangeStart } },
       select: { externalCommentId: true, reason: true },
     }),
-    prisma.incident.findMany({ where: { ...where, status: "open" }, select: { relatedItemIds: true } }),
-  ]);
+    db.incident.findMany({ where: { ...where, status: "open" }, select: { relatedItemIds: true } }),
+  ]));
 
   // itemId → queueState (pending decisions).
   const queueMap = new Map<string, string>(
-    (await prisma.actionQueueItem.findMany({ where: { ...where, itemId: { in: repItems.map((r) => r.id) } }, select: { itemId: true, queueState: true } })).map((q) => [q.itemId, q.queueState]),
+    (await withTenant(session.tenantId, (db) => db.actionQueueItem.findMany({ where: { ...where, itemId: { in: repItems.map((r) => r.id) } }, select: { itemId: true, queueState: true } }))).map((q) => [q.itemId, q.queueState]),
   );
 
   // State-truth sets keyed by external comment id (no raw ids rendered).

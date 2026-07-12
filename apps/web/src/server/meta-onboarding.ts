@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
-import { prisma } from "./db";
+import { withTenantDb } from "@guardora/db";
 import type { AppSession } from "./auth";
 
 export const ONBOARDING_COOKIE = "meta_onboarding";
@@ -47,21 +47,15 @@ export async function loadOnboardingForUi(
   const id = jar.get(ONBOARDING_COOKIE)?.value;
   if (!id) return null;
 
-  const row = await prisma.metaOnboardingSession.findFirst({
-    where: {
-      id,
-      tenantId: session.tenantId,
-      userId: session.userId,
-      expiresAt: { gt: new Date() },
-    },
+  const { row, brand } = await withTenantDb(session.tenantId, async (db) => {
+    const row = await db.metaOnboardingSession.findFirst({
+      where: { id, tenantId: session.tenantId, userId: session.userId, expiresAt: { gt: new Date() } },
+    });
+    if (!row) return { row: null, brand: null };
+    const brand = await db.brand.findFirst({ where: { id: row.brandId, tenantId: session.tenantId }, select: { name: true } });
+    return { row, brand };
   });
-  if (!row) return null;
-
-  const brand = await prisma.brand.findFirst({
-    where: { id: row.brandId, tenantId: session.tenantId },
-    select: { name: true },
-  });
-  if (!brand) return null;
+  if (!row || !brand) return null;
 
   return {
     id: row.id,
@@ -72,20 +66,16 @@ export async function loadOnboardingForUi(
   };
 }
 
-/** Server-only: load the RAW session (incl. tokens) for account creation. */
+/** Server-only: load the RAW session (incl. tokens) for account creation. Tenant-scoped. */
 export async function loadOnboardingRaw(session: AppSession, id: string) {
-  return prisma.metaOnboardingSession.findFirst({
-    where: {
-      id,
-      tenantId: session.tenantId,
-      userId: session.userId,
-      expiresAt: { gt: new Date() },
-    },
-  });
+  return withTenantDb(session.tenantId, (db) => db.metaOnboardingSession.findFirst({
+    where: { id, tenantId: session.tenantId, userId: session.userId, expiresAt: { gt: new Date() } },
+  }));
 }
 
-export async function clearOnboarding(id: string): Promise<void> {
+/** Clear the onboarding cookie and delete the row (tenant-scoped). */
+export async function clearOnboarding(session: AppSession, id: string): Promise<void> {
   const jar = await cookies();
   jar.delete(ONBOARDING_COOKIE);
-  await prisma.metaOnboardingSession.deleteMany({ where: { id } });
+  await withTenantDb(session.tenantId, (db) => db.metaOnboardingSession.deleteMany({ where: { id } }));
 }

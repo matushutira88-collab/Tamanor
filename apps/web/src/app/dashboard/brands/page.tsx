@@ -9,7 +9,7 @@ import {
   PrimaryButton,
 } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
@@ -33,13 +33,13 @@ export default async function BrandsPage() {
   const statusOptions = Object.values(BrandStatus).map((v) => ({ value: v, label: tEnum(hdrT, "brandStatus", v) }));
 
   const realMode = await getRealModeFilter(session.tenantId);
-  const brands = await prisma.brand.findMany({
+  const brands = await withTenant(session.tenantId, (db) => db.brand.findMany({
     where: { tenantId: session.tenantId, ...(realMode.isRealMode ? { id: { in: realMode.realBrandIds } } : {}) },
     orderBy: { createdAt: "asc" },
     include: {
       _count: { select: { connectedAccounts: true, reputationItems: true } },
     },
-  });
+  }));
 
   return (
     <>

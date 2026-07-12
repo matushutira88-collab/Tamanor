@@ -1,6 +1,6 @@
 import "server-only";
 import { getDataMode } from "@guardora/config";
-import { prisma } from "./db";
+import { withTenantDb } from "@guardora/db";
 
 /** The real Konfigurátor Facebook Page — never treated as demo, never deleted. */
 export const PROTECTED_REAL_PAGE_ID = "1165524636643112";
@@ -32,13 +32,13 @@ export async function getRealModeFilter(tenantId: string): Promise<RealModeFilte
     return { mode, isRealMode: false, realBrandIds: [], brandWhere: {}, hasRealData: true };
   }
 
-  const realAccounts = await prisma.connectedAccount.findMany({
+  const realAccounts = await withTenantDb(tenantId, (db) => db.connectedAccount.findMany({
     where: {
       tenantId,
       OR: [{ status: "active" }, { pageId: PROTECTED_REAL_PAGE_ID }],
     },
     select: { brandId: true },
-  });
+  }));
   const realBrandIds = [...new Set(realAccounts.map((a) => a.brandId))];
   const hasRealData = realBrandIds.length > 0;
 

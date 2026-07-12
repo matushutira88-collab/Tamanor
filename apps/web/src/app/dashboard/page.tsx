@@ -22,7 +22,7 @@ import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { withEmoji, ICON } from "@/lib/enum-emoji";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { bucketByDay } from "@/lib/trend";
@@ -41,24 +41,24 @@ export default async function DashboardPage() {
     received, highRisk, pending, connected, lastRun, risky, trendRows,
     riskGroups, platformGroups, catRows, syncRuns, incidents, accounts,
     autoDecisionGroups, apCriticismCount, actionExecGroups,
-  ] = await Promise.all([
-    prisma.reputationItem.count({ where }),
-    prisma.reputationItem.count({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] } } }),
-    prisma.moderationDecision.count({ where: { ...where, status: DecisionStatus.Proposed } }),
-    prisma.connectedAccount.count({ where: { ...where, status: { in: [ConnectorStatus.Active, ConnectorStatus.MockConnected] } } }),
-    prisma.syncRun.findFirst({ where, orderBy: { startedAt: "desc" }, select: { startedAt: true, mock: true, status: true } }),
-    prisma.reputationItem.findMany({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical, RiskLevel.Medium] } }, include: { contentItem: { select: { text: true, authorDisplayName: true } }, brand: { select: { name: true } } }, orderBy: [{ createdAt: "desc" }], take: 6 }),
-    prisma.reputationItem.findMany({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] }, createdAt: { gte: since30 } }, select: { createdAt: true } }),
-    prisma.reputationItem.groupBy({ by: ["riskLevel"], where, _count: true }),
-    prisma.reputationItem.groupBy({ by: ["platform"], where, _count: true }),
-    prisma.reputationItem.findMany({ where, select: { riskCategories: true }, take: 1000 }),
-    prisma.syncRun.findMany({ where, orderBy: { startedAt: "desc" }, take: 100, select: { status: true, durationMs: true } }),
-    prisma.syncRun.findMany({ where: { ...where, status: "failed" }, orderBy: { startedAt: "desc" }, take: 4, select: { startedAt: true, error: true } }),
-    prisma.connectedAccount.findMany({ where: { ...where, status: { in: [ConnectorStatus.Active, ConnectorStatus.MockConnected] } }, select: { health: true } }),
-    prisma.autoProtectDecision.groupBy({ by: ["decision"], where, _count: true }),
-    prisma.autoProtectDecision.count({ where: { ...where, matchedCategory: "normal_criticism" } }),
-    prisma.platformActionExecution.groupBy({ by: ["status"], where, _count: true }),
-  ]);
+  ] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.reputationItem.count({ where }),
+    db.reputationItem.count({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] } } }),
+    db.moderationDecision.count({ where: { ...where, status: DecisionStatus.Proposed } }),
+    db.connectedAccount.count({ where: { ...where, status: { in: [ConnectorStatus.Active, ConnectorStatus.MockConnected] } } }),
+    db.syncRun.findFirst({ where, orderBy: { startedAt: "desc" }, select: { startedAt: true, mock: true, status: true } }),
+    db.reputationItem.findMany({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical, RiskLevel.Medium] } }, include: { contentItem: { select: { text: true, authorDisplayName: true } }, brand: { select: { name: true } } }, orderBy: [{ createdAt: "desc" }], take: 6 }),
+    db.reputationItem.findMany({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] }, createdAt: { gte: since30 } }, select: { createdAt: true } }),
+    db.reputationItem.groupBy({ by: ["riskLevel"], where, _count: true }),
+    db.reputationItem.groupBy({ by: ["platform"], where, _count: true }),
+    db.reputationItem.findMany({ where, select: { riskCategories: true }, take: 1000 }),
+    db.syncRun.findMany({ where, orderBy: { startedAt: "desc" }, take: 100, select: { status: true, durationMs: true } }),
+    db.syncRun.findMany({ where: { ...where, status: "failed" }, orderBy: { startedAt: "desc" }, take: 4, select: { startedAt: true, error: true } }),
+    db.connectedAccount.findMany({ where: { ...where, status: { in: [ConnectorStatus.Active, ConnectorStatus.MockConnected] } }, select: { health: true } }),
+    db.autoProtectDecision.groupBy({ by: ["decision"], where, _count: true }),
+    db.autoProtectDecision.count({ where: { ...where, matchedCategory: "normal_criticism" } }),
+    db.platformActionExecution.groupBy({ by: ["status"], where, _count: true }),
+  ]));
 
   const apxMap = new Map(actionExecGroups.map((g) => [g.status, g._count as unknown as number]));
   const liveExecuted = apxMap.get("executed") ?? 0;

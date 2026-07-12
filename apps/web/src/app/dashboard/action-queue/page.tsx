@@ -2,7 +2,7 @@ import Link from "next/link";
 import { queueTabStates, normalizeQueueTab, QUEUE_TABS, type QueueTab } from "@guardora/ai";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -28,13 +28,13 @@ export default async function ActionQueuePage({ searchParams }: { searchParams: 
   const where = { tenantId: session.tenantId, ...realMode.brandWhere, ...(states ? { queueState: { in: states } } : {}) };
 
   // Per-tab counts for the badges (active is the working queue).
-  const [items, activeCount] = await Promise.all([
-    prisma.actionQueueItem.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 }),
-    prisma.actionQueueItem.count({ where: { tenantId: session.tenantId, ...realMode.brandWhere, queueState: { in: queueTabStates("active")! } } }),
-  ]);
+  const [items, activeCount] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.actionQueueItem.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 }),
+    db.actionQueueItem.count({ where: { tenantId: session.tenantId, ...realMode.brandWhere, queueState: { in: queueTabStates("active")! } } }),
+  ]));
   const itemIds = items.map((i) => i.itemId);
   const texts = new Map(
-    (await prisma.reputationItem.findMany({ where: { id: { in: itemIds } }, select: { id: true, contentItem: { select: { text: true } } } }))
+    (await withTenant(session.tenantId, (db) => db.reputationItem.findMany({ where: { id: { in: itemIds } }, select: { id: true, contentItem: { select: { text: true } } } })))
       .map((r) => [r.id, r.contentItem.text]),
   );
 

@@ -9,7 +9,7 @@ import { SubmitButton } from "@/components/dashboard/submit-button";
 import { LiveHideForm } from "@/components/dashboard/live-hide-form";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { formatDateTime } from "@/lib/format";
@@ -26,21 +26,21 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   const canApprove = can(session.role, Permission.ProposalApprove);
   const canAct = can(session.role, Permission.InboxAct);
 
-  const q = await prisma.actionQueueItem.findFirst({ where: { id, tenantId: session.tenantId } });
+  const q = await withTenant(session.tenantId, (db) => db.actionQueueItem.findFirst({ where: { id, tenantId: session.tenantId } }));
   if (!q) notFound();
 
-  const [item, policy, audits, lastExec] = await Promise.all([
-    prisma.reputationItem.findFirst({ where: { id: q.itemId }, include: { contentItem: { include: { connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, pageId: true, externalId: true, externalName: true, platform: true, connectionStatus: true, tokenHealth: true } } } }, brand: { select: { name: true } } } }),
-    prisma.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true } }),
-    prisma.auditLog.findMany({ where: { tenantId: session.tenantId, OR: [{ targetId: q.id }, { targetId: q.itemId }] }, orderBy: { createdAt: "desc" }, take: 10, select: { event: true, createdAt: true } }),
-    prisma.platformActionExecution.findFirst({ where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "approval" }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, reason: true, providerErrorCode: true, createdAt: true } }),
-  ]);
+  const [item, policy, audits, lastExec] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.reputationItem.findFirst({ where: { id: q.itemId }, include: { contentItem: { include: { connectedAccount: { select: { id: true, status: true, health: true, grantedPermissions: true, pageId: true, externalId: true, externalName: true, platform: true, connectionStatus: true, tokenHealth: true } } } }, brand: { select: { name: true } } } }),
+    db.controlPolicy.findFirst({ where: { brandId: q.brandId, category: q.category, isActive: true } }),
+    db.auditLog.findMany({ where: { tenantId: session.tenantId, OR: [{ targetId: q.id }, { targetId: q.itemId }] }, orderBy: { createdAt: "desc" }, take: 10, select: { event: true, createdAt: true } }),
+    db.platformActionExecution.findFirst({ where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "approval" }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, reason: true, providerErrorCode: true, createdAt: true } }),
+  ]));
   // V1.27 — autonomous (auto-hide) execution for this item, if any.
-  const autoExec = await prisma.platformActionExecution.findFirst({
+  const autoExec = await withTenant(session.tenantId, (db) => db.platformActionExecution.findFirst({
     where: { tenantId: session.tenantId, queueItemId: q.id, actionType: "hide_comment", trigger: "autonomous", status: { in: ["executed", "failed"] } },
     orderBy: { createdAt: "desc" },
     select: { id: true, status: true, reason: true, confidence: true, policyCategory: true, providerErrorCode: true, providerErrorMessage: true, executedAt: true, createdAt: true },
-  });
+  }));
   // V1.30 — lightweight actor-risk badge for this comment's author. Informational
   // only; it never blocks approval. Based on visible behavior, not identity.
   let actorLevel: ActorRiskLevel | null = null;
@@ -52,11 +52,11 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
       ? { platform: item.contentItem.platform, authorDisplayName: item.contentItem.authorDisplayName }
       : null;
     if (authorKey) {
-      const authorReps = await prisma.reputationItem.findMany({
+      const authorReps = await withTenant(session.tenantId, (db) => db.reputationItem.findMany({
         where: { tenantId: session.tenantId, brandId: q.brandId, contentItem: { is: authorKey } },
         select: { riskLevel: true, riskCategories: true, sentiment: true, contentItem: { select: { text: true, externalParentId: true } } },
         take: 500,
-      });
+      }));
       if (authorReps.length > 1) {
         const level = actorRiskLevel(actorRiskScore(buildActorSignals(
           authorReps.map((r) => ({ categories: r.riskCategories ?? [], riskLevel: r.riskLevel as string, sentiment: r.sentiment as string, postId: r.contentItem.externalParentId ?? null, text: r.contentItem.text, hidden: false })),
@@ -80,7 +80,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   if (acct && live.canExecuteLive && q.proposedAction === "hide_comment" &&
       (effConn !== "connected" || effHealth !== "healthy" || effTok === "expired" || effTok === "invalid" || effTok === "revoked")) {
     try {
-      const res = await checkAccountToken(acct.id);
+      const res = await checkAccountToken(session.tenantId, acct.id);
       effConn = res.connectionStatus; effTok = res.tokenHealth;
       if (res.tokenHealth === "ok") effHealth = "healthy";
     } catch { /* best-effort; fall back to stored state */ }

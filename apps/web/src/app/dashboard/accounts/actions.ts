@@ -10,9 +10,8 @@ import {
   assertCan,
 } from "@guardora/core";
 import { runReadOnlySync } from "@guardora/sync";
-import { disconnectConnectedAccount } from "@guardora/db";
+import { disconnectConnectedAccount, withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
 
 function asPlatform(raw: string): Platform {
@@ -35,47 +34,44 @@ export async function connectMock(
   assertCan(session.role, Permission.ConnectorManage);
   const platform = asPlatform(platformRaw);
 
-  // Ensure the brand belongs to the tenant.
-  const brand = await prisma.brand.findFirst({
-    where: { id: brandId, tenantId: session.tenantId },
-    select: { id: true, name: true },
-  });
-  if (!brand) throw new Error("Brand not found");
-
-  const existing = await prisma.connectedAccount.findFirst({
-    where: { brandId, platform },
-  });
-
-  if (existing) {
-    await prisma.connectedAccount.update({
-      where: { id: existing.id },
-      data: {
-        status: ConnectorStatus.MockConnected,
-        mode: ConnectorMode.Placeholder,
-      },
+  await withTenant(session.tenantId, async (db) => {
+    // Ensure the brand belongs to the tenant.
+    const brand = await db.brand.findFirst({
+      where: { id: brandId, tenantId: session.tenantId },
+      select: { id: true, name: true },
     });
-  } else {
-    await prisma.connectedAccount.create({
-      data: {
-        tenantId: session.tenantId,
-        brandId,
-        platform,
-        status: ConnectorStatus.MockConnected,
-        mode: ConnectorMode.Placeholder,
-        externalId: `mock_${platform}_${brandId.slice(-6)}`,
-        externalName: `${brand.name} (mock)`,
-        scopes: [],
-      },
-    });
-  }
+    if (!brand) throw new Error("Brand not found");
 
-  await writeAudit({
-    session,
-    event: "connector.mock_connected",
-    brandId,
-    targetType: "connected_account",
-    targetId: `${brandId}:${platform}`,
-    metadata: { platform, mock: true },
+    const existing = await db.connectedAccount.findFirst({ where: { brandId, platform } });
+
+    if (existing) {
+      await db.connectedAccount.update({
+        where: { id: existing.id },
+        data: { status: ConnectorStatus.MockConnected, mode: ConnectorMode.Placeholder },
+      });
+    } else {
+      await db.connectedAccount.create({
+        data: {
+          tenantId: session.tenantId,
+          brandId,
+          platform,
+          status: ConnectorStatus.MockConnected,
+          mode: ConnectorMode.Placeholder,
+          externalId: `mock_${platform}_${brandId.slice(-6)}`,
+          externalName: `${brand.name} (mock)`,
+          scopes: [],
+        },
+      });
+    }
+
+    await writeAudit({
+      session, db,
+      event: "connector.mock_connected",
+      brandId,
+      targetType: "connected_account",
+      targetId: `${brandId}:${platform}`,
+      metadata: { platform, mock: true },
+    });
   });
 
   revalidatePath("/dashboard/accounts");
@@ -110,10 +106,10 @@ export async function runSyncAction(accountId: string): Promise<void> {
   const session = await requireSession();
   assertCan(session.role, Permission.ConnectorManage);
 
-  const account = await prisma.connectedAccount.findFirst({
+  const account = await withTenant(session.tenantId, (db) => db.connectedAccount.findFirst({
     where: { id: accountId, tenantId: session.tenantId },
     select: { id: true },
-  });
+  }));
   if (!account) throw new Error("Account not found");
 
   const outcome = await runReadOnlySync({ accountId, tenantId: session.tenantId });

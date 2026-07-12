@@ -11,7 +11,7 @@ import {
 } from "@guardora/core";
 import { PageHeader, Badge, Textarea, PrimaryButton } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getLocale } from "@/i18n/locale-server";
 import { getDictionary } from "@/i18n";
 import { tEnum } from "@/i18n/labels";
@@ -53,18 +53,20 @@ export default async function InboxItemPage({
   const propose = can(session.role, Permission.ProposalPropose);
   const manageRules = can(session.role, Permission.RuleManage);
 
-  const item = await prisma.reputationItem.findFirst({
+  const item = await withTenant(session.tenantId, (db) => db.reputationItem.findFirst({
     where: { id, tenantId: session.tenantId },
     include: {
       contentItem: true,
       brand: { select: { name: true, defaultTone: true } },
       decisions: { orderBy: { createdAt: "desc" } },
     },
-  });
+  }));
   if (!item) notFound();
 
-  const autoDecision = await prisma.autoProtectDecision.findUnique({ where: { itemId: item.id } });
-  const lastAction = await prisma.platformActionExecution.findFirst({ where: { itemId: item.id }, orderBy: { createdAt: "desc" }, select: { status: true, reason: true } });
+  const [autoDecision, lastAction] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.autoProtectDecision.findUnique({ where: { itemId: item.id } }),
+    db.platformActionExecution.findFirst({ where: { itemId: item.id }, orderBy: { createdAt: "desc" }, select: { status: true, reason: true } }),
+  ]));
 
   const meta = PLATFORM_META[item.platform as Platform];
   const notice = sp.notice;

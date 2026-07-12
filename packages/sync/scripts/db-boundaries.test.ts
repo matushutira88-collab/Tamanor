@@ -48,6 +48,22 @@ async function run() {
   const appDbInApp = importers(requestCode, "appDb");
   check("2) tenant request code does not import raw appDb (use withTenantDb/repos)", appDbInApp.length === 0, appDbInApp.join(", "));
 
+  // V1.37.3C — the whole web app + server layer must never touch the OWNER client.
+  // No `prisma` import from any module, and no `prisma.` usage. Tenant work goes
+  // through withTenant/withTenantDb or a tenant repository; genuine system/global
+  // access goes through a NAMED system repository (listDevLoginUsers, createLead,
+  // recordWebhookEvent, …) — never the raw client.
+  const prismaImporters = requestCode.filter((f) =>
+    /import[^;]*\bprisma\b[^;]*from/.test(readFileSync(f, "utf8")),
+  ).map((f) => relative(ROOT, f));
+  check("2b) web app/server never IMPORTS the owner prisma client", prismaImporters.length === 0, prismaImporters.join(", "));
+
+  const prismaUsers = requestCode.filter((f) => /\bprisma\s*\./.test(readFileSync(f, "utf8"))).map((f) => relative(ROOT, f));
+  check("2c) web app/server never USES prisma.<model> directly", prismaUsers.length === 0, prismaUsers.join(", "));
+
+  // The convenience owner re-export (@/server/db) is retired.
+  check("2d) @/server/db owner-client re-export is removed", !existsSync(resolve(ROOT, "apps/web/src/server/db.ts")));
+
   // systemDb is only legitimate in @guardora/db internals and the worker discovery.
   const dbSrc = walk(resolve(ROOT, "packages/db/src"));
   const workerSrc = walk(resolve(ROOT, "apps/worker/src"));

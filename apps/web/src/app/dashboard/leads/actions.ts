@@ -3,9 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
-import { LeadStatus } from "@guardora/db";
+import { LeadStatus, updateLead } from "@guardora/db";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 
 function asStatus(raw: string): LeadStatus {
   if (!(Object.values(LeadStatus) as string[]).includes(raw)) {
@@ -30,13 +29,13 @@ function back(id: string, notice: string): never {
 export async function updateLeadStatus(id: string, status: string): Promise<void> {
   await requireLeadAccess();
   const next = asStatus(status);
-  await prisma.lead.update({ where: { id }, data: { status: next } });
+  await updateLead(id, { status: next });
   back(id, `Status set to ${next}.`);
 }
 
 export async function saveLeadNotes(id: string, formData: FormData): Promise<void> {
   await requireLeadAccess();
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  await prisma.lead.update({ where: { id }, data: { notes } });
+  await updateLead(id, { notes });
   back(id, "Notes saved.");
 }

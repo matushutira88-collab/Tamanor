@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 import { formatDateTime } from "@/lib/format";
@@ -32,7 +32,7 @@ export default async function TimelinePage({ searchParams }: { searchParams: Pro
   const realMode = await getRealModeFilter(session.tenantId);
   const eventFilter = sp.event && TIMELINE_EVENTS.includes(sp.event) ? sp.event : undefined;
 
-  const events = await prisma.auditLog.findMany({
+  const events = await withTenant(session.tenantId, (db) => db.auditLog.findMany({
     where: {
       tenantId: session.tenantId,
       ...(realMode.isRealMode && realMode.realBrandIds.length ? { OR: [{ brandId: { in: realMode.realBrandIds } }, { brandId: null }] } : {}),
@@ -41,7 +41,7 @@ export default async function TimelinePage({ searchParams }: { searchParams: Pro
     orderBy: { createdAt: "desc" },
     take: 200,
     select: { id: true, event: true, createdAt: true, targetType: true, targetId: true, metadata: true },
-  });
+  }));
 
   const chips = [{ key: "", label: t.cc.filterAll }, ...TIMELINE_EVENTS.map((e) => ({ key: e, label: e }))];
 

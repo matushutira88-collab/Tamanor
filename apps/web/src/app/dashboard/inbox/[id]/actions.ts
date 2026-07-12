@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { normalize } from "@guardora/ai";
+import { withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { writeAudit } from "@/server/audit";
 
 const FEEDBACK_TYPES = [
@@ -32,34 +32,37 @@ export async function submitFeedback(formData: FormData): Promise<void> {
   const feedbackType = String(formData.get("feedbackType") ?? "");
   if (!(FEEDBACK_TYPES as readonly string[]).includes(feedbackType)) throw new Error("Unknown feedback type");
 
-  const item = await prisma.reputationItem.findFirst({
-    where: { id: itemId, tenantId: session.tenantId },
-    select: { id: true, brandId: true, riskLevel: true, riskCategories: true },
-  });
-  if (!item) throw new Error("Item not found");
-
   const note = String(formData.get("note") ?? "").trim() || null;
 
-  await prisma.brandRiskFeedback.create({
-    data: {
-      tenantId: session.tenantId,
-      brandId: item.brandId,
-      itemId: item.id,
-      actorId: session.userId,
-      feedbackType,
-      originalRiskLevel: item.riskLevel as unknown as string,
-      originalCategory: item.riskCategories[0] ?? null,
-      note,
-    },
-  });
+  const item = await withTenant(session.tenantId, async (db) => {
+    const item = await db.reputationItem.findFirst({
+      where: { id: itemId, tenantId: session.tenantId },
+      select: { id: true, brandId: true, riskLevel: true, riskCategories: true },
+    });
+    if (!item) throw new Error("Item not found");
 
-  await writeAudit({
-    session,
-    event: "feedback.created",
-    brandId: item.brandId,
-    targetType: "reputation_item",
-    targetId: item.id,
-    metadata: { feedbackType, originalRiskLevel: item.riskLevel },
+    await db.brandRiskFeedback.create({
+      data: {
+        tenantId: session.tenantId,
+        brandId: item.brandId,
+        itemId: item.id,
+        actorId: session.userId,
+        feedbackType,
+        originalRiskLevel: item.riskLevel as unknown as string,
+        originalCategory: item.riskCategories[0] ?? null,
+        note,
+      },
+    });
+
+    await writeAudit({
+      session, db,
+      event: "feedback.created",
+      brandId: item.brandId,
+      targetType: "reputation_item",
+      targetId: item.id,
+      metadata: { feedbackType, originalRiskLevel: item.riskLevel },
+    });
+    return item;
   });
 
   // Suggest (do NOT auto-create) a memory rule for false positive/negative.
@@ -85,34 +88,37 @@ export async function addMemoryRule(formData: FormData): Promise<void> {
   const severityRaw = String(formData.get("severity") ?? "medium");
   const severity = (SEVERITIES as readonly string[]).includes(severityRaw) ? severityRaw : "medium";
 
-  const item = await prisma.reputationItem.findFirst({
-    where: { id: itemId, tenantId: session.tenantId },
-    select: { id: true, brandId: true, detectedLanguage: true },
-  });
-  if (!item) throw new Error("Item not found");
+  const item = await withTenant(session.tenantId, async (db) => {
+    const item = await db.reputationItem.findFirst({
+      where: { id: itemId, tenantId: session.tenantId },
+      select: { id: true, brandId: true, detectedLanguage: true },
+    });
+    if (!item) throw new Error("Item not found");
 
-  const rule = await prisma.brandRiskMemoryRule.create({
-    data: {
-      tenantId: session.tenantId,
+    const rule = await db.brandRiskMemoryRule.create({
+      data: {
+        tenantId: session.tenantId,
+        brandId: item.brandId,
+        type,
+        phrase,
+        normalizedPhrase: normalize(phrase),
+        language: item.detectedLanguage ?? null,
+        severity,
+        source: "feedback",
+        isActive: true,
+        createdBy: session.userId,
+      },
+    });
+
+    await writeAudit({
+      session, db,
+      event: "memory_rule.created",
       brandId: item.brandId,
-      type,
-      phrase,
-      normalizedPhrase: normalize(phrase),
-      language: item.detectedLanguage ?? null,
-      severity,
-      source: "feedback",
-      isActive: true,
-      createdBy: session.userId,
-    },
-  });
-
-  await writeAudit({
-    session,
-    event: "memory_rule.created",
-    brandId: item.brandId,
-    targetType: "brand_memory_rule",
-    targetId: rule.id,
-    metadata: { type, severity, source: "feedback" },
+      targetType: "brand_memory_rule",
+      targetId: rule.id,
+      metadata: { type, severity, source: "feedback" },
+    });
+    return item;
   });
 
   backToItem(item.id, `Added to brand memory: "${phrase}" (${type.replace("_", " ")}).`);

@@ -9,7 +9,7 @@ import {
 } from "@guardora/core";
 import { PageHeader, Badge, StatCard } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { humanize, formatDate } from "@/lib/format";
 import { CONNECTOR_TONE } from "@/lib/ui-maps";
 import { updateBrandStatus } from "../actions";
@@ -31,13 +31,13 @@ export default async function BrandDetailPage({
   const session = await requireSession();
   const manage = can(session.role, Permission.BrandManage);
 
-  const brand = await prisma.brand.findFirst({
+  const brand = await withTenant(session.tenantId, (db) => db.brand.findFirst({
     where: { id: brandId, tenantId: session.tenantId },
     include: {
       connectedAccounts: { orderBy: { platform: "asc" } },
       _count: { select: { brandRules: true, reputationItems: true } },
     },
-  });
+  }));
   if (!brand) notFound();
 
   return (

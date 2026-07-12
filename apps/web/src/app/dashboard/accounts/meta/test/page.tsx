@@ -4,7 +4,7 @@ import { getMetaSetupStatus, loadEnv } from "@guardora/config";
 import { tokenStorageStatus } from "@guardora/db";
 import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { humanize, formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -36,9 +36,9 @@ export default async function MetaTestPage() {
   const session = await requireSession();
   const setup = getMetaSetupStatus();
 
-  const [brandCount, metaAccounts, lastRun] = await Promise.all([
-    prisma.brand.count({ where: { tenantId: session.tenantId } }),
-    prisma.connectedAccount.findMany({
+  const [brandCount, metaAccounts, lastRun] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.brand.count({ where: { tenantId: session.tenantId } }),
+    db.connectedAccount.findMany({
       where: {
         tenantId: session.tenantId,
         platform: { in: [Platform.FacebookPage, Platform.InstagramBusiness] },
@@ -52,12 +52,12 @@ export default async function MetaTestPage() {
         lastSuccessfulSyncAt: true,
       },
     }),
-    prisma.syncRun.findFirst({
+    db.syncRun.findFirst({
       where: { tenantId: session.tenantId },
       orderBy: { startedAt: "desc" },
       select: { status: true, mock: true, fetched: true, created: true, deduped: true, startedAt: true },
     }),
-  ]);
+  ]));
 
   // Env checks (no secret values).
   const envItems: Item[] = setup.checks.map((c) => ({

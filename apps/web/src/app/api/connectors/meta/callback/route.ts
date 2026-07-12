@@ -8,7 +8,7 @@ import {
 } from "@guardora/connectors";
 import { encryptToken } from "@guardora/db";
 import { getSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { writeAudit } from "@/server/audit";
 
 export const runtime = "nodejs";
@@ -68,10 +68,12 @@ export async function GET(req: NextRequest) {
     return fail(req, "invalid_state");
   }
 
-  const brand = await prisma.brand.findFirst({
+  // Tenant from the validated SESSION; brandId comes from the server-set state
+  // cookie (never a client query param) and is re-validated under RLS.
+  const brand = await withTenant(session.tenantId, (db) => db.brand.findFirst({
     where: { id: brandId, tenantId: session.tenantId },
     select: { id: true, name: true },
-  });
+  }));
   if (!brand) {
     await auditFail("bad_brand");
     return fail(req, "bad_brand");
@@ -133,7 +135,8 @@ export async function GET(req: NextRequest) {
     ? new Date(Date.now() + token.expiresInSeconds * 1000)
     : null;
 
-  const onboarding = await prisma.metaOnboardingSession.create({
+  // Tenant write AFTER all provider HTTP has completed (read → fetch → write).
+  const onboarding = await withTenant(session.tenantId, (db) => db.metaOnboardingSession.create({
     data: {
       tenantId: session.tenantId,
       brandId,
@@ -147,7 +150,7 @@ export async function GET(req: NextRequest) {
       pages: pages as never,
       expiresAt: new Date(Date.now() + ONBOARDING_TTL_MS),
     },
-  });
+  }));
 
   jar.set(ONBOARDING_COOKIE, onboarding.id, {
     httpOnly: true,

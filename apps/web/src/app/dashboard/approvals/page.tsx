@@ -11,7 +11,7 @@ import {
 } from "@guardora/core";
 import { PageHeader, Badge, EmptyState, Tabs } from "@/components/dashboard/ui";
 import { requirePermission } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -65,18 +65,18 @@ export default async function ApprovalsPage({
     ...(priority ? { priority: priority as Priority } : {}),
   };
 
-  const [brands, statusGroups, decisions] = await Promise.all([
-    prisma.brand.findMany({
+  const [brands, statusGroups, decisions] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.brand.findMany({
       where: { tenantId: session.tenantId },
       select: { id: true, name: true },
       orderBy: { createdAt: "asc" },
     }),
-    prisma.moderationDecision.groupBy({
+    db.moderationDecision.groupBy({
       by: ["status"],
       where: { tenantId: session.tenantId },
       _count: true,
     }),
-    prisma.moderationDecision.findMany({
+    db.moderationDecision.findMany({
       where: {
         tenantId: session.tenantId,
         ...(status ? { status: status as DecisionStatus } : {}),
@@ -91,7 +91,7 @@ export default async function ApprovalsPage({
       orderBy: [{ createdAt: "desc" }],
       take: 100,
     }),
-  ]);
+  ]));
 
   const brandOptions = [
     { value: "", label: hdrT.dash.allBrands },

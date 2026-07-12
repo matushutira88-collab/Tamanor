@@ -1,6 +1,6 @@
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -16,7 +16,7 @@ export default async function IncidentsPage() {
   const realMode = await getRealModeFilter(session.tenantId);
   const where = { tenantId: session.tenantId, ...realMode.brandWhere };
 
-  const incidents = await prisma.incident.findMany({ where, orderBy: [{ status: "asc" }, { createdAt: "desc" }], take: 100 });
+  const incidents = await withTenant(session.tenantId, (db) => db.incident.findMany({ where, orderBy: [{ status: "asc" }, { createdAt: "desc" }], take: 100 }));
 
   return (
     <>

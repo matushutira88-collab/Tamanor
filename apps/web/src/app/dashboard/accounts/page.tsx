@@ -15,7 +15,7 @@ import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsCon
 import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
@@ -65,11 +65,11 @@ export default async function AccountsPage({
   const sp = await searchParams;
   const metaNotice = sp.meta ? META_NOTICES[sp.meta] : undefined;
 
-  const brands = await prisma.brand.findMany({
+  const brands = await withTenant(session.tenantId, (db) => db.brand.findMany({
     where: { tenantId: session.tenantId },
     orderBy: { createdAt: "asc" },
     include: { connectedAccounts: true },
-  });
+  }));
 
   const realMode = await getRealModeFilter(session.tenantId);
 
@@ -92,10 +92,10 @@ export default async function AccountsPage({
       : grantedPermissions.includes("pages_manage_engagement")
         ? { key: "capAvailable", tone: "ok" }
         : { key: "capMissingPerms", tone: "warn" };
-  const [lastAutoRow, lastManualRow] = await Promise.all([
-    prisma.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "automatic" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    prisma.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "manual" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-  ]);
+  const [lastAutoRow, lastManualRow] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "automatic" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "manual" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+  ]));
   const lastErrorAccount = connectedAccounts.find((a) => a.lastError);
   const nextSyncEstimate = autoSync.enabled && lastAutoRow ? new Date(lastAutoRow.createdAt.getTime() + autoSync.intervalSeconds * 1000) : null;
 

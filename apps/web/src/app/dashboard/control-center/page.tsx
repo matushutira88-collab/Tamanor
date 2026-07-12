@@ -5,7 +5,7 @@ import { ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -23,19 +23,21 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
   const manage = can(session.role, Permission.RuleManage);
   const realMode = await getRealModeFilter(session.tenantId);
 
-  const brands = await prisma.brand.findMany({
-    where: { tenantId: session.tenantId, ...(realMode.isRealMode ? { id: { in: realMode.realBrandIds } } : {}) },
-    orderBy: { createdAt: "asc" },
-  });
-  const policies = await prisma.controlPolicy.findMany({ where: { tenantId: session.tenantId } });
-  // V1.31 — capability awareness: does every connected platform support hiding?
-  const connectedPlatforms = await prisma.connectedAccount.findMany({ where: { tenantId: session.tenantId, ...realMode.brandWhere }, select: { platform: true }, distinct: ["platform"] });
+  const { brands, policies, connectedPlatforms } = await withTenant(session.tenantId, async (db) => ({
+    brands: await db.brand.findMany({
+      where: { tenantId: session.tenantId, ...(realMode.isRealMode ? { id: { in: realMode.realBrandIds } } : {}) },
+      orderBy: { createdAt: "asc" },
+    }),
+    policies: await db.controlPolicy.findMany({ where: { tenantId: session.tenantId } }),
+    // V1.31 — capability awareness: does every connected platform support hiding?
+    connectedPlatforms: await db.connectedAccount.findMany({ where: { tenantId: session.tenantId, ...realMode.brandWhere }, select: { platform: true }, distinct: ["platform"] }),
+  }));
   const anyHideUnsupported = connectedPlatforms.some((p) => !getPlatformConnector(platformKeyFor(p.platform)).capabilities.canHideComment);
   const hasInstagram = connectedPlatforms.some((p) => platformKeyFor(p.platform) === "instagram");
   const modeFor = (brandId: string, cat: string) => policies.find((p) => p.brandId === brandId && p.category === cat)?.mode ?? "monitor";
   const confFor = (brandId: string, cat: string) => policies.find((p) => p.brandId === brandId && p.category === cat)?.minConfidence ?? 0.8;
   // V1.27 — per-brand live safety settings for the "Autonomous Safe Live" section.
-  const safetyRows = await prisma.brandLiveSafetySettings.findMany({ where: { tenantId: session.tenantId } });
+  const safetyRows = await withTenant(session.tenantId, (db) => db.brandLiveSafetySettings.findMany({ where: { tenantId: session.tenantId } }));
   const safetyFor = (brandId: string) => safetyRows.find((s) => s.brandId === brandId);
 
   return (

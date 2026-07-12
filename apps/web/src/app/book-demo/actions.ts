@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { prisma } from "@/server/db";
+import { createLead } from "@guardora/db";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -39,17 +39,16 @@ export async function submitLead(formData: FormData): Promise<void> {
     rawMessage,
   ].filter(Boolean).join("\n") || null;
 
-  await prisma.lead.create({
-    data: {
-      name,
-      email,
-      company: String(formData.get("company") ?? "").trim() || null,
-      website: String(formData.get("website") ?? "").trim() || null,
-      platforms,
-      message,
-      source,
-      consent,
-    },
+  // Global marketing-capture table (no tenant) — system write via a narrow repo.
+  await createLead({
+    name,
+    email,
+    company: String(formData.get("company") ?? "").trim() || null,
+    website: String(formData.get("website") ?? "").trim() || null,
+    platforms,
+    message,
+    source,
+    consent,
   });
 
   redirect(`${backTo}?sent=1`);

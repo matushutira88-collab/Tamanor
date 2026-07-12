@@ -12,7 +12,7 @@ import { PageHeader, Card, SectionHeader, StatCard, Badge, SecondaryButton } fro
 import { BarList } from "@/components/dashboard/trend-chart";
 import { PlatformBreakdown } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
@@ -43,22 +43,22 @@ export default async function ReportsPage() {
     syncRuns,
     syncAuditRows,
     reconnectCount,
-  ] = await Promise.all([
-    prisma.reputationItem.count({ where: { ...where, createdAt: { gte: weekStart } } }),
-    prisma.reputationItem.count({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] }, createdAt: { gte: weekStart } } }),
-    prisma.reputationItem.count({ where: { ...where, status: ReputationStatus.Resolved, updatedAt: { gte: weekStart } } }),
-    prisma.moderationDecision.count({ where: { ...where, status: DecisionStatus.Proposed } }),
-    prisma.reputationItem.groupBy({ by: ["riskLevel"], where, _count: true }),
-    prisma.reputationItem.groupBy({ by: ["platform"], where, _count: true }),
-    prisma.connectedAccount.findMany({
+  ] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.reputationItem.count({ where: { ...where, createdAt: { gte: weekStart } } }),
+    db.reputationItem.count({ where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] }, createdAt: { gte: weekStart } } }),
+    db.reputationItem.count({ where: { ...where, status: ReputationStatus.Resolved, updatedAt: { gte: weekStart } } }),
+    db.moderationDecision.count({ where: { ...where, status: DecisionStatus.Proposed } }),
+    db.reputationItem.groupBy({ by: ["riskLevel"], where, _count: true }),
+    db.reputationItem.groupBy({ by: ["platform"], where, _count: true }),
+    db.connectedAccount.findMany({
       where: { ...where, status: { in: [ConnectorStatus.Active, ConnectorStatus.MockConnected] } },
       select: { health: true },
     }),
-    prisma.syncRun.findFirst({ where, orderBy: { startedAt: "desc" }, select: { startedAt: true, status: true, mock: true } }),
-    prisma.syncRun.findMany({ where, orderBy: { startedAt: "desc" }, take: 100, select: { status: true, durationMs: true } }),
-    prisma.auditLog.findMany({ where: { ...where, event: { startsWith: "sync." }, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }, select: { event: true }, take: 500 }),
-    prisma.connectedAccount.count({ where: { ...where, OR: [{ status: ConnectorStatus.Expired }, { health: { in: [ConnectorHealth.Degraded, ConnectorHealth.Error] } }] } }),
-  ]);
+    db.syncRun.findFirst({ where, orderBy: { startedAt: "desc" }, select: { startedAt: true, status: true, mock: true } }),
+    db.syncRun.findMany({ where, orderBy: { startedAt: "desc" }, take: 100, select: { status: true, durationMs: true } }),
+    db.auditLog.findMany({ where: { ...where, event: { startsWith: "sync." }, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }, select: { event: true }, take: 500 }),
+    db.connectedAccount.count({ where: { ...where, OR: [{ status: ConnectorStatus.Expired }, { health: { in: [ConnectorHealth.Degraded, ConnectorHealth.Error] } }] } }),
+  ]));
 
   const failedSyncs = syncRuns.filter((r) => r.status === "failed").length;
   const durations = syncRuns.map((r) => r.durationMs).filter((d): d is number => typeof d === "number");
@@ -82,12 +82,12 @@ export default async function ReportsPage() {
   const attention = accounts.filter((a) => a.health === ConnectorHealth.Degraded || a.health === ConnectorHealth.Error).length;
 
   // Auto-Protect report (shadow mode — no live action).
-  const [apByDecision, apByCategory, apWouldHideItems, apPreservedItems] = await Promise.all([
-    prisma.autoProtectDecision.groupBy({ by: ["decision"], where, _count: true }),
-    prisma.autoProtectDecision.groupBy({ by: ["matchedCategory"], where, _count: true }),
-    prisma.autoProtectDecision.findMany({ where: { ...where, decision: "would_auto_hide" }, orderBy: { createdAt: "desc" }, take: 5, select: { matchedCategory: true, confidence: true, itemId: true } }),
-    prisma.autoProtectDecision.findMany({ where: { ...where, matchedCategory: "normal_criticism" }, orderBy: { createdAt: "desc" }, take: 5, select: { itemId: true } }),
-  ]);
+  const [apByDecision, apByCategory, apWouldHideItems, apPreservedItems] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.autoProtectDecision.groupBy({ by: ["decision"], where, _count: true }),
+    db.autoProtectDecision.groupBy({ by: ["matchedCategory"], where, _count: true }),
+    db.autoProtectDecision.findMany({ where: { ...where, decision: "would_auto_hide" }, orderBy: { createdAt: "desc" }, take: 5, select: { matchedCategory: true, confidence: true, itemId: true } }),
+    db.autoProtectDecision.findMany({ where: { ...where, matchedCategory: "normal_criticism" }, orderBy: { createdAt: "desc" }, take: 5, select: { itemId: true } }),
+  ]));
   const apDec = new Map(apByDecision.map((g) => [g.decision, g._count as unknown as number]));
   const apCatRows = apByCategory
     .map((g) => ({ category: g.matchedCategory, value: g._count as unknown as number }))
@@ -97,7 +97,7 @@ export default async function ReportsPage() {
   const wouldHideItemIds = apWouldHideItems.map((d) => d.itemId);
   const preservedItemIds = apPreservedItems.map((d) => d.itemId);
   const apItemTexts = new Map(
-    (await prisma.reputationItem.findMany({ where: { id: { in: [...wouldHideItemIds, ...preservedItemIds] } }, select: { id: true, contentItem: { select: { text: true } } } }))
+    (await withTenant(session.tenantId, (db) => db.reputationItem.findMany({ where: { id: { in: [...wouldHideItemIds, ...preservedItemIds] } }, select: { id: true, contentItem: { select: { text: true } } } })))
       .map((r) => [r.id, r.contentItem.text]),
   );
 

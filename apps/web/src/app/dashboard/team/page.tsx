@@ -1,7 +1,7 @@
 import { Role, Permission, can } from "@guardora/core";
 import { PageHeader, Card, SectionHeader, Badge, Field, Input, Select, PrimaryButton } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -23,11 +23,11 @@ export default async function TeamPage() {
   const hdrT = await getT();
   const manage = can(session.role, Permission.MemberManage);
 
-  const memberships = await prisma.membership.findMany({
+  const memberships = await withTenant(session.tenantId, (db) => db.membership.findMany({
     where: { tenantId: session.tenantId },
     include: { user: { select: { name: true, email: true } } },
     orderBy: { createdAt: "asc" },
-  });
+  }));
 
   const roleOptions = Object.values(Role).map((r) => ({ value: r, label: tEnum(hdrT, "role", r) }));
 

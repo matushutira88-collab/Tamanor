@@ -4,7 +4,7 @@ import { getAutoSyncConfig, getProductionSafetyConfig, getLiveActionsConfig } fr
 import { ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { prisma } from "@/server/db";
+import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -48,28 +48,28 @@ export default async function CommandCenterPage() {
 
   const [accounts, activePolicies, pendingApprovals, failedRetryable, safetyBlocks, openIncidents,
     hidesToday, autoHidesToday, autoHidesThisHour, riskyToday, canHideFalseToday, deletedToday, failedToday,
-    safetyRows, killedBrands, killedAccounts, autoBrands, recentAudit, lastSyncRun, totalItems] = await Promise.all([
-    prisma.connectedAccount.findMany({ where: { tenantId: session.tenantId, status: ConnectorStatus.Active }, select: { id: true, externalName: true, platform: true, connectionStatus: true, tokenHealth: true, grantedPermissions: true, killSwitch: true, lastTokenCheckAt: true } }),
-    prisma.controlPolicy.count({ where: { tenantId: session.tenantId, isActive: true } }),
-    prisma.actionQueueItem.count({ where: { ...where, queueState: "approval_required" } }),
-    prisma.actionQueueItem.count({ where: { ...where, queueState: "failed" } }),
-    prisma.actionQueueItem.count({ where: { ...where, queueState: "blocked_by_safety" } }),
-    prisma.incident.findMany({ where: { ...where, status: "open" }, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, title: true, severity: true, category: true, sourcePlatform: true } }),
-    prisma.platformActionExecution.count({ where: { ...where, status: "executed", executedAt: { gte: dayStart } } }),
-    prisma.platformActionExecution.count({ where: { ...where, status: "executed", trigger: "autonomous", executedAt: { gte: dayStart } } }),
-    prisma.platformActionExecution.count({ where: { ...where, status: "executed", trigger: "autonomous", executedAt: { gte: hourStart } } }),
-    prisma.reputationItem.count({ where: { ...where, riskLevel: { in: ["high", "critical"] }, createdAt: { gte: dayStart } } }),
-    prisma.platformActionExecution.count({ where: { ...where, status: "blocked", reason: "facebook_can_hide_false", createdAt: { gte: dayStart } } }),
-    prisma.platformActionExecution.count({ where: { ...where, status: "blocked", reason: "comment_deleted_or_unavailable", createdAt: { gte: dayStart } } }),
-    prisma.platformActionExecution.count({ where: { ...where, status: "failed", createdAt: { gte: dayStart } } }),
-    prisma.brandLiveSafetySettings.findMany({ where: { tenantId: session.tenantId }, select: { liveModeEnabled: true, autonomousHideEnabled: true, approvedAutoHideCategories: true, hourlyAutoHideLimit: true, dailyAutoHideLimit: true } }),
-    prisma.brand.count({ where: { tenantId: session.tenantId, killSwitch: true } }),
-    prisma.connectedAccount.count({ where: { tenantId: session.tenantId, killSwitch: true } }),
-    prisma.brandLiveSafetySettings.count({ where: { tenantId: session.tenantId, liveModeEnabled: true, autonomousHideEnabled: true } }),
-    prisma.auditLog.findMany({ where: { tenantId: session.tenantId }, orderBy: { createdAt: "desc" }, take: 40, select: { event: true, createdAt: true, metadata: true } }),
-    prisma.syncRun.findFirst({ where, orderBy: { startedAt: "desc" }, select: { startedAt: true } }),
-    prisma.reputationItem.count({ where }),
-  ]);
+    safetyRows, killedBrands, killedAccounts, autoBrands, recentAudit, lastSyncRun, totalItems] = await withTenant(session.tenantId, (db) => Promise.all([
+    db.connectedAccount.findMany({ where: { tenantId: session.tenantId, status: ConnectorStatus.Active }, select: { id: true, externalName: true, platform: true, connectionStatus: true, tokenHealth: true, grantedPermissions: true, killSwitch: true, lastTokenCheckAt: true } }),
+    db.controlPolicy.count({ where: { tenantId: session.tenantId, isActive: true } }),
+    db.actionQueueItem.count({ where: { ...where, queueState: "approval_required" } }),
+    db.actionQueueItem.count({ where: { ...where, queueState: "failed" } }),
+    db.actionQueueItem.count({ where: { ...where, queueState: "blocked_by_safety" } }),
+    db.incident.findMany({ where: { ...where, status: "open" }, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, title: true, severity: true, category: true, sourcePlatform: true } }),
+    db.platformActionExecution.count({ where: { ...where, status: "executed", executedAt: { gte: dayStart } } }),
+    db.platformActionExecution.count({ where: { ...where, status: "executed", trigger: "autonomous", executedAt: { gte: dayStart } } }),
+    db.platformActionExecution.count({ where: { ...where, status: "executed", trigger: "autonomous", executedAt: { gte: hourStart } } }),
+    db.reputationItem.count({ where: { ...where, riskLevel: { in: ["high", "critical"] }, createdAt: { gte: dayStart } } }),
+    db.platformActionExecution.count({ where: { ...where, status: "blocked", reason: "facebook_can_hide_false", createdAt: { gte: dayStart } } }),
+    db.platformActionExecution.count({ where: { ...where, status: "blocked", reason: "comment_deleted_or_unavailable", createdAt: { gte: dayStart } } }),
+    db.platformActionExecution.count({ where: { ...where, status: "failed", createdAt: { gte: dayStart } } }),
+    db.brandLiveSafetySettings.findMany({ where: { tenantId: session.tenantId }, select: { liveModeEnabled: true, autonomousHideEnabled: true, approvedAutoHideCategories: true, hourlyAutoHideLimit: true, dailyAutoHideLimit: true } }),
+    db.brand.count({ where: { tenantId: session.tenantId, killSwitch: true } }),
+    db.connectedAccount.count({ where: { tenantId: session.tenantId, killSwitch: true } }),
+    db.brandLiveSafetySettings.count({ where: { tenantId: session.tenantId, liveModeEnabled: true, autonomousHideEnabled: true } }),
+    db.auditLog.findMany({ where: { tenantId: session.tenantId }, orderBy: { createdAt: "desc" }, take: 40, select: { event: true, createdAt: true, metadata: true } }),
+    db.syncRun.findFirst({ where, orderBy: { startedAt: "desc" }, select: { startedAt: true } }),
+    db.reputationItem.count({ where }),
+  ]));
 
   const HIDE_PERM = "pages_manage_engagement";
   const fb = accounts.filter((a) => a.platform === "facebook_page");

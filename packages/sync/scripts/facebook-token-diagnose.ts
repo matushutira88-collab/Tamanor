@@ -73,7 +73,7 @@ async function main() {
   }
 
   // V1.27D — authoritative check + self-repair of a stale false-expired row.
-  const repaired = await checkAccountToken(accountId);
+  const repaired = await checkAccountToken(acct.tenantId, accountId);
   console.log("--- repair ---");
   console.log("connection (now)    :", repaired.connectionStatus);
   console.log("token health (now)  :", repaired.tokenHealth, `(result: ${repaired.result}${repaired.transient ? ", transient" : ""})`);
