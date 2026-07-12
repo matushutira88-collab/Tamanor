@@ -55,6 +55,7 @@
     "google-business-connector:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/google-business-connector.test.ts",
     "unified-inbox:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/unified-inbox.test.ts",
     "auth-session:test": "pnpm --filter @guardora/db exec tsx scripts/auth-session.test.ts",
+    "rls-isolation:test": "pnpm --filter @guardora/db exec tsx scripts/rls-isolation.test.ts",
     "instagram-moderation:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-moderation.test.ts",
     "instagram-hide:diagnose": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-hide.ts diagnose",
     "instagram-hide:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/instagram-hide.ts test",

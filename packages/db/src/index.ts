@@ -20,7 +20,16 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
+/**
+ * SYSTEM-LEVEL client — deliberately NOT tenant-scoped (owner role). Use ONLY for
+ * operations that legitimately cross tenants: worker account discovery, session
+ * bootstrap, scheduled cleanup, migrations, global diagnostics. Never in a normal
+ * tenant request path. Grep `systemDb` to audit every cross-tenant use.
+ */
+export const systemDb: PrismaClient = prisma;
+
 export * from "@prisma/client";
 export * from "./token-crypto";
 export * from "./meta-account";
 export * from "./session";
+export * from "./tenant-db";
