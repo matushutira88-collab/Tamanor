@@ -72,7 +72,7 @@ async function run() {
 
   // The migrated disconnect path uses the RLS repository, not raw prisma.
   const disconnectSrc = readFileSync(resolve(ROOT, "apps/web/src/app/dashboard/accounts/actions.ts"), "utf8");
-  check("4) disconnect action migrated to tenant repository (RLS runtime)", disconnectSrc.includes("disconnectConnectedAccount(session.tenantId"));
+  check("4) disconnect action uses the RLS-runtime disconnect service (revoke + local removal)", disconnectSrc.includes("disconnectAccount(session.tenantId"));
 
   // ---- V1.37.3B — worker tenant EXECUTION modules must never touch the owner client ----
   // These run per-tenant work; every tenant read/write must go through withTenantDb.

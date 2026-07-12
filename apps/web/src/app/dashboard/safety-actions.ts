@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { getLiveActionsConfig } from "@guardora/config";
 import { rollbackHide } from "@guardora/sync";
-import { withTenant } from "@guardora/db";
+import { withTenant, decryptToken } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 
@@ -94,16 +94,21 @@ export async function rollbackExecution(formData: FormData): Promise<void> {
       select: { id: true, connectedAccountId: true },
     });
     if (!exec) return { exec: null, acct: null };
-    const acct = await db.connectedAccount.findFirst({ where: { id: exec.connectedAccountId }, select: { pageId: true, externalId: true, accessToken: true } });
+    const acct = await db.connectedAccount.findFirst({ where: { id: exec.connectedAccountId }, select: { pageId: true, externalId: true, accessToken: true, longLivedToken: true } });
     return { exec, acct };
   });
   if (!exec) redirect(`${backTo}?kind=error&notice=${encodeURIComponent("Nothing to roll back.")}`);
+
+  // V1.37.4 FIX (N) — decrypt the stored token via the centralized helper BEFORE it
+  // reaches the provider transport. The DB value is an encrypted/tagged envelope
+  // (plain:/aesgcm:) and must NEVER be sent to Graph as-is. Decrypt failure → no HTTP.
+  const pageToken = decryptToken(acct?.longLivedToken ?? acct?.accessToken) ?? null;
 
   // Phase 2 — provider HTTP (rollbackHide manages its own short tenant transactions).
   const live = getLiveActionsConfig();
   const res = await rollbackHide({
     tenantId: session.tenantId, executionId: exec.id,
-    account: { pageId: acct?.pageId ?? null, externalId: acct?.externalId ?? "", accessToken: acct?.accessToken ?? null },
+    account: { pageId: acct?.pageId ?? null, externalId: acct?.externalId ?? "", accessToken: pageToken },
     live: live.canExecuteLive,
   });
   const notice = res.status === "rolled_back" ? "The comment was restored on Facebook."

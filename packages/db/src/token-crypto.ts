@@ -75,13 +75,22 @@ function aesDecrypt(stored: string): string {
   ]).toString("utf8");
 }
 
-/** Encrypt a token for storage. Enforces the production plaintext ban. */
+/**
+ * V1.37.4 — fail-closed when a REAL provider connection would persist a plaintext
+ * token. Encryption is required in production AND whenever the deployment opts into
+ * real connectors (TOKEN_STORAGE_REQUIRE_ENCRYPTION=true — e.g. staging/pre-prod).
+ */
+function requiresEncryption(): boolean {
+  return isProduction() || (process.env.TOKEN_STORAGE_REQUIRE_ENCRYPTION ?? "").trim() === "true";
+}
+
+/** Encrypt a token for storage. Enforces the production/real-provider plaintext ban. */
 export function encryptToken(plaintext: string): string {
   const mode = resolveMode();
   if (mode === "plaintext") {
-    if (isProduction()) {
+    if (requiresEncryption()) {
       throw new Error(
-        "Plaintext token storage is not allowed in production. Set TOKEN_ENCRYPTION_MODE=aes-gcm (with TOKEN_ENCRYPTION_KEY) or =kms.",
+        "Plaintext token storage is not allowed here (production or TOKEN_STORAGE_REQUIRE_ENCRYPTION=true). Set TOKEN_ENCRYPTION_MODE=aes-gcm (with TOKEN_ENCRYPTION_KEY) or =kms.",
       );
     }
     return PLAINTEXT_PREFIX + plaintext;
@@ -93,6 +102,16 @@ export function encryptToken(plaintext: string): string {
   );
 }
 
+/**
+ * Fail-closed startup/boundary assertion: throws when real-provider credentials would
+ * be stored/read as plaintext. Safe to call at worker/app boot. Never logs the key.
+ */
+export function assertTokenStorageSafe(): void {
+  if (resolveMode() === "plaintext" && requiresEncryption()) {
+    throw new Error("token_storage_insecure: encryption is required but TOKEN_ENCRYPTION_MODE=plaintext.");
+  }
+}
+
 /** Decrypt a stored token. Returns undefined for null/empty. */
 export function decryptToken(stored: string | null | undefined): string | undefined {
   if (!stored) return undefined;
@@ -101,7 +120,12 @@ export function decryptToken(stored: string | null | undefined): string | undefi
   if (stored.startsWith(KMS_PREFIX)) {
     throw new Error("KMS-encrypted token found but no KMS provider is configured.");
   }
-  // Legacy / untagged value — pass through.
+  // V1.37.4 (K) — in aes-gcm mode an UNTAGGED value is not a valid encrypted token.
+  // Fail closed rather than fall back to treating ciphertext-less data as a token.
+  if (resolveMode() === "aes-gcm") {
+    throw new Error("token_decrypt_failed: untagged token found under aes-gcm mode.");
+  }
+  // Dev/legacy plaintext mode only — pass through.
   return stored;
 }
 

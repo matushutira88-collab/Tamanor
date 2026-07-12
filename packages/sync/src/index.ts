@@ -23,9 +23,12 @@ import {
   findAccountsByExternalIds,
   listUnprocessedFacebookWebhooks,
   markWebhookProcessed,
+  acquireSyncLease,
+  releaseSyncLease,
   type TenantTx,
   type ConnectedAccount,
 } from "@guardora/db";
+import { randomUUID } from "node:crypto";
 import { classifyHybrid, buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, type ClassifierRule } from "@guardora/ai";
 import { attemptFacebookHide } from "./live-actions";
 import { loadProductionSafetyContext } from "./production-safety";
@@ -43,16 +46,24 @@ import {
 import { getMetaConfig, getTranslationConfig, getAiRiskConfig } from "@guardora/config";
 import { mockMetaFetch } from "./mock-fetch";
 
+/** Truthful outcome of a whole sync run. */
+export type SyncVerdict = "success" | "partial_success" | "failed" | "skipped_locked";
+
 export interface SyncOutcome {
   ok: boolean;
   mock: boolean;
   fetched: number;
   created: number;
+  /** V1.37.4 — existing items whose provider content changed. */
+  updated: number;
   deduped: number;
+  /** Per-item failures that did NOT abort the whole run. */
   errors: number;
   durationMs: number;
   message: string;
   syncRunId?: string;
+  /** V1.37.4 — truthful run verdict. */
+  verdict?: SyncVerdict;
   /** True when the failure means the user must re-authorize. */
   needsReconnect?: boolean;
   /** True when the failure is a transient rate limit — retry later. */
@@ -65,6 +76,20 @@ class ReconnectRequiredError extends Error {}
 class RateLimitedError extends Error {}
 /** A missing-permission problem — the user must re-grant scopes (reconnect). */
 class PermissionRequiredError extends Error {}
+/** V1.37.4 — a single malformed provider item; isolated, never aborts the run. */
+class IngestItemInvalidError extends Error {
+  constructor(public readonly reason: string) { super(reason); }
+}
+
+/** V1.37.4 — Postgres unique-violation detector (benign duplicate race, not a failure). */
+function isDuplicateRace(e: unknown): boolean {
+  const code = (e as { code?: string })?.code;
+  const meta = (e as { meta?: { code?: string } })?.meta?.code;
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  return code === "P2002" || meta === "23505" || /23505|unique constraint|duplicate key/i.test(msg);
+}
+
+export type IngestOutcome = "created" | "updated" | "deduped";
 
 interface FetchResult {
   items: FetchedContent[];
@@ -92,6 +117,12 @@ type AccountRow = ConnectedAccount;
  */
 export interface SyncPhaseHooks {
   onPhase?: (phase: string) => void;
+  /** Test-only: throw to simulate a ReputationItem write failure (atomicity proof). */
+  beforeReputationCreate?: () => void | Promise<void>;
+  /** Test-only: force the lease to appear held (skipped_locked path). */
+  forceLeaseUnavailable?: boolean;
+  /** Test-only: override the lease holder id (concurrency tests). */
+  holderId?: string;
 }
 
 export async function runReadOnlySync(
@@ -117,156 +148,163 @@ export async function runReadOnlySync(
     return zero(false, `Sync is not available in "${account.mode}" mode.`);
   }
 
-  // Mock fetch is ONLY for placeholder (demo) accounts. A real (read_only)
-  // account is NEVER injected with mock data — if live sync isn't enabled it is
-  // skipped cleanly. This keeps real testing free of mock content.
-  const meta = getMetaConfig();
-  const isReal = isRealConnection(mode);
-  const useMock = !isReal;
-  if (isReal && !meta.liveSync) {
-    return zero(false, "Live Meta sync is not enabled (META_LIVE_SYNC=false). No mock data is injected for a real account.");
+  // --- V1.37.4 — acquire the account-level sync lease BEFORE any work. Guarantees
+  // one active sync per account (manual + scheduled cannot collide). Released in
+  // finally. Not a held DB transaction — a TTL row, so a crash can't block forever. ---
+  const holderId = hooks?.holderId ?? `${trigger}_${randomUUID()}`;
+  const lease = hooks?.forceLeaseUnavailable ? null : await acquireSyncLease(tenantId, account.id, holderId);
+  if (!lease) {
+    phase("lease-skipped");
+    await withTenantDb(tenantId, (db) => db.syncRun.create({
+      data: { tenantId: account.tenantId, brandId: account.brandId, connectedAccountId: account.id, status: SyncRunStatus.skipped_locked, mock: false, finishedAt: new Date() },
+    }));
+    return { ok: true, mock: false, fetched: 0, created: 0, updated: 0, deduped: 0, errors: 0, durationMs: 0, message: "Sync skipped — another sync is already running for this account.", verdict: "skipped_locked" };
   }
+  phase("lease-acquired");
 
-  // --- Phase A2: tenant write (short tx) — open the SyncRun + load rules + audit. ---
-  const { run, rules } = await withTenantDb(tenantId, async (db) => {
-    const run = await db.syncRun.create({
-      data: {
-        tenantId: account.tenantId,
-        brandId: account.brandId,
-        connectedAccountId: account.id,
-        status: SyncRunStatus.running,
-        mock: useMock,
-      },
-    });
-    const rules = await loadRulesTx(db, account.brandId);
-    await auditTx(db, account, "sync.started", { mock: useMock, trigger });
-    return { run, rules };
-  });
-  const startedAt = Date.now();
-
+  // Everything past lease acquisition runs inside try/finally so the lease is ALWAYS
+  // released (even on crash/throw) — a crashed holder would otherwise rely on TTL.
   try {
-    // --- Phase B: provider HTTP (NO open transaction). ---
-    phase("provider-call-start");
-    const { items: fetched, cursor } = await fetchContent(account, mode, useMock);
-    phase("provider-call-end");
-
-    let created = 0;
-    let deduped = 0;
-    for (const item of fetched) {
-      const existing = await withTenantDb(tenantId, (db) => db.contentItem.findFirst({
-        where: { connectedAccountId: account.id, externalId: item.externalId },
-        select: { id: true },
-      }));
-      if (existing) {
-        deduped++;
-        continue;
-      }
-      // persistItem does its own classification HTTP + short tenant write txs.
-      await persistItem(tenantId, account, item, rules);
-      created++;
+    // Mock fetch is ONLY for placeholder (demo) accounts. A real (read_only)
+    // account is NEVER injected with mock data — if live sync isn't enabled it is
+    // skipped cleanly. This keeps real testing free of mock content.
+    const meta = getMetaConfig();
+    const isReal = isRealConnection(mode);
+    const useMock = !isReal;
+    if (isReal && !meta.liveSync) {
+      return zero(false, "Live Meta sync is not enabled (META_LIVE_SYNC=false). No mock data is injected for a real account.");
     }
 
-    // --- Phase D: tenant write (short tx) — mark completed + refresh account. ---
-    const durationMs = Date.now() - startedAt;
-    phase("tenant-write-start");
-    await withTenantDb(tenantId, async (db) => {
-      await db.syncRun.update({
-        where: { id: run.id },
+    // --- Phase A2: tenant write (short tx) — open the SyncRun + load rules + audit. ---
+    const { run, rules } = await withTenantDb(tenantId, async (db) => {
+      const run = await db.syncRun.create({
         data: {
-          status: SyncRunStatus.completed,
-          fetched: fetched.length,
-          created,
-          deduped,
-          durationMs,
-          cursor: cursor ?? null,
-          finishedAt: new Date(),
+          tenantId: account.tenantId,
+          brandId: account.brandId,
+          connectedAccountId: account.id,
+          status: SyncRunStatus.running,
+          mock: useMock,
         },
       });
-      await db.connectedAccount.update({
-        where: { id: account.id },
-        data: {
-          lastSyncedAt: new Date(),
-          lastSuccessfulSyncAt: new Date(),
-          lastCursor: cursor ?? undefined,
-          health: ConnectorHealth.healthy,
-          lastError: null,
-          lastErrorAt: null,
-          syncAttempts: 0,
-          nextRetryAt: null,
-        },
-      });
-      await auditTx(db, account, "sync.completed", {
-        mock: useMock, fetched: fetched.length, created, deduped, durationMs, trigger,
-      });
+      const rules = await loadRulesTx(db, account.brandId);
+      await auditTx(db, account, "sync.started", { mock: useMock, trigger });
+      return { run, rules };
     });
-    phase("tenant-write-end");
+    const startedAt = Date.now();
 
-    return {
-      ok: true,
-      mock: useMock,
-      fetched: fetched.length,
-      created,
-      deduped,
-      errors: 0,
-      durationMs,
-      message: useMock
-        ? "Mock read-only sync completed (labelled MOCK data, no live API call)."
-        : "Read-only sync completed.",
-      syncRunId: run.id,
-    };
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-    const msg = err instanceof Error ? err.message : String(err);
-    const isTokenExpired = err instanceof ReconnectRequiredError;
-    const isPermission = err instanceof PermissionRequiredError;
-    const isRateLimited = err instanceof RateLimitedError;
-    const needsReconnect = isTokenExpired || isPermission;
-    const attempts = (account.syncAttempts ?? 0) + 1;
-    const nextRetryAt = needsReconnect ? null : nextRetryFor(attempts);
-    const event = isTokenExpired
-      ? "sync.token_expired"
-      : isPermission
-        ? "sync.permission_error"
-        : isRateLimited
-          ? "sync.rate_limited"
-          : "sync.failed";
+    try {
+      // --- Phase B: provider HTTP (NO open transaction). ---
+      phase("provider-call-start");
+      const { items: fetched, cursor } = await fetchContent(account, mode, useMock);
+      phase("provider-call-end");
 
-    // --- Phase E: tenant write (short tx) — record failure + backoff + audit. ---
-    phase("tenant-write-start");
-    await withTenantDb(tenantId, async (db) => {
-      await db.syncRun.update({
-        where: { id: run.id },
-        data: { status: SyncRunStatus.failed, error: msg, errors: 1, durationMs, finishedAt: new Date() },
+      let created = 0;
+      let updated = 0;
+      let deduped = 0;
+      let failed = 0;
+      // --- Per-item isolation: one malformed item never aborts the whole run. ---
+      for (const item of fetched) {
+        try {
+          const outcome = await ingestItem(tenantId, account, item, rules, hooks);
+          if (outcome === "created") created++;
+          else if (outcome === "updated") updated++;
+          else deduped++;
+        } catch (itemErr) {
+          // A benign duplicate race is NOT a failure — the record already exists.
+          if (isDuplicateRace(itemErr)) { deduped++; continue; }
+          failed++;
+          const reason = itemErr instanceof IngestItemInvalidError ? itemErr.reason : "ingest_item_invalid";
+          await withTenantDb(tenantId, (db) => auditTx(db, account, "sync.item_failed", { reason })).catch(() => {});
+        }
+      }
+
+      const durationMs = Date.now() - startedAt;
+      const verdict: SyncVerdict = failed === 0 ? "success" : (created + updated + deduped > 0 ? "partial_success" : "failed");
+      const status = verdict === "success" ? SyncRunStatus.completed
+        : verdict === "partial_success" ? SyncRunStatus.partial_success
+        : SyncRunStatus.failed;
+
+      // --- Phase D: tenant write (short tx) — mark result + refresh account. ---
+      phase("tenant-write-start");
+      await withTenantDb(tenantId, async (db) => {
+        await db.syncRun.update({
+          where: { id: run.id },
+          data: {
+            status,
+            fetched: fetched.length,
+            created, updated, deduped, errors: failed,
+            durationMs,
+            cursor: cursor ?? null,
+            finishedAt: new Date(),
+          },
+        });
+        await db.connectedAccount.update({
+          where: { id: account.id },
+          data: {
+            lastSyncedAt: new Date(),
+            // Only a fully/partly successful run refreshes success markers.
+            ...(verdict !== "failed" ? { lastSuccessfulSyncAt: new Date(), lastCursor: cursor ?? undefined, health: ConnectorHealth.healthy, lastError: null, lastErrorAt: null, syncAttempts: 0, nextRetryAt: null } : {}),
+          },
+        });
+        await auditTx(db, account, verdict === "partial_success" ? "sync.partial" : "sync.completed", {
+          mock: useMock, fetched: fetched.length, created, updated, deduped, failed, verdict, durationMs, trigger,
+        });
       });
-      await db.connectedAccount.update({
-        where: { id: account.id },
-        data: {
-          lastSyncedAt: new Date(),
-          status: needsReconnect ? ConnectorStatus.expired : undefined,
-          health: needsReconnect ? ConnectorHealth.degraded : isRateLimited ? ConnectorHealth.degraded : ConnectorHealth.error,
-          lastError: msg,
-          lastErrorAt: new Date(),
-          syncAttempts: attempts,
-          nextRetryAt,
-        },
-      });
-      await auditTx(db, account, event, { error: msg, needsReconnect, retryLater: isRateLimited });
-    });
-    phase("tenant-write-end");
+      phase("tenant-write-end");
 
-    return {
-      ok: false,
-      mock: useMock,
-      fetched: 0,
-      created: 0,
-      deduped: 0,
-      errors: 1,
-      durationMs,
-      message: msg,
-      syncRunId: run.id,
-      needsReconnect,
-      retryLater: isRateLimited,
-    };
+      return {
+        ok: verdict !== "failed",
+        mock: useMock,
+        fetched: fetched.length,
+        created, updated, deduped,
+        errors: failed,
+        durationMs,
+        message: verdict === "partial_success"
+          ? `Sync completed with ${failed} item error(s) isolated; ${created} new, ${updated} updated, ${deduped} unchanged.`
+          : useMock
+            ? "Mock read-only sync completed (labelled MOCK data, no live API call)."
+            : "Read-only sync completed.",
+        syncRunId: run.id,
+        verdict,
+      };
+    } catch (err) {
+      // Account-level failure (token/permission/rate-limit/fetch) — aborts the run.
+      const durationMs = Date.now() - startedAt;
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTokenExpired = err instanceof ReconnectRequiredError;
+      const isPermission = err instanceof PermissionRequiredError;
+      const isRateLimited = err instanceof RateLimitedError;
+      const needsReconnect = isTokenExpired || isPermission;
+      const attempts = (account.syncAttempts ?? 0) + 1;
+      const nextRetryAt = needsReconnect ? null : nextRetryFor(attempts);
+      const event = isTokenExpired ? "sync.token_expired" : isPermission ? "sync.permission_error" : isRateLimited ? "sync.rate_limited" : "sync.failed";
+      const status = isTokenExpired ? SyncRunStatus.permission_missing : isPermission ? SyncRunStatus.permission_missing : isRateLimited ? SyncRunStatus.rate_limited : SyncRunStatus.failed;
+
+      phase("tenant-write-start");
+      await withTenantDb(tenantId, async (db) => {
+        await db.syncRun.update({
+          where: { id: run.id },
+          data: { status, error: msg, errors: 1, durationMs, finishedAt: new Date() },
+        });
+        await db.connectedAccount.update({
+          where: { id: account.id },
+          data: {
+            lastSyncedAt: new Date(),
+            status: needsReconnect ? ConnectorStatus.expired : undefined,
+            health: needsReconnect ? ConnectorHealth.degraded : isRateLimited ? ConnectorHealth.degraded : ConnectorHealth.error,
+            lastError: msg, lastErrorAt: new Date(), syncAttempts: attempts, nextRetryAt,
+          },
+        });
+        await auditTx(db, account, event, { error: msg, needsReconnect, retryLater: isRateLimited });
+      });
+      phase("tenant-write-end");
+
+      return { ok: false, mock: useMock, fetched: 0, created: 0, updated: 0, deduped: 0, errors: 1, durationMs, message: msg, syncRunId: run.id, verdict: "failed", needsReconnect, retryLater: isRateLimited };
+    }
+  } finally {
+    // ALWAYS release the lease (release-in-finally). Idempotent.
+    await releaseSyncLease(tenantId, lease).catch(() => {});
+    phase("lease-released");
   }
 }
 
@@ -343,12 +381,72 @@ async function loadRulesTx(db: TenantTx, brandId: string): Promise<ClassifierRul
   }));
 }
 
-async function persistItem(
+/** Mutable provider CONTENT fields (safe to overwrite on resync). Immutable identity
+ * fields (kind, platform, externalId, connectedAccountId, tenant/brand) are NEVER here. */
+function mutableContentFields(item: FetchedContent) {
+  return {
+    text: item.text,
+    externalParentId: item.externalParentId ?? null,
+    authorDisplayName: item.author.displayName ?? null,
+    authorLocale: item.author.locale ?? null,
+    rating: item.rating ?? null,
+    permalink: item.permalink ?? null,
+    publishedAt: new Date(item.publishedAt),
+  };
+}
+
+function contentChanged(
+  existing: { text: string; rating: number | null; authorDisplayName: string | null; permalink: string | null; externalParentId: string | null; authorLocale: string | null; publishedAt: Date },
+  item: FetchedContent,
+): boolean {
+  return existing.text !== item.text
+    || (existing.rating ?? null) !== (item.rating ?? null)
+    || (existing.authorDisplayName ?? null) !== (item.author.displayName ?? null)
+    || (existing.permalink ?? null) !== (item.permalink ?? null)
+    || (existing.externalParentId ?? null) !== (item.externalParentId ?? null)
+    || (existing.authorLocale ?? null) !== (item.author.locale ?? null)
+    || existing.publishedAt.getTime() !== new Date(item.publishedAt).getTime();
+}
+
+/**
+ * V1.37.4 — idempotent ingest of ONE provider item. Fast-path: an already-seen item
+ * (unique connectedAccountId+externalId) only propagates MUTABLE content changes and
+ * NEVER touches ReputationItem workflow state (status/priority/approval). A new item
+ * is classified + persisted; the create is race-safe (upsert + reputation guard), so
+ * a concurrent duplicate resolves to one logical record instead of a P2002 abort.
+ */
+export async function ingestItem(
   tenantId: string,
   account: AccountRow,
   item: FetchedContent,
   rules: ClassifierRule[],
-): Promise<void> {
+  hooks?: SyncPhaseHooks,
+): Promise<IngestOutcome> {
+  if (!item.externalId) throw new IngestItemInvalidError("ingest_item_invalid"); // never invent an externalId
+
+  const existing = await withTenantDb(tenantId, (db) => db.contentItem.findFirst({
+    where: { connectedAccountId: account.id, externalId: item.externalId },
+    select: { id: true, text: true, rating: true, authorDisplayName: true, permalink: true, externalParentId: true, authorLocale: true, publishedAt: true },
+  }));
+  if (existing) {
+    if (!contentChanged(existing, item)) return "deduped";
+    // Propagate provider content changes; workflow fields are preserved.
+    await withTenantDb(tenantId, (db) => db.contentItem.update({
+      where: { connectedAccountId_externalId: { connectedAccountId: account.id, externalId: item.externalId } },
+      data: mutableContentFields(item),
+    }));
+    return "updated";
+  }
+  return persistNewItem(tenantId, account, item, rules, hooks);
+}
+
+async function persistNewItem(
+  tenantId: string,
+  account: AccountRow,
+  item: FetchedContent,
+  rules: ClassifierRule[],
+  hooks?: SyncPhaseHooks,
+): Promise<IngestOutcome> {
   // Phase P1 — tenant reads (short tx): brand locale + brand memory rules.
   const { brand, memoryRules } = await withTenantDb(tenantId, async (db) => {
     const brand = await db.brand.findFirst({ where: { id: account.brandId }, select: { defaultLocale: true } });
@@ -381,27 +479,35 @@ async function persistItem(
   );
   const requiresApproval = hybrid.approvalRequired || autoProtect.decision === "requires_approval";
 
-  // Phase P3 — tenant writes (short tx): ingest content + reputation + observability
-  // + shadow Auto-Protect. No provider HTTP here. Returns the repItem for the next phase.
-  const { repItem } = await withTenantDb(tenantId, async (db) => {
-    const content = await db.contentItem.create({
-      data: {
+  // Phase P3 — tenant writes (ONE short tx): ContentItem + ReputationItem are created
+  // ATOMICALLY (both commit or neither). No provider HTTP here. The ContentItem is an
+  // idempotent UPSERT on (connectedAccountId, externalId) — a concurrent duplicate
+  // resolves to the existing row (native ON CONFLICT) instead of aborting the tx; a
+  // pre-existing ReputationItem then short-circuits to "updated" (no double side-effects).
+  const p3 = await withTenantDb(tenantId, async (db): Promise<{ repItem: { id: string } | null; outcome: IngestOutcome }> => {
+    const content = await db.contentItem.upsert({
+      where: { connectedAccountId_externalId: { connectedAccountId: account.id, externalId: item.externalId } },
+      create: {
         tenantId: account.tenantId,
         brandId: account.brandId,
         connectedAccountId: account.id,
         platform: account.platform,
         kind: (item.kind as unknown as ContentKind) ?? ContentKind.comment,
         externalId: item.externalId,
-        externalParentId: item.externalParentId ?? null,
-        text: item.text,
         authorExternalId: item.author.externalId ?? null,
-        authorDisplayName: item.author.displayName ?? null,
-        authorLocale: item.author.locale ?? null,
-        rating: item.rating ?? null,
-        permalink: item.permalink ?? null,
-        publishedAt: new Date(item.publishedAt),
+        ...mutableContentFields(item),
       },
+      update: mutableContentFields(item),
     });
+
+    // 1:1 guard — if a ReputationItem already exists for this content, another sync
+    // beat us to it: propagate content (done by upsert) and skip create + side-effects.
+    const existingRep = await db.reputationItem.findUnique({ where: { contentItemId: content.id }, select: { id: true } });
+    if (existingRep) return { repItem: null, outcome: "updated" };
+
+    // Failure-injection seam (test-only) — proves atomicity: if this throws, the
+    // ContentItem create above is rolled back with the transaction (no orphan).
+    if (hooks?.beforeReputationCreate) await hooks.beforeReputationCreate();
 
     const repItem = await db.reputationItem.create({
       data: {
@@ -458,8 +564,12 @@ async function persistItem(
         itemId: repItem.id, category: autoProtect.matchedCategory, mode: autoProtect.policyMode, executed: false,
       });
     }
-    return { repItem };
+    return { repItem: { id: repItem.id }, outcome: "created" as IngestOutcome };
   });
+
+  // A concurrent duplicate created the ReputationItem first — no side-effects to run.
+  if (p3.outcome === "updated" || !p3.repItem) return "updated";
+  const repItem = p3.repItem;
 
   // Phase P4 — Control Center. Read policies, evaluate (pure), upsert the queue item.
   const controlPolicies = await withTenantDb(tenantId, (db) => db.controlPolicy.findMany({
@@ -525,6 +635,7 @@ async function persistItem(
       });
     }
   }
+  return "created";
 }
 
 function priorityFor(level: string): Priority {
@@ -566,10 +677,12 @@ function zero(ok: boolean, message: string): SyncOutcome {
     mock: false,
     fetched: 0,
     created: 0,
+    updated: 0,
     deduped: 0,
     errors: 0,
     durationMs: 0,
     message,
+    verdict: ok ? "success" : "failed",
   };
 }
 
@@ -670,3 +783,5 @@ export * from "./instagram-moderation";
 export * from "./google-business-connector";
 export * from "./production-safety";
 export * from "./connection-manager";
+export * from "./provider-revoke";
+export * from "./disconnect";

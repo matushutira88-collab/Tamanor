@@ -143,14 +143,20 @@ async function run() {
   // 30/31) Facebook + Instagram unchanged.
   check("30/31) FB + IG unchanged", getCapabilities("facebook").canHideComment === true && getCapabilities("instagram").canReadComments === true && getCapabilities("instagram").canHideComment === false);
 
-  // 32) Tenant isolation enforced in the connector paths.
-  check("32) tenant isolation", disconnect.includes("tenantId: session.tenantId") && disconnect.includes('platform: "google_business"'));
+  // 32) Tenant isolation enforced in the connector paths (V1.37.4 — via the shared
+  //     disconnect service, which is tenant-scoped/RLS and gated to google_business).
+  check("32) tenant isolation", disconnect.includes("disconnectAccount(session.tenantId") && disconnect.includes('"google_business"'));
 
   // 33) Safe audit events (no tokens in metadata).
   check("33) safe audit events", GOOGLE_BUSINESS_AUDIT.connected === "google_business.connected" && GOOGLE_BUSINESS_AUDIT.disconnected === "google_business.disconnected" && connect.includes("GOOGLE_BUSINESS_AUDIT") && disconnect.includes("GOOGLE_BUSINESS_AUDIT.disconnected"));
 
-  // 34) Disconnect clears credentials, exposes no secrets.
-  check("34) disconnect clears creds, no secrets", disconnect.includes("accessToken: null") && disconnect.includes("refreshToken: null") && disconnect.includes('status: "disconnected"') && !disconnect.includes("accessToken: account") && disconnect.includes("no tokens/secrets"));
+  // 34) Disconnect removes local credentials + reports a truthful provider revoke
+  //     (V1.37.4). The credential-clearing lives in the shared disconnect service.
+  const disconnectSvc = readSrc("packages/sync/src/disconnect.ts");
+  check("34) disconnect clears creds, no secrets, truthful revoke",
+    disconnectSvc.includes("accessToken: null") && disconnectSvc.includes("refreshToken: null") && disconnectSvc.includes('status: "disconnected"')
+    && disconnect.includes("localCredentialsRemoved") && disconnect.includes("providerRevoke")
+    && !disconnect.includes("accessToken: account") && disconnect.includes("no token"));
 
   // 35) Public copy does not claim live sync before verification.
   check("35) public copy honest (not live)", en.includes("connector ready for approved API access") && landing.includes("t.beta.googleConnectorNote") && !/google[^\n]*\blive\b/i.test(en) && /connector implementation is complete/i.test(readme));

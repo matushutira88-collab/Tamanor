@@ -9,8 +9,8 @@ import {
   Platform,
   assertCan,
 } from "@guardora/core";
-import { runReadOnlySync } from "@guardora/sync";
-import { disconnectConnectedAccount, withTenant } from "@guardora/db";
+import { runReadOnlySync, disconnectAccount } from "@guardora/sync";
+import { withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 
@@ -81,9 +81,9 @@ export async function disconnect(accountId: string): Promise<void> {
   const session = await requireSession();
   assertCan(session.role, Permission.ConnectorManage);
 
-  // V1.37.3 — tenant runtime (RLS): the account load + update run under the
-  // session's tenant context; a foreign/absent id returns null → not_found.
-  const account = await disconnectConnectedAccount(session.tenantId, accountId);
+  // V1.37.4 — safe disconnect: tenant read → best-effort provider revoke (HTTP outside
+  // any tx) → local credential removal (always). A foreign/absent id → not_found.
+  const { account, revoke, status } = await disconnectAccount(session.tenantId, accountId);
   if (!account) throw new Error("Account not found");
 
   await writeAudit({
@@ -92,7 +92,8 @@ export async function disconnect(accountId: string): Promise<void> {
     brandId: account.brandId,
     targetType: "connected_account",
     targetId: account.id,
-    metadata: { platform: account.platform },
+    // Truthful: local credentials removed + normalized provider-revoke outcome. No token.
+    metadata: { platform: account.platform, localCredentialsRemoved: true, providerRevoke: revoke, status },
   });
 
   revalidatePath("/dashboard/accounts");

@@ -75,6 +75,13 @@ enum SyncRunStatus {
   running
   completed
   failed
+  // V1.37.4 — truthful sync outcomes.
+  partial_success
+  skipped_locked
+  disconnected
+  permission_missing
+  rate_limited
+  api_unavailable
 }
 
 enum ContentKind {
@@ -347,6 +354,7 @@ model ConnectedAccount {
   brand        Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
   contentItems ContentItem[]
   syncRuns     SyncRun[]
+  syncLeases   SyncLease[]
 
   @@unique([brandId, platform, externalId])
   @@index([tenantId])
@@ -364,6 +372,8 @@ model SyncRun {
   mock               Boolean       @default(false)
   fetched            Int           @default(0)
   created            Int           @default(0)
+  // V1.37.4 — resynced existing items whose provider content changed.
+  updated            Int           @default(0)
   deduped            Int           @default(0)
   errors             Int           @default(0)
   error              String?
@@ -378,6 +388,31 @@ model SyncRun {
   @@index([tenantId])
   @@index([connectedAccountId, startedAt])
   @@map("sync_runs")
+}
+
+/**
+ * V1.37.4 — account-level sync lease. At most ONE active lease per connected
+ * account (unique on connectedAccountId), so a manual + scheduled sync of the same
+ * account cannot run concurrently. The lease is DB-backed state (NOT an open DB
+ * transaction): it has a TTL so a crashed holder never blocks the account forever —
+ * an expired lease can be atomically taken over. Tenant-scoped under RLS.
+ */
+model SyncLease {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  connectedAccountId String   @unique
+  holderId           String
+  acquiredAt         DateTime @default(now())
+  expiresAt          DateTime
+  heartbeatAt        DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  connectedAccount ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([expiresAt])
+  @@map("sync_leases")
 }
 
 /// Short-lived OAuth onboarding state between the Meta callback and Page
