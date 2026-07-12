@@ -66,13 +66,13 @@ async function run() {
     check("3) deleted comment does not mark reconnect / token error", rDel.reason !== "reconnect_required" && acctDel?.connectionStatus === "connected");
 
     // getCommentLifecycle mapping.
-    const lcDeleted = await getCommentLifecycle({ accountId: acct.id, commentId: "C1" }, { transport: new MockFacebookHideTransport({ ok: true }, { comment: { ok: false, errorCode: "not_found" } }) });
+    const lcDeleted = await getCommentLifecycle({ tenantId: T, accountId: acct.id, commentId: "C1" }, { transport: new MockFacebookHideTransport({ ok: true }, { comment: { ok: false, errorCode: "not_found" } }) });
     check("1b) getCommentLifecycle → deleted", lcDeleted.status === "deleted", lcDeleted.status);
-    const lcHidden = await getCommentLifecycle({ accountId: acct.id, commentId: "C1" }, { transport: new MockFacebookHideTransport({ ok: true }, { comment: { ok: true, canHide: true, isHidden: true } }) });
+    const lcHidden = await getCommentLifecycle({ tenantId: T, accountId: acct.id, commentId: "C1" }, { transport: new MockFacebookHideTransport({ ok: true }, { comment: { ok: true, canHide: true, isHidden: true } }) });
     check("1c) getCommentLifecycle → hidden", lcHidden.status === "hidden");
-    const lcVisible = await getCommentLifecycle({ accountId: acct.id, commentId: "C1" }, { transport: new MockFacebookHideTransport({ ok: true }, { comment: { ok: true, canHide: true, isHidden: false } }) });
+    const lcVisible = await getCommentLifecycle({ tenantId: T, accountId: acct.id, commentId: "C1" }, { transport: new MockFacebookHideTransport({ ok: true }, { comment: { ok: true, canHide: true, isHidden: false } }) });
     check("1d) getCommentLifecycle → visible", lcVisible.status === "visible");
-    const lcCannot = await getCommentLifecycle({ accountId: acct.id, commentId: "C1" }, { transport: new MockFacebookHideTransport({ ok: true }, { comment: { ok: true, canHide: false, isHidden: false } }) });
+    const lcCannot = await getCommentLifecycle({ tenantId: T, accountId: acct.id, commentId: "C1" }, { transport: new MockFacebookHideTransport({ ok: true }, { comment: { ok: true, canHide: false, isHidden: false } }) });
     check("1e) getCommentLifecycle → cannot_hide", lcCannot.status === "cannot_hide");
 
     // deleted resolves the queue item out of approval_required.

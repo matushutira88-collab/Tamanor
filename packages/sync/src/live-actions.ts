@@ -1,4 +1,4 @@
-import { prisma, ActorKind, decryptToken } from "@guardora/db";
+import { withTenantDb, ActorKind, decryptToken } from "@guardora/db";
 import { getLiveActionsConfig } from "@guardora/config";
 import {
   hideComment,
@@ -139,14 +139,14 @@ function gate(ctx: HideContext, cfg: ReturnType<typeof getLiveActionsConfig>): {
  */
 export async function findPreflightDryRun(ctx: Pick<HideContext, "tenantId" | "queueItemId" | "policyId">) {
   if (!ctx.queueItemId) return null;
-  return prisma.platformActionExecution.findFirst({
+  return withTenantDb(ctx.tenantId, (db) => db.platformActionExecution.findFirst({
     where: {
       tenantId: ctx.tenantId, queueItemId: ctx.queueItemId, policyId: ctx.policyId ?? null,
       actionType: "hide_comment", trigger: "approval", status: "dry_run", executedAt: null,
     },
     orderBy: { createdAt: "desc" },
     select: { id: true, status: true, reason: true, createdAt: true, executedAt: true },
-  });
+  }));
 }
 
 /**
@@ -167,16 +167,18 @@ function attemptWhere(ctx: HideContext) {
 
 /** Latest existing executions for this action key (newest first). */
 async function findExistingExecutions(ctx: HideContext) {
-  return prisma.platformActionExecution.findMany({
+  return withTenantDb(ctx.tenantId, (db) => db.platformActionExecution.findMany({
     where: attemptWhere(ctx),
     orderBy: { createdAt: "desc" },
-  });
+  }));
 }
 
 async function record(ctx: HideContext, status: HideExecutionStatus, reason: string, provider?: HideCommentResult): Promise<HideExecutionResult> {
+  // Each DB step is its own short tenant transaction (RLS via appDb). record() has
+  // no provider HTTP, so multiple short txs are safe and keep tenant isolation.
   let exec;
   try {
-    exec = await prisma.platformActionExecution.create({
+    exec = await withTenantDb(ctx.tenantId, (db) => db.platformActionExecution.create({
       data: {
         tenantId: ctx.tenantId, brandId: ctx.brandId, itemId: ctx.itemId,
         queueItemId: ctx.queueItemId ?? null, policyId: ctx.policyId ?? null,
@@ -189,13 +191,13 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
         providerErrorMessage: provider?.providerErrorMessage ?? null,
         executedAt: status === "executed" ? new Date() : null,
       },
-    });
+    }));
   } catch (e) {
     // Race safety net: the partial unique index (queueItemId, actionType, trigger)
     // over `executed` rows rejects a concurrent duplicate live execution. Fall back
     // to the row that won the race instead of creating a second executed row.
     if ((e as { code?: string }).code === "P2002" && status === "executed") {
-      const existing = await prisma.platformActionExecution.findFirst({ where: { ...attemptWhere(ctx), status: "executed" }, orderBy: { createdAt: "desc" } });
+      const existing = await withTenantDb(ctx.tenantId, (db) => db.platformActionExecution.findFirst({ where: { ...attemptWhere(ctx), status: "executed" }, orderBy: { createdAt: "desc" } }));
       if (existing) return { id: existing.id, status: "executed", reason: existing.reason ?? reason, idempotent: true, createdAt: existing.createdAt };
     }
     throw e;
@@ -203,27 +205,27 @@ async function record(ctx: HideContext, status: HideExecutionStatus, reason: str
   // V1.27B — a token_expired failure marks the account for reconnect so the next
   // hide preflight blocks precisely and the UI can surface a reconnect CTA.
   if (status === "failed" && provider?.providerErrorCode === "token_expired") {
-    await prisma.connectedAccount.updateMany({
+    await withTenantDb(ctx.tenantId, (db) => db.connectedAccount.updateMany({
       where: { id: ctx.connectedAccountId },
       data: { health: "error", lastError: "token_expired", lastErrorAt: new Date() },
-    });
+    }));
   }
   // V1.27E — a completed live hide resolves the queue item out of approval_required.
   if (status === "executed") {
-    await resolveQueueItem(ctx.queueItemId, "executed");
+    await resolveQueueItem(ctx.tenantId, ctx.queueItemId, "executed");
   }
   const event = status === "executed" ? "platform_action.executed"
     : status === "failed" ? "platform_action.failed"
     : status === "dry_run" ? "platform_action.dry_run"
     : "platform_action.blocked";
-  await prisma.auditLog.create({
+  await withTenantDb(ctx.tenantId, (db) => db.auditLog.create({
     data: {
       tenantId: ctx.tenantId, brandId: ctx.brandId, event, actorKind: ActorKind.system,
       targetType: "platform_action_execution", targetId: exec.id,
       // No tokens/secrets. Only classified fields.
       metadata: { actionType: "hide_comment", status, reason, category: ctx.matchedCategory, trigger: ctx.trigger, executed: status === "executed" } as never,
     },
-  });
+  }));
   return { id: exec.id, status, reason };
 }
 
@@ -255,10 +257,10 @@ async function revalidateAndRepair(ctx: HideContext, transport: FacebookHideTran
   const st = await transport.getPageTokenState(ctx.account.pageId ?? ctx.account.externalId, token);
   const now = new Date();
   if (st.ok) {
-    await prisma.connectedAccount.updateMany({
+    await withTenantDb(ctx.tenantId, (db) => db.connectedAccount.updateMany({
       where: { id: ctx.connectedAccountId },
       data: { connectionStatus: "connected", tokenHealth: "ok", health: "healthy", requiresReconnectReason: null, lastError: null, lastErrorAt: null, lastTokenCheckAt: now, lastTokenCheckResult: "ok", lastSuccessfulGraphCheckAt: now, tokenExpiresAt: null },
-    });
+    }));
     ctx.account.connectionStatus = "connected";
     ctx.account.tokenHealth = "ok";
     ctx.account.needsReconnect = false;
@@ -267,14 +269,14 @@ async function revalidateAndRepair(ctx: HideContext, transport: FacebookHideTran
   }
   // A transient/generic error must NOT downgrade a connection — only a real OAuth failure.
   if (st.errorCode === "rate_limit" || st.errorCode === "network" || st.errorCode === "generic") {
-    await prisma.connectedAccount.updateMany({ where: { id: ctx.connectedAccountId }, data: { lastTokenCheckAt: now, lastTokenCheckResult: st.errorCode } });
+    await withTenantDb(ctx.tenantId, (db) => db.connectedAccount.updateMany({ where: { id: ctx.connectedAccountId }, data: { lastTokenCheckAt: now, lastTokenCheckResult: st.errorCode } }));
     return;
   }
   const tokenHealth = st.errorCode === "token_expired" ? "expired" : st.errorCode === "revoked" ? "revoked" : "invalid";
-  await prisma.connectedAccount.updateMany({
+  await withTenantDb(ctx.tenantId, (db) => db.connectedAccount.updateMany({
     where: { id: ctx.connectedAccountId },
     data: { connectionStatus: "needs_reconnect", tokenHealth, health: "error", requiresReconnectReason: st.errorCode, lastError: st.errorCode, lastErrorAt: now, lastTokenCheckAt: now, lastTokenCheckResult: st.errorCode },
-  });
+  }));
   ctx.account.connectionStatus = "needs_reconnect";
   ctx.account.tokenHealth = tokenHealth;
 }
@@ -284,21 +286,21 @@ async function revalidateAndRepair(ctx: HideContext, transport: FacebookHideTran
  * hide (or an already-hidden / deleted comment) must not linger as approval_required.
  * Never touches a rejected item.
  */
-async function resolveQueueItem(queueItemId: string | null | undefined, state: "executed" | "no_action"): Promise<void> {
+async function resolveQueueItem(tenantId: string, queueItemId: string | null | undefined, state: "executed" | "no_action"): Promise<void> {
   if (!queueItemId) return;
-  await prisma.actionQueueItem.updateMany({
+  await withTenantDb(tenantId, (db) => db.actionQueueItem.updateMany({
     where: { id: queueItemId, queueState: { notIn: ["rejected"] } },
     data: { queueState: state },
-  });
+  }));
 }
 
 /** V1.27C — flag an account as needing reconnect after a live token failure. */
-async function markAccountReconnect(connectedAccountId: string, errorCode: string): Promise<void> {
+async function markAccountReconnect(tenantId: string, connectedAccountId: string, errorCode: string): Promise<void> {
   const tokenHealth = errorCode === "token_expired" ? "expired" : errorCode === "revoked" ? "revoked" : "invalid";
-  await prisma.connectedAccount.updateMany({
+  await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({
     where: { id: connectedAccountId },
     data: { connectionStatus: "needs_reconnect", tokenHealth, health: "error", lastError: errorCode, lastErrorAt: new Date(), requiresReconnectReason: errorCode },
-  });
+  }));
 }
 
 /**
@@ -313,12 +315,12 @@ async function commentPreflight(ctx: HideContext, transport: FacebookHideTranspo
     // V1.27E — the comment was deleted/unavailable on Facebook. Terminal + neutral:
     // NOT a token error, NOT reconnect. Resolve the queue item.
     if (st.errorCode === "not_found") {
-      await resolveQueueItem(ctx.queueItemId, "no_action");
+      await resolveQueueItem(ctx.tenantId, ctx.queueItemId, "no_action");
       return record(ctx, "blocked", "comment_deleted_or_unavailable");
     }
     // The token failed the live check → mark for reconnect, never POST.
     if (st.errorCode === "token_expired" || st.errorCode === "token_invalid" || st.errorCode === "revoked") {
-      await markAccountReconnect(ctx.connectedAccountId, st.errorCode === "token_invalid" ? "token_invalid" : st.errorCode);
+      await markAccountReconnect(ctx.tenantId, ctx.connectedAccountId, st.errorCode === "token_invalid" ? "token_invalid" : st.errorCode);
       return record(ctx, "blocked", "reconnect_required");
     }
     if (st.errorCode === "permission") return record(ctx, "blocked", "missing_permission");
@@ -327,7 +329,7 @@ async function commentPreflight(ctx: HideContext, transport: FacebookHideTranspo
   if (st.isHidden) return record(ctx, "executed", "already_hidden"); // record() resolves the queue item
   if (!st.canHide) {
     // Terminal: nobody (human or system) can hide this comment → resolve, not approval.
-    await resolveQueueItem(ctx.queueItemId, "no_action");
+    await resolveQueueItem(ctx.tenantId, ctx.queueItemId, "no_action");
     return record(ctx, "blocked", "facebook_can_hide_false");
   }
   return null;
@@ -350,13 +352,13 @@ async function recordVerifiedHide(ctx: HideContext, transport: FacebookHideTrans
 
 /** Write the safety-decision audit event (never tokens/secrets). */
 async function writeSafetyAudit(ctx: HideContext, ev: SafetyEvaluation): Promise<void> {
-  await prisma.auditLog.create({
+  await withTenantDb(ctx.tenantId, (db) => db.auditLog.create({
     data: {
       tenantId: ctx.tenantId, brandId: ctx.brandId, event: ev.auditEvent, actorKind: ActorKind.system,
       targetType: "action_queue_item", targetId: ctx.queueItemId ?? ctx.itemId,
       metadata: { actionType: "hide_comment", trigger: ctx.trigger, category: ctx.matchedCategory, outcome: ev.outcome, reason: ev.reason } as never,
     },
-  });
+  }));
 }
 
 export async function attemptFacebookHide(
@@ -513,11 +515,11 @@ export type CommentLifecycle = "visible" | "hidden" | "deleted" | "cannot_hide" 
  * to resolve items whose comment no longer exists. Never logs a token.
  */
 export async function getCommentLifecycle(
-  input: { accountId: string; commentId: string },
+  input: { tenantId: string; accountId: string; commentId: string },
   opts?: { transport?: FacebookHideTransport },
 ): Promise<{ status: CommentLifecycle }> {
   if (!input.commentId) return { status: "unknown" };
-  const acct = await prisma.connectedAccount.findUnique({ where: { id: input.accountId }, select: { accessToken: true, longLivedToken: true } });
+  const acct = await withTenantDb(input.tenantId, (db) => db.connectedAccount.findFirst({ where: { id: input.accountId }, select: { accessToken: true, longLivedToken: true } }));
   const token = decryptToken(acct?.longLivedToken ?? acct?.accessToken);
   const transport = opts?.transport ?? new GraphFacebookHideTransport();
   if (!token || !transport.getCommentState) return { status: "unknown" };
@@ -551,16 +553,16 @@ export async function rollbackHide(
   },
   opts?: { transport?: FacebookHideTransport },
 ): Promise<RollbackResult> {
-  const exec = await prisma.platformActionExecution.findFirst({ where: { id: input.executionId, tenantId: input.tenantId, status: "executed" } });
+  const exec = await withTenantDb(input.tenantId, (db) => db.platformActionExecution.findFirst({ where: { id: input.executionId, tenantId: input.tenantId, status: "executed" } }));
   if (!exec || !exec.externalCommentId) return { status: "failed", reason: "no_executed_row" };
 
-  const auditRollback = (event: string, reason: string) => prisma.auditLog.create({
+  const auditRollback = (event: string, reason: string) => withTenantDb(input.tenantId, (db) => db.auditLog.create({
     data: {
       tenantId: exec.tenantId, brandId: exec.brandId, event, actorKind: ActorKind.system,
       targetType: "platform_action_execution", targetId: exec.id,
       metadata: { actionType: "hide_comment", reason, executed: false } as never,
     },
-  });
+  }));
 
   await auditRollback("live_hide.rollback_requested", "requested");
   const r = await unhideComment(
@@ -569,7 +571,7 @@ export async function rollbackHide(
   );
   if (r.status === "executed" || r.status === "dry_run") {
     if (r.status === "executed") {
-      await prisma.platformActionExecution.update({ where: { id: exec.id }, data: { status: "rolled_back", rolledBackAt: new Date() } });
+      await withTenantDb(input.tenantId, (db) => db.platformActionExecution.update({ where: { id: exec.id }, data: { status: "rolled_back", rolledBackAt: new Date() } }));
       await auditRollback("live_hide.rolled_back", "rolled_back");
       return { status: "rolled_back", reason: "ok" };
     }

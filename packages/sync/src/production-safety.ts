@@ -1,4 +1,4 @@
-import { prisma } from "@guardora/db";
+import { withTenantDb } from "@guardora/db";
 import { getProductionSafetyConfig } from "@guardora/config";
 import { NEVER_AUTONOMOUS } from "@guardora/ai";
 
@@ -154,20 +154,24 @@ export async function loadProductionSafetyContext(input: {
   dayStart.setHours(0, 0, 0, 0);
   const hourStart = new Date(now.getTime() - 60 * 60 * 1000);
 
-  const [brand, account, settingsRow, lastReview] = await Promise.all([
-    prisma.brand.findFirst({ where: { id: input.brandId }, select: { killSwitch: true } }),
-    prisma.connectedAccount.findFirst({ where: { id: input.connectedAccountId }, select: { killSwitch: true } }),
-    prisma.brandLiveSafetySettings.findFirst({ where: { brandId: input.brandId } }),
-    prisma.brandRiskFeedback.findFirst({ where: { brandId: input.brandId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-  ]);
+  // V1.37.3B — all safety reads run under the caller's tenant context (RLS). Pure
+  // reads, no provider HTTP → a single short tenant transaction is correct.
+  const { brand, account, settingsRow, lastReview, base } = await withTenantDb(input.tenantId, async (db) => {
+    const [brand, account, settingsRow, lastReview] = await Promise.all([
+      db.brand.findFirst({ where: { id: input.brandId }, select: { killSwitch: true } }),
+      db.connectedAccount.findFirst({ where: { id: input.connectedAccountId }, select: { killSwitch: true } }),
+      db.brandLiveSafetySettings.findFirst({ where: { brandId: input.brandId } }),
+      db.brandRiskFeedback.findFirst({ where: { brandId: input.brandId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    ]);
+    return { brand, account, settingsRow, lastReview, base: { brandId: input.brandId, status: "executed", trigger: "autonomous" } as const };
+  });
 
-  const base = { brandId: input.brandId, status: "executed", trigger: "autonomous" } as const;
-  const [dayCount, hourCount, categoryDayCount, consecutiveWithoutReview] = await Promise.all([
-    prisma.platformActionExecution.count({ where: { ...base, executedAt: { gte: dayStart } } }),
-    prisma.platformActionExecution.count({ where: { ...base, executedAt: { gte: hourStart } } }),
-    prisma.platformActionExecution.count({ where: { ...base, policyCategory: input.category, executedAt: { gte: dayStart } } }),
-    prisma.platformActionExecution.count({ where: { ...base, ...(lastReview ? { executedAt: { gt: lastReview.createdAt } } : {}) } }),
-  ]);
+  const [dayCount, hourCount, categoryDayCount, consecutiveWithoutReview] = await withTenantDb(input.tenantId, (db) => Promise.all([
+    db.platformActionExecution.count({ where: { ...base, executedAt: { gte: dayStart } } }),
+    db.platformActionExecution.count({ where: { ...base, executedAt: { gte: hourStart } } }),
+    db.platformActionExecution.count({ where: { ...base, policyCategory: input.category, executedAt: { gte: dayStart } } }),
+    db.platformActionExecution.count({ where: { ...base, ...(lastReview ? { executedAt: { gt: lastReview.createdAt } } : {}) } }),
+  ]));
 
   const settings = resolveSafetySettings(settingsRow);
   return {

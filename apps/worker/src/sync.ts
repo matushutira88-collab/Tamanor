@@ -1,4 +1,4 @@
-import { prisma, ConnectorStatus, Platform } from "@guardora/db";
+import { ConnectorStatus, findMetaSyncCandidates, countMockMetaAccounts } from "@guardora/db";
 import { runReadOnlySync } from "@guardora/sync";
 import { getDataMode } from "@guardora/config";
 import { log } from "./logger";
@@ -8,6 +8,10 @@ import { log } from "./logger";
  * IG Business). Read-only: creates ReputationItems, never executes actions.
  * Deduplication means repeated ticks converge (no duplicate items). Manual and
  * automatic sync call the SAME runReadOnlySync — only the trigger differs.
+ *
+ * V1.37.3B: account discovery is an explicit cross-tenant SYSTEM query; the trusted
+ * tenantId from discovery is handed to runReadOnlySync, which does all tenant reads
+ * and writes under RLS (withTenantDb / appDb).
  */
 export async function syncConnectedMetaAccounts(
   trigger: "manual" | "automatic" = "automatic",
@@ -19,24 +23,9 @@ export async function syncConnectedMetaAccounts(
     ? [ConnectorStatus.active]
     : [ConnectorStatus.active, ConnectorStatus.mock_connected];
 
-  // Connected Meta accounts (to distinguish eligible vs backed-off).
-  const all = await prisma.connectedAccount.findMany({
-    where: {
-      platform: { in: [Platform.facebook_page, Platform.instagram_business] },
-      status: { in: statuses },
-    },
-    select: {
-      id: true, platform: true, externalId: true, externalName: true, pageId: true,
-      health: true, status: true, nextRetryAt: true,
-    },
-  });
-
-  let skippedDemo = 0;
-  if (dataMode === "real") {
-    skippedDemo = await prisma.connectedAccount.count({
-      where: { platform: { in: [Platform.facebook_page, Platform.instagram_business] }, status: ConnectorStatus.mock_connected },
-    });
-  }
+  // Connected Meta accounts (to distinguish eligible vs backed-off) — SYSTEM discovery.
+  const all = await findMetaSyncCandidates(statuses);
+  const skippedDemo = dataMode === "real" ? await countMockMetaAccounts() : 0;
 
   const eligible = all.filter((a) => a.nextRetryAt == null || a.nextRetryAt <= now);
   const backedOff = all.filter((a) => a.nextRetryAt != null && a.nextRetryAt > now);
@@ -63,7 +52,8 @@ export async function syncConnectedMetaAccounts(
       pageName: account.externalName, pageId: account.pageId ?? account.externalId,
       health: account.health, trigger,
     });
-    const r = await runReadOnlySync(account.id, trigger);
+    // Trusted tenantId from system discovery drives the RLS-scoped execution.
+    const r = await runReadOnlySync({ accountId: account.id, tenantId: account.tenantId }, trigger);
     created += r.created;
     log.info("worker.autosync.account.done", {
       accountId: account.id,

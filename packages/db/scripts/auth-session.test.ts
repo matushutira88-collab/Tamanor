@@ -82,8 +82,15 @@ async function run() {
     const rowByRaw = await prisma.userSession.findFirst({ where: { tokenHash: tokenA } });
     const rowByHash = await prisma.userSession.findUnique({ where: { tokenHash: hashSessionToken(tokenA) } });
     check("7) DB stores hash only, never the raw token", rowByRaw === null && rowByHash?.id === sidA && rowByHash!.tokenHash !== tokenA);
-    // 8) Legacy guardora_session yields no access (never read as a session).
-    check("8) legacy guardora_session not accepted", !auth.includes('"guardora_session"') && session.includes('LEGACY_COOKIE = "guardora_session"') && session.includes("jar.delete(LEGACY_COOKIE)") && mw.includes('"tamanor_session"'));
+    // 8) Legacy guardora_session yields no access (never read as a session). The legacy
+    //    constant + its deletion live in the session core; deletion is mutation-only
+    //    (clearLegacyInJar), and the read path never authenticates from it. (V1.37.3D)
+    const sessionCore = readSrc("apps/web/src/server/session-core.ts");
+    check("8) legacy guardora_session not accepted",
+      !auth.includes('"guardora_session"')
+      && sessionCore.includes('LEGACY_COOKIE = "guardora_session"')
+      && sessionCore.includes("jar.delete(LEGACY_COOKIE)")
+      && mw.includes('"tamanor_session"'));
     // 9) Session whose membership disappeared is rejected.
     const { token: tokD } = await createUserSession({ userId: userD.id, activeTenantId: tenantA.id });
     check("9a) valid before membership removal", (await readUserSession(tokD)).ok === true);
@@ -105,7 +112,7 @@ async function run() {
     check("15) cross-tenant ActionQueueItem (approve target) denied", (await scoped("actionQueueItem", aqiB.id)) === null);
     check("16) cross-tenant Brand read denied", (await scoped("brand", brandB.id)) === null);
     // 17) tenantId is derived from the validated session, never accepted from the client.
-    check("17) client tenantId cannot be injected", getSessionTenantIsServerDerived(session) && sessA.tenantId === tenantA.id);
+    check("17) client tenantId cannot be injected", getSessionTenantIsServerDerived(session + sessionCore) && sessA.tenantId === tenantA.id);
 
     // ---------------- ROLE / PERMISSION (real authz predicate) ----------------
     const sessC = (await readUserSession((await createUserSession({ userId: userC.id })).token)).session!;

@@ -127,7 +127,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   if (acct && q.proposedAction === "hide_comment" && live.canExecuteLive && item?.contentItem.externalId &&
       (predicted?.expected === "live_possible" || alreadyExecuted)) {
     try {
-      const lc = await getCommentLifecycle({ accountId: acct.id, commentId: item.contentItem.externalId });
+      const lc = await getCommentLifecycle({ tenantId: session.tenantId, accountId: acct.id, commentId: item.contentItem.externalId });
       commentDeleted = lc.status === "deleted";
       commentCannotHide = lc.status === "cannot_hide";
       commentHiddenPublicly = lc.status === "hidden";

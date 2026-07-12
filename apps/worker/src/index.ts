@@ -1,7 +1,7 @@
 import { loadEnv } from "@guardora/config";
+import { assertRlsRuntime, validateRuntimeDbConfig } from "@guardora/db";
 import { log } from "./logger";
 import { processPendingWebhookEvents } from "@guardora/sync";
-import { loadActiveAccounts, runPipelineForAccount } from "./pipeline";
 import { proposeForHighRiskItems } from "./proposals";
 import { syncConnectedMetaAccounts } from "./sync";
 import { runTokenExpiryMonitor } from "./token-monitor";
@@ -10,25 +10,14 @@ import { cleanupExpiredOnboarding } from "./cleanup";
 /**
  * Guardora worker entrypoint.
  *
- * Runs the reputation pipeline on an interval for every active connected
- * account. This is a skeleton scheduler: no real platform API calls and no
- * moderation actions are executed yet.
+ * V1.37.3B: the maintenance tick runs SYSTEM discovery jobs (token monitor,
+ * onboarding cleanup, webhooks, proposals) that each hand a trusted tenantId to
+ * tenant-scoped execution under RLS. There is a SINGLE authoritative ingest path
+ * (runReadOnlySync via autoSyncTick / webhooks) — the old non-persisting pipeline
+ * skeleton has been removed.
  */
 async function tick(): Promise<void> {
-  const accounts = await loadActiveAccounts();
-
-  log.info("tick.start", { accounts: accounts.length });
-  for (const account of accounts) {
-    try {
-      await runPipelineForAccount(account);
-    } catch (err) {
-      log.error("pipeline.account.failed", {
-        accountId: account.id,
-        platform: account.platform,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+  log.info("tick.start", {});
 
   // Token expiry monitor: flag expiring/expired connections for reconnect.
   try {
@@ -63,10 +52,7 @@ async function tick(): Promise<void> {
   // Propose (never execute) actions for high-risk items. Auto-execution is off.
   try {
     const proposed = await proposeForHighRiskItems();
-    log.info("tick.done", {
-      accounts: accounts.length,
-      proposalsCreated: proposed,
-    });
+    log.info("tick.done", { proposalsCreated: proposed });
   } catch (err) {
     log.error("proposals.failed", {
       error: err instanceof Error ? err.message : String(err),
@@ -101,6 +87,23 @@ async function main(): Promise<void> {
     aiProvider: env.AI_PROVIDER,
   });
 
+  // V1.37.3B — RLS runtime preflight, ONCE at boot (never per job). Fail-closed:
+  // the worker refuses to start if the runtime role is a superuser / has BYPASSRLS,
+  // the RLS helper/policies are missing, or (in production) APP_DATABASE_URL is
+  // missing or equal to the owner URL. Never logs any credential.
+  const cfg = validateRuntimeDbConfig();
+  if (!cfg.ok) {
+    log.error("worker.preflight.config_invalid", { reason: cfg.reason });
+    throw new Error("database_runtime_misconfigured");
+  }
+  try {
+    await assertRlsRuntime();
+    log.info("worker.preflight.ok", { rls: "healthy" });
+  } catch {
+    log.error("worker.preflight.rls_unhealthy", { reason: "database_runtime_misconfigured" });
+    throw new Error("database_runtime_misconfigured");
+  }
+
   const state = { running: true };
   const shutdown = (signal: string) => {
     log.info("worker.shutdown", { signal });
@@ -109,7 +112,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  // Maintenance loop: pipeline, token monitor, cleanup, webhooks, proposals.
+  // Maintenance loop: token monitor, cleanup, webhooks, proposals.
   const maintenance = (async () => {
     await tick();
     while (state.running) {

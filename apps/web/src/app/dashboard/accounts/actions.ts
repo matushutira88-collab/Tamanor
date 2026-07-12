@@ -116,7 +116,7 @@ export async function runSyncAction(accountId: string): Promise<void> {
   });
   if (!account) throw new Error("Account not found");
 
-  const outcome = await runReadOnlySync(accountId);
+  const outcome = await runReadOnlySync({ accountId, tenantId: session.tenantId });
 
   revalidatePath(`/dashboard/accounts/${accountId}`);
   revalidatePath("/dashboard/inbox");

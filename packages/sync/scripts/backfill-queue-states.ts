@@ -18,7 +18,7 @@ const CHECK_COMMENTS = process.argv.includes("--check-comments");
 async function main() {
   const items = await prisma.actionQueueItem.findMany({
     where: { queueState: { notIn: ["rejected", "executed", "no_action"] } },
-    select: { id: true, itemId: true, queueState: true, proposedAction: true },
+    select: { id: true, tenantId: true, itemId: true, queueState: true, proposedAction: true },
   });
 
   const plan: { id: string; from: string; to: string; why: string }[] = [];
@@ -39,7 +39,7 @@ async function main() {
       const ext = rep?.contentItem;
       if (ext?.externalId && ext.connectedAccountId) {
         try {
-          const lc = await getCommentLifecycle({ accountId: ext.connectedAccountId, commentId: ext.externalId });
+          const lc = await getCommentLifecycle({ tenantId: it.tenantId, accountId: ext.connectedAccountId, commentId: ext.externalId });
           if (lc.status === "deleted") { to = "no_action"; why = "comment gone on Facebook"; }
         } catch { /* best-effort */ }
       }

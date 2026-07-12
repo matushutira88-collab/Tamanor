@@ -157,7 +157,7 @@ async function run() {
 
     // Source wiring: sync + webhook use the same path; terminal routing; Command Center.
     const syncSrc = readSrc("packages/sync/src/index.ts");
-    check("W1) webhook uses runReadOnlySync (same path, no duplicated hide logic)", /processPendingWebhookEvents[\s\S]*?runReadOnlySync\(a\.id\)/.test(syncSrc));
+    check("W1) webhook uses runReadOnlySync (same path, no duplicated hide logic)", /processPendingWebhookEvents[\s\S]*?runReadOnlySync\(\{ accountId: a\.id, tenantId: a\.tenantId \}\)/.test(syncSrc));
     check("W2) autonomous trigger + safety context in persistItem", /trigger: "autonomous"[\s\S]*?\}, \{ safety \}\)/.test(syncSrc) && syncSrc.includes("loadProductionSafetyContext"));
     check("W3) persistItem terminal blocks do not route to approval", syncSrc.includes("facebook_can_hide_false") && syncSrc.includes("comment_deleted_or_unavailable"));
     const cc = readSrc("apps/web/src/app/dashboard/command-center/page.tsx");
