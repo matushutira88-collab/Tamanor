@@ -23,3 +23,4 @@ if (process.env.NODE_ENV !== "production") {
 export * from "@prisma/client";
 export * from "./token-crypto";
 export * from "./meta-account";
+export * from "./session";

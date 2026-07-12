@@ -1,19 +1,18 @@
 import "server-only";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Role, type Permission, can } from "@guardora/core";
-import { prisma } from "./db";
+import { readSession } from "./session";
 
 /**
  * AUTH SEAM.
  *
- * This is the single place the app resolves identity. Today it is a dev/mock
- * provider: a cookie holds a user id and the session is loaded from the DB. To
- * move to real auth (e.g. OAuth/OIDC, magic links), replace only the cookie
- * read in {@link getSession} and the sign-in action — every caller stays the
- * same because they depend on {@link AppSession}, not on how it was produced.
+ * The single place the app resolves identity. As of V1.37.1 this is a SECURE,
+ * DB-backed opaque session (see {@link readSession} / @guardora/db session core):
+ * the cookie holds only a random token, identity + active tenant + role are
+ * resolved server-side from a validated `UserSession` row, and every check is
+ * fail-closed. Callers depend on {@link AppSession}, not on how it is produced.
  */
-export const SESSION_COOKIE = "guardora_session";
+export { SESSION_COOKIE } from "./session";
 
 export interface AppSession {
   userId: string;
@@ -26,23 +25,15 @@ export interface AppSession {
 
 /** Resolve the current session, or null if not signed in. */
 export async function getSession(): Promise<AppSession | null> {
-  const jar = await cookies();
-  const userId = jar.get(SESSION_COOKIE)?.value;
-  if (!userId) return null;
-
-  const membership = await prisma.membership.findFirst({
-    where: { userId },
-    include: { user: true, tenant: true },
-  });
-  if (!membership) return null;
-
+  const s = await readSession();
+  if (!s) return null;
   return {
-    userId: membership.user.id,
-    userName: membership.user.name ?? membership.user.email,
-    userEmail: membership.user.email,
-    tenantId: membership.tenant.id,
-    tenantName: membership.tenant.name,
-    role: membership.role as Role,
+    userId: s.userId,
+    userName: s.userName,
+    userEmail: s.userEmail,
+    tenantId: s.tenantId,
+    tenantName: s.tenantName,
+    role: s.role as Role,
   };
 }
 

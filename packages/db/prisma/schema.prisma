@@ -163,8 +163,32 @@ model User {
   proposed    ModerationDecision[] @relation("DecisionProposer")
   reviewed    ModerationDecision[] @relation("DecisionReviewer")
   auditLogs   AuditLog[]
+  sessions    UserSession[]
 
   @@map("users")
+}
+
+// V1.37.1 — opaque, DB-backed session. The cookie holds a random token; only
+// its SHA-256 hash is stored here. A raw token is NEVER persisted. Sessions are
+// fail-closed: expired/revoked/membership-missing → rejected.
+model UserSession {
+  id             String    @id @default(cuid())
+  tokenHash      String    @unique
+  userId         String
+  activeTenantId String
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+  lastSeenAt     DateTime  @default(now())
+  revokedAt      DateTime?
+  rotatedFromId  String?
+
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeTenant Tenant @relation(fields: [activeTenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([activeTenantId])
+  @@index([expiresAt])
+  @@map("user_sessions")
 }
 
 model Tenant {
@@ -185,6 +209,7 @@ model Tenant {
   auditLogs         AuditLog[]
   reportSnapshots   ReportSnapshot[]
   metaOnboarding    MetaOnboardingSession[]
+  sessions          UserSession[]
 
   @@map("tenants")
 }
@@ -220,7 +245,7 @@ model Brand {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant            Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   connectedAccounts ConnectedAccount[]
   contentItems      ContentItem[]
   reputationItems   ReputationItem[]
@@ -236,25 +261,25 @@ model Brand {
 /// V1.27 Production Safe Mode — per-brand live-action safety envelope. Fail-closed
 /// defaults: live off, autonomous off, low limits, high confidence, crisis lock on.
 model BrandLiveSafetySettings {
-  id                              String   @id @default(cuid())
-  tenantId                        String
-  brandId                         String   @unique
-  liveModeEnabled                 Boolean  @default(false)
-  autonomousHideEnabled           Boolean  @default(false)
-  approvalRequiredAboveDailyLimit Boolean  @default(true)
-  dailyAutoHideLimit              Int      @default(10)
-  hourlyAutoHideLimit             Int      @default(3)
-  perCategoryDailyLimit           Int      @default(5)
-  maxConsecutiveWithoutReview     Int      @default(5)
-  minConfidenceForAutoHide        Float    @default(0.85)
-  requireDryRunBeforeFirstLive    Boolean  @default(true)
-  requireHumanApprovalForNewCategory Boolean @default(true)
-  rollbackRequiredBeforeAutonomy  Boolean  @default(true)
-  crisisLockEnabled               Boolean  @default(true)
+  id                                 String   @id @default(cuid())
+  tenantId                           String
+  brandId                            String   @unique
+  liveModeEnabled                    Boolean  @default(false)
+  autonomousHideEnabled              Boolean  @default(false)
+  approvalRequiredAboveDailyLimit    Boolean  @default(true)
+  dailyAutoHideLimit                 Int      @default(10)
+  hourlyAutoHideLimit                Int      @default(3)
+  perCategoryDailyLimit              Int      @default(5)
+  maxConsecutiveWithoutReview        Int      @default(5)
+  minConfidenceForAutoHide           Float    @default(0.85)
+  requireDryRunBeforeFirstLive       Boolean  @default(true)
+  requireHumanApprovalForNewCategory Boolean  @default(true)
+  rollbackRequiredBeforeAutonomy     Boolean  @default(true)
+  crisisLockEnabled                  Boolean  @default(true)
   // Categories the brand has explicitly approved for autonomous auto-hide.
-  approvedAutoHideCategories      String[]
-  createdAt                       DateTime @default(now())
-  updatedAt                       DateTime @updatedAt
+  approvedAutoHideCategories         String[]
+  createdAt                          DateTime @default(now())
+  updatedAt                          DateTime @updatedAt
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
@@ -263,28 +288,28 @@ model BrandLiveSafetySettings {
 }
 
 model ConnectedAccount {
-  id           String          @id @default(cuid())
-  tenantId     String
-  brandId      String
-  platform     Platform
-  status       ConnectorStatus @default(pending)
-  mode         ConnectorMode   @default(placeholder)
-  health       ConnectorHealth @default(unknown)
-  externalId   String
-  externalName String?
+  id                 String          @id @default(cuid())
+  tenantId           String
+  brandId            String
+  platform           Platform
+  status             ConnectorStatus @default(pending)
+  mode               ConnectorMode   @default(placeholder)
+  health             ConnectorHealth @default(unknown)
+  externalId         String
+  externalName       String?
   // Meta specifics
-  pageId       String?
-  igBusinessId String?
-  scopes       String[]
+  pageId             String?
+  igBusinessId       String?
+  scopes             String[]
   // Permissions the user actually granted (may differ from requested scopes).
   grantedPermissions String[]
   // V1.27 Production Safe Mode — per-account kill switch. When true, NO live action.
-  killSwitch   Boolean         @default(false)
+  killSwitch         Boolean         @default(false)
 
   // V1.27C Persistent Connection Manager — token/connection health, separate from
   // sync health. A hide never runs on an unverified token.
   connectionStatus           String    @default("connected") // connected|needs_reconnect|invalid_token|missing_permission|disabled_by_user|disconnected
-  tokenHealth                String    @default("unknown")    // unknown|ok|expiring_soon|expired|invalid|revoked
+  tokenHealth                String    @default("unknown") // unknown|ok|expiring_soon|expired|invalid|revoked
   lastTokenCheckAt           DateTime?
   lastTokenCheckResult       String?
   lastSuccessfulGraphCheckAt DateTime?
@@ -363,7 +388,7 @@ model SyncRun {
 /// PRODUCTION must encrypt at rest (see docs/SECURITY.md). Rows expire quickly
 /// and are deleted once a Page is selected.
 model MetaOnboardingSession {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   tenantId        String
   brandId         String
   userId          String
@@ -373,7 +398,7 @@ model MetaOnboardingSession {
   grantedScopes   String[]
   // Discovered pages (JSON) incl. per-page access tokens — server-only secrets.
   pages           Json
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
   expiresAt       DateTime
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -434,23 +459,23 @@ model ContentItem {
 }
 
 model ReputationItem {
-  id              String           @id @default(cuid())
-  tenantId        String
-  brandId         String
-  platform        Platform
-  contentItemId   String           @unique
-  status          ReputationStatus @default(new)
-  priority        Priority         @default(normal)
-  requiresApproval Boolean         @default(false)
+  id               String           @id @default(cuid())
+  tenantId         String
+  brandId          String
+  platform         Platform
+  contentItemId    String           @unique
+  status           ReputationStatus @default(new)
+  priority         Priority         @default(normal)
+  requiresApproval Boolean          @default(false)
 
   // Embedded risk assessment (mirrors core ReputationRisk)
-  riskLevel       RiskLevel        @default(none)
-  riskConfidence  Float            @default(0)
-  riskCategories  String[]
-  sentiment       Sentiment        @default(neutral)
-  riskRationale   String?
-  riskEngine      String?
-  assessedAt      DateTime?
+  riskLevel      RiskLevel @default(none)
+  riskConfidence Float     @default(0)
+  riskCategories String[]
+  sentiment      Sentiment @default(neutral)
+  riskRationale  String?
+  riskEngine     String?
+  assessedAt     DateTime?
 
   // Structured "why flagged" explanation (matchedTerms, riskSignals, action).
   riskExplanation Json?
@@ -458,22 +483,22 @@ model ReputationItem {
   // Multilingual comment intelligence (best-effort; original text preserved).
   detectedLanguage        String?
   languageConfidence      Float?
-  isMixedLanguage         Boolean  @default(false)
-  languageDetectionSource String?  // rules | library | ai | unknown
+  isMixedLanguage         Boolean @default(false)
+  languageDetectionSource String? // rules | library | ai | unknown
 
   // Translation layer (no fake translation; provider off by default).
-  translationStatus   String   @default("not_needed") // not_needed | translated | unavailable | failed
-  translationProvider String   @default("none")
+  translationStatus   String  @default("not_needed") // not_needed | translated | unavailable | failed
+  translationProvider String  @default("none")
   translatedText      String?
   translatedToLocale  String?
 
   // Hybrid classification provenance.
-  classificationMode String  @default("rules_only") // rules_only | ai_assisted
-  aiProvider         String   @default("none")
-  aiProviderStatus   String   @default("skipped") // classified | skipped | unavailable | failed
+  classificationMode String @default("rules_only") // rules_only | ai_assisted
+  aiProvider         String @default("none")
+  aiProviderStatus   String @default("skipped") // classified | skipped | unavailable | failed
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand       Brand                @relation(fields: [brandId], references: [id], onDelete: Cascade)
@@ -511,23 +536,23 @@ model BrandRiskFeedback {
 
 /// A brand-scoped risk memory rule the classifier applies (never global).
 model BrandRiskMemoryRule {
-  id             String   @id @default(cuid())
-  tenantId       String
-  brandId        String
+  id               String   @id @default(cuid())
+  tenantId         String
+  brandId          String
   /// watch_phrase | block_phrase | allow_phrase | reduce_risk_pattern |
   /// increase_risk_pattern | competitor_phrase | crisis_phrase
-  type           String
-  phrase         String
+  type             String
+  phrase           String
   normalizedPhrase String
-  language       String?
+  language         String?
   /// low | medium | high | critical
-  severity       String   @default("medium")
+  severity         String   @default("medium")
   /// manual | feedback | system
-  source         String   @default("manual")
-  isActive       Boolean  @default(true)
-  createdBy      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  source           String   @default("manual")
+  isActive         Boolean  @default(true)
+  createdBy        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([tenantId, brandId, isActive])
   @@index([brandId, type])
@@ -694,27 +719,27 @@ model ProviderCall {
 }
 
 model ModerationDecision {
-  id                String           @id @default(cuid())
-  tenantId          String
-  brandId           String
-  reputationItemId  String
-  action            ModerationAction
-  status            DecisionStatus   @default(proposed)
+  id               String           @id @default(cuid())
+  tenantId         String
+  brandId          String
+  reputationItemId String
+  action           ModerationAction
+  status           DecisionStatus   @default(proposed)
   // Who proposed the action (ai / human / rule / system).
-  proposedByKind    ActorKind
-  proposedByUserId  String?
-  replyText         String?
-  reason            String?
-  confidence        Float?
+  proposedByKind   ActorKind
+  proposedByUserId String?
+  replyText        String?
+  reason           String?
+  confidence       Float?
   // Point-in-time AI risk assessment captured at proposal creation.
-  riskSnapshot      Json?
+  riskSnapshot     Json?
   // Reviewer who approved / rejected / cancelled.
-  reviewerUserId    String?
-  reviewedAt        DateTime?
-  executedAt        DateTime?
-  failureReason     String?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  reviewerUserId   String?
+  reviewedAt       DateTime?
+  executedAt       DateTime?
+  failureReason    String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand          Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
@@ -732,16 +757,16 @@ model ModerationDecision {
 // --- Rules, audit, reports ---------------------------------------------------
 
 model BrandRule {
-  id         String       @id @default(cuid())
-  tenantId   String
-  brandId    String
-  name       String
-  category   RuleCategory
+  id        String       @id @default(cuid())
+  tenantId  String
+  brandId   String
+  name      String
+  category  RuleCategory
   // Case-insensitive phrases matched against content text.
-  phrases    String[]
-  enabled    Boolean      @default(true)
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  phrases   String[]
+  enabled   Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand  Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
