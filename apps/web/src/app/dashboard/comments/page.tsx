@@ -11,7 +11,10 @@ import { NotesSection, type NoteLite } from "./notes-section";
 import { SelectionProvider, SelectCheckbox, SelectAllCheckbox, BulkActionBar } from "./inbox-selection";
 import { PageHeader, Card, Badge, StatusDot } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { withTenant } from "@guardora/db";
+import {
+  withTenant, listInboxPage, inboxCounts, INBOX_PAGE_SIZE,
+  type InboxItemRow, type InboxFilterInput, type InboxView,
+} from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -19,10 +22,16 @@ import { relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-const RANGES = { today: 1, "7d": 7, "30d": 30 } as const;
+// V1.43 — date range is now an OPTIONAL narrowing filter over a fully paginated inbox (default:
+// all-time). Pagination — not a fetch cap — bounds what the browser loads.
+const RANGES = { all: null, today: 1, "7d": 7, "30d": 30 } as const;
 type RangeKey = keyof typeof RANGES;
-type FilterKey = "all" | "positive" | "neutral" | "negative" | "risky" | "hidden" | "pending";
-const FILTERS: FilterKey[] = ["all", "positive", "neutral", "negative", "risky", "hidden", "pending"];
+// V1.43 — the sentiment filter is a real server-side bucket predicate (positive/neutral/negative/
+// risky). The old cross-table "hidden"/"pending" chips are gone: they are derived from other tables
+// and cannot be keyset-paginated on reputation_items (see the release notes). Per-item hidden/pending
+// state is still shown as a badge on each card.
+const SENT_FILTERS = ["all", "positive", "neutral", "negative", "risky"] as const;
+type FilterKey = (typeof SENT_FILTERS)[number];
 
 const HIDE_REASONS = ["live_hide_executed", "already_hidden"];
 const BUCKET_TONE: Record<SentimentBucket, "ok" | "neutral" | "warn" | "danger"> = { positive: "ok", neutral: "neutral", negative: "warn", risky: "danger" };
@@ -63,62 +72,70 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const session = await requireSession();
   const sp = await searchParams;
   const realMode = await getRealModeFilter(session.tenantId);
-  const where = { tenantId: session.tenantId, ...realMode.brandWhere };
   const canAct = can(session.role, Permission.InboxAct); // viewers see no mutation controls
   const rel = { justNow: t.cc.relJustNow, minAgo: t.cc.relMinAgo, today: t.cc.relToday };
 
-  const range: RangeKey = (["today", "7d", "30d"] as const).includes(sp.range as RangeKey) ? (sp.range as RangeKey) : "7d";
-  const filter: FilterKey = (FILTERS as string[]).includes(sp.filter ?? "") ? (sp.filter as FilterKey) : "all";
-  const provider = (sp.provider ?? "all");
+  // ---- Parse + validate every filter from the URL (all applied server-side) ----
+  const range: RangeKey = (["all", "today", "7d", "30d"] as const).includes(sp.range as never) ? (sp.range as RangeKey) : "all";
+  const filter: FilterKey = (SENT_FILTERS as readonly string[]).includes(sp.filter ?? "") ? (sp.filter as FilterKey) : "all";
+  const providerKey = sp.provider ?? "all";
   const typeFilter: "all" | "comment" | "review" = sp.type === "comment" || sp.type === "review" ? sp.type : "all";
   const q = (sp.q ?? "").trim();
-  // V1.42B — persisted inbox filters (reload-safe via URL params). Default view hides archived.
-  const view = (["unread", "archived", "assigned_me", "unassigned"] as const).includes(sp.view as never) ? (sp.view as string) : "default";
-  const wf = (["new", "in_review", "action_required", "resolved"] as const).includes(sp.status as never) ? sp.status : undefined;
-  const prio = (["low", "normal", "high", "urgent"] as const).includes(sp.priority as never) ? sp.priority : undefined;
+  const view: InboxView = (["unread", "archived", "assigned_me", "unassigned"] as const).includes(sp.view as never) ? (sp.view as InboxView) : "default";
+  const wf = (["new", "in_review", "action_required", "resolved"] as const).includes(sp.status as never) ? (sp.status as InboxFilterInput["workflowStatus"]) : undefined;
+  const prio = (["low", "normal", "high", "urgent"] as const).includes(sp.priority as never) ? (sp.priority as InboxFilterInput["priority"]) : undefined;
+  const riskLevel = (["none", "low", "medium", "high", "critical"] as const).includes(sp.risk as never) ? (sp.risk as InboxFilterInput["riskLevel"]) : undefined;
   const labelFilter = (sp.label ?? "").trim() || undefined;
-  const assigneeFilter = (sp.assignee ?? "").trim() || undefined; // explicit member filter (any member)
-  const inboxWhere: Record<string, unknown> = {
-    ...(view === "unread" ? { isRead: false } : {}),
-    ...(view === "assigned_me" ? { assignedToUserId: session.userId } : {}),
-    ...(view === "unassigned" ? { assignedToUserId: null } : {}),
-    ...(view === "archived" ? { archivedAt: { not: null } } : { archivedAt: null }),
-    ...(wf ? { inboxWorkflowStatus: wf } : {}),
-    ...(prio ? { priority: prio } : {}),
-    ...(labelFilter ? { inboxLabels: { some: { labelId: labelFilter } } } : {}),
-    ...(assigneeFilter ? { assignedToUserId: assigneeFilter } : {}),
-  };
-  const days = RANGES[range];
-  const now = new Date();
-  const dayStart = new Date(now); dayStart.setUTCHours(0, 0, 0, 0);
-  const rangeStart = new Date(dayStart); rangeStart.setUTCDate(rangeStart.getUTCDate() - (days - 1));
+  const assigneeFilter = (sp.assignee ?? "").trim() || undefined;
+  const cursor = sp.cursor || null;
+  const dir: "next" | "prev" = sp.dir === "prev" ? "prev" : "next";
 
-  const [repItems, executions, queueItems, accountCount, members, allLabels] = await withTenant(session.tenantId, (db) => Promise.all([
-    db.reputationItem.findMany({
-      where: { ...where, ...inboxWhere, createdAt: { gte: rangeStart } },
-      select: {
-        id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true,
-        // V1.42B — persisted inbox workflow state rendered on the card (batched, no N+1).
-        isRead: true, archivedAt: true, priority: true, inboxWorkflowStatus: true, assignedToUserId: true,
-        assignedTo: { select: { id: true, name: true, email: true } },
-        inboxLabels: { select: { label: { select: { id: true, name: true, colorKey: true } } } },
-        _count: { select: { inboxNotes: true } },
-        contentItem: { select: { text: true, kind: true, rating: true, externalId: true, externalParentId: true, permalink: true, authorDisplayName: true, authorExternalId: true, platform: true, connectedAccount: { select: { externalName: true, status: true, health: true, lastError: true } } } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 500,
-    }),
-    db.platformActionExecution.findMany({ where: { ...where, status: "executed", reason: { in: [...HIDE_REASONS, "comment_deleted", "facebook_can_hide_false"] }, executedAt: { gte: rangeStart } }, select: { externalCommentId: true, reason: true } }),
-    db.actionQueueItem.findMany({ where, select: { id: true, itemId: true, queueState: true } }),
-    db.connectedAccount.count({ where }),
-    // Active tenant members (assignee options). Membership existence = active member.
+  const now = new Date();
+  let since: Date | undefined;
+  if (range !== "all") {
+    const days = RANGES[range] as number;
+    const dayStart = new Date(now); dayStart.setUTCHours(0, 0, 0, 0);
+    const rangeStart = new Date(dayStart); rangeStart.setUTCDate(rangeStart.getUTCDate() - (days - 1));
+    since = rangeStart;
+  }
+  const platformIn = providerKey !== "all"
+    ? (ALL_PLATFORMS.filter((p) => platformKeyFor(p) === providerKey) as InboxFilterInput["platformIn"])
+    : undefined;
+
+  const filters: InboxFilterInput = {
+    view, selfUserId: session.userId, platformIn,
+    type: typeFilter === "all" ? undefined : typeFilter,
+    sentiment: filter === "all" ? undefined : (filter as SentimentBucket),
+    workflowStatus: wf, priority: prio, riskLevel, labelId: labelFilter, assigneeId: assigneeFilter,
+    since, q, brandWhere: realMode.brandWhere,
+  };
+
+  // ---- One keyset page + server counts (both fully in SQL). No fetch cap; no in-memory filtering. ----
+  const [page, counts] = await Promise.all([
+    listInboxPage(session.tenantId, filters, { cursor, dir, pageSize: INBOX_PAGE_SIZE }),
+    inboxCounts(session.tenantId, { brandWhere: realMode.brandWhere, since }),
+  ]);
+  const pageRows: InboxItemRow[] = page.rows;
+  const pageIds = pageRows.map((r) => r.id);
+  const pageExternalIds = pageRows.map((r) => r.contentItem.externalId).filter(Boolean) as string[];
+
+  const baseWhere = { tenantId: session.tenantId, ...realMode.brandWhere };
+  // ---- Per-PAGE enrichment only (bounded by the current page's ids — never the whole dataset) ----
+  const [executions, queueItems, accountCount, members, allLabels, noteRows, auditRows] = await withTenant(session.tenantId, (db) => Promise.all([
+    pageExternalIds.length
+      ? db.platformActionExecution.findMany({ where: { ...baseWhere, status: "executed", reason: { in: [...HIDE_REASONS, "comment_deleted", "facebook_can_hide_false"] }, externalCommentId: { in: pageExternalIds } }, select: { externalCommentId: true, reason: true } })
+      : Promise.resolve([] as { externalCommentId: string | null; reason: string | null }[]),
+    pageIds.length ? db.actionQueueItem.findMany({ where: { ...baseWhere, itemId: { in: pageIds } }, select: { id: true, itemId: true, queueState: true } }) : Promise.resolve([] as { id: string; itemId: string; queueState: string }[]),
+    db.connectedAccount.count({ where: baseWhere }),
     db.membership.findMany({ where: { tenantId: session.tenantId }, select: { user: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: "asc" } }),
     db.inboxLabel.findMany({ where: { tenantId: session.tenantId }, select: { id: true, name: true, colorKey: true }, orderBy: { normalizedName: "asc" } }),
+    pageIds.length ? db.inboxNote.findMany({ where: { reputationItemId: { in: pageIds }, deletedAt: null }, orderBy: { createdAt: "asc" }, include: { author: { select: { id: true, name: true, email: true } } } }) : Promise.resolve([] as never[]),
+    pageIds.length ? db.auditLog.findMany({ where: { targetType: "reputation_item", targetId: { in: pageIds }, event: { startsWith: "inbox." } }, orderBy: { createdAt: "desc" }, take: 400, include: { actor: { select: { name: true, email: true } } } }) : Promise.resolve([] as never[]),
   ]));
 
   const memberList: MemberLite[] = members.map((m) => m.user);
 
-  // External-comment-id → terminal state (state truth; deleted wins over hidden wins over can_hide_false).
+  // External-comment-id → terminal state (deleted > hidden > can_hide_false). Page-bounded.
   const execState = new Map<string, "deleted" | "hidden" | "cannot_hide">();
   for (const e of executions) {
     if (!e.externalCommentId) continue;
@@ -129,9 +146,10 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   }
   const queueByItem = new Map(queueItems.map((qi) => [qi.itemId, qi]));
 
-  // Per-author risk level (medium+), reusing the Actor Risk scoring — no extra query.
+  // Per-author risk (medium+), computed over THIS PAGE's rows only (bounded; the full cross-item
+  // actor picture lives on /dashboard/actor-risk).
   const authorComments = new Map<string, ActorComment[]>();
-  for (const r of repItems) {
+  for (const r of pageRows) {
     const ci = r.contentItem;
     const key = actorIdentityKey(platformKeyFor(ci.platform), ci.authorExternalId, ci.authorDisplayName);
     if (!key) continue;
@@ -143,8 +161,8 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     if (level !== "low") authorLevel.set(key, level);
   }
 
-  // Build display rows.
-  const rows: Row[] = repItems.map((r) => {
+  // Build display rows from the current page (presentation transform only — no filtering here).
+  const rows: Row[] = pageRows.map((r) => {
     const ci = r.contentItem;
     const cats = r.riskCategories ?? [];
     const bucket = sentimentBucket({ categories: cats, sentiment: r.sentiment as string, riskLevel: r.riskLevel as string });
@@ -166,7 +184,6 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     const pk = platformKeyFor(ci.platform);
     const caps = getPlatformConnector(platformKeyFor(ci.platform)).capabilities;
     const acc = ci.connectedAccount;
-    // Honest connector health (review platforms without a verified location read as verification_pending).
     const connectorHealth = connectorHealthStatus({
       platform: pk, supported: providerCapabilities(pk).canReadContent,
       status: acc?.status, health: acc?.health, lastError: acc?.lastError,
@@ -181,7 +198,6 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       isReview: ci.kind === "review",
       rating: ci.rating ?? null,
       providerKey: platformKeyFor(ci.platform),
-      // V1.42B — persisted inbox workflow state (rendered + mutable on the card).
       isRead: r.isRead,
       archived: r.archivedAt !== null,
       priority: r.priority as string,
@@ -194,62 +210,46 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     };
   });
 
-  // Metric cards — over the full range (before filter/search).
-  const mAll = rows.length;
-  const mPositive = rows.filter((r) => r.bucket === "positive" || r.bucket === "neutral").length;
-  const mNegative = rows.filter((r) => r.bucket === "negative").length;
-  const mRiskyHidden = rows.filter((r) => r.bucket === "risky" || r.hiddenPublic).length;
-  const reviewRows = rows.filter((r) => r.isReview && r.rating);
-  const avgRating = reviewRows.length > 0 ? (reviewRows.reduce((s, r) => s + (r.rating ?? 0), 0) / reviewRows.length).toFixed(1) : null;
-  const providersPresent = [...new Set(rows.map((r) => r.providerKey))];
-
-  // Apply provider + type + sentiment filters + search (identical across providers).
-  const ql = q.toLowerCase();
-  const shown = rows.filter((r) => {
-    if (provider !== "all" && r.providerKey !== provider) return false;
-    if (typeFilter === "review" && !r.isReview) return false;
-    if (typeFilter === "comment" && r.isReview) return false;
-    const matchFilter = filter === "all" ? true
-      : filter === "hidden" ? r.hiddenPublic
-      : filter === "pending" ? r.pending
-      : r.bucket === filter;
-    if (!matchFilter) return false;
-    if (!ql) return true;
-    return r.text.toLowerCase().includes(ql) || r.author.toLowerCase().includes(ql) || (r.category ?? "").toLowerCase().includes(ql)
-      || tEnum(t, "autoProtectCategory", r.category ?? "").toLowerCase().includes(ql)
-      || r.platformLabel.toLowerCase().includes(ql) || r.account.toLowerCase().includes(ql);
-  });
-
-  // V1.42B — batch-load notes + audit for the SHOWN items only (2 bounded queries, no N+1).
+  // Everything that filtered in memory before is now in SQL — the page IS the shown set.
+  const shown = rows;
   const shownIds = shown.map((r) => r.id);
-  const [noteRows, auditRows] = shownIds.length ? await withTenant(session.tenantId, (db) => Promise.all([
-    db.inboxNote.findMany({ where: { reputationItemId: { in: shownIds }, deletedAt: null }, orderBy: { createdAt: "asc" }, include: { author: { select: { id: true, name: true, email: true } } } }),
-    db.auditLog.findMany({ where: { targetType: "reputation_item", targetId: { in: shownIds }, event: { startsWith: "inbox." } }, orderBy: { createdAt: "desc" }, take: 800, include: { actor: { select: { name: true, email: true } } } }),
-  ])) : [[], []];
 
+  // Metric cards from SERVER counts (correct regardless of pagination).
+  const mAll = counts.total;
+  const mPositive = counts.sentiment.positive + counts.sentiment.neutral;
+  const mNegative = counts.sentiment.negative;
+  const mRisky = counts.sentiment.risky;
+  const avgRating = counts.avgRating !== null ? counts.avgRating.toFixed(1) : null;
+  const hasReviews = counts.reviews > 0;
+  // Providers actually present (from server counts, not the current page).
+  const providersPresent = [...new Set(Object.keys(counts.byPlatform).map((pl) => platformKeyFor(pl as Platform)))];
+
+  // Batch notes + audit for the SHOWN page items (already page-bounded above).
   const notesByItem = new Map<string, NoteLite[]>();
-  for (const n of noteRows) {
+  for (const n of noteRows as Array<{ id: string; body: string; reputationItemId: string; authorUserId: string | null; createdAt: Date; author: { name: string | null; email: string } | null }>) {
     const list = notesByItem.get(n.reputationItemId) ?? notesByItem.set(n.reputationItemId, []).get(n.reputationItemId)!;
     list.push({ id: n.id, body: n.body, authorName: n.author?.name ?? n.author?.email ?? "Removed member", authorId: n.authorUserId ?? null, createdAtLabel: relativeTime(n.createdAt, rel, now) });
   }
   const auditByItem = new Map<string, AuditLite[]>();
-  for (const a of auditRows) {
+  for (const a of auditRows as Array<{ id: string; targetId: string | null; event: string; createdAt: Date; actor: { name: string | null; email: string } | null }>) {
     if (!a.targetId) continue;
     const list = auditByItem.get(a.targetId) ?? auditByItem.set(a.targetId, []).get(a.targetId)!;
-    if (list.length >= 15) continue; // cap per item (already newest-first)
+    if (list.length >= 15) continue;
     list.push({ id: a.id, label: AUDIT_LABEL[a.event] ?? a.event.replace(/^inbox\./, "").replace(/_/g, " "), actor: a.actor?.name ?? a.actor?.email ?? "System", at: relativeTime(a.createdAt, rel, now) });
   }
 
-  // Generic, reload-safe URL builder — preserves ALL active params, applies overrides ("" clears).
+  // Generic, reload-safe URL builder. `current` DELIBERATELY excludes cursor/dir, so changing any
+  // filter resets pagination to page 1; prev/next set cursor/dir explicitly.
   const current: Record<string, string> = {};
-  if (range !== "7d") current.range = range;
+  if (range !== "all") current.range = range;
   if (filter !== "all") current.filter = filter;
-  if (provider !== "all") current.provider = provider;
+  if (providerKey !== "all") current.provider = providerKey;
   if (typeFilter !== "all") current.type = typeFilter;
   if (q) current.q = q;
   if (view !== "default") current.view = view;
   if (wf) current.status = wf;
   if (prio) current.priority = prio;
+  if (riskLevel) current.risk = riskLevel;
   if (labelFilter) current.label = labelFilter;
   if (assigneeFilter) current.assignee = assigneeFilter;
   const params = (over: Record<string, string | undefined>) => {
@@ -260,7 +260,9 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     return `/dashboard/comments${s ? `?${s}` : ""}`;
   };
   const chipCls = (active: boolean) => `rounded-md border px-3 py-1.5 text-xs font-medium ${active ? "border-[var(--color-brand)] bg-[var(--color-brand)] text-[var(--color-brand-fg)]" : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]"}`;
-  const FILTER_LABEL: Record<FilterKey, string> = { all: t.comments.fAll, positive: t.comments.fPositive, neutral: t.comments.fNeutral, negative: t.comments.fNegative, risky: t.comments.fRisky, hidden: t.comments.fHidden, pending: t.comments.fPending };
+  const cnt = (n: number | undefined) => (n ? ` (${n})` : "");
+  const FILTER_LABEL: Record<FilterKey, string> = { all: t.comments.fAll, positive: t.comments.fPositive, neutral: t.comments.fNeutral, negative: t.comments.fNegative, risky: t.comments.fRisky };
+  const onFirstPage = !cursor;
 
   return (
     <>
@@ -273,7 +275,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
           <p className="mt-1 text-sm text-[var(--color-muted)]">{t.comments.emptyNoAccountBody}</p>
           <Link href="/dashboard/accounts" className="mt-3 inline-block rounded-md bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-[var(--color-brand-fg)]">{t.comments.account} →</Link>
         </Card>
-      ) : mAll === 0 && view === "default" && !wf && !prio && !labelFilter && !assigneeFilter ? (
+      ) : counts.total === 0 && counts.archived === 0 && view === "default" && !wf && !prio && !riskLevel && !labelFilter && !assigneeFilter && !q && providerKey === "all" && filter === "all" ? (
         <Card className="p-6">
           <p className="text-sm font-medium">{t.comments.emptyNoComments}</p>
           <p className="mt-1 text-sm text-[var(--color-muted)]">{t.comments.emptyNoCommentsBody}</p>
@@ -282,80 +284,84 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
         <>
           {/* Date range */}
           <div className="mb-4 flex flex-wrap gap-1.5">
-            <Link href={params({ range: "today" })} className={chipCls(range === "today")}>{t.comments.rangeToday}</Link>
-            <Link href={params({ range: "7d" })} className={chipCls(range === "7d")}>{t.comments.range7d}</Link>
-            <Link href={params({ range: "30d" })} className={chipCls(range === "30d")}>{t.comments.range30d}</Link>
+            <a href={params({ range: "" })} className={chipCls(range === "all")} data-testid="range-all">All time</a>
+            <a href={params({ range: "today" })} className={chipCls(range === "today")}>{t.comments.rangeToday}</a>
+            <a href={params({ range: "7d" })} className={chipCls(range === "7d")}>{t.comments.range7d}</a>
+            <a href={params({ range: "30d" })} className={chipCls(range === "30d")}>{t.comments.range30d}</a>
           </div>
 
-          {/* Metric cards */}
+          {/* Metric cards (server counts) */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mAll}</p><p className="mt-1 text-2xl font-bold">{mAll}</p></Card>
+            <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mAll}</p><p className="mt-1 text-2xl font-bold" data-testid="metric-total">{mAll}</p></Card>
             <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mPositive}</p><p className="mt-1 text-2xl font-bold">{mPositive}</p></Card>
             <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mNegative}</p><p className="mt-1 text-2xl font-bold">{mNegative}</p></Card>
-            {reviewRows.length > 0 ? (
-              <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mReviews}</p><p className="mt-1 text-2xl font-bold">{reviewRows.length}</p><p className="text-[11px] text-[var(--color-muted)]">{t.comments.avgRating}: {avgRating} ★</p></Card>
+            {hasReviews ? (
+              <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mReviews}</p><p className="mt-1 text-2xl font-bold">{counts.reviews}</p><p className="text-[11px] text-[var(--color-muted)]">{t.comments.avgRating}: {avgRating} ★</p></Card>
             ) : (
-              <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mRiskyHidden}</p><p className="mt-1 text-2xl font-bold">{mRiskyHidden}</p></Card>
+              <Card className="p-4"><p className="text-xs text-[var(--color-muted)]">{t.comments.mRiskyHidden}</p><p className="mt-1 text-2xl font-bold">{mRisky}</p></Card>
             )}
           </div>
 
           {providersPresent.length > 1 ? (
             <div className="mt-4 flex flex-wrap gap-1.5">
-              <Link href={params({ provider: "all" })} className={chipCls(provider === "all")}>{t.comments.allProviders}</Link>
+              <a href={params({ provider: "" })} className={chipCls(providerKey === "all")}>{t.comments.allProviders}</a>
               {providersPresent.map((pk) => {
                 const plat = ALL_PLATFORMS.find((p) => platformKeyFor(p) === pk);
-                return <Link key={pk} href={params({ provider: pk })} className={chipCls(provider === pk)}>{plat ? PLATFORM_META[plat].label : pk}</Link>;
+                const n = Object.entries(counts.byPlatform).filter(([pl]) => platformKeyFor(pl as Platform) === pk).reduce((s, [, v]) => s + v, 0);
+                return <a key={pk} href={params({ provider: pk })} className={chipCls(providerKey === pk)}>{(plat ? PLATFORM_META[plat].label : pk) + cnt(n)}</a>;
               })}
             </div>
           ) : null}
 
-          {reviewRows.length > 0 ? (
+          {hasReviews ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <Link href={params({ type: "all" })} className={chipCls(typeFilter === "all")}>{t.comments.typeAll}</Link>
-              <Link href={params({ type: "comment" })} className={chipCls(typeFilter === "comment")}>{t.comments.typeComments}</Link>
-              <Link href={params({ type: "review" })} className={chipCls(typeFilter === "review")}>{t.comments.typeReviews}</Link>
+              <a href={params({ type: "" })} className={chipCls(typeFilter === "all")}>{t.comments.typeAll}</a>
+              <a href={params({ type: "comment" })} className={chipCls(typeFilter === "comment")}>{t.comments.typeComments}</a>
+              <a href={params({ type: "review" })} className={chipCls(typeFilter === "review")}>{t.comments.typeReviews}</a>
             </div>
           ) : null}
 
-          {/* Search */}
+          {/* Search (server-side) */}
           <form className="mt-4 flex gap-2" action="/dashboard/comments">
             {Object.entries(current).filter(([k]) => k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-            <input name="q" defaultValue={q} placeholder={t.comments.searchPlaceholder} className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)]" />
+            <input name="q" defaultValue={q} placeholder={t.comments.searchPlaceholder} className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)]" data-testid="inbox-search" />
             {q ? <Link href={params({ q: "" })} className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-2 text-xs font-medium hover:border-[var(--color-border-strong)]">{t.comments.searchClear}</Link> : null}
           </form>
 
-          {/* Sentiment filter chips */}
+          {/* Sentiment filter chips (server-side bucket predicate) */}
           <div className="mt-3 mb-3 flex flex-wrap gap-1.5">
-            {FILTERS.map((f) => (<Link key={f} href={params({ filter: f })} className={chipCls(filter === f)}>{FILTER_LABEL[f]}</Link>))}
+            {SENT_FILTERS.map((f) => (<a key={f} href={params({ filter: f })} className={chipCls(filter === f)}>{FILTER_LABEL[f]}</a>))}
           </div>
 
-          {/* V1.42B — persisted inbox views (reload-safe via URL). Plain <a> = full navigation, so
-              the URL always commits (this heavy force-dynamic page does not reliably soft-navigate
-              on a searchParams-only change). */}
+          {/* Persisted inbox views (reload-safe; full navigation) with server counts. */}
           <div className="mb-2 flex flex-wrap gap-1.5" data-testid="inbox-views">
-            <a href={params({ view: "" })} className={chipCls(view === "default")} data-testid="view-default">Inbox</a>
-            <a href={params({ view: "unread" })} className={chipCls(view === "unread")} data-testid="view-unread">Unread</a>
-            <a href={params({ view: "archived" })} className={chipCls(view === "archived")} data-testid="view-archived">Archived</a>
+            <a href={params({ view: "" })} className={chipCls(view === "default")} data-testid="view-default">Inbox{cnt(counts.total)}</a>
+            <a href={params({ view: "unread" })} className={chipCls(view === "unread")} data-testid="view-unread">Unread{cnt(counts.unread)}</a>
+            <a href={params({ view: "archived" })} className={chipCls(view === "archived")} data-testid="view-archived">Archived{cnt(counts.archived)}</a>
             <a href={params({ view: "assigned_me" })} className={chipCls(view === "assigned_me")} data-testid="view-assigned">Assigned to me</a>
-            <a href={params({ view: "unassigned" })} className={chipCls(view === "unassigned")} data-testid="view-unassigned">Unassigned</a>
+            <a href={params({ view: "unassigned" })} className={chipCls(view === "unassigned")} data-testid="view-unassigned">Unassigned{cnt(counts.unassigned)}</a>
           </div>
 
-          {/* V1.42B — priority / workflow / label filters (reload-safe). */}
+          {/* Priority / workflow / risk filters (reload-safe) with server counts. */}
           <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="inbox-facets">
             <a href={params({ priority: "" })} className={chipCls(!prio)}>Any priority</a>
-            {(["low", "normal", "high", "urgent"] as const).map((p) => <a key={p} href={params({ priority: p })} className={chipCls(prio === p)} data-testid={`prio-${p}`}>{p}</a>)}
+            {(["low", "normal", "high", "urgent"] as const).map((p) => <a key={p} href={params({ priority: p })} className={chipCls(prio === p)} data-testid={`prio-${p}`}>{p + cnt(counts.byPriority[p])}</a>)}
             <span className="mx-1 h-4 w-px bg-[var(--color-border)]" />
             <a href={params({ status: "" })} className={chipCls(!wf)}>Any status</a>
-            {(["new", "in_review", "action_required", "resolved"] as const).map((s) => <a key={s} href={params({ status: s })} className={chipCls(wf === s)} data-testid={`wf-${s}`}>{s.replace(/_/g, " ")}</a>)}
+            {(["new", "in_review", "action_required", "resolved"] as const).map((s) => <a key={s} href={params({ status: s })} className={chipCls(wf === s)} data-testid={`wf-${s}`}>{s.replace(/_/g, " ") + cnt(counts.byWorkflow[s])}</a>)}
+          </div>
+          <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="risk-filter">
+            <a href={params({ risk: "" })} className={chipCls(!riskLevel)}>Any risk</a>
+            {(["low", "medium", "high", "critical"] as const).map((rk) => <a key={rk} href={params({ risk: rk })} className={chipCls(riskLevel === rk)} data-testid={`risk-${rk}`}>{tEnum(t, "risk", rk)}</a>)}
           </div>
           {allLabels.length ? (
             <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="label-filter">
               <a href={params({ label: "" })} className={chipCls(!labelFilter)}>All labels</a>
-              {allLabels.map((l) => <a key={l.id} href={params({ label: l.id })} className={chipCls(labelFilter === l.id)} data-testid={`label-filter-${l.id}`}><Badge tone={l.colorKey}>{l.name}</Badge></a>)}
+              {allLabels.map((l) => <a key={l.id} href={params({ label: l.id })} className={chipCls(labelFilter === l.id)} data-testid={`label-filter-${l.id}`}><Badge tone={l.colorKey}>{l.name}{cnt(counts.byLabel[l.id])}</Badge></a>)}
             </div>
           ) : null}
 
-          {/* V1.42B — tenant label management (create/rename/delete), rendered once. */}
+          {/* Tenant label management (create/rename/delete), rendered once. */}
           <LabelManager allLabels={allLabels} canAct={canAct} />
 
           {shown.length === 0 ? (
@@ -372,7 +378,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
               {canAct ? (
                 <div className="mb-2 flex items-center gap-2">
                   <SelectAllCheckbox ids={shownIds} />
-                  <span className="text-xs text-[var(--color-muted)]">{shown.length} shown</span>
+                  <span className="text-xs text-[var(--color-muted)]">{shown.length} on this page · {counts.total} total</span>
                 </div>
               ) : null}
               <div className="space-y-3">
@@ -425,7 +431,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                             {r.hiddenPublic ? <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs text-[var(--color-muted)]">{t.common.hiddenFromPublicHelp}</p> : null}
                             {r.cantHide ? <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs text-[var(--color-muted)]">{t.comments.cantHideNote}</p> : null}
 
-                            {/* V1.42B — internal workflow controls. Archive is a Tamanor-side action, NOT a
+                            {/* Internal workflow controls. Archive is a Tamanor-side action, NOT a
                                 provider hide; "resolved" never implies provider moderation. */}
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
                               <section>
@@ -444,7 +450,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                               <NotesSection itemId={r.id} notes={notes} selfId={session.userId} canAct={canAct} />
                             </section>
 
-                            {/* V1.42B — audit timeline (internal actions; body never shown). */}
+                            {/* Audit timeline (internal actions; body never shown). */}
                             <section className="mt-4">
                               <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">Activity</h4>
                               <ul className="flex flex-col gap-1 text-xs" data-testid="audit-timeline">
@@ -472,6 +478,19 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
               {canAct ? <BulkActionBar members={memberList} allLabels={allLabels} /> : null}
             </SelectionProvider>
           )}
+
+          {/* V1.43 — keyset pager. Plain <a> (full navigation); cursor + dir live in the URL, so a
+              refresh reloads the SAME page. Changing any filter above drops cursor → back to page 1. */}
+          <nav className="mt-4 flex items-center justify-between gap-2" data-testid="inbox-pager">
+            <div className="flex gap-1.5">
+              {!onFirstPage ? <a href={params({ cursor: "", dir: "" })} className={chipCls(false)} data-testid="page-newest">⇤ Newest</a> : null}
+              {page.hasPrev ? <a href={params({ cursor: page.prevCursor ?? undefined, dir: "prev" })} className={chipCls(false)} data-testid="page-prev">← Previous</a> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">← Previous</span>}
+            </div>
+            <span className="text-xs text-[var(--color-muted)]" data-testid="page-info">{shown.length ? `Showing ${shown.length} of ${counts.total}` : `0 of ${counts.total}`}</span>
+            <div>
+              {page.hasNext ? <a href={params({ cursor: page.nextCursor ?? undefined, dir: "next" })} className={chipCls(false)} data-testid="page-next">Next →</a> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">Next →</span>}
+            </div>
+          </nav>
 
           <p className="mt-5 text-xs text-[var(--color-muted)]">{t.comments.trustNote}</p>
         </>

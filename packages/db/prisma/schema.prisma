@@ -593,6 +593,12 @@ model ReputationItem {
   @@index([tenantId, assignedToUserId])
   @@index([tenantId, priority])
   @@index([tenantId, inboxWorkflowStatus])
+  // V1.43 — keyset pagination. The inbox lists ORDER BY createdAt DESC, id DESC within a tenant;
+  // this composite lets a filtered page seek to the cursor and read rows in index order (no sort,
+  // no seq scan), with cost independent of page depth. The second index serves the dominant
+  // default/archived views, which additionally constrain archivedAt before the sort keys.
+  @@index([tenantId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([tenantId, archivedAt, createdAt(sort: Desc), id(sort: Desc)])
   @@map("reputation_items")
 }
 

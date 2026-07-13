@@ -45,6 +45,60 @@ export function sentimentBucket(input: { categories: string[]; sentiment: string
   return "neutral";
 }
 
+/**
+ * V1.43 — the SQL-pushdown twin of {@link sentimentBucket}. Returns a provider-neutral Prisma
+ * `where` fragment (over ReputationItem columns `riskCategories` / `sentiment` / `riskLevel`) that
+ * selects EXACTLY the rows `sentimentBucket()` would classify into `bucket`. This is the single
+ * source of truth for server-side sentiment filtering + counts — the inbox never buckets in memory.
+ *
+ * The predicate mirrors the cascade in `sentimentBucket` (positive_feedback → customer_question →
+ * normal_criticism → legit-negative → risky/high-risk → stored sentiment). `inbox-engine`/`inbox-
+ * query` tests assert this agrees with `sentimentBucket` across the full input matrix, so drift is
+ * caught. The shape is a plain object so this module stays free of a Prisma type dependency.
+ */
+export type SentimentWhere = Record<string, unknown>;
+
+export function sentimentBucketWhere(bucket: SentimentBucket): SentimentWhere {
+  const RISKY = [...RISKY_CATEGORIES];
+  const LEGIT = [...LEGIT_NEGATIVE_CATEGORIES];
+
+  const hasPos = { riskCategories: { has: "positive_feedback" } };
+  const hasQ = { riskCategories: { has: "customer_question" } };
+  const hasNC = { riskCategories: { has: "normal_criticism" } };
+  const hasLegit = { riskCategories: { hasSome: LEGIT } };
+  const hasRisky = { riskCategories: { hasSome: RISKY } };
+  const riskHi = { riskLevel: { in: ["high", "critical"] } };
+  const sent = (s: string) => ({ sentiment: s });
+  const not = (p: SentimentWhere) => ({ NOT: p });
+
+  // Guards shared by the "fell through to stored sentiment" branches (steps 4-7 all missed).
+  const notPos = not(hasPos), notQ = not(hasQ), notNC = not(hasNC), notLegit = not(hasLegit);
+  const fellThrough = [notPos, notQ, notNC, notLegit, not(hasRisky), not(riskHi)];
+
+  switch (bucket) {
+    case "positive":
+      return { OR: [
+        hasPos,
+        { AND: [notPos, notQ, hasNC, sent("positive")] },
+        { AND: [...fellThrough, sent("positive")] },
+      ] };
+    case "neutral":
+      return { OR: [
+        { AND: [notPos, hasQ] },
+        { AND: [notPos, notQ, hasNC, sent("neutral")] },
+        { AND: [...fellThrough, sent("neutral")] },
+      ] };
+    case "negative":
+      return { OR: [
+        { AND: [notPos, notQ, hasNC, sent("negative")] },
+        { AND: [notPos, notQ, notNC, hasLegit] },
+        { AND: [...fellThrough, sent("negative")] },
+      ] };
+    case "risky":
+      return { AND: [notPos, notQ, notNC, notLegit, { OR: [hasRisky, riskHi] }] };
+  }
+}
+
 export type ReputationTopic =
   | "price" | "delivery" | "quality" | "complaint" | "support" | "scam"
   | "profanity" | "spam" | "competition" | "satisfaction" | "uncategorized";

@@ -75,6 +75,7 @@
     "referential-integrity:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/referential-integrity.test.ts",
     "meta-connector:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/meta-connector.test.ts",
     "inbox-persistence:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/inbox-persistence.test.ts",
+    "inbox-query:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/inbox-query.test.ts",
     "inbox-engine:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/inbox-engine.test.ts",
     "inbox-ux:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/inbox-ux.test.tsx",
     "instagram-content:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/instagram-content.test.ts",
