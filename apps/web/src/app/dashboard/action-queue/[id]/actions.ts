@@ -252,6 +252,8 @@ export async function createIncidentFromQueue(formData: FormData): Promise<void>
         sourcePlatform: (item?.platform as unknown as string) ?? null, relatedItemIds: [q.itemId],
       },
     });
+    // Referentially-integral link (composite FK to the reputation item + this incident).
+    await db.incidentRelatedItem.createMany({ data: [{ tenantId: session.tenantId, incidentId: inc.id, reputationItemId: q.itemId }], skipDuplicates: true });
     await writeAudit({ session, db, event: "incident.created", brandId: q.brandId, targetType: "incident", targetId: inc.id, metadata: { category: q.category, manual: true } });
   });
   back(q.id, "Incident created.");

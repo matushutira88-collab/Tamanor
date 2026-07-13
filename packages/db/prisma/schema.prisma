@@ -350,6 +350,12 @@ model ConnectedAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // V1.38 — canonical Meta asset linkage. An Instagram Business account references
+  // its parent Facebook Page account. The FK (ON DELETE SET NULL) + a cross-tenant
+  // trigger live in raw SQL (a composite SetNull would null the RLS tenantId) — same
+  // pattern as the V1.37.5B history group. IG survives a Page removal with a null link.
+  parentAccountId String?
+
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand        Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
   contentItems ContentItem[]
@@ -359,6 +365,7 @@ model ConnectedAccount {
   @@unique([brandId, platform, externalId])
   @@index([tenantId])
   @@index([brandId])
+  @@index([parentAccountId])
   @@map("connected_accounts")
 }
 
@@ -535,11 +542,15 @@ model ReputationItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  brand       Brand                @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  contentItem ContentItem          @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
-  decisions   ModerationDecision[]
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand         Brand                 @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contentItem   ContentItem           @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  decisions     ModerationDecision[]
+  incidentLinks IncidentRelatedItem[]
 
+  // V1.37.5 — enables composite (id, tenantId) foreign keys so a child can never
+  // reference a ReputationItem belonging to a different tenant.
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([brandId, status])
   @@index([riskLevel])
@@ -652,12 +663,40 @@ model Incident {
   severity       String    @default("medium") // low|medium|high|critical
   status         String    @default("open") // open|resolved
   sourcePlatform String?
+  // V1.37.5 — DENORMALIZED cache kept for compatibility. The referentially-integral
+  // source of truth is `relatedItems` (IncidentRelatedItem join rows with real FKs).
   relatedItemIds String[]
   createdAt      DateTime  @default(now())
   resolvedAt     DateTime?
 
+  relatedItems IncidentRelatedItem[]
+
+  @@unique([id, tenantId])
   @@index([tenantId, brandId, status])
   @@map("incidents")
+}
+
+/**
+ * V1.37.5 — referentially-integral normalization of Incident ⇄ ReputationItem. Replaces
+ * the un-protectable `Incident.relatedItemIds String[]`. Composite (id, tenantId) FKs to
+ * BOTH parents guarantee an incident can never link an item of a different tenant. Tenant-
+ * scoped under RLS. Cascade: a link dies with either parent (a link has no standalone value).
+ */
+model IncidentRelatedItem {
+  id               String   @id @default(cuid())
+  tenantId         String
+  incidentId       String
+  reputationItemId String
+  relationType     String   @default("related")
+  createdAt        DateTime @default(now())
+
+  incident       Incident       @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  reputationItem ReputationItem @relation(fields: [reputationItemId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([incidentId, reputationItemId])
+  @@index([tenantId])
+  @@index([reputationItemId])
+  @@map("incident_related_items")
 }
 
 /// Per-brand Auto-Protect policy: what to do for each harmful-content category.
@@ -707,7 +746,9 @@ model PlatformActionExecution {
   id                   String    @id @default(cuid())
   tenantId             String
   brandId              String
-  itemId               String
+  // V1.37.5 — nullable so the FK to ReputationItem can ON DELETE SET NULL and keep
+  // the execution as immutable history after the source item is deleted.
+  itemId               String?
   queueItemId          String?
   policyId             String?
   connectedAccountId   String

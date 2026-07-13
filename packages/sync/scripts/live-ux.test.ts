@@ -13,6 +13,7 @@ import { dirname, resolve } from "node:path";
 import { prisma } from "@guardora/db";
 import { MockFacebookHideTransport } from "@guardora/connectors";
 import { attemptFacebookHide, resolvePrimaryAction, findPreflightDryRun, type HideContext } from "../src/live-actions";
+import { ensureHideTarget } from "./ri-fixtures";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const readSrc = (rel: string) => readFileSync(resolve(SCRIPT_DIR, "../../..", rel), "utf8");
@@ -38,10 +39,17 @@ async function cleanup() {
   await prisma.auditLog.deleteMany({ where: { tenantId: T, targetType: "platform_action_execution" } });
 }
 
+let RB = "";
+let RA = "";
+const submit = async (c: any, o?: any) => { await ensureHideTarget(prisma, c, RB, RA); return attemptFacebookHide(c, o); };
+
 async function run() {
   const tenant = await prisma.tenant.findFirst({ select: { id: true } });
   if (!tenant) { console.error("no tenant found — seed first"); process.exit(1); }
   T = tenant.id;
+  const _rb = await prisma.brand.create({ data: { tenantId: T, name: "RI Test Brand" } });
+  const _ra = await prisma.connectedAccount.create({ data: { tenantId: T, brandId: _rb.id, platform: "facebook_page", status: "active", mode: "read_only", externalId: `RIB_`, pageId: `RIB_` } });
+  RB = _rb.id; RA = _ra.id;
   await cleanup();
 
   // 1) live_possible → live hide button is primary + rendered, Approve NOT primary.
@@ -82,25 +90,25 @@ async function run() {
   // 4) live button requires a real live attempt: a dry-run preflight first, then a
   //    confirmed live attempt calls the transport exactly once and creates one executed row.
   const preT = new MockFacebookHideTransport();
-  await attemptFacebookHide(ctx(), { config: { liveEnabled: true, facebookHideEnabled: true, dryRun: true, canExecuteLive: false, liveConfirmed: false }, transport: preT });
+  await submit(ctx(), { config: { liveEnabled: true, facebookHideEnabled: true, dryRun: true, canExecuteLive: false, liveConfirmed: false }, transport: preT });
   const pre = await findPreflightDryRun({ tenantId: T, queueItemId: "UX_Q", policyId: "P_pol" });
   check("4) preflight dry-run exists, transport untouched", !!pre && preT.calls.length === 0);
 
   const liveT = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const live = await attemptFacebookHide(ctx(), { config: LIVE, transport: liveT, liveAttempt: true });
+  const live = await submit(ctx(), { config: LIVE, transport: liveT, liveAttempt: true });
   check("5) live attempt calls transport exactly once (hide op)", live.status === "executed" && liveT.calls.length === 1 && liveT.calls[0]!.op === "hide", `${live.status}/calls=${liveT.calls.length}`);
   const execRows = await prisma.platformActionExecution.count({ where: { tenantId: T, queueItemId: "UX_Q", status: "executed" } });
   check("6) exactly one executed row created + executedAt set", execRows === 1 && !!(await prisma.platformActionExecution.findFirst({ where: { tenantId: T, queueItemId: "UX_Q", status: "executed" } }))?.executedAt);
 
   // 7) double-click does not execute twice.
   const dblT = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const dbl = await attemptFacebookHide(ctx(), { config: LIVE, transport: dblT, liveAttempt: true });
+  const dbl = await submit(ctx(), { config: LIVE, transport: dblT, liveAttempt: true });
   const execRows2 = await prisma.platformActionExecution.count({ where: { tenantId: T, queueItemId: "UX_Q", status: "executed" } });
   check("7) double click does not execute twice", dbl.status === "executed" && dbl.reason === "already_executed" && dblT.calls.length === 0 && execRows2 === 1);
 
   // 8) no reply/delete/Instagram — Instagram blocks; only hide ops ever issued.
   const igT = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const ig = await attemptFacebookHide(ctx({ itemId: "UX_IG", queueItemId: "UX_IGQ", platform: "instagram_business" }), { config: LIVE, transport: igT, liveAttempt: true });
+  const ig = await submit(ctx({ itemId: "UX_IG", queueItemId: "UX_IGQ", platform: "instagram_business" }), { config: LIVE, transport: igT, liveAttempt: true });
   check("8) Instagram live → blocked/unsupported_platform, no call", ig.status === "blocked" && ig.reason === "unsupported_platform" && igT.calls.length === 0);
   check("8b) only hide ops ever issued (no reply/delete)", [liveT, dblT, igT].flatMap((tr) => tr.calls.map((c) => c.op)).every((op) => op === "hide"));
 
@@ -109,6 +117,9 @@ async function run() {
   const s = JSON.stringify(rows);
   check("9) token leak none", !s.includes("SECRET_TOKEN") && !s.includes("pageAccessToken"));
 
+  await prisma.actionQueueItem.deleteMany({ where: { brandId: RB } });
+  await prisma.connectedAccount.deleteMany({ where: { id: RA } });
+  await prisma.brand.deleteMany({ where: { id: RB } });
   await cleanup();
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — live hide execution UX`);
   await prisma.$disconnect();

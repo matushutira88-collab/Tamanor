@@ -69,7 +69,7 @@ export default async function ActorRiskPage({ searchParams }: { searchParams: Pr
       where: { ...where, status: "executed", reason: { in: [...HIDE_REASONS, "comment_deleted"] }, executedAt: { gte: rangeStart } },
       select: { externalCommentId: true, reason: true },
     }),
-    db.incident.findMany({ where: { ...where, status: "open" }, select: { relatedItemIds: true } }),
+    db.incident.findMany({ where: { ...where, status: "open" }, select: { relatedItems: { select: { reputationItemId: true } } } }),
   ]));
 
   // itemId → queueState (pending decisions).
@@ -80,7 +80,8 @@ export default async function ActorRiskPage({ searchParams }: { searchParams: Pr
   // State-truth sets keyed by external comment id (no raw ids rendered).
   const hiddenSet = new Set(executions.filter((e) => HIDE_REASONS.includes(e.reason ?? "") && e.externalCommentId).map((e) => e.externalCommentId as string));
   const resolvedSet = new Set(executions.filter((e) => e.reason === "comment_deleted" && e.externalCommentId).map((e) => e.externalCommentId as string));
-  const incidentItemIds = new Set(openIncidents.flatMap((i) => i.relatedItemIds));
+  // V1.37.5 — read the referentially-integral join table (source of truth).
+  const incidentItemIds = new Set(openIncidents.flatMap((i) => i.relatedItems.map((r) => r.reputationItemId)));
 
   // --- Aggregate by visible actor identity ---
   const actors = new Map<string, Actor>();

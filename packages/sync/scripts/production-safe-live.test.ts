@@ -12,6 +12,7 @@ import { dirname, resolve } from "node:path";
 import { prisma } from "@guardora/db";
 import { MockFacebookHideTransport } from "@guardora/connectors";
 import { attemptFacebookHide, rollbackHide, type HideContext } from "../src/live-actions";
+import { ensureHideTarget } from "./ri-fixtures";
 import { evaluateProductionSafety, DEFAULT_SAFETY_SETTINGS, type ProductionSafetyContext } from "../src/production-safety";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -66,65 +67,72 @@ async function cleanup() {
   await prisma.auditLog.deleteMany({ where: { tenantId: T, event: { in: SAFETY_EVENTS } } });
 }
 
+let RB = "";
+let RA = "";
+const submit = async (c: any, o?: any) => { await ensureHideTarget(prisma, c, RB, RA); return attemptFacebookHide(c, o); };
+
 async function run() {
   const tenant = await prisma.tenant.findFirst({ select: { id: true } });
   if (!tenant) { console.error("no tenant found — seed first"); process.exit(1); }
   T = tenant.id;
+  const _rb = await prisma.brand.create({ data: { tenantId: T, name: "RI Test Brand" } });
+  const _ra = await prisma.connectedAccount.create({ data: { tenantId: T, brandId: _rb.id, platform: "facebook_page", status: "active", mode: "read_only", externalId: `RIB_`, pageId: `RIB_` } });
+  RB = _rb.id; RA = _ra.id;
   await cleanup();
 
   // 1) global kill switch blocks live hide.
   const t1 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r1 = await attemptFacebookHide(ctx(), { config: CFG, transport: t1, safety: mkSafety({ flags: { productionSafeMode: true, globalKillSwitch: true } }) });
+  const r1 = await submit(ctx(), { config: CFG, transport: t1, safety: mkSafety({ flags: { productionSafeMode: true, globalKillSwitch: true } }) });
   check("1) global kill switch blocks live hide", r1.status === "blocked" && r1.reason === "global_kill_switch" && t1.calls.length === 0, `${r1.status}/${r1.reason}`);
 
   // 2) brand kill switch blocks live hide.
   const t2 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r2 = await attemptFacebookHide(ctx(), { config: CFG, transport: t2, safety: mkSafety({ brandKillSwitch: true }) });
+  const r2 = await submit(ctx(), { config: CFG, transport: t2, safety: mkSafety({ brandKillSwitch: true }) });
   check("2) brand kill switch blocks live hide", r2.status === "blocked" && r2.reason === "brand_kill_switch" && t2.calls.length === 0);
 
   // 3) account kill switch blocks live hide.
   const t3 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r3 = await attemptFacebookHide(ctx(), { config: CFG, transport: t3, safety: mkSafety({ accountKillSwitch: true }) });
+  const r3 = await submit(ctx(), { config: CFG, transport: t3, safety: mkSafety({ accountKillSwitch: true }) });
   check("3) account kill switch blocks live hide", r3.status === "blocked" && r3.reason === "account_kill_switch" && t3.calls.length === 0);
 
   // 4) daily limit blocks after threshold.
   const t4 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r4 = await attemptFacebookHide(ctx(), { config: CFG, transport: t4, safety: mkSafety({ counts: { dayCount: 10, hourCount: 0, categoryDayCount: 0, consecutiveWithoutReview: 0 } }) });
+  const r4 = await submit(ctx(), { config: CFG, transport: t4, safety: mkSafety({ counts: { dayCount: 10, hourCount: 0, categoryDayCount: 0, consecutiveWithoutReview: 0 } }) });
   check("4) daily limit blocks after threshold", r4.status === "blocked" && r4.reason === "daily_limit" && t4.calls.length === 0, `${r4.reason}`);
 
   // 5) hourly limit blocks after threshold.
   const t5 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r5 = await attemptFacebookHide(ctx(), { config: CFG, transport: t5, safety: mkSafety({ counts: { dayCount: 0, hourCount: 3, categoryDayCount: 0, consecutiveWithoutReview: 0 } }) });
+  const r5 = await submit(ctx(), { config: CFG, transport: t5, safety: mkSafety({ counts: { dayCount: 0, hourCount: 3, categoryDayCount: 0, consecutiveWithoutReview: 0 } }) });
   check("5) hourly limit blocks after threshold", r5.status === "blocked" && r5.reason === "hourly_limit" && t5.calls.length === 0, `${r5.reason}`);
 
   // 6) normal_criticism never live hides.
   const t6 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r6 = await attemptFacebookHide(ctx({ matchedCategory: "normal_criticism" }), { config: CFG, transport: t6, safety: mkSafety() });
+  const r6 = await submit(ctx({ matchedCategory: "normal_criticism" }), { config: CFG, transport: t6, safety: mkSafety() });
   check("6) normal_criticism never live hides", r6.status === "blocked" && r6.reason === "safety_never_live" && t6.calls.length === 0, `${r6.reason}`);
 
   // 7) refund/legal/safety/customer_question never live hide.
   for (const cat of ["refund_complaint", "legal_complaint", "safety_claim", "customer_question"]) {
     const t = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-    const r = await attemptFacebookHide(ctx({ matchedCategory: cat }), { config: CFG, transport: t, safety: mkSafety() });
+    const r = await submit(ctx({ matchedCategory: cat }), { config: CFG, transport: t, safety: mkSafety() });
     check(`7) ${cat} never live hides`, r.status === "blocked" && r.reason === "safety_never_live" && t.calls.length === 0, `${r.reason}`);
   }
 
   // 8) low confidence downgrades to approval (below brand min).
   const t8 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r8 = await attemptFacebookHide(ctx({ confidence: 0.8 }), { config: CFG, transport: t8, safety: mkSafety() });
+  const r8 = await submit(ctx({ confidence: 0.8 }), { config: CFG, transport: t8, safety: mkSafety() });
   check("8) low confidence downgrades to approval", r8.status === "blocked" && r8.reason === "below_min_confidence" && t8.calls.length === 0, `${r8.reason}`);
 
   // 9) first-time category requires human approval.
   const t9 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r9 = await attemptFacebookHide(ctx(), { config: CFG, transport: t9, safety: mkSafety({ categoryApprovedBefore: false }) });
+  const r9 = await submit(ctx(), { config: CFG, transport: t9, safety: mkSafety({ categoryApprovedBefore: false }) });
   check("9) first-time category requires human approval", r9.status === "blocked" && r9.reason === "new_category_requires_approval" && t9.calls.length === 0, `${r9.reason}`);
 
   // 10) autonomous safe live works only for eligible categories.
   const t10a = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r10a = await attemptFacebookHide(ctx({ matchedCategory: "competitor_promo" }), { config: CFG, transport: t10a, safety: mkSafety({ categoryApprovedBefore: true, settings: { ...DEFAULT_SAFETY_SETTINGS, liveModeEnabled: true, autonomousHideEnabled: true, approvedAutoHideCategories: ["competitor_promo"] } }) });
+  const r10a = await submit(ctx({ matchedCategory: "competitor_promo" }), { config: CFG, transport: t10a, safety: mkSafety({ categoryApprovedBefore: true, settings: { ...DEFAULT_SAFETY_SETTINGS, liveModeEnabled: true, autonomousHideEnabled: true, approvedAutoHideCategories: ["competitor_promo"] } }) });
   check("10a) ineligible category (competitor_promo) is not autonomously live hidden", r10a.status === "blocked" && r10a.reason === "category_not_eligible" && t10a.calls.length === 0, `${r10a.reason}`);
   const t10b = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r10b = await attemptFacebookHide(ctx({ matchedCategory: "scam" }), { config: CFG, transport: t10b, safety: mkSafety() });
+  const r10b = await submit(ctx({ matchedCategory: "scam" }), { config: CFG, transport: t10b, safety: mkSafety() });
   check("10b) eligible category + all gates → executed once", r10b.status === "executed" && t10b.calls.length === 1 && t10b.calls[0]!.op === "hide", `${r10b.status}/calls=${t10b.calls.length}`);
 
   // 11) audit written BEFORE action (autonomous_hide.allowed exists for the executed item).
@@ -135,21 +143,21 @@ async function run() {
 
   // 12) execution idempotent — same key does not execute twice.
   const t12 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r12 = await attemptFacebookHide(ctx({ itemId: "PS_IDEM", queueItemId: "PS_IDEMQ" }), { config: CFG, transport: new MockFacebookHideTransport({ ok: true, responseCode: "200" }), safety: mkSafety() });
-  const r12b = await attemptFacebookHide(ctx({ itemId: "PS_IDEM", queueItemId: "PS_IDEMQ" }), { config: CFG, transport: t12, safety: mkSafety() });
+  const r12 = await submit(ctx({ itemId: "PS_IDEM", queueItemId: "PS_IDEMQ" }), { config: CFG, transport: new MockFacebookHideTransport({ ok: true, responseCode: "200" }), safety: mkSafety() });
+  const r12b = await submit(ctx({ itemId: "PS_IDEM", queueItemId: "PS_IDEMQ" }), { config: CFG, transport: t12, safety: mkSafety() });
   const idemRows = await prisma.platformActionExecution.count({ where: { tenantId: T, queueItemId: "PS_IDEMQ", status: "executed" } });
   check("12) execution idempotent (no double execute)", r12.status === "executed" && r12b.status === "executed" && r12b.reason === "already_executed" && t12.calls.length === 0 && idemRows === 1);
 
   // 13) Graph failure becomes failed, no fake success.
-  const r13 = await attemptFacebookHide(ctx({ itemId: "PS_F", queueItemId: "PS_FQ" }), { config: CFG, transport: new MockFacebookHideTransport({ ok: false, errorCode: "generic", errorMessage: "nope" }), safety: mkSafety() });
+  const r13 = await submit(ctx({ itemId: "PS_F", queueItemId: "PS_FQ" }), { config: CFG, transport: new MockFacebookHideTransport({ ok: false, errorCode: "generic", errorMessage: "nope" }), safety: mkSafety() });
   check("13) Graph failure → failed (not faked)", r13.status === "failed", r13.status);
 
   // 14) retry requires explicit retry.
   const t14 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r14 = await attemptFacebookHide(ctx({ itemId: "PS_F", queueItemId: "PS_FQ" }), { config: CFG, transport: t14, safety: mkSafety() });
+  const r14 = await submit(ctx({ itemId: "PS_F", queueItemId: "PS_FQ" }), { config: CFG, transport: t14, safety: mkSafety() });
   check("14) repeated attempt after failed does NOT retry", r14.status === "failed" && r14.idempotent === true && t14.calls.length === 0);
   const t14b = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r14b = await attemptFacebookHide(ctx({ itemId: "PS_F", queueItemId: "PS_FQ" }), { config: CFG, transport: t14b, retry: true, safety: mkSafety() });
+  const r14b = await submit(ctx({ itemId: "PS_F", queueItemId: "PS_FQ" }), { config: CFG, transport: t14b, retry: true, safety: mkSafety() });
   check("14b) explicit retry re-attempts", r14b.status === "executed" && t14b.calls.length === 1);
 
   // 15) rollback / unhide audit path.
@@ -168,7 +176,7 @@ async function run() {
 
   // 17) no reply/delete/Instagram — Instagram blocks; only hide/unhide ops ever issued.
   const t17 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r17 = await attemptFacebookHide(ctx({ itemId: "PS_IG", queueItemId: "PS_IGQ", platform: "instagram_business" }), { config: CFG, transport: t17, safety: mkSafety() });
+  const r17 = await submit(ctx({ itemId: "PS_IG", queueItemId: "PS_IGQ", platform: "instagram_business" }), { config: CFG, transport: t17, safety: mkSafety() });
   check("17) Instagram live → blocked, no call", r17.status === "blocked" && t17.calls.length === 0, r17.reason);
 
   // 18/19) UI surfaces (source inspection).
@@ -179,7 +187,7 @@ async function run() {
 
   // 20) default env / default settings still safe — autonomous with default (live off) → blocked, live=0.
   const t20 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const r20 = await attemptFacebookHide(ctx({ itemId: "PS_D", queueItemId: "PS_DQ" }), { config: CFG, transport: t20, safety: mkSafety({ settings: { ...DEFAULT_SAFETY_SETTINGS } }) });
+  const r20 = await submit(ctx({ itemId: "PS_D", queueItemId: "PS_DQ" }), { config: CFG, transport: t20, safety: mkSafety({ settings: { ...DEFAULT_SAFETY_SETTINGS } }) });
   const liveExec20 = await prisma.platformActionExecution.count({ where: { tenantId: T, queueItemId: "PS_DQ", status: "executed" } });
   check("20) default settings still safe (live off → blocked, live=0)", r20.status === "blocked" && r20.reason === "live_mode_disabled" && t20.calls.length === 0 && liveExec20 === 0, `${r20.reason}`);
 
@@ -187,6 +195,9 @@ async function run() {
   const pure = evaluateProductionSafety({ trigger: "autonomous", category: "scam", confidence: 0.99, riskLevel: "critical", safety: mkSafety({ brandKillSwitch: true }) });
   check("pure) kill switch precedes all other gates", pure.outcome === "blocked" && pure.reason === "brand_kill_switch");
 
+  await prisma.actionQueueItem.deleteMany({ where: { brandId: RB } });
+  await prisma.connectedAccount.deleteMany({ where: { id: RA } });
+  await prisma.brand.deleteMany({ where: { id: RB } });
   await cleanup();
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — Production Safe Mode`);
   await prisma.$disconnect();

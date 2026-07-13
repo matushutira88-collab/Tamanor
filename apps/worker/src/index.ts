@@ -6,6 +6,7 @@ import { proposeForHighRiskItems } from "./proposals";
 import { syncConnectedMetaAccounts } from "./sync";
 import { runTokenExpiryMonitor } from "./token-monitor";
 import { cleanupExpiredOnboarding } from "./cleanup";
+import { runMetaConnectorHealth } from "./meta-health";
 
 /**
  * Guardora worker entrypoint.
@@ -33,6 +34,16 @@ async function tick(): Promise<void> {
     await cleanupExpiredOnboarding();
   } catch (err) {
     log.error("cleanup.failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // V1.38 — unified Meta connector health (gated by META_CONNECTOR_HEALTH; off = no-op).
+  try {
+    const mh = await runMetaConnectorHealth();
+    if (mh.enabled) log.info("meta_health.done", { checked: mh.checked, changed: mh.changed });
+  } catch (err) {
+    log.error("meta_health.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
   }

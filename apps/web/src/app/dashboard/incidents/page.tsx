@@ -16,7 +16,8 @@ export default async function IncidentsPage() {
   const realMode = await getRealModeFilter(session.tenantId);
   const where = { tenantId: session.tenantId, ...realMode.brandWhere };
 
-  const incidents = await withTenant(session.tenantId, (db) => db.incident.findMany({ where, orderBy: [{ status: "asc" }, { createdAt: "desc" }], take: 100 }));
+  // V1.37.5 — related-item count from the referentially-integral join table.
+  const incidents = await withTenant(session.tenantId, (db) => db.incident.findMany({ where, orderBy: [{ status: "asc" }, { createdAt: "desc" }], take: 100, include: { _count: { select: { relatedItems: true } } } }));
 
   return (
     <>
@@ -40,7 +41,7 @@ export default async function IncidentsPage() {
                 <Badge tone={inc.status === "open" ? "warn" : "ok"}>{inc.status}</Badge>
               </div>
               <div className="mt-2 flex flex-wrap gap-4 text-xs text-[var(--color-muted)]">
-                <span>{t.cc.related}: {inc.relatedItemIds.length}</span>
+                <span>{t.cc.related}: {inc._count.relatedItems}</span>
                 {inc.sourcePlatform ? <span>{inc.sourcePlatform}</span> : null}
                 <span>{formatDateTime(inc.createdAt)}</span>
               </div>

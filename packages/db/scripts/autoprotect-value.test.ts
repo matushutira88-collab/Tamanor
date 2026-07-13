@@ -4,6 +4,7 @@
  * the value-dashboard metrics, category breakdown, and inbox filter queries, then
  * cleans up. Live actions executed is always 0 (shadow mode).
  */
+import { randomBytes } from "node:crypto";
 import { prisma } from "../src/index";
 import { AUTO_PROTECT_CATEGORIES } from "@guardora/ai";
 
@@ -13,11 +14,20 @@ function check(label: string, cond: boolean, detail = "") {
   if (!cond) failures++;
 }
 
-const T = "test_tenant_v119";
-const B = "test_brand_v119";
+// V1.37.5 — real tenant/brand/reputation-items so the AutoProtectDecision composite FK
+// (itemId, tenantId) → ReputationItem(id, tenantId) is satisfied by REAL rows.
+const sfx = randomBytes(4).toString("hex");
+let T = "";
+let B = "";
 
 async function cleanup() {
+  if (!T) return;
   await prisma.autoProtectDecision.deleteMany({ where: { tenantId: T } });
+  await prisma.reputationItem.deleteMany({ where: { tenantId: T } });
+  await prisma.contentItem.deleteMany({ where: { tenantId: T } });
+  await prisma.connectedAccount.deleteMany({ where: { tenantId: T } });
+  await prisma.brand.deleteMany({ where: { tenantId: T } });
+  await prisma.tenant.deleteMany({ where: { id: T } });
 }
 
 // Decision each category resolves to in this fixture (mirrors default policies).
@@ -28,17 +38,25 @@ function decisionFor(cat: string): string {
 }
 
 async function run() {
-  await cleanup();
+  const tenant = await prisma.tenant.create({ data: { name: "APV T", slug: `apv-t-${sfx}` } });
+  T = tenant.id;
+  const brand = await prisma.brand.create({ data: { tenantId: T, name: "APV B" } });
+  B = brand.id;
+  const acc = await prisma.connectedAccount.create({ data: { tenantId: T, brandId: B, platform: "facebook_page", status: "active", mode: "read_only", externalId: `APV_${sfx}`, pageId: `APV_${sfx}` } });
+  let n = 0;
+  const mkItem = async () => {
+    const ci = await prisma.contentItem.create({ data: { tenantId: T, brandId: B, connectedAccountId: acc.id, platform: "facebook_page", kind: "comment", externalId: `apv_${sfx}_${n++}`, text: "x", publishedAt: new Date() } });
+    const ri = await prisma.reputationItem.create({ data: { tenantId: T, brandId: B, platform: "facebook_page", contentItemId: ci.id, riskLevel: "high", riskCategories: [], sentiment: "neutral" } });
+    return ri.id;
+  };
 
-  // Seed one decision per category (all 16) + extra normal_criticism.
-  let i = 0;
+  // Seed one decision per category (all 16) + extra normal_criticism, each on a REAL item.
   for (const cat of AUTO_PROTECT_CATEGORIES) {
     await prisma.autoProtectDecision.create({
-      data: { tenantId: T, brandId: B, itemId: `v119_${cat}`, matchedCategory: cat, policyMode: "auto_hide_shadow", confidence: 0.9, decision: decisionFor(cat), reason: "test" },
+      data: { tenantId: T, brandId: B, itemId: await mkItem(), matchedCategory: cat, policyMode: "auto_hide_shadow", confidence: 0.9, decision: decisionFor(cat), reason: "test" },
     });
-    i++;
   }
-  await prisma.autoProtectDecision.create({ data: { tenantId: T, brandId: B, itemId: "v119_extra_nc", matchedCategory: "normal_criticism", policyMode: "monitor", confidence: 0.2, decision: "no_action", reason: "test" } });
+  await prisma.autoProtectDecision.create({ data: { tenantId: T, brandId: B, itemId: await mkItem(), matchedCategory: "normal_criticism", policyMode: "monitor", confidence: 0.2, decision: "no_action", reason: "test" } });
 
   // 1) demo/fixture covers all Auto-Protect categories.
   const cats = await prisma.autoProtectDecision.groupBy({ by: ["matchedCategory"], where: { tenantId: T }, _count: true });

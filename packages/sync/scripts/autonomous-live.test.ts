@@ -16,6 +16,7 @@ import { dirname, resolve } from "node:path";
 import { prisma } from "@guardora/db";
 import { MockFacebookHideTransport } from "@guardora/connectors";
 import { attemptFacebookHide, type HideContext } from "../src/live-actions";
+import { ensureHideTarget } from "./ri-fixtures";
 import { DEFAULT_SAFETY_SETTINGS, type ProductionSafetyContext } from "../src/production-safety";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -62,14 +63,22 @@ async function cleanup() {
   await prisma.auditLog.deleteMany({ where: { tenantId: T, event: { in: ["safety_floor.blocked", "rate_limit.triggered", "kill_switch.blocked"] } } });
 }
 
+// V1.37.5B — real brand/account so history rows reference REAL same-tenant parents.
+let RB = "";
+let RA = "";
+const submit = async (c: HideContext, o?: Parameters<typeof attemptFacebookHide>[1]) => { await ensureHideTarget(prisma, c, RB, RA); return attemptFacebookHide(c, o); };
+
 async function autoHide(over: Partial<HideContext>, transport: MockFacebookHideTransport, safety = mkSafety()) {
-  return attemptFacebookHide(ctx(over), { config: CFG, transport, safety });
+  return submit(ctx(over), { config: CFG, transport, safety });
 }
 
 async function run() {
   const tenant = await prisma.tenant.findFirst({ select: { id: true } });
   if (!tenant) { console.error("no tenant found — seed first"); process.exit(1); }
   T = tenant.id;
+  const _rb = await prisma.brand.create({ data: { tenantId: T, name: "Autonomous Live Test Brand" } });
+  const _ra = await prisma.connectedAccount.create({ data: { tenantId: T, brandId: _rb.id, platform: "facebook_page", status: "active", mode: "read_only", externalId: `AUL_${_rb.id}`, pageId: `AUL_${_rb.id}` } });
+  RB = _rb.id; RA = _ra.id;
   await cleanup();
 
   // 1) profanity + autonomous + live gates → hideFacebookComment called once.
@@ -134,14 +143,14 @@ async function run() {
   check("11) daily limit → approval (blocked daily_limit)", r11.status === "blocked" && r11.reason === "daily_limit" && t11.calls.length === 0, `${r11.reason}`);
 
   // 12) double sync same item → only one executed row.
-  const d1 = await attemptFacebookHide(ctx({ itemId: "AU_DUP", queueItemId: "AU_DUPQ", matchedCategory: "scam" }), { config: CFG, transport: new MockFacebookHideTransport({ ok: true, responseCode: "200" }), safety: mkSafety() });
+  const d1 = await submit(ctx({ itemId: "AU_DUP", queueItemId: "AU_DUPQ", matchedCategory: "scam" }), { config: CFG, transport: new MockFacebookHideTransport({ ok: true, responseCode: "200" }), safety: mkSafety() });
   const t12 = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-  const d2 = await attemptFacebookHide(ctx({ itemId: "AU_DUP", queueItemId: "AU_DUPQ", matchedCategory: "scam" }), { config: CFG, transport: t12, safety: mkSafety() });
+  const d2 = await submit(ctx({ itemId: "AU_DUP", queueItemId: "AU_DUPQ", matchedCategory: "scam" }), { config: CFG, transport: t12, safety: mkSafety() });
   const dupRows = await prisma.platformActionExecution.count({ where: { tenantId: T, queueItemId: "AU_DUPQ", status: "executed" } });
   check("12) double sync same item → only one executed row", d1.status === "executed" && d2.status === "executed" && d2.reason === "already_executed" && t12.calls.length === 0 && dupRows === 1, `rows=${dupRows}`);
 
   // 13) Graph failure → failed, no fake success.
-  const r13 = await attemptFacebookHide(ctx({ itemId: "AU_F", queueItemId: "AU_FQ", matchedCategory: "scam" }), { config: CFG, transport: new MockFacebookHideTransport({ ok: false, errorCode: "generic", errorMessage: "nope" }), safety: mkSafety() });
+  const r13 = await submit(ctx({ itemId: "AU_F", queueItemId: "AU_FQ", matchedCategory: "scam" }), { config: CFG, transport: new MockFacebookHideTransport({ ok: false, errorCode: "generic", errorMessage: "nope" }), safety: mkSafety() });
   check("13) Graph failure → failed (not faked)", r13.status === "failed", r13.status);
 
   // 14) token leak none.
@@ -168,6 +177,9 @@ async function run() {
   const allowedAudit = await prisma.auditLog.count({ where: { tenantId: T, event: "autonomous_hide.allowed" } });
   check("18) autonomous_hide.allowed audited before action", allowedAudit >= 1, String(allowedAudit));
 
+  await prisma.actionQueueItem.deleteMany({ where: { brandId: RB } });
+  await prisma.connectedAccount.deleteMany({ where: { id: RA } });
+  await prisma.brand.deleteMany({ where: { id: RB } });
   await cleanup();
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — Autonomous Safe Hide`);
   await prisma.$disconnect();

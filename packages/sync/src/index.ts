@@ -20,7 +20,7 @@ import {
   ConnectorStatus,
   ContentKind,
   decryptToken,
-  findAccountsByExternalIds,
+  findMetaAccountsByExternalIds,
   listUnprocessedFacebookWebhooks,
   markWebhookProcessed,
   acquireSyncLease,
@@ -622,16 +622,22 @@ async function persistNewItem(
       }
     }
 
-    // Phase P5 — incident escalation (short tenant tx).
+    // Phase P5 — incident escalation (short tenant tx). V1.37.4/5: the related item is
+    // recorded BOTH in the denormalized `relatedItemIds` cache and, referentially-integral,
+    // in the `incidentRelatedItem` join table (real composite FKs, cross-tenant impossible).
     if (decision.raisesIncident && (hybrid.level === "high" || hybrid.level === "critical")) {
       await withTenantDb(tenantId, async (db) => {
         const open = await db.incident.findFirst({ where: { brandId: account.brandId, category: decision.matchedCategory, status: "open" } });
+        let incidentId: string;
         if (open) {
+          incidentId = open.id;
           if (!open.relatedItemIds.includes(repItem.id)) await db.incident.update({ where: { id: open.id }, data: { relatedItemIds: { push: repItem.id } } });
         } else {
           const inc = await db.incident.create({ data: { tenantId: account.tenantId, brandId: account.brandId, title: `${decision.matchedCategory.replace(/_/g, " ")} detected`, category: decision.matchedCategory, severity: hybrid.level === "critical" ? "critical" : "high", status: "open", sourcePlatform: account.platform, relatedItemIds: [repItem.id] } });
+          incidentId = inc.id;
           await auditTx(db, account, "incident.created", { incidentId: inc.id, category: decision.matchedCategory });
         }
+        await db.incidentRelatedItem.createMany({ data: [{ tenantId: account.tenantId, incidentId, reputationItemId: repItem.id }], skipDuplicates: true });
       });
     }
   }
@@ -727,8 +733,10 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
       }
 
       // SYSTEM discovery — resolves the TRUSTED tenantId from the matched account
-      // (never from the webhook payload itself).
-      const accounts = pageIds.size ? await findAccountsByExternalIds([...pageIds]) : [];
+      // (never from the webhook payload itself). V1.38: a webhook entry id may be a
+      // Facebook Page id OR an Instagram Business account id — the unified connector
+      // resolves BOTH platforms and syncs each via the same tenant-scoped runtime path.
+      const accounts = pageIds.size ? await findMetaAccountsByExternalIds([...pageIds]) : [];
 
       if (accounts.length === 0) {
         await markWebhookProcessed(ev.id, false);
@@ -752,7 +760,7 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
           actorKind: ActorKind.system,
           targetType: "webhook_event",
           targetId: ev.id,
-          metadata: { platform: "facebook_page", accounts: accounts.length },
+          metadata: { accounts: accounts.length, platforms: [...new Set(accounts.map((a) => a.platform))] },
         },
       }));
       await markWebhookProcessed(ev.id, true);
@@ -785,3 +793,4 @@ export * from "./production-safety";
 export * from "./connection-manager";
 export * from "./provider-revoke";
 export * from "./disconnect";
+export * from "./meta-connector";

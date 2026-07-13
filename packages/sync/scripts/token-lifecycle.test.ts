@@ -12,6 +12,7 @@ import { dirname, resolve } from "node:path";
 import { prisma, metaConnectedAccountFields } from "@guardora/db";
 import { MockFacebookHideTransport, type FacebookHideTransport, type HideTransportResult } from "@guardora/connectors";
 import { attemptFacebookHide, type HideContext } from "../src/live-actions";
+import { ensureHideTarget } from "./ri-fixtures";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const readSrc = (rel: string) => readFileSync(resolve(SCRIPT_DIR, "../../..", rel), "utf8");
@@ -49,6 +50,10 @@ const ctx = (accountId: string, over: Partial<HideContext> = {}): HideContext =>
   };
 };
 
+let RB = "";
+let RA = "";
+const submit = async (c: any, o?: any) => { await ensureHideTarget(prisma, c, RB, RA); return attemptFacebookHide(c, o); };
+
 async function run() {
   const tenant = await prisma.tenant.findFirst({ select: { id: true } });
   if (!tenant) { console.error("no tenant found — seed first"); process.exit(1); }
@@ -66,15 +71,16 @@ async function run() {
     await prisma.brand.deleteMany({ where: { id: brand.id } });
   };
 
+  RB = brand.id; RA = acct.id;
   try {
     // 4) hide uses the PAGE access token, not a user token.
     const cap = new CapturingTransport({ ok: true, responseCode: "200" });
-    const rOk = await attemptFacebookHide(ctx(acct.id), { config: CFG, transport: cap, liveAttempt: true });
+    const rOk = await submit(ctx(acct.id), { config: CFG, transport: cap, liveAttempt: true });
     check("4) hide uses the stored PAGE access token", rOk.status === "executed" && cap.seenToken === PAGE_TOKEN && cap.ops.length === 1 && cap.ops[0] === "hide", `${rOk.status}/token=${cap.seenToken === PAGE_TOKEN}`);
 
     // 1) token_expired failure marks the account needs_reconnect.
     const tExp = new MockFacebookHideTransport({ ok: false, responseCode: "400", errorCode: "token_expired", errorMessage: "Graph hide failed (HTTP 400)." });
-    const rExp = await attemptFacebookHide(ctx(acct.id), { config: CFG, transport: tExp, liveAttempt: true });
+    const rExp = await submit(ctx(acct.id), { config: CFG, transport: tExp, liveAttempt: true });
     const after = await prisma.connectedAccount.findUnique({ where: { id: acct.id }, select: { health: true, lastError: true, lastErrorAt: true } });
     check("1) token_expired → failed", rExp.status === "failed" && rExp.reason === "token_expired", `${rExp.status}/${rExp.reason}`);
     check("1b) token_expired marks account needs_reconnect", after?.health === "error" && after?.lastError === "token_expired" && after?.lastErrorAt != null, `${after?.health}/${after?.lastError}`);
@@ -85,17 +91,17 @@ async function run() {
 
     // 2) past expiry + FRESH page check FAILS → blocked (reconnect), no hide POST.
     const tPre = new MockFacebookHideTransport({ ok: true, responseCode: "200" }, { pageToken: { ok: false, errorCode: "token_expired" } });
-    const rPre = await attemptFacebookHide(ctx(acct.id, { account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: PAGE_TOKEN, pageId: "TOK_PAGE", externalId: "TOK_PAGE", tokenExpiresAt: new Date(Date.now() - 1000) } }), { config: CFG, transport: tPre, liveAttempt: true });
+    const rPre = await submit(ctx(acct.id, { account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: PAGE_TOKEN, pageId: "TOK_PAGE", externalId: "TOK_PAGE", tokenExpiresAt: new Date(Date.now() - 1000) } }), { config: CFG, transport: tPre, liveAttempt: true });
     check("2) past expiry + failed revalidation → blocked, no hide POST", rPre.status === "blocked" && (rPre.reason === "reconnect_required" || rPre.reason === "token_expired") && tPre.calls.length === 0, `${rPre.status}/${rPre.reason}`);
 
     // 2b) V1.27D — past expiry BUT fresh page check SUCCEEDS → repaired → hide proceeds.
     const tHeal = new MockFacebookHideTransport({ ok: true, responseCode: "200" }, { pageToken: { ok: true, pageId: "TOK_PAGE", pageName: "Konfigurátor" } });
-    const rHeal = await attemptFacebookHide(ctx(acct.id, { account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: PAGE_TOKEN, pageId: "TOK_PAGE", externalId: "TOK_PAGE", tokenExpiresAt: new Date(Date.now() - 1000) } }), { config: CFG, transport: tHeal, liveAttempt: true });
+    const rHeal = await submit(ctx(acct.id, { account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: PAGE_TOKEN, pageId: "TOK_PAGE", externalId: "TOK_PAGE", tokenExpiresAt: new Date(Date.now() - 1000) } }), { config: CFG, transport: tHeal, liveAttempt: true });
     check("2b) past expiry + fresh token OK → self-healed, hide executed", rHeal.status === "executed" && tHeal.calls.some((c) => c.op === "hide"), `${rHeal.status}/${rHeal.reason}`);
 
     // 3) needsReconnect flag + FRESH page check FAILS → blocked, no hide POST.
     const tNr = new MockFacebookHideTransport({ ok: true, responseCode: "200" }, { pageToken: { ok: false, errorCode: "token_invalid" } });
-    const rNr = await attemptFacebookHide(ctx(acct.id, { account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: PAGE_TOKEN, pageId: "TOK_PAGE", externalId: "TOK_PAGE", needsReconnect: true } }), { config: CFG, transport: tNr, liveAttempt: true });
+    const rNr = await submit(ctx(acct.id, { account: { status: "active", health: "healthy", grantedPermissions: ["pages_manage_engagement"], accessToken: PAGE_TOKEN, pageId: "TOK_PAGE", externalId: "TOK_PAGE", needsReconnect: true } }), { config: CFG, transport: tNr, liveAttempt: true });
     check("3) needsReconnect + failed revalidation → blocked, no hide POST", rNr.status === "blocked" && rNr.reason === "reconnect_required" && tNr.calls.length === 0, `${rNr.status}/${rNr.reason}`);
 
     // 6) reconnect clears token_expired (metaConnectedAccountFields resets health + lastError).
@@ -108,7 +114,7 @@ async function run() {
 
     // 8) no reply/delete/Instagram — Instagram blocks; only hide ops ever issued.
     const tIg = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
-    const rIg = await attemptFacebookHide(ctx(acct.id, { platform: "instagram_business" }), { config: CFG, transport: tIg, liveAttempt: true });
+    const rIg = await submit(ctx(acct.id, { platform: "instagram_business" }), { config: CFG, transport: tIg, liveAttempt: true });
     check("8) Instagram → blocked, no call; only hide ops used", rIg.status === "blocked" && tIg.calls.length === 0 && cap.ops.every((o) => o === "hide"), rIg.reason);
 
     // 9/10) UI source: reconnect CTA + retry disabled on token_expired.

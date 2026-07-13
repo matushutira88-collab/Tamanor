@@ -102,6 +102,14 @@ export function findActiveFacebookAccounts(): Promise<Array<{ id: string; tenant
   });
 }
 
+/** V1.38 — active Meta accounts (Facebook Page + Instagram) for the connector health monitor. */
+export function findActiveMetaAccounts(): Promise<Array<{ id: string; tenantId: string }>> {
+  return systemDb.connectedAccount.findMany({
+    where: { platform: { in: ["facebook_page", "instagram_business"] as never }, status: "active" as never },
+    select: { id: true, tenantId: true },
+  });
+}
+
 /** Accounts whose OAuth token has an expiry and are currently healthy/unknown. No token material returned. */
 export function findAccountsForTokenCheck(): Promise<Array<{ id: string; tenantId: string; brandId: string; platform: string; tokenExpiresAt: Date | null }>> {
   return systemDb.connectedAccount.findMany({
@@ -128,6 +136,18 @@ export function findAccountsByExternalIds(externalIds: string[]): Promise<Array<
   return systemDb.connectedAccount.findMany({
     where: { externalId: { in: externalIds }, platform: "facebook_page" as never, status: "active" as never },
     select: { id: true, tenantId: true, brandId: true },
+  });
+}
+
+/**
+ * V1.38 — resolve active Meta accounts (Facebook Page OR Instagram Business) by their
+ * external ids. A webhook entry id may be a Page id (page object) or an IG account id
+ * (instagram object) — both are handled by the ONE unified connector. Trusted tenantId.
+ */
+export function findMetaAccountsByExternalIds(externalIds: string[]): Promise<Array<{ id: string; tenantId: string; brandId: string; platform: string }>> {
+  return systemDb.connectedAccount.findMany({
+    where: { externalId: { in: externalIds }, platform: { in: ["facebook_page", "instagram_business"] as never }, status: "active" as never },
+    select: { id: true, tenantId: true, brandId: true, platform: true },
   });
 }
 

@@ -566,7 +566,7 @@ export async function rollbackHide(
 
   await auditRollback("live_hide.rollback_requested", "requested");
   const r = await unhideComment(
-    { pageId: input.account.pageId ?? input.account.externalId, commentId: exec.externalCommentId, connectedAccountId: exec.connectedAccountId, itemId: exec.itemId, pageAccessToken: input.account.accessToken ?? "" },
+    { pageId: input.account.pageId ?? input.account.externalId, commentId: exec.externalCommentId, connectedAccountId: exec.connectedAccountId, itemId: exec.itemId ?? "", pageAccessToken: input.account.accessToken ?? "" },
     { dryRun: !input.live, transport: opts?.transport ?? new GraphFacebookHideTransport() },
   );
   if (r.status === "executed" || r.status === "dry_run") {

@@ -47,7 +47,13 @@ async function run() {
   if (tenant) {
     const T = tenant.id;
     const brand = await prisma.brand.create({ data: { tenantId: T, name: "Queue Tabs Test Brand" } });
-    const mk = (state: string) => prisma.actionQueueItem.create({ data: { tenantId: T, brandId: brand.id, itemId: `${brand.id}_${state}`, category: "scam", confidence: 0.9, proposedAction: "hide_comment", queueState: state } });
+    const acct = await prisma.connectedAccount.create({ data: { tenantId: T, brandId: brand.id, platform: "facebook_page", status: "active", mode: "read_only", externalId: `QT_${brand.id}`, pageId: `QT_${brand.id}` } });
+    // V1.37.5 — queue items reference a REAL ReputationItem (aqi.itemId composite FK).
+    const mk = async (state: string) => {
+      const ci = await prisma.contentItem.create({ data: { tenantId: T, brandId: brand.id, connectedAccountId: acct.id, platform: "facebook_page", kind: "comment", externalId: `qt_${state}`, text: "x", publishedAt: new Date() } });
+      const ri = await prisma.reputationItem.create({ data: { tenantId: T, brandId: brand.id, platform: "facebook_page", contentItemId: ci.id, riskLevel: "high", riskCategories: [], sentiment: "neutral" } });
+      return prisma.actionQueueItem.create({ data: { tenantId: T, brandId: brand.id, itemId: ri.id, category: "scam", confidence: 0.9, proposedAction: "hide_comment", queueState: state } });
+    };
     try {
       await Promise.all(["approval_required", "executed", "no_action", "monitor", "dry_run", "approved", "failed"].map(mk));
       const activeRows = await prisma.actionQueueItem.findMany({ where: { brandId: brand.id, queueState: { in: active } }, select: { queueState: true } });
