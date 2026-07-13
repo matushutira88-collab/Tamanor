@@ -64,6 +64,7 @@
     "sync-verdict:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/sync-verdict.test.ts",
     "referential-integrity:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/referential-integrity.test.ts",
     "meta-connector:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/meta-connector.test.ts",
+    "instagram-content:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/instagram-content.test.ts",
     "worker-rls:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/worker-rls.test.ts",
     "worker-tx-boundary:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/worker-tx-boundary.test.ts",
     "db-boundaries:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/db-boundaries.test.ts",

@@ -185,6 +185,20 @@ export function getLatestWebhookForPlatform(platform: string): Promise<{ receive
   }) as Promise<{ receivedAt: Date; eventType: string | null; signatureValid: boolean } | null>;
 }
 
+/**
+ * V1.38.1 — unprocessed Meta webhooks (Facebook Page OR Instagram) that carry a VALID
+ * signature. Unsigned/forged events (`signatureValid=false`) are stored for audit but are
+ * NEVER processed. Ordered oldest-first for fair draining.
+ */
+export function listUnprocessedMetaWebhooks(take: number): Promise<Array<{ id: string; payload: unknown; platform: string }>> {
+  return systemDb.webhookEvent.findMany({
+    where: { processed: false, signatureValid: true, platform: { in: ["facebook_page", "instagram_business"] as never } },
+    orderBy: { receivedAt: "asc" },
+    take,
+    select: { id: true, payload: true, platform: true },
+  }) as Promise<Array<{ id: string; payload: unknown; platform: string }>>;
+}
+
 export function markWebhookProcessed(id: string, matched: boolean, error?: string): Promise<unknown> {
   return systemDb.webhookEvent.update({
     where: { id },
@@ -192,9 +206,31 @@ export function markWebhookProcessed(id: string, matched: boolean, error?: strin
   });
 }
 
-/** Record an inbound provider webhook event (global ingestion table, pre-tenant). */
-export function recordWebhookEvent(data: Prisma.WebhookEventCreateInput): Promise<{ id: string }> {
-  return systemDb.webhookEvent.create({ data, select: { id: true } });
+/**
+ * Record an inbound provider webhook event (global ingestion table, pre-tenant).
+ *
+ * V1.38.1 — replay/dedup safe: a redelivered event has the same `dedupeKey`
+ * (X-Hub-Signature-256 over the raw body), so the unique index rejects the duplicate.
+ * On that conflict we return the ORIGINAL row's id with `duplicate:true` — the caller
+ * still ACKs 200 without creating a second event or reprocessing.
+ */
+export async function recordWebhookEvent(
+  data: Prisma.WebhookEventCreateInput,
+): Promise<{ id: string; duplicate: boolean }> {
+  try {
+    const row = await systemDb.webhookEvent.create({ data, select: { id: true } });
+    return { id: row.id, duplicate: false };
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    if (code === "P2002" && data.dedupeKey) {
+      const existing = await systemDb.webhookEvent.findUnique({
+        where: { dedupeKey: data.dedupeKey as string },
+        select: { id: true },
+      });
+      if (existing) return { id: existing.id, duplicate: true };
+    }
+    throw err;
+  }
 }
 
 // --------------------- Session bootstrap (system, pre-auth) ---------------------

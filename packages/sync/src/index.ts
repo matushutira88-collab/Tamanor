@@ -21,7 +21,7 @@ import {
   ContentKind,
   decryptToken,
   findMetaAccountsByExternalIds,
-  listUnprocessedFacebookWebhooks,
+  listUnprocessedMetaWebhooks,
   markWebhookProcessed,
   acquireSyncLease,
   releaseSyncLease,
@@ -41,10 +41,17 @@ import {
 import {
   createConnectorRuntime,
   MetaGraphError,
+  GraphMetaContentTransport,
   type FetchedContent,
+  type MetaContentTransport,
 } from "@guardora/connectors";
 import { getMetaConfig, getTranslationConfig, getAiRiskConfig } from "@guardora/config";
 import { mockMetaFetch } from "./mock-fetch";
+import {
+  fetchInstagramContent,
+  classifyIgPermissionState,
+  type IgPermissionState,
+} from "./instagram-content";
 
 /** Truthful outcome of a whole sync run. */
 export type SyncVerdict = "success" | "partial_success" | "failed" | "skipped_locked";
@@ -71,11 +78,21 @@ export interface SyncOutcome {
 }
 
 /** A token/auth problem (expired/invalid) that requires the user to reconnect. */
-class ReconnectRequiredError extends Error {}
+class ReconnectRequiredError extends Error {
+  constructor(message: string, public readonly permissionState?: IgPermissionState) { super(message); }
+}
 /** A transient platform rate limit — retry after backoff, no user action. */
-class RateLimitedError extends Error {}
+class RateLimitedError extends Error {
+  constructor(message: string, public readonly permissionState?: IgPermissionState) { super(message); }
+}
 /** A missing-permission problem — the user must re-grant scopes (reconnect). */
-class PermissionRequiredError extends Error {}
+class PermissionRequiredError extends Error {
+  constructor(message: string, public readonly permissionState?: IgPermissionState) { super(message); }
+}
+/** V1.38.1 — the provider API was unreachable/5xx; transient, retry later (no reconnect). */
+class ApiUnavailableError extends Error {
+  constructor(message: string, public readonly permissionState?: IgPermissionState) { super(message); }
+}
 /** V1.37.4 — a single malformed provider item; isolated, never aborts the run. */
 class IngestItemInvalidError extends Error {
   constructor(public readonly reason: string) { super(reason); }
@@ -94,6 +111,10 @@ export type IngestOutcome = "created" | "updated" | "deduped";
 interface FetchResult {
   items: FetchedContent[];
   cursor?: string;
+  /** V1.38.1 — truthful IG permission/availability state ("healthy" on success). */
+  permissionState?: IgPermissionState;
+  /** V1.38.1 — true when a page cap was hit; more content remains (surfaced in audit). */
+  truncated?: boolean;
 }
 
 /** Conservative backoff schedule (minutes) — NOT an aggressive retry loop. */
@@ -123,6 +144,13 @@ export interface SyncPhaseHooks {
   forceLeaseUnavailable?: boolean;
   /** Test-only: override the lease holder id (concurrency tests). */
   holderId?: string;
+  /**
+   * V1.38.1 — inject the Instagram CONTENT transport. Tests pass a MockMetaContentTransport
+   * so the REAL runReadOnlySync (lease/RLS/idempotency/atomic/verdict/dedup) runs against a
+   * real DB with no network. Live default (when omitted) is the Graph transport, gated by
+   * META_LIVE_SYNC. It carries no sensitive data and is never logged.
+   */
+  contentTransport?: MetaContentTransport;
 }
 
 export async function runReadOnlySync(
@@ -171,7 +199,10 @@ export async function runReadOnlySync(
     const meta = getMetaConfig();
     const isReal = isRealConnection(mode);
     const useMock = !isReal;
-    if (isReal && !meta.liveSync) {
+    // Live network reads require META_LIVE_SYNC. An INJECTED content transport (tests)
+    // performs NO network I/O, so it may run with live sync off — the placeholder-connector
+    // invariant (no real API calls by default) still holds because production never injects one.
+    if (isReal && !meta.liveSync && !hooks?.contentTransport) {
       return zero(false, "Live Meta sync is not enabled (META_LIVE_SYNC=false). No mock data is injected for a real account.");
     }
 
@@ -195,7 +226,7 @@ export async function runReadOnlySync(
     try {
       // --- Phase B: provider HTTP (NO open transaction). ---
       phase("provider-call-start");
-      const { items: fetched, cursor } = await fetchContent(account, mode, useMock);
+      const { items: fetched, cursor, permissionState, truncated } = await fetchContent(account, mode, useMock, hooks);
       phase("provider-call-end");
 
       let created = 0;
@@ -242,12 +273,16 @@ export async function runReadOnlySync(
           where: { id: account.id },
           data: {
             lastSyncedAt: new Date(),
+            // V1.38.1 — a successful read is the truthful "healthy" permission state.
+            ...(permissionState ? { contentPermissionState: permissionState } : {}),
             // Only a fully/partly successful run refreshes success markers.
             ...(verdict !== "failed" ? { lastSuccessfulSyncAt: new Date(), lastCursor: cursor ?? undefined, health: ConnectorHealth.healthy, lastError: null, lastErrorAt: null, syncAttempts: 0, nextRetryAt: null } : {}),
           },
         });
         await auditTx(db, account, verdict === "partial_success" ? "sync.partial" : "sync.completed", {
           mock: useMock, fetched: fetched.length, created, updated, deduped, failed, verdict, durationMs, trigger,
+          ...(permissionState ? { permissionState } : {}),
+          ...(truncated ? { truncated: true } : {}),
         });
       });
       phase("tenant-write-end");
@@ -274,11 +309,15 @@ export async function runReadOnlySync(
       const isTokenExpired = err instanceof ReconnectRequiredError;
       const isPermission = err instanceof PermissionRequiredError;
       const isRateLimited = err instanceof RateLimitedError;
+      const isApiUnavailable = err instanceof ApiUnavailableError;
       const needsReconnect = isTokenExpired || isPermission;
+      // V1.38.1 — transient (rate-limit / API-unavailable) never forces a reconnect.
+      const retryLater = isRateLimited || isApiUnavailable;
+      const permissionState = (err as { permissionState?: IgPermissionState })?.permissionState;
       const attempts = (account.syncAttempts ?? 0) + 1;
       const nextRetryAt = needsReconnect ? null : nextRetryFor(attempts);
-      const event = isTokenExpired ? "sync.token_expired" : isPermission ? "sync.permission_error" : isRateLimited ? "sync.rate_limited" : "sync.failed";
-      const status = isTokenExpired ? SyncRunStatus.permission_missing : isPermission ? SyncRunStatus.permission_missing : isRateLimited ? SyncRunStatus.rate_limited : SyncRunStatus.failed;
+      const event = isTokenExpired ? "sync.token_expired" : isPermission ? "sync.permission_error" : isRateLimited ? "sync.rate_limited" : isApiUnavailable ? "sync.api_unavailable" : "sync.failed";
+      const status = isTokenExpired ? SyncRunStatus.permission_missing : isPermission ? SyncRunStatus.permission_missing : isRateLimited ? SyncRunStatus.rate_limited : isApiUnavailable ? SyncRunStatus.api_unavailable : SyncRunStatus.failed;
 
       phase("tenant-write-start");
       await withTenantDb(tenantId, async (db) => {
@@ -291,15 +330,17 @@ export async function runReadOnlySync(
           data: {
             lastSyncedAt: new Date(),
             status: needsReconnect ? ConnectorStatus.expired : undefined,
-            health: needsReconnect ? ConnectorHealth.degraded : isRateLimited ? ConnectorHealth.degraded : ConnectorHealth.error,
+            health: needsReconnect ? ConnectorHealth.degraded : retryLater ? ConnectorHealth.degraded : ConnectorHealth.error,
+            // V1.38.1 — persist the truthful IG permission/availability state.
+            ...(permissionState ? { contentPermissionState: permissionState } : {}),
             lastError: msg, lastErrorAt: new Date(), syncAttempts: attempts, nextRetryAt,
           },
         });
-        await auditTx(db, account, event, { error: msg, needsReconnect, retryLater: isRateLimited });
+        await auditTx(db, account, event, { error: msg, needsReconnect, retryLater, ...(permissionState ? { permissionState } : {}) });
       });
       phase("tenant-write-end");
 
-      return { ok: false, mock: useMock, fetched: 0, created: 0, updated: 0, deduped: 0, errors: 1, durationMs, message: msg, syncRunId: run.id, verdict: "failed", needsReconnect, retryLater: isRateLimited };
+      return { ok: false, mock: useMock, fetched: 0, created: 0, updated: 0, deduped: 0, errors: 1, durationMs, message: msg, syncRunId: run.id, verdict: "failed", needsReconnect, retryLater };
     }
   } finally {
     // ALWAYS release the lease (release-in-finally). Idempotent.
@@ -312,6 +353,7 @@ async function fetchContent(
   account: AccountRow,
   mode: CoreMode,
   useMock: boolean,
+  hooks?: SyncPhaseHooks,
 ): Promise<FetchResult> {
   if (useMock) {
     const items = mockMetaFetch(
@@ -325,14 +367,25 @@ async function fetchContent(
   if (account.tokenExpiresAt && account.tokenExpiresAt.getTime() <= Date.now()) {
     throw new ReconnectRequiredError(
       "Access token has expired — reconnect required.",
+      "token_expired",
     );
   }
   const token = decryptToken(account.longLivedToken ?? account.accessToken);
   if (!token) {
     throw new ReconnectRequiredError(
       "No usable access token is stored — reconnect required.",
+      "token_expired",
     );
   }
+
+  // V1.38.1 — Instagram content ingestion goes through the injectable CONTENT transport
+  // (Mock in tests, Graph in production). This gives IG real media→comment pagination,
+  // cursors, deleted-media isolation and truthful permission states, while reusing the
+  // one idempotent ingest path in the caller. FB stays on the read-only connector below.
+  if (String(account.platform) === "instagram_business") {
+    return fetchInstagramViaTransport(account, token, hooks?.contentTransport);
+  }
+
   const runtime = createConnectorRuntime(
     account.platform as unknown as CorePlatform,
     mode,
@@ -368,6 +421,48 @@ async function fetchContent(
     }
     // Non-Graph error (network etc.) — generic, no secrets.
     throw new Error("Live Meta sync failed due to an unexpected error.");
+  }
+}
+
+/**
+ * V1.38.1 — Instagram content read through the injectable transport. Provider HTTP only
+ * (never inside a tenant tx). Classifies any Graph failure into a truthful permission
+ * state AND the run-control error the outer handler already understands.
+ */
+async function fetchInstagramViaTransport(
+  account: AccountRow,
+  token: string,
+  injected?: MetaContentTransport,
+): Promise<FetchResult> {
+  const igBusinessId = account.igBusinessId ?? account.externalId;
+  if (!igBusinessId) {
+    // No canonical IG id on the account — the asset is not linked (real signal, not a guess).
+    throw new PermissionRequiredError(
+      "This account has no linked Instagram Professional account — reconnect required.",
+      "instagram_not_linked",
+    );
+  }
+  const transport = injected ?? new GraphMetaContentTransport();
+  try {
+    const res = await fetchInstagramContent(igBusinessId, token, transport, {
+      after: account.lastCursor ?? undefined,
+    });
+    return { items: res.items, cursor: res.cursor, permissionState: "healthy", truncated: res.truncated };
+  } catch (err) {
+    const state = classifyIgPermissionState(err);
+    switch (state) {
+      case "token_expired":
+        throw new ReconnectRequiredError("Instagram access token expired or invalid — reconnect required.", state);
+      case "rate_limited":
+        throw new RateLimitedError("Instagram API rate limit reached — the sync will retry later.", state);
+      case "api_unavailable":
+        throw new ApiUnavailableError("Instagram API is temporarily unavailable — the sync will retry later.", state);
+      case "account_not_discoverable":
+        throw new PermissionRequiredError("The Instagram account is no longer discoverable — reconnect required.", state);
+      default:
+        // permission_missing / business_verification_required / etc. → re-grant/reconnect.
+        throw new PermissionRequiredError("Missing Instagram permissions for this read — reconnect and re-grant access.", state);
+    }
   }
 }
 
@@ -717,7 +812,10 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
   // webhook_events is a GLOBAL table (no tenant RLS by design — provider webhooks
   // arrive before tenant resolution). It is read/updated with the system client via
   // the narrow discovery/system layer; tenant is resolved from the matched account.
-  const events = await listUnprocessedFacebookWebhooks(50);
+  // V1.38.1 — reads BOTH Meta platforms and only SIGNATURE-VALID events (forged/unsigned
+  // events are stored for audit but never processed). Replay is already rejected at
+  // ingest by the unique dedupeKey, so each logical delivery is processed at most once.
+  const events = await listUnprocessedMetaWebhooks(50);
 
   let matched = 0;
   let ignored = 0;
@@ -784,6 +882,14 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
 }
 
 export { mockMetaFetch } from "./mock-fetch";
+export {
+  fetchInstagramContent,
+  classifyIgPermissionState,
+  IG_MAX_MEDIA_PAGES,
+  IG_MAX_COMMENT_PAGES_PER_MEDIA,
+  type IgPermissionState,
+  type IgIngestResult,
+} from "./instagram-content";
 export * from "./live-actions";
 export * from "./facebook-connector";
 export * from "./instagram-connector";

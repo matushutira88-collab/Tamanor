@@ -20,5 +20,6 @@ export * from "./meta/oauth";
 export * from "./meta/graph-client";
 export * from "./meta/discovery";
 export * from "./meta/connector-transport";
+export * from "./meta/content-transport";
 // Controlled Facebook comment hide (the only live action; default off)
 export * from "./meta/facebook-hide";

@@ -1,7 +1,16 @@
 import { type NextRequest } from "next/server";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { getMetaConfig } from "@guardora/config";
 import { Platform, recordWebhookEvent } from "@guardora/db";
+
+/**
+ * Route a Meta webhook `object` to the connector platform. `instagram` events flow
+ * through the SAME unified connector as `page` events (V1.38). Unknown objects default
+ * to facebook_page (the Meta ingestion table only holds Meta platforms here).
+ */
+function platformForObject(object: string | null): Platform {
+  return object === "instagram" ? Platform.instagram_business : Platform.facebook_page;
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,11 +63,8 @@ function verifySignature(
 export async function POST(req: NextRequest) {
   const raw = await req.text();
   const meta = getMetaConfig();
-  const signatureValid = verifySignature(
-    raw,
-    req.headers.get("x-hub-signature-256"),
-    meta.appSecret,
-  );
+  const sigHeader = req.headers.get("x-hub-signature-256");
+  const signatureValid = verifySignature(raw, sigHeader, meta.appSecret);
 
   let payload: unknown;
   let eventType: string | null = null;
@@ -70,14 +76,22 @@ export async function POST(req: NextRequest) {
     payload = { unparsed: true };
   }
 
-  // System ingestion into the GLOBAL webhook_events table (pre-tenant). The worker
-  // later resolves the trusted tenant per account and processes under RLS.
+  // V1.38.1 — replay/dedup key: the signature over the raw body (identical redelivery →
+  // identical key → the unique index rejects the replay). Fall back to a body hash when
+  // unsigned, so identical unsigned replays still collapse to one row.
+  const dedupeKey = sigHeader ?? `body:${createHash("sha256").update(raw).digest("hex")}`;
+
+  // System ingestion into the GLOBAL webhook_events table (pre-tenant). The `object`
+  // routes IG vs Page onto the SAME unified connector. The worker later resolves the
+  // TRUSTED tenant per account (never from this payload) and processes under RLS. Only
+  // signature-valid events are ever processed downstream.
   await recordWebhookEvent({
-    platform: Platform.facebook_page,
+    platform: platformForObject(eventType),
     eventType,
     signatureValid,
     payload: payload as never,
     processed: false,
+    dedupeKey,
   });
 
   return new Response("EVENT_RECEIVED", { status: 200 });

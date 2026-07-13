@@ -356,6 +356,12 @@ model ConnectedAccount {
   // pattern as the V1.37.5B history group. IG survives a Page removal with a null link.
   parentAccountId String?
 
+  // V1.38.1 — last truthful Instagram content permission/availability state. One of
+  // healthy|permission_missing|app_review_pending|business_verification_required|
+  // token_expired|instagram_not_linked|professional_account_required|
+  // account_not_discoverable|api_unavailable|rate_limited. Set ONLY from a real signal.
+  contentPermissionState String?
+
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand        Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
   contentItems ContentItem[]
@@ -461,6 +467,9 @@ model WebhookEvent {
   // Whether the event mapped to a connected account (false = ignored/unmatched).
   matched        Boolean  @default(false)
   error          String?
+  // V1.38.1 — stable dedup/replay key (the X-Hub-Signature-256 over the raw body).
+  // A redelivered event has the same signature → the unique index rejects the replay.
+  dedupeKey      String?  @unique
   receivedAt     DateTime @default(now())
 
   @@index([platform, receivedAt])
