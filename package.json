@@ -20,6 +20,8 @@
     "db:seed": "pnpm --filter @guardora/db seed",
     "db:reconnect-check": "pnpm --filter @guardora/db reconnect-check",
     "i18n-check": "pnpm --filter @guardora/worker exec tsx ../web/scripts/i18n-check.ts",
+    "seo:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/seo-discoverability.test.ts",
+    "seo-completion:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/discoverability-completion.test.ts",
     "risk:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/classifier.test.ts",
     "intel:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/language.test.ts",
     "providers:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/providers.test.ts",

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Playfair_Display } from "next/font/google";
 import "./globals.css";
+import { JsonLd } from "@/components/json-ld";
+import { organizationLd, websiteLd, softwareApplicationLd } from "@/lib/jsonld";
 
 /** Display serif — high-contrast headings, per the Tamanor brand. */
 const displaySerif = Playfair_Display({
@@ -42,6 +44,10 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
   },
   robots: { index: true, follow: true },
+  alternates: {
+    canonical: "/",
+    types: { "application/atom+xml": "/feed.xml" },
+  },
 };
 
 export default function RootLayout({
@@ -51,7 +57,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={displaySerif.variable}>
-      <body>{children}</body>
+      <body>
+        <JsonLd data={[organizationLd(), websiteLd(), softwareApplicationLd()]} />
+        {children}
+      </body>
     </html>
   );
 }

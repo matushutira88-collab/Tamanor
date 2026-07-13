@@ -19,23 +19,14 @@ const STATS: { value: string; label: string; note: string }[] = [
   { value: "100%", label: "Actions audited", note: "Every automated action is logged in a complete audit trail." },
 ];
 
-const JSON_LD = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "Tamanor",
-  applicationCategory: "BusinessApplication",
-  operatingSystem: "Web",
-  description:
-    "Tamanor — Social Account Firewall. Protect social accounts from spam, scams, harmful comments and repeated risky behavior with AI risk detection, human approval and a full audit log.",
-  url: "https://guardora.ai",
-  offers: { "@type": "Offer", price: "0", priceCurrency: "USD", description: "Free trial" },
-};
+// V1.38.2 — the SoftwareApplication/Organization/WebSite JSON-LD is now emitted once,
+// sitewide, from the root layout (canonical origin tamanor.com), so every locale of the
+// landing page inherits a single consistent entity graph instead of a duplicated block.
 
 export function LandingContent({ dict, locale }: { dict: Dictionary; locale: Locale }) {
   const t = dict;
   return (
     <main className="gu-dark min-h-dvh bg-[var(--color-bg)] text-[var(--color-fg)]">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
       <SiteHeader dict={dict} locale={locale} />
 
       {/* Hero */}

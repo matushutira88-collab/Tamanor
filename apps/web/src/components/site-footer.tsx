@@ -25,12 +25,24 @@ export function SiteFooter({
     {
       title: t.footer.platforms,
       links: [
-        { label: "Facebook", href: "/#platforms" },
-        { label: "Instagram", href: "/#platforms" },
-        { label: "YouTube", href: "/#platforms" },
-        { label: "LinkedIn", href: "/#platforms" },
-        { label: "TikTok", href: "/#platforms" },
-        { label: "Google", href: "/#platforms" },
+        { label: "Facebook", href: "/integrations/facebook" },
+        { label: "Instagram", href: "/integrations/instagram" },
+        { label: "Google Business", href: "/integrations/google-business" },
+        { label: "YouTube", href: "/integrations/youtube" },
+        { label: "LinkedIn", href: "/integrations/linkedin" },
+        { label: "TikTok", href: "/integrations/tiktok" },
+      ],
+    },
+    {
+      // V1.38.2 — internal link graph into the new GEO/knowledge pages.
+      title: "Learn",
+      links: [
+        { label: "Platform & architecture", href: "/platform" },
+        { label: "Features", href: "/features" },
+        { label: "Integrations", href: "/integrations" },
+        { label: "Compare", href: "/compare" },
+        { label: "Documentation", href: "/docs" },
+        { label: "AI discoverability", href: "/ai" },
       ],
     },
     {
@@ -54,7 +66,7 @@ export function SiteFooter({
   return (
     <footer className="border-t border-[var(--color-border)]">
       <div className="mx-auto max-w-7xl px-6 py-14">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(5,1fr)]">
           <div>
             <span className="text-lg font-semibold">Tamanor</span>
             <p className="mt-3 max-w-xs text-sm text-[var(--color-muted)]">{t.footer.tagline}</p>
