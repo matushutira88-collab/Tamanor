@@ -13,6 +13,7 @@ import {
 } from "@guardora/core";
 import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsConfig, getGoogleBusinessConfig } from "@guardora/config";
 import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
+import { ConnectorStatusBadge } from "@/components/dashboard/connector-status-badge";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
@@ -141,9 +142,13 @@ export default async function AccountsPage({
                   <div key={a.id} className="rounded-lg border border-[var(--color-border)] p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{a.externalName ?? PLATFORM_META[a.platform as Platform].label}</span>
-                      <Badge tone={live ? "ok" : "neutral"}>{live ? hdrT.dash.liveAccount : hdrT.dash.demoAccount}</Badge>
                       <Badge>{PLATFORM_META[a.platform as Platform].label}</Badge>
-                      <Badge tone={CONNECTOR_TONE[a.status as keyof typeof CONNECTOR_TONE] ?? "neutral"}>{tEnum(hdrT, "health", a.health)}</Badge>
+                      {/* V1.39B — single truthful connector status (never fake "Live"/"Healthy"). */}
+                      <ConnectorStatusBadge
+                        account={{ platformKey: platformKeyFor(a.platform), status: a.status, health: a.health, connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth, contentPermissionState: a.contentPermissionState, mode: a.mode }}
+                        liveSyncEnabled={meta.liveSync}
+                      />
+                      {!live ? <Badge tone="neutral">{hdrT.dash.demoAccount}</Badge> : null}
                       <Badge tone="neutral">{hdrT.dash.syncModeReadOnly}</Badge>
                       {a.platform === Platform.FacebookPage ? (() => {
                         const cap = hideCapability(a.grantedPermissions);

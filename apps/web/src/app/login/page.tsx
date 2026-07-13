@@ -9,6 +9,37 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage() {
   if (await getSession()) redirect("/dashboard");
 
+  // V1.39 — the dev sign-in picker is fail-closed OFF in production. It lists real
+  // workspace users, and the sign-in action itself is already blocked in production, so
+  // we must not render (or query) it there. Production shows a truthful "not available"
+  // state until real authentication is configured.
+  const devLoginEnabled = process.env.NODE_ENV !== "production";
+
+  if (!devLoginEnabled) {
+    return (
+      <main className="gu-grid flex min-h-dvh items-center justify-center px-6">
+        <div className="w-full max-w-md">
+          <div className="mb-8 flex justify-center">
+            <Logo />
+          </div>
+          <div className="gu-card p-6 text-center">
+            <h1 className="text-lg font-semibold">Sign-in not available yet</h1>
+            <p className="mt-2 text-sm text-[var(--color-muted)]">
+              Tamanor account sign-in is being finalized for this environment. If you are an
+              invited pilot user, please use the link from your invitation or contact us.
+            </p>
+            <a
+              href="/contact"
+              className="mt-6 inline-block rounded-xl bg-[var(--color-brand)] px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)]"
+            >
+              Contact us
+            </a>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   // Dev/mock: list existing users to sign in as (system bootstrap, pre-session).
   // Real auth replaces this.
   const users = await listDevLoginUsers();

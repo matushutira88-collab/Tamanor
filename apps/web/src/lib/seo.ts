@@ -4,7 +4,7 @@ import type { Locale } from "@/i18n";
 /**
  * Build hreflang + canonical alternates for a marketing route that exists in
  * EN/SK/DE. `enPath` is the English path ("/" or "/case-studies"); resolved
- * against the root `metadataBase` (https://guardora.ai).
+ * against the root `metadataBase` (https://tamanor.com).
  */
 export function marketingAlternates(enPath: string, current: Locale): Metadata["alternates"] {
   const suffix = enPath === "/" ? "" : enPath;

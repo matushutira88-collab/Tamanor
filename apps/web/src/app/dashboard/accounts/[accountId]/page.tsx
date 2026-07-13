@@ -10,11 +10,13 @@ import {
   connectorNeedsReconnect,
   modeAllowsSync,
   modeAllowsActions,
+  platformKeyFor,
 } from "@guardora/core";
 import { getMetaConfig, loadEnv, getAutoSyncConfig, getLiveActionsConfig, getProductionSafetyConfig } from "@guardora/config";
 import { ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Badge, StatCard, Card } from "@/components/dashboard/ui";
 import { SubmitButton } from "@/components/dashboard/submit-button";
+import { ConnectorStatusBadge } from "@/components/dashboard/connector-status-badge";
 import { toggleAccountKillSwitch } from "../../safety-actions";
 import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
@@ -32,12 +34,6 @@ const META_PLATFORMS = new Set<string>([
 export const dynamic = "force-dynamic";
 
 const NOTICE_TONE: Record<string, string> = { ok: "ok", error: "danger" };
-const HEALTH_TONE: Record<string, string> = {
-  healthy: "ok",
-  degraded: "warn",
-  error: "danger",
-  unknown: "neutral",
-};
 const RUN_TONE: Record<string, string> = {
   completed: "ok",
   running: "brand",
@@ -74,6 +70,7 @@ export default async function AccountDetailPage({
       killSwitch: true,
       connectionStatus: true,
       tokenHealth: true,
+      contentPermissionState: true,
       lastTokenCheckAt: true,
       lastSuccessfulGraphCheckAt: true,
       requiresReconnectReason: true,
@@ -193,10 +190,15 @@ export default async function AccountDetailPage({
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Mode" value={modeInfo?.label ?? mode} hint={modeInfo?.description} />
         <div className="gu-card p-5">
-          <p className="text-xs uppercase tracking-widest text-[var(--color-muted)]">Health</p>
-          <p className="mt-2">
-            <Badge tone={HEALTH_TONE[account.health] ?? "neutral"}>{humanize(account.health)}</Badge>
-          </p>
+          <p className="text-xs uppercase tracking-widest text-[var(--color-muted)]">Status</p>
+          <div className="mt-2">
+            {/* V1.39B — same truthful model as the Accounts list (never fake Live/Healthy). */}
+            <ConnectorStatusBadge
+              account={{ platformKey: platformKeyFor(account.platform), status: account.status, health: account.health, connectionStatus: account.connectionStatus, tokenHealth: account.tokenHealth, contentPermissionState: account.contentPermissionState, mode: account.mode }}
+              liveSyncEnabled={meta.liveSync}
+              withDescription
+            />
+          </div>
           <p className="mt-2 text-xs text-[var(--color-muted)]">
             Actions {modeAllowsActions(mode) ? "enabled" : "disabled"} · Sync {canSync ? "allowed" : "off"}
           </p>
@@ -313,12 +315,9 @@ export default async function AccountDetailPage({
           </div>
           {manage && canSync ? (
             <form action={runSyncAction.bind(null, account.id)}>
-              <button
-                type="submit"
-                className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-brand-strong)] hover:text-white"
-              >
+              <SubmitButton pendingLabel="Syncing…">
                 {t.dash.runReadOnlySync}{mode === ConnectorMode.Placeholder ? ` ${t.dash.mockSuffix}` : ""}
-              </button>
+              </SubmitButton>
             </form>
           ) : (
             <span className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-muted)]">

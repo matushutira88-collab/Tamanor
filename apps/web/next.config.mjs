@@ -22,6 +22,23 @@ const nextConfig = {
     ];
     return [{ source: "/:path*", headers: security }];
   },
+  // V1.38.3 — canonical-host redirects. Path-preserving, permanent. These fire ONLY when
+  // the named host actually routes to this deployment, so they are safe no-ops otherwise
+  // and cannot create a loop (source host always differs from the apex destination host).
+  async redirects() {
+    const toApex = (host) => ({
+      source: "/:path*",
+      has: [{ type: "host", value: host }],
+      destination: "https://tamanor.com/:path*",
+      permanent: true,
+    });
+    return [
+      toApex("www.tamanor.com"),
+      // Legacy brand domain → Tamanor, preserving path (only if guardora.ai points here).
+      toApex("guardora.ai"),
+      toApex("www.guardora.ai"),
+    ];
+  },
 };
 
 export default nextConfig;

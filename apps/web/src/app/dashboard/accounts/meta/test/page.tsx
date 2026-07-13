@@ -136,8 +136,8 @@ export default async function MetaTestPage() {
     },
     {
       label: "Email contacts",
-      state: "pass",
-      detail: "hello@ · security@ · privacy@ guardora.ai",
+      state: "info",
+      detail: "Configure hello@ / security@ / privacy@ tamanor.com before production",
     },
     {
       label: "Backups & incident response",

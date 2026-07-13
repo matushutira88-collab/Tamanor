@@ -61,3 +61,10 @@ build
 coverage
 .DS_Store
 *.log
+
+# V1.39B — Playwright browser E2E artifacts (never commit)
+test-results/
+playwright-report/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/e2e/.auth/
