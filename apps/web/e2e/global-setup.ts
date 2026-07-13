@@ -2,10 +2,11 @@ import { request } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 /**
- * V1.39C — stable authenticated fixture. Waits for the production build to be ready, then
- * bootstraps ONE real session via the fail-closed `/api/e2e/login` seam and saves it as a
- * storageState the authenticated projects reuse. No credentials or raw tokens are written
- * to the repo (state.json is gitignored).
+ * V1.39C / V1.42B — stable authenticated fixtures. Waits for the production build to be ready,
+ * then bootstraps real sessions via the fail-closed `/api/e2e/login` seam: an owner storageState
+ * (state.json, reused by every authenticated project) and a least-privileged viewer storageState
+ * (state.viewer.json, used to prove viewers cannot mutate). No credentials or raw tokens are
+ * written to the repo (the .auth dir is gitignored).
  */
 const PORT = Number(process.env.E2E_PORT ?? 3220);
 const baseURL = `http://localhost:${PORT}`;
@@ -29,4 +30,11 @@ export default async function globalSetup() {
   if (!res.ok()) throw new Error(`e2e auth bootstrap failed: HTTP ${res.status()}`);
   await ctx.storageState({ path: "e2e/.auth/state.json" });
   await ctx.dispose();
+
+  // Viewer session (separate cookie jar) for the "viewer cannot mutate" proof.
+  const vctx = await request.newContext({ baseURL });
+  const vres = await vctx.post("/api/e2e/login?role=viewer");
+  if (!vres.ok()) throw new Error(`e2e viewer bootstrap failed: HTTP ${vres.status()}`);
+  await vctx.storageState({ path: "e2e/.auth/state.viewer.json" });
+  await vctx.dispose();
 }

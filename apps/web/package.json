@@ -9,7 +9,7 @@
     "start": "dotenv -e ../../.env -- next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf .next dist *.tsbuildinfo"
+    "clean": "rm -rf .next .next-e2e dist *.tsbuildinfo"
   },
   "dependencies": {
     "@guardora/ai": "workspace:*",
@@ -23,8 +23,6 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.12.1",
-    "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",

@@ -104,6 +104,41 @@ export function bulkEligibleActions(platform: PlatformKey): InboxAction[] {
   return (["read", "archive", "label", "approve_ai"] as InboxAction[]).filter((a) => available.has(a));
 }
 
+/**
+ * V1.42 — the persisted, provider-neutral internal actions (Tamanor-side workflow). These are
+ * ALWAYS available regardless of connector health (they never touch a platform).
+ */
+export type InboxInternalAction =
+  | "mark_read" | "mark_unread"
+  | "archive" | "unarchive"
+  | "add_label" | "remove_label"
+  | "assign" | "unassign"
+  | "add_note"
+  | "set_priority" | "set_workflow_status";
+
+/** Provider WRITE actions — never bulk, always capability + health + approval gated. */
+export const PROVIDER_WRITE_ACTIONS: readonly InboxAction[] = ["hide", "reply", "delete", "ban"];
+
+/** Internal actions that are safe to run as a BULK operation (note is NOT bulk). */
+export const INBOX_BULK_ALLOWED: readonly InboxInternalAction[] = [
+  "mark_read", "mark_unread", "archive", "unarchive", "add_label", "remove_label", "assign", "unassign", "set_priority", "set_workflow_status",
+];
+
+/** True only for an internal action that is bulk-safe. Provider writes are NEVER bulk-eligible. */
+export function isInboxBulkAllowed(action: string): action is InboxInternalAction {
+  return (INBOX_BULK_ALLOWED as readonly string[]).includes(action) && !(PROVIDER_WRITE_ACTIONS as readonly string[]).includes(action);
+}
+
+/**
+ * Server-side re-verification for a PROVIDER WRITE action. The UI hides unavailable actions, but
+ * the server must ALSO reject them: capability (per platform) + connector health must both permit.
+ * Google reviews (no write capability) are always rejected here.
+ */
+export function assertProviderWriteAllowed(action: InboxAction, platform: PlatformKey, opts: { connectorHealthy?: boolean } = {}): boolean {
+  if (!(PROVIDER_WRITE_ACTIONS as readonly string[]).includes(action)) return false;
+  return isInboxActionAvailable(action, platform, opts);
+}
+
 // ---------------------------------------------------------------------------
 // I) Connector health — honest, never a fake green state.
 // ---------------------------------------------------------------------------

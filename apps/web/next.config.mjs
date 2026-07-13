@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // V1.42B — allow an isolated build dir (default `.next`). The E2E gate builds/serves into
+  // `.next-e2e` so a concurrent `next dev` server (which writes DEV manifests into `.next`)
+  // can never corrupt the production browser build. No effect on normal dev/build/deploy.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   transpilePackages: [
     "@guardora/core",
     "@guardora/ai",

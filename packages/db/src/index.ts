@@ -84,4 +84,5 @@ export * from "./meta-account";
 export * from "./session";
 export * from "./tenant-db";
 export * from "./repositories";
+export * from "./inbox-repo";
 export * from "./sync-lease";

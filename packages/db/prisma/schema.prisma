@@ -109,6 +109,15 @@ enum Priority {
   urgent
 }
 
+// V1.42 — internal inbox workflow status (Tamanor-side triage; NOT provider moderation state).
+// `resolved` here NEVER implies a provider comment was hidden/deleted/replied.
+enum InboxWorkflowStatus {
+  new
+  in_review
+  action_required
+  resolved
+}
+
 enum RuleCategory {
   blocked_words
   competitor_mentions
@@ -166,11 +175,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
-  proposed    ModerationDecision[] @relation("DecisionProposer")
-  reviewed    ModerationDecision[] @relation("DecisionReviewer")
-  auditLogs   AuditLog[]
-  sessions    UserSession[]
+  memberships        Membership[]
+  proposed           ModerationDecision[] @relation("DecisionProposer")
+  reviewed           ModerationDecision[] @relation("DecisionReviewer")
+  auditLogs          AuditLog[]
+  sessions           UserSession[]
+  // V1.42 — inbox assignment + note authorship (both SetNull on user delete).
+  assignedInboxItems ReputationItem[]     @relation("InboxAssignee")
+  inboxNotes         InboxNote[]          @relation("InboxNoteAuthor")
 
   @@map("users")
 }
@@ -216,6 +228,7 @@ model Tenant {
   auditLogs         AuditLog[]
   reportSnapshots   ReportSnapshot[]
   metaOnboarding    MetaOnboardingSession[]
+  inboxLabels       InboxLabel[]
   sessions          UserSession[]
 
   @@map("tenants")
@@ -519,6 +532,13 @@ model ReputationItem {
   priority         Priority         @default(normal)
   requiresApproval Boolean          @default(false)
 
+  // V1.42 — Tamanor-side inbox workflow state (persisted, tenant-scoped, provider-neutral).
+  // These are NEVER overwritten by provider ingest (ingest only touches provider content fields).
+  isRead              Boolean             @default(false)
+  archivedAt          DateTime?
+  assignedToUserId    String?
+  inboxWorkflowStatus InboxWorkflowStatus @default(new)
+
   // Embedded risk assessment (mirrors core ReputationRisk)
   riskLevel      RiskLevel @default(none)
   riskConfidence Float     @default(0)
@@ -556,6 +576,10 @@ model ReputationItem {
   contentItem   ContentItem           @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
   decisions     ModerationDecision[]
   incidentLinks IncidentRelatedItem[]
+  // V1.42 — assignment (SetNull on user delete) + inbox labels/notes (composite tenant-safe FKs).
+  assignedTo    User?                 @relation("InboxAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  inboxLabels   InboxItemLabel[]
+  inboxNotes    InboxNote[]
 
   // V1.37.5 — enables composite (id, tenantId) foreign keys so a child can never
   // reference a ReputationItem belonging to a different tenant.
@@ -563,7 +587,75 @@ model ReputationItem {
   @@index([tenantId])
   @@index([brandId, status])
   @@index([riskLevel])
+  // V1.42 — inbox workflow query indexes.
+  @@index([tenantId, isRead])
+  @@index([tenantId, archivedAt])
+  @@index([tenantId, assignedToUserId])
+  @@index([tenantId, priority])
+  @@index([tenantId, inboxWorkflowStatus])
   @@map("reputation_items")
+}
+
+// V1.42 — tenant-scoped inbox label. Unique normalized name per tenant. Deleting a label
+// removes its join rows (Cascade) but leaves items intact.
+model InboxLabel {
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String
+  normalizedName  String
+  colorKey        String   @default("neutral")
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  InboxItemLabel[]
+
+  @@unique([tenantId, normalizedName])
+  @@unique([id, tenantId]) // enables the composite tenant-safe FK from the join table
+  @@index([tenantId])
+  @@map("inbox_labels")
+}
+
+// V1.42 — item↔label join. Composite (childId, tenantId)→(parent id, tenantId) FKs make a
+// cross-tenant label assignment impossible at the DB level (same pattern as IncidentRelatedItem).
+// No direct Tenant relation (tenantId is used by the composite FKs); rows are cleaned up via
+// the parent Cascade. Deleting an item or a label removes the join row.
+model InboxItemLabel {
+  tenantId         String
+  reputationItemId String
+  labelId          String
+  createdByUserId  String?
+  createdAt        DateTime @default(now())
+
+  reputationItem ReputationItem @relation(fields: [reputationItemId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  label          InboxLabel     @relation(fields: [labelId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@id([reputationItemId, labelId])
+  @@index([tenantId])
+  @@index([labelId, tenantId])
+  @@map("inbox_item_labels")
+}
+
+// V1.42 — internal note on an inbox item. Composite tenant-safe FK to the item; author is a
+// global User referenced with SetNull (a deleted user leaves the note with a null author, so
+// history/audit value is preserved). Note bodies are plain text and never sent to a provider
+// or logged in ops events.
+model InboxNote {
+  id               String    @id @default(cuid())
+  tenantId         String
+  reputationItemId String
+  authorUserId     String?
+  body             String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  reputationItem ReputationItem @relation(fields: [reputationItemId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  author         User?          @relation("InboxNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, reputationItemId])
+  @@map("inbox_notes")
 }
 
 /// Human feedback on a classification, scoped to a tenant+brand. Brand-local

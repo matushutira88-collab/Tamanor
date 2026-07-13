@@ -25,7 +25,7 @@
     "deploy-readiness:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/deploy-readiness.test.ts",
     "production-readiness:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/production-readiness.test.ts",
     "connector-render:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/connector-render.test.tsx",
-    "e2e": "pnpm --filter @guardora/web build && pnpm --filter @guardora/web exec playwright test",
+    "e2e": "NEXT_DIST_DIR=.next-e2e pnpm --filter @guardora/web build && pnpm --filter @guardora/web exec playwright test",
     "e2e-seam:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/e2e-seam.test.ts",
     "meta-launch:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/meta-launch.test.ts",
     "google-launch:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/google-launch.test.ts",
@@ -74,6 +74,9 @@
     "sync-verdict:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/sync-verdict.test.ts",
     "referential-integrity:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/referential-integrity.test.ts",
     "meta-connector:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/meta-connector.test.ts",
+    "inbox-persistence:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/inbox-persistence.test.ts",
+    "inbox-engine:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/inbox-engine.test.ts",
+    "inbox-ux:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/inbox-ux.test.tsx",
     "instagram-content:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/instagram-content.test.ts",
     "worker-rls:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/worker-rls.test.ts",
     "worker-tx-boundary:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/worker-tx-boundary.test.ts",
@@ -100,6 +103,8 @@
     "clean": "pnpm -r clean"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "1.61.1",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0"
   }

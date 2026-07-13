@@ -8,6 +8,7 @@
  * cross-tenant, narrow, and grep-auditable — never used from tenant request code.
  */
 import type { Prisma, ConnectorStatus } from "@prisma/client";
+import { Role } from "@prisma/client";
 import { withTenantDb, type TenantTx } from "./tenant-db";
 import { systemDb } from "./index";
 
@@ -242,6 +243,23 @@ export function listDevLoginUsers() {
     include: { memberships: { include: { tenant: true } } },
     orderBy: { createdAt: "asc" },
   });
+}
+
+/**
+ * V1.42B — TEST-ONLY: idempotently ensure a VIEWER-role member exists in `tenantId`, returning
+ * its user id. Callers MUST gate this behind the fail-closed E2E seam; it exists only so the
+ * browser suite can prove a viewer cannot mutate the inbox. System-scope (pre-session bootstrap),
+ * mirroring `listDevLoginUsers`. Creates no privileged access — a viewer is the least-privileged role.
+ */
+export async function ensureE2EViewerUser(tenantId: string): Promise<{ id: string }> {
+  const email = "e2e-viewer@tamanor.test";
+  const user = await systemDb.user.upsert({ where: { email }, create: { email, name: "E2E Viewer" }, update: {} });
+  await systemDb.membership.upsert({
+    where: { userId_tenantId: { userId: user.id, tenantId } },
+    create: { userId: user.id, tenantId, role: Role.viewer },
+    update: { role: Role.viewer },
+  });
+  return { id: user.id };
 }
 
 // ------------------------- Global `Lead` table (no tenant) -------------------------

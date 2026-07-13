@@ -68,3 +68,6 @@ playwright-report/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/e2e/.auth/
+
+# V1.42B — isolated E2E build dir
+.next-e2e/
