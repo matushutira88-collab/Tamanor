@@ -27,6 +27,7 @@
     "connector-render:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/connector-render.test.tsx",
     "e2e": "pnpm --filter @guardora/web build && pnpm --filter @guardora/web exec playwright test",
     "e2e-seam:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/e2e-seam.test.ts",
+    "meta-launch:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/meta-launch.test.ts",
     "indexnow:submit": "pnpm --filter @guardora/worker exec tsx ../web/scripts/indexnow-submit.ts",
     "risk:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/classifier.test.ts",
     "intel:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/language.test.ts",
