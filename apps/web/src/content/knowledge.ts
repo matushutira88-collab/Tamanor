@@ -37,6 +37,20 @@ export interface KnowledgeEntry {
   platformKey?: string;
 }
 
+/**
+ * Localized overlay for a knowledge entry. Any field left undefined falls back
+ * to the English source. Overlays live in per-locale files (knowledge.sk.ts,
+ * knowledge.de.ts) keyed by slug and are merged by `localizeEntry`.
+ */
+export interface KnowledgeEntryL10n {
+  title?: string;
+  metaTitle?: string;
+  summary?: string;
+  keywords?: string[];
+  sections?: KnowledgeSection[];
+  faqs?: KnowledgeFaq[];
+}
+
 /** Route base path for a collection. */
 export function collectionBasePath(c: KnowledgeCollection): string {
   return `/${c}`;
@@ -1298,6 +1312,11 @@ export function entriesIn(collection: KnowledgeCollection): KnowledgeEntry[] {
 /** Resolve an entry by collection + slug. */
 export function getEntry(collection: KnowledgeCollection, slug: string): KnowledgeEntry | undefined {
   return BY_SLUG.get(`${collection}/${slug}`);
+}
+
+/** Resolve an entry by slug (collection-agnostic). */
+export function getEntryBySlug(slug: string): KnowledgeEntry | undefined {
+  return BY_SLUG_ANY.get(slug);
 }
 
 /** Resolve a related slug (collection-agnostic) to its canonical path. */
