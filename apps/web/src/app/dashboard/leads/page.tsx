@@ -3,7 +3,8 @@ import { LeadStatus, platformListLeads, platformGroupLeadsByStatus } from "@guar
 import { PageHeader, Badge, EmptyState, Tabs, Card } from "@/components/dashboard/ui";
 import { requirePlatformCapabilityOrNotFound } from "@/server/platform-auth";
 import { navItem } from "@/lib/nav";
-import { getT } from "@/i18n/server";
+import { getTL } from "@/i18n/server";
+import type { Locale } from "@/i18n";
 import { humanize, formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,68 @@ const STATUS_TONE: Record<string, string> = {
   closed: "neutral",
 };
 
+const COPY: Record<Locale, {
+  description: string;
+  tabAll: string;
+  status: Record<string, string>;
+  source: Record<string, string>;
+  emptyTitle: string;
+  emptyBody: string;
+  emptyHint: string;
+  colName: string;
+  colCompany: string;
+  colSource: string;
+  colStatus: string;
+  colReceived: string;
+  showing: (n: number) => string;
+}> = {
+  en: {
+    description: "Platform-level prospect administration — demo requests and contact messages across the whole platform. Restricted to platform staff.",
+    tabAll: "All",
+    status: { new: "New", contacted: "Contacted", closed: "Closed" },
+    source: { book_demo: "Book Demo", contact: "Contact" },
+    emptyTitle: "No leads yet",
+    emptyBody: "Demo requests from /book-demo and messages from /contact appear here as soon as they're submitted.",
+    emptyHint: "Prospect submissions are stored platform-wide (not tenant-scoped) — no emails are sent.",
+    colName: "Name",
+    colCompany: "Company",
+    colSource: "Source",
+    colStatus: "Status",
+    colReceived: "Received",
+    showing: (n) => `Showing ${n} lead(s) · max 200.`,
+  },
+  sk: {
+    description: "Správa potenciálnych zákazníkov na úrovni platformy — žiadosti o demo a kontaktné správy naprieč celou platformou. Prístup majú len pracovníci platformy.",
+    tabAll: "Všetky",
+    status: { new: "Nový", contacted: "Kontaktovaný", closed: "Uzavretý" },
+    source: { book_demo: "Žiadosť o demo", contact: "Kontakt" },
+    emptyTitle: "Zatiaľ žiadne leady",
+    emptyBody: "Žiadosti o demo z /book-demo a správy z /contact sa tu zobrazia hneď po odoslaní.",
+    emptyHint: "Odoslania potenciálnych zákazníkov sa ukladajú na úrovni celej platformy (nie sú viazané na nájomcu) — neodosielajú sa žiadne e-maily.",
+    colName: "Meno",
+    colCompany: "Spoločnosť",
+    colSource: "Zdroj",
+    colStatus: "Stav",
+    colReceived: "Prijaté",
+    showing: (n) => `Zobrazuje sa ${n} leadov · max 200.`,
+  },
+  de: {
+    description: "Verwaltung von Interessenten auf Plattformebene — Demo-Anfragen und Kontaktnachrichten über die gesamte Plattform hinweg. Nur für Plattform-Mitarbeiter.",
+    tabAll: "Alle",
+    status: { new: "Neu", contacted: "Kontaktiert", closed: "Geschlossen" },
+    source: { book_demo: "Demo-Anfrage", contact: "Kontakt" },
+    emptyTitle: "Noch keine Leads",
+    emptyBody: "Demo-Anfragen von /book-demo und Nachrichten von /contact erscheinen hier, sobald sie übermittelt werden.",
+    emptyHint: "Interessenten-Übermittlungen werden plattformweit gespeichert (nicht mandantenbezogen) — es werden keine E-Mails versendet.",
+    colName: "Name",
+    colCompany: "Unternehmen",
+    colSource: "Quelle",
+    colStatus: "Status",
+    colReceived: "Empfangen",
+    showing: (n) => `${n} Lead(s) angezeigt · max. 200.`,
+  },
+};
+
 export default async function LeadsPage({
   searchParams,
 }: {
@@ -23,7 +86,8 @@ export default async function LeadsPage({
   // Platform boundary FIRST — fail-closed 404 before any lead query runs. Ordinary tenant users
   // (incl. Owner/Admin) never reach the data below.
   const { userId } = await requirePlatformCapabilityOrNotFound("leads:read");
-  const hdrT = await getT();
+  const { t: hdrT, locale } = await getTL();
+  const c = COPY[locale];
 
   const sp = await searchParams;
   const status =
@@ -40,31 +104,31 @@ export default async function LeadsPage({
   const count = new Map(groups.map((g) => [g.status, g._count as unknown as number]));
   const total = [...count.values()].reduce((a, b) => a + b, 0);
   const tabs = [
-    { key: "", label: "All", href: "/dashboard/leads", count: total },
-    { key: LeadStatus.new, label: "New", href: `/dashboard/leads?status=${LeadStatus.new}`, count: count.get(LeadStatus.new) ?? 0 },
-    { key: LeadStatus.contacted, label: "Contacted", href: `/dashboard/leads?status=${LeadStatus.contacted}`, count: count.get(LeadStatus.contacted) ?? 0 },
-    { key: LeadStatus.closed, label: "Closed", href: `/dashboard/leads?status=${LeadStatus.closed}`, count: count.get(LeadStatus.closed) ?? 0 },
+    { key: "", label: c.tabAll, href: "/dashboard/leads", count: total },
+    { key: LeadStatus.new, label: c.status[LeadStatus.new] ?? humanize(LeadStatus.new), href: `/dashboard/leads?status=${LeadStatus.new}`, count: count.get(LeadStatus.new) ?? 0 },
+    { key: LeadStatus.contacted, label: c.status[LeadStatus.contacted] ?? humanize(LeadStatus.contacted), href: `/dashboard/leads?status=${LeadStatus.contacted}`, count: count.get(LeadStatus.contacted) ?? 0 },
+    { key: LeadStatus.closed, label: c.status[LeadStatus.closed] ?? humanize(LeadStatus.closed), href: `/dashboard/leads?status=${LeadStatus.closed}`, count: count.get(LeadStatus.closed) ?? 0 },
   ];
 
   return (
     <>
-      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description="Platform-level prospect administration — demo requests and contact messages across the whole platform. Restricted to platform staff." />
+      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={c.description} />
       <Tabs active={status ?? ""} tabs={tabs} />
 
       {leads.length === 0 ? (
         <EmptyState
-          title="No leads yet"
-          body="Demo requests from /book-demo and messages from /contact appear here as soon as they're submitted."
-          hint="Prospect submissions are stored platform-wide (not tenant-scoped) — no emails are sent."
+          title={c.emptyTitle}
+          body={c.emptyBody}
+          hint={c.emptyHint}
         />
       ) : (
         <Card className="!p-0">
           <div className="grid grid-cols-[1.4fr_1.1fr_0.8fr_0.8fr_0.9fr] gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
-            <span>Name</span>
-            <span>Company</span>
-            <span>Source</span>
-            <span>Status</span>
-            <span>Received</span>
+            <span>{c.colName}</span>
+            <span>{c.colCompany}</span>
+            <span>{c.colSource}</span>
+            <span>{c.colStatus}</span>
+            <span>{c.colReceived}</span>
           </div>
           {leads.map((l) => (
             <Link
@@ -77,14 +141,14 @@ export default async function LeadsPage({
                 <span className="block truncate text-xs text-[var(--color-muted)]">{l.email}</span>
               </span>
               <span className="truncate text-[var(--color-muted)]">{l.company ?? "—"}</span>
-              <span><Badge tone="neutral">{humanize(l.source)}</Badge></span>
-              <span><Badge tone={STATUS_TONE[l.status] ?? "neutral"}>{humanize(l.status)}</Badge></span>
+              <span><Badge tone="neutral">{c.source[l.source] ?? humanize(l.source)}</Badge></span>
+              <span><Badge tone={STATUS_TONE[l.status] ?? "neutral"}>{c.status[l.status] ?? humanize(l.status)}</Badge></span>
               <span className="text-xs text-[var(--color-muted)]">{formatDate(l.createdAt)}</span>
             </Link>
           ))}
         </Card>
       )}
-      <p className="mt-3 text-xs text-[var(--color-muted)]">Showing {leads.length} lead(s) · max 200.</p>
+      <p className="mt-3 text-xs text-[var(--color-muted)]">{c.showing(leads.length)}</p>
     </>
   );
 }
