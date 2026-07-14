@@ -2,6 +2,7 @@ import { PageHeader, Card, SectionHeader, Badge, PrimaryButton, SecondaryButton 
 import { requireSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
+import { formatNumber } from "@/lib/format";
 import { getT } from "@/i18n/server";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export default async function BillingPage() {
           <div className="mt-4">
             <div className="mb-1.5 flex items-center justify-between text-sm">
               <span className="text-[var(--color-muted)]">{hdrT.dash.itemsProcessed}</span>
-              <span className="font-medium">{used.toLocaleString()} / {TRIAL_LIMIT.toLocaleString()}</span>
+              <span className="font-medium">{formatNumber(used)} / {formatNumber(TRIAL_LIMIT)}</span>
             </div>
             <div className="h-2.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]">
               <div className="h-full rounded-full bg-[var(--color-brand)]" style={{ width: `${pct}%` }} />
@@ -51,7 +52,7 @@ export default async function BillingPage() {
           <SectionHeader title={hdrT.dash.usageThisPeriod} />
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: hdrT.dash.itemsCount, value: used.toLocaleString() },
+              { label: hdrT.dash.itemsCount, value: formatNumber(used) },
               { label: hdrT.dash.brandsCount, value: "—" },
               { label: hdrT.dash.accountsCount, value: "—" },
             ].map((s) => (

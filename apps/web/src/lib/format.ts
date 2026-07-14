@@ -1,3 +1,14 @@
+/**
+ * Deterministic number formatting shared by server and client. Uses a FIXED locale (never the
+ * runtime default `value.toLocaleString()`), so the SSR output equals the first client render —
+ * this is what prevents the locale-dependent grouping hydration mismatch (e.g. "10 038" vs
+ * "10,038"). Accepts bigint (usage cost micros are bigint).
+ */
+const NUMBER_FMT = new Intl.NumberFormat("en-US");
+export function formatNumber(value: number | bigint, locale = "en-US"): string {
+  return locale === "en-US" ? NUMBER_FMT.format(value) : new Intl.NumberFormat(locale).format(value);
+}
+
 /** Deterministic date formatting (UTC) — safe for server rendering. */
 const DATE_FMT = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",

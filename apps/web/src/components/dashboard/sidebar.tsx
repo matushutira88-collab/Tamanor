@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/logo";
 import { DASHBOARD_NAV } from "@/lib/nav";
+import { formatNumber } from "@/lib/format";
 import { NavIconGlyph } from "./nav-icons";
 import { signOut } from "@/server/session-actions";
 
@@ -102,7 +103,7 @@ export function Sidebar({
             <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--color-muted)]">
               <span>{s.itemsProcessed ?? "Items processed"}</span>
               <span className="font-medium text-[var(--color-fg)]">
-                {trialUsed.toLocaleString()} / {trialLimit.toLocaleString()}
+                {formatNumber(trialUsed)} / {formatNumber(trialLimit)}
               </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]">

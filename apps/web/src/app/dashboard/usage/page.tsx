@@ -2,6 +2,7 @@ import { requireSession } from "@/server/auth";
 import { withTenant, getUsageSummary, getUsageDiagnostic, type UsageStatus } from "@guardora/db";
 import { getPaidAiFuseConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
+import { formatNumber } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +52,8 @@ export default async function UsagePage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <Meter testid="usage-basic" label="Basic AI checks" used={String(summary.basic.used)} limit={summary.basic.limit === null ? "∞" : String(summary.basic.limit)} percent={summary.basic.percent} />
-          <Meter testid="usage-premium-calls" label="Advanced AI analyses" used={String(summary.premiumCalls.used)} limit={summary.premiumCalls.limit === null ? "∞" : String(summary.premiumCalls.limit)} percent={summary.premiumCalls.percent} />
+          <Meter testid="usage-basic" label="Basic AI checks" used={formatNumber(summary.basic.used)} limit={summary.basic.limit === null ? "∞" : formatNumber(summary.basic.limit)} percent={summary.basic.percent} />
+          <Meter testid="usage-premium-calls" label="Advanced AI analyses" used={formatNumber(summary.premiumCalls.used)} limit={summary.premiumCalls.limit === null ? "∞" : formatNumber(summary.premiumCalls.limit)} percent={summary.premiumCalls.percent} />
           <Meter testid="usage-premium-cost" label="Advanced AI budget" used={euros(summary.premiumCost.usedMicros)} limit={summary.premiumCost.limitMicros === null ? "∞" : euros(summary.premiumCost.limitMicros)} percent={summary.premiumCost.percent} />
         </div>
 

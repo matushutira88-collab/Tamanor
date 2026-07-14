@@ -70,6 +70,21 @@ test.describe("usage card", () => {
     expect(text ?? "").not.toMatch(/postgres:\/\/|sk_live|api[_-]?key|password|Bearer /i);
   });
 
+  test("dashboard renders with NO hydration mismatch (locale number formatting)", async ({ page }, info) => {
+    test.skip(!isDesktop(info.project.name), "desktop-only");
+    // The sidebar trial counter ("Items processed <n> / 500") and the usage meters format numbers;
+    // a locale-dependent formatter would log React's "Hydration failed …" to the console.
+    const errors: string[] = [];
+    page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+    page.on("pageerror", (e) => errors.push(String(e)));
+    await seed(page, "80");
+    await page.goto("/dashboard/usage");
+    await expect(page.getByTestId("usage-card")).toBeVisible();
+    await page.waitForTimeout(300);
+    const hydration = errors.filter((e) => /hydrat|did not match|server-rendered|text content does not match/i.test(e));
+    expect(hydration, hydration.join("\n")).toEqual([]);
+  });
+
   test("no horizontal overflow; no critical axe violations", async ({ page }, info) => {
     test.skip(!isDesktop(info.project.name), "run once on desktop");
     await seed(page, "80");

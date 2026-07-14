@@ -82,6 +82,7 @@
     "ai-routing:test": "pnpm --filter @guardora/worker exec dotenv -e ../../.env -- tsx ../web/scripts/ai-routing.test.ts",
     "processing-state:test": "pnpm --filter @guardora/worker exec dotenv -e ../../.env -- tsx ../web/scripts/processing-state.test.ts",
     "global-fuse:test": "pnpm --filter @guardora/worker exec dotenv -e ../../.env -- tsx ../web/scripts/global-fuse.test.ts",
+    "format-hydration:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/format-hydration.test.ts",
     "inbox-engine:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/inbox-engine.test.ts",
     "inbox-ux:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/inbox-ux.test.tsx",
     "instagram-content:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/instagram-content.test.ts",
