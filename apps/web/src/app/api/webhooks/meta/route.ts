@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { getMetaConfig } from "@guardora/config";
+import { emitOpsEvent, metrics } from "@guardora/core";
 import { Platform, recordWebhookEvent } from "@guardora/db";
 
 /**
@@ -65,6 +66,14 @@ export async function POST(req: NextRequest) {
   const meta = getMetaConfig();
   const sigHeader = req.headers.get("x-hub-signature-256");
   const signatureValid = verifySignature(raw, sigHeader, meta.appSecret);
+
+  // V1.46/47 — observability: a forged/invalid signature is a security signal (stored but never
+  // processed). Bounded ops event + metric; NO payload/signature/header/PII is emitted.
+  metrics.inc("webhook_received_total", { platform: "facebook_page" });
+  if (!signatureValid) {
+    metrics.inc("webhook_invalid_signature_total");
+    emitOpsEvent("webhook.signature_invalid", { operation: "webhook_ingest" });
+  }
 
   let payload: unknown;
   let eventType: string | null = null;

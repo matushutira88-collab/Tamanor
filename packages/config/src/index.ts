@@ -112,6 +112,11 @@ const EnvSchema = z.object({
   WEBHOOK_ROW_TTL_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
   WEBHOOK_PURGE_BATCH: z.coerce.number().int().min(1).max(5000).default(250),
 
+  // V1.46/47 — token lifecycle. Warn/flag a connection this many days BEFORE its OAuth token expires
+  // (proactive reconnect prompt). Bounded technical default; MODE B (monitor + reconnect, no renewal —
+  // Meta Page tokens cannot be independently refreshed and the User token is not retained).
+  TOKEN_EXPIRY_WARN_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+
   // Meta (Facebook Page + Instagram Business) — official OAuth only.
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),

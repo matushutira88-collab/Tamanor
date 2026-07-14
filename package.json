@@ -76,6 +76,7 @@
     "user-deletion:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/user-deletion.test.ts",
     "webhook-retention:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/webhook-retention.test.ts",
     "lead-erasure:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/lead-erasure.test.ts",
+    "observability:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/observability.test.ts",
     "sync-verdict:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/sync-verdict.test.ts",
     "referential-integrity:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/referential-integrity.test.ts",
     "meta-connector:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/meta-connector.test.ts",

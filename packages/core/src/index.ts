@@ -14,6 +14,7 @@ export * from "./brand";
 export * from "./connector-mode";
 export * from "./connector-account";
 export * from "./reputation";
+export * from "./observability";
 export * from "./moderation";
 export * from "./brand-rule";
 export * from "./audit";

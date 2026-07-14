@@ -1,5 +1,6 @@
 import { loadEnv } from "@guardora/config";
 import { assertRlsRuntime, validateRuntimeDbConfig } from "@guardora/db";
+import { emitOpsEvent, metrics } from "@guardora/core";
 import { log } from "./logger";
 import { processPendingWebhookEvents, resumePendingTenantDeletions } from "@guardora/sync";
 import { runWebhookRetentionTick } from "./webhook-retention";
@@ -28,6 +29,7 @@ async function tick(): Promise<void> {
     log.error("token_monitor.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
+    emitOpsEvent("worker.maintenance_failed", { operation: "token_monitor", reason: err instanceof Error ? err.name : "unknown" });
   }
 
   // Data-safety cleanup: drop expired onboarding sessions (they hold tokens).
@@ -50,6 +52,7 @@ async function tick(): Promise<void> {
     }
   } catch (err) {
     log.error("webhook.retention.failed", { error: err instanceof Error ? err.name : "unknown" });
+    emitOpsEvent("webhook.retention_failed", { operation: "webhook_retention", reason: err instanceof Error ? err.name : "unknown" });
   }
 
   // V1.38 — unified Meta connector health (gated by META_CONNECTOR_HEALTH; off = no-op).
@@ -67,11 +70,14 @@ async function tick(): Promise<void> {
   // This is the REQUIRED production recovery path so a deletion can never be permanently stuck.
   try {
     const res = await resumePendingTenantDeletions();
+    metrics.setGauge("pending_tenant_deletions", res.pending);
     if (res.pending > 0) log.info("tenant_deletion.resume", { pending: res.pending, resumed: res.resumed, failed: res.failed });
+    if (res.failed > 0) emitOpsEvent("tenant.deletion_failed", { operation: "tenant_deletion_resume", reason: "resume_incomplete" });
   } catch (err) {
     log.error("tenant_deletion.resume.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
+    emitOpsEvent("worker.maintenance_failed", { operation: "tenant_deletion_resume", reason: err instanceof Error ? err.name : "unknown" });
   }
 
   // Webhook follow-up: read-only targeted sync (gated by META_WEBHOOK_SYNC, off).
@@ -138,6 +144,7 @@ async function main(): Promise<void> {
     log.info("worker.preflight.ok", { rls: "healthy" });
   } catch {
     log.error("worker.preflight.rls_unhealthy", { reason: "database_runtime_misconfigured" });
+    emitOpsEvent("rls.health_failed", { operation: "worker_preflight" });
     throw new Error("database_runtime_misconfigured");
   }
 
@@ -189,5 +196,7 @@ main().catch((err) => {
   log.error("worker.fatal", {
     error: err instanceof Error ? err.stack ?? err.message : String(err),
   });
+  // Bounded ops event (normalized error name only — never a stack/message with infra detail).
+  emitOpsEvent("worker.fatal", { reason: err instanceof Error ? err.name : "unknown" });
   process.exitCode = 1;
 });
