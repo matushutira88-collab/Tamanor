@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { SiteHeader } from "./site-header";
 import { SiteFooter } from "./site-footer";
 import { defaultLocale, type Dictionary, type Locale } from "@/i18n";
+import type { LegalDoc, LegalBlock } from "@/content/legal";
 
 /** Shared dark wrapper for public marketing / legal pages. */
 export function MarketingPage({
@@ -74,6 +75,76 @@ export function Bullets({ items }: { items: string[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** "Last updated: …" line for legal pages. */
+export function LastUpdated({ text }: { text: string }) {
+  return (
+    <p className="mb-8 text-sm text-[var(--color-muted)]">{text}</p>
+  );
+}
+
+/** Render a table inside a legal section (e.g. cookies or legal bases). */
+export function LegalTable({
+  headers,
+  rows,
+}: {
+  headers: string[];
+  rows: string[][];
+}) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
+      <table className="w-full border-collapse text-left text-sm">
+        <thead>
+          <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+            {headers.map((h) => (
+              <th key={h} className="px-4 py-3 font-semibold text-[var(--color-fg)]">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri} className="border-b border-[var(--color-border)] last:border-0 align-top">
+              {row.map((cell, ci) => (
+                <td key={ci} className="px-4 py-3 text-[var(--color-muted)]">
+                  {ci === 0 ? (
+                    <span className="font-medium text-[var(--color-fg)]">{cell}</span>
+                  ) : (
+                    cell
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LegalBlockView({ block }: { block: LegalBlock }) {
+  if (block.type === "p") return <p>{block.text}</p>;
+  if (block.type === "bullets") return <Bullets items={block.items} />;
+  return <LegalTable headers={block.headers} rows={block.rows} />;
+}
+
+/** Render a full structured legal document (privacy / cookie policy). */
+export function LegalBody({ doc }: { doc: LegalDoc }) {
+  return (
+    <>
+      <LastUpdated text={doc.updated} />
+      <DraftNote />
+      {doc.sections.map((section) => (
+        <Section key={section.title} title={section.title}>
+          {section.blocks.map((block, i) => (
+            <LegalBlockView key={i} block={block} />
+          ))}
+        </Section>
+      ))}
+    </>
   );
 }
 

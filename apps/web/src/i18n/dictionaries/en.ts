@@ -239,6 +239,7 @@ export const en = {
     about: "About",
     contact: "Contact",
     privacy: "Privacy",
+    cookies: "Cookies",
     terms: "Terms",
     security: "Security",
     inbox: "Inbox",

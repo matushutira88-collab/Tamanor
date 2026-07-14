@@ -237,6 +237,7 @@ export const sk: Dictionary = {
     about: "O nás",
     contact: "Kontakt",
     privacy: "Súkromie",
+    cookies: "Cookies",
     terms: "Podmienky",
     security: "Bezpečnosť",
     inbox: "Schránka",

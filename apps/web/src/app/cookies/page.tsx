@@ -2,16 +2,16 @@ import type { Metadata } from "next";
 import { MarketingPage, LegalBody } from "@/components/marketing-page";
 import { getTL } from "@/i18n/server";
 import { getLocale } from "@/i18n/locale-server";
-import { privacyPolicy } from "@/content/legal";
+import { cookiePolicy } from "@/content/legal";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const doc = privacyPolicy[await getLocale()];
+  const doc = cookiePolicy[await getLocale()];
   return { title: doc.metaTitle, description: doc.metaDescription };
 }
 
-export default async function PrivacyPage() {
+export default async function CookiesPage() {
   const _lp = await getTL();
-  const doc = privacyPolicy[_lp.locale];
+  const doc = cookiePolicy[_lp.locale];
   return (
     <MarketingPage
       dict={_lp.t}

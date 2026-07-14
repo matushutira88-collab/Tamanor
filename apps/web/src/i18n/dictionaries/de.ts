@@ -237,6 +237,7 @@ export const de: Dictionary = {
     about: "Über uns",
     contact: "Kontakt",
     privacy: "Datenschutz",
+    cookies: "Cookies",
     terms: "AGB",
     security: "Sicherheit",
     inbox: "Posteingang",
