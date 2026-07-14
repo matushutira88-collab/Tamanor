@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { getTL } from "@/i18n/server";
 import { KnowledgeArticle } from "@/components/knowledge-view";
 import { entriesIn, getEntry, pathForEntry } from "@/content/knowledge";
+import { localizeEntry } from "@/content/knowledge-l10n";
+import { getLocale } from "@/i18n/locale-server";
 
 export function generateStaticParams() {
   return entriesIn("platform").map((e) => ({ slug: e.slug }));
@@ -12,12 +14,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const entry = getEntry("platform", slug);
   if (!entry) return {};
+  const locale = await getLocale();
+  const e = localizeEntry(entry, locale);
   return {
-    title: entry.metaTitle,
-    description: entry.summary,
-    keywords: entry.keywords,
+    title: e.metaTitle,
+    description: e.summary,
+    keywords: e.keywords,
     alternates: { canonical: pathForEntry(entry) },
-    openGraph: { title: entry.metaTitle, description: entry.summary, url: pathForEntry(entry), type: "article" },
+    openGraph: { title: e.metaTitle, description: e.summary, url: pathForEntry(entry), type: "article" },
   };
 }
 

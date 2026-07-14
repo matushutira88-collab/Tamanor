@@ -2,55 +2,133 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingPage, Section } from "@/components/marketing-page";
 import { getTL } from "@/i18n/server";
+import { getLocale } from "@/i18n/locale-server";
+import type { Locale } from "@/i18n";
 
-export const metadata: Metadata = {
-  title: "About — Tamanor",
-  description:
-    "Tamanor is an Social Account Firewall that helps modern brands protect their reputation across social media, comments and reviews.",
+const META: Record<Locale, { title: string; description: string }> = {
+  en: {
+    title: "About — Tamanor",
+    description:
+      "Tamanor is an Social Account Firewall that helps modern brands protect their reputation across social media, comments and reviews.",
+  },
+  sk: {
+    title: "O nás — Tamanor",
+    description:
+      "Tamanor je Social Account Firewall, ktorý pomáha moderným značkám chrániť ich reputáciu naprieč sociálnymi sieťami, komentármi a recenziami.",
+  },
+  de: {
+    title: "Über uns — Tamanor",
+    description:
+      "Tamanor ist eine Social Account Firewall, die modernen Marken hilft, ihre Reputation über soziale Medien, Kommentare und Bewertungen hinweg zu schützen.",
+  },
+};
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return META[locale];
+}
+
+const COPY: Record<
+  Locale,
+  {
+    eyebrow: string;
+    title: string;
+    subtitle: string;
+    whyTitle: string;
+    whyBody: string;
+    approachTitle: string;
+    approachBody: string;
+    whereTitle: string;
+    whereBody: string;
+    bookDemo: string;
+    reachUsPre: string;
+    reachUsPost: string;
+  }
+> = {
+  en: {
+    eyebrow: "About",
+    title: "An Social Account Firewall for modern brands.",
+    subtitle:
+      "Tamanor helps brands protect their reputation across social media, comments and reviews — with AI speed and human control.",
+    whyTitle: "Why Tamanor",
+    whyBody:
+      "Public feedback moves fast. A single harmful comment, scam or coordinated attack can damage trust before a team even notices. Tamanor brings comments, reviews and mentions from every public channel into one place, detects risk, and prepares safe actions — while keeping humans firmly in control.",
+    approachTitle: "Our approach",
+    approachBody:
+      "We believe reputation tooling should be powerful and safe. That means official integrations only, no scraping, no shortcuts around a platform’s rules, and an approval workflow so nothing sensitive happens automatically. Speed from AI, accountability from people.",
+    whereTitle: "Where we are",
+    whereBody:
+      "Tamanor is an early-stage product being built in the open with its first design partners. If that sounds like your team, we’d love to talk.",
+    bookDemo: "Book a demo",
+    reachUsPre: "or reach us at",
+    reachUsPost: ".",
+  },
+  sk: {
+    eyebrow: "O nás",
+    title: "Social Account Firewall pre moderné značky.",
+    subtitle:
+      "Tamanor pomáha značkám chrániť ich reputáciu naprieč sociálnymi sieťami, komentármi a recenziami — s rýchlosťou AI a ľudskou kontrolou.",
+    whyTitle: "Prečo Tamanor",
+    whyBody:
+      "Verejná spätná väzba sa šíri rýchlo. Jediný škodlivý komentár, podvod alebo koordinovaný útok môže poškodiť dôveru skôr, než si to tím vôbec všimne. Tamanor zhromažďuje komentáre, recenzie a zmienky zo všetkých verejných kanálov na jednom mieste, rozpoznáva riziko a pripravuje bezpečné akcie — pričom ľudia zostávajú pevne pod kontrolou.",
+    approachTitle: "Náš prístup",
+    approachBody:
+      "Veríme, že nástroje na správu reputácie majú byť výkonné aj bezpečné. To znamená iba oficiálne integrácie, žiadny scraping, žiadne obchádzanie pravidiel platforiem a schvaľovací proces, aby sa nič citlivé nedialo automaticky. Rýchlosť od AI, zodpovednosť od ľudí.",
+    whereTitle: "Kde sa nachádzame",
+    whereBody:
+      "Tamanor je produkt v ranej fáze, ktorý vyvíjame otvorene s prvými dizajnovými partnermi. Ak to znie ako váš tím, radi sa s vami porozprávame.",
+    bookDemo: "Rezervovať demo",
+    reachUsPre: "alebo nás kontaktujte na",
+    reachUsPost: ".",
+  },
+  de: {
+    eyebrow: "Über uns",
+    title: "Eine Social Account Firewall für moderne Marken.",
+    subtitle:
+      "Tamanor hilft Marken, ihre Reputation über soziale Medien, Kommentare und Bewertungen hinweg zu schützen — mit der Geschwindigkeit von KI und menschlicher Kontrolle.",
+    whyTitle: "Warum Tamanor",
+    whyBody:
+      "Öffentliches Feedback verbreitet sich schnell. Ein einziger schädlicher Kommentar, Betrug oder koordinierter Angriff kann das Vertrauen beschädigen, bevor ein Team es überhaupt bemerkt. Tamanor führt Kommentare, Bewertungen und Erwähnungen aus allen öffentlichen Kanälen an einem Ort zusammen, erkennt Risiko und bereitet sichere Aktionen vor — während Menschen fest die Kontrolle behalten.",
+    approachTitle: "Unser Ansatz",
+    approachBody:
+      "Wir sind überzeugt, dass Werkzeuge für das Reputationsmanagement leistungsstark und sicher sein sollten. Das bedeutet ausschließlich offizielle Integrationen, kein Scraping, keine Umgehung der Regeln einer Plattform und einen Freigabe-Workflow, damit nichts Sensibles automatisch geschieht. Geschwindigkeit durch KI, Verantwortung durch Menschen.",
+    whereTitle: "Wo wir stehen",
+    whereBody:
+      "Tamanor ist ein Produkt in einer frühen Phase, das offen mit seinen ersten Design-Partnern entwickelt wird. Wenn das nach Ihrem Team klingt, sprechen wir gerne mit Ihnen.",
+    bookDemo: "Demo buchen",
+    reachUsPre: "oder erreichen Sie uns unter",
+    reachUsPost: ".",
+  },
 };
 
 export default async function AboutPage() {
   const _lp = await getTL();
+  const c = COPY[_lp.locale];
   return (
     <MarketingPage dict={_lp.t} locale={_lp.locale}
-      eyebrow="About"
-      title="An Social Account Firewall for modern brands."
-      subtitle="Tamanor helps brands protect their reputation across social media, comments and reviews — with AI speed and human control."
+      eyebrow={c.eyebrow}
+      title={c.title}
+      subtitle={c.subtitle}
     >
-      <Section title="Why Tamanor">
-        <p>
-          Public feedback moves fast. A single harmful comment, scam or
-          coordinated attack can damage trust before a team even notices.
-          Tamanor brings comments, reviews and mentions from every public
-          channel into one place, detects risk, and prepares safe actions — while
-          keeping humans firmly in control.
-        </p>
+      <Section title={c.whyTitle}>
+        <p>{c.whyBody}</p>
       </Section>
 
-      <Section title="Our approach">
-        <p>
-          We believe reputation tooling should be powerful and safe. That means
-          official integrations only, no scraping, no shortcuts around a
-          platform&rsquo;s rules, and an approval workflow so nothing sensitive
-          happens automatically. Speed from AI, accountability from people.
-        </p>
+      <Section title={c.approachTitle}>
+        <p>{c.approachBody}</p>
       </Section>
 
-      <Section title="Where we are">
-        <p>
-          Tamanor is an early-stage product being built in the open with its
-          first design partners. If that sounds like your team, we&rsquo;d love
-          to talk.
-        </p>
+      <Section title={c.whereTitle}>
+        <p>{c.whereBody}</p>
         <p>
           <Link href="/book-demo" className="text-[var(--color-brand)] hover:underline">
-            Book a demo
+            {c.bookDemo}
           </Link>{" "}
-          or reach us at{" "}
+          {c.reachUsPre}{" "}
           <a href="mailto:hello@guardora.ai" className="text-[var(--color-brand)] hover:underline">
             hello@guardora.ai
           </a>
-          .
+          {c.reachUsPost}
         </p>
       </Section>
     </MarketingPage>
