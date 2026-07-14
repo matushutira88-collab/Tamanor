@@ -104,6 +104,14 @@ const EnvSchema = z.object({
   GLOBAL_KILL_SWITCH: boolFromEnv,
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(4),
 
+  // V1.45C3 — webhook retention (raw provider payloads may contain personal data). These are
+  // CONFIGURABLE TECHNICAL DEFAULTS pending product/legal confirmation — NOT legally-approved policy.
+  // Bounded + fail-safe: parsing clamps to [min,max]; getWebhookRetentionConfig enforces ROW_TTL >
+  // MAX_PAYLOAD_AGE and a bounded batch, falling back to safe defaults (visibly) on a bad combination.
+  WEBHOOK_MAX_PAYLOAD_AGE_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
+  WEBHOOK_ROW_TTL_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+  WEBHOOK_PURGE_BATCH: z.coerce.number().int().min(1).max(5000).default(250),
+
   // Meta (Facebook Page + Instagram Business) — official OAuth only.
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
@@ -562,4 +570,48 @@ export function getMetaSetupStatus(
     .every((c) => c.status === "configured");
 
   return { ready, liveSync: meta.liveSync, checks };
+}
+
+// ---------------------------------------------------------------------------
+// V1.45C3 — webhook retention configuration (technical defaults; pending policy confirmation).
+// ---------------------------------------------------------------------------
+export interface WebhookRetentionConfig {
+  /** Raw payload is nulled once processed/signature-invalid, or once older than this (hard cap). */
+  maxPayloadAgeDays: number;
+  /** The whole metadata row is deleted once older than this. MUST be > maxPayloadAgeDays. */
+  rowTtlDays: number;
+  /** Bounded batch size per purge/minimize pass (never unbounded). */
+  purgeBatch: number;
+  /** True when a bad combination forced a fall back to safe defaults (surfaced, never silent). */
+  fellBack: boolean;
+}
+
+// Safe fallbacks if the operator supplies an inconsistent combination (e.g. TTL <= payload age).
+const RETENTION_SAFE_DEFAULTS = { maxPayloadAgeDays: 30, rowTtlDays: 90, purgeBatch: 250 } as const;
+
+/**
+ * Resolve webhook retention. Fail-safe: the zod schema already bounds each value to a sane range; this
+ * additionally enforces the INVARIANT `rowTtlDays > maxPayloadAgeDays` (deleting a row must never
+ * happen before its payload has been minimized) and a bounded batch. A violating combination falls
+ * back — VISIBLY (a one-line warning, no secrets) — to the safe defaults rather than acting unsafely.
+ */
+export function getWebhookRetentionConfig(source: NodeJS.ProcessEnv = process.env): WebhookRetentionConfig {
+  const env = loadEnv(source);
+  let maxPayloadAgeDays = env.WEBHOOK_MAX_PAYLOAD_AGE_DAYS;
+  let rowTtlDays = env.WEBHOOK_ROW_TTL_DAYS;
+  let purgeBatch = env.WEBHOOK_PURGE_BATCH;
+  let fellBack = false;
+
+  if (!(rowTtlDays > maxPayloadAgeDays) || !(purgeBatch >= 1) || !(maxPayloadAgeDays >= 1)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config] invalid webhook retention (payloadAge=${maxPayloadAgeDays}d, rowTtl=${rowTtlDays}d, batch=${purgeBatch}); ` +
+        `falling back to safe defaults (payloadAge=${RETENTION_SAFE_DEFAULTS.maxPayloadAgeDays}d, rowTtl=${RETENTION_SAFE_DEFAULTS.rowTtlDays}d, batch=${RETENTION_SAFE_DEFAULTS.purgeBatch}).`,
+    );
+    maxPayloadAgeDays = RETENTION_SAFE_DEFAULTS.maxPayloadAgeDays;
+    rowTtlDays = RETENTION_SAFE_DEFAULTS.rowTtlDays;
+    purgeBatch = RETENTION_SAFE_DEFAULTS.purgeBatch;
+    fellBack = true;
+  }
+  return { maxPayloadAgeDays, rowTtlDays, purgeBatch, fellBack };
 }

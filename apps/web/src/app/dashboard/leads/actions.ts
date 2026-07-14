@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { LeadStatus, platformUpdateLead } from "@guardora/db";
+import { LeadStatus, platformUpdateLead, eraseLeads } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { logPlatformSecurityEvent } from "@/server/platform-auth";
 
@@ -37,4 +37,18 @@ export async function saveLeadNotes(id: string, formData: FormData): Promise<voi
   await platformUpdateLead(session.userId, id, { notes });
   logPlatformSecurityEvent("platform.lead_mutated", { actorUserId: session.userId, leadId: id, field: "notes" });
   back(id, "Notes saved.");
+}
+
+/**
+ * V1.45C3 — irreversible lead erasure. `eraseLeads` re-authorizes independently at the service layer
+ * (`leads:erase`, Platform Admin ONLY — staff/tenant roles are denied there regardless of this action).
+ * The lead id is the existing route resource identifier; NO lead email/PII is placed in any URL/log.
+ * On success the whole Lead row (all PII/content) is hard-deleted and the user returns to the list.
+ */
+export async function eraseLeadAction(id: string): Promise<void> {
+  const session = await requireSession();
+  const res = await eraseLeads(session.userId, { mode: "lead_id", leadId: id });
+  logPlatformSecurityEvent("platform.lead_erased", { actorUserId: session.userId, operationId: res.operationId, matchedCount: res.matchedCount });
+  revalidatePath("/dashboard/leads");
+  redirect("/dashboard/leads?erased=1");
 }

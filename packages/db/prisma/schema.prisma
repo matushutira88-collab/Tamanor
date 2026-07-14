@@ -545,7 +545,12 @@ model WebhookEvent {
   platform       Platform
   eventType      String?
   signatureValid Boolean  @default(false)
-  payload        Json
+  // V1.45C3 — the raw provider body (may contain personal data). NULLABLE so retention can MINIMIZE
+  // it (set to NULL) once it is no longer operationally required: a processed row is never re-read,
+  // a signature-invalid row never enters the processor, and any row older than the hard max-payload
+  // age is minimized even if still pending. Bounded/security metadata (dedupeKey, signatureValid,
+  // timestamps, links) is retained until the whole row is deleted by the global TTL purge.
+  payload        Json?
   processed      Boolean  @default(false)
   // Whether the event mapped to a connected account (false = ignored/unmatched).
   matched        Boolean  @default(false)
@@ -571,6 +576,10 @@ model WebhookEvent {
   @@index([processed])
   @@index([tenantId])
   @@index([connectedAccountId])
+  // V1.45C3 — retention scans. `[receivedAt]` backs the global row-TTL purge (age scan). The partial
+  // index for the payload-minimization scan (WHERE payload IS NOT NULL) is added in raw SQL in the
+  // migration (Prisma cannot express a partial index).
+  @@index([receivedAt])
   @@map("webhook_events")
 }
 
@@ -1334,4 +1343,35 @@ model UserDeletionReceipt {
 
   @@index([deletedUserId])
   @@map("user_deletion_receipts")
+}
+
+// V1.45C3 — how a global lead erasure targeted rows: by exact lead id, or by an exact normalized email.
+enum LeadErasureMode {
+  lead_id
+  normalized_email
+}
+
+// ===========================================================================================
+// V1.45C3 — GLOBAL, PRIVACY-SAFE lead-erasure receipt. Reached ONLY via the systemDb, Platform-Admin-
+// authorized (`leads:erase`) lead-erasure service. Written in the SAME transaction as the lead delete.
+//
+// It stores AGGREGATE, NON-PII facts only. It MUST NOT contain: the erased lead id list, email or any
+// email HASH (an unsalted email hash is a long-lived re-identification oracle — deliberately omitted),
+// name, company, website, message, notes, tenant data, or raw exception messages. `requestedByUserId`
+// is an OPAQUE cuid with no User FK (it survives a later actor erasure). `mode` records only WHICH
+// exact-match strategy ran — never the target value itself.
+// ===========================================================================================
+model LeadErasureReceipt {
+  id                String          @id @default(cuid())
+  // Server-generated, unique — never client-selectable.
+  operationId       String          @unique
+  requestedByUserId String?
+  mode              LeadErasureMode
+  matchedCount      Int             @default(0)
+  requestedAt       DateTime        @default(now())
+  completedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@map("lead_erasure_receipts")
 }

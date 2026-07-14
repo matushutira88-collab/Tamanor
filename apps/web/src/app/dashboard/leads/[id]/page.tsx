@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { LeadStatus, platformGetLeadById } from "@guardora/db";
+import { LeadStatus, platformGetLeadById, platformRoleSatisfies } from "@guardora/db";
 import { PageHeader, Card, SectionHeader, Badge, Textarea, PrimaryButton } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
+import { LeadEraseZone } from "@/components/dashboard/lead-erase";
 import { requirePlatformCapabilityOrNotFound } from "@/server/platform-auth";
 import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
@@ -35,6 +36,7 @@ const COPY: Record<Locale, {
   notesDesc: string;
   notesPlaceholder: string;
   saveNotes: string;
+  erase: { heading: string; description: string; confirmLabel: string; confirmWord: string; ackLabel: string; button: string };
 }> = {
   en: {
     backToLeads: "← All leads",
@@ -58,6 +60,14 @@ const COPY: Record<Locale, {
     notesDesc: "Visible to your team only.",
     notesPlaceholder: "Add context, next steps…",
     saveNotes: "Save notes",
+    erase: {
+      heading: "Danger zone — erase this lead",
+      description: "Permanently delete this lead and all of its data (name, email, company, message, notes). This is irreversible and cannot be undone.",
+      confirmLabel: "Type ERASE to confirm",
+      confirmWord: "ERASE",
+      ackLabel: "I understand this permanently deletes this lead.",
+      button: "Erase lead permanently",
+    },
   },
   sk: {
     backToLeads: "← Všetky leady",
@@ -81,6 +91,14 @@ const COPY: Record<Locale, {
     notesDesc: "Viditeľné len pre váš tím.",
     notesPlaceholder: "Pridajte kontext, ďalšie kroky…",
     saveNotes: "Uložiť poznámky",
+    erase: {
+      heading: "Nebezpečná zóna — vymazať tento lead",
+      description: "Natrvalo odstrániť tento lead a všetky jeho údaje (meno, e-mail, spoločnosť, správa, poznámky). Túto akciu nie je možné vrátiť späť.",
+      confirmLabel: "Pre potvrdenie napíšte ERASE",
+      confirmWord: "ERASE",
+      ackLabel: "Rozumiem, že sa tým natrvalo odstráni tento lead.",
+      button: "Natrvalo vymazať lead",
+    },
   },
   de: {
     backToLeads: "← Alle Leads",
@@ -104,6 +122,14 @@ const COPY: Record<Locale, {
     notesDesc: "Nur für Ihr Team sichtbar.",
     notesPlaceholder: "Kontext, nächste Schritte hinzufügen…",
     saveNotes: "Notizen speichern",
+    erase: {
+      heading: "Gefahrenzone — diesen Lead löschen",
+      description: "Diesen Lead und alle seine Daten (Name, E-Mail, Unternehmen, Nachricht, Notizen) dauerhaft löschen. Dies ist unwiderruflich.",
+      confirmLabel: "Geben Sie zur Bestätigung ERASE ein",
+      confirmWord: "ERASE",
+      ackLabel: "Mir ist bewusst, dass dies diesen Lead dauerhaft löscht.",
+      button: "Lead dauerhaft löschen",
+    },
   },
 };
 
@@ -118,7 +144,10 @@ export default async function LeadDetailPage({
   const sp = await searchParams;
   // Platform boundary FIRST — unauthenticated / ordinary tenant users get a uniform 404 (does not
   // reveal the lead exists), before any lead query runs.
-  const { userId } = await requirePlatformCapabilityOrNotFound("leads:read");
+  const { userId, platformRole } = await requirePlatformCapabilityOrNotFound("leads:read");
+  // V1.45C3 — the erase control is Platform-Admin-only. Staff (leads:read/write) view/edit but never
+  // see or invoke erasure. Server authorization is authoritative (eraseLeads re-checks leads:erase).
+  const canErase = platformRoleSatisfies(platformRole, "leads:erase");
 
   const lead = await platformGetLeadById(userId, id);
   if (!lead) notFound();
@@ -186,6 +215,8 @@ export default async function LeadDetailPage({
               <PrimaryButton type="submit">{c.saveNotes}</PrimaryButton>
             </form>
           </Card>
+
+          {canErase ? <LeadEraseZone leadId={lead.id} copy={c.erase} /> : null}
         </div>
       </div>
     </>

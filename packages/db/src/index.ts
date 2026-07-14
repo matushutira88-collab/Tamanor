@@ -92,3 +92,4 @@ export * from "./sync-lease";
 export * from "./tenant-lifecycle";
 export * from "./tenant-deletion";
 export * from "./user-deletion";
+export * from "./webhook-retention";

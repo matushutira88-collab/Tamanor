@@ -891,6 +891,14 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
 
   for (const ev of events) {
     try {
+      // V1.45C3 — the raw payload may have been MINIMIZED (nulled) by retention once it exceeded the
+      // hard max-payload age while still pending. There is nothing to ingest; mark it terminally
+      // processed with a safe normalized classification (never throw, never loop, no PII logged).
+      if (ev.payload == null) {
+        await markWebhookProcessed(ev.id, false, "payload_expired");
+        ignored++;
+        continue;
+      }
       const payload = ev.payload as { entry?: Array<{ id?: string }> } | null;
       const pageIds = new Set<string>();
       for (const entry of payload?.entry ?? []) {

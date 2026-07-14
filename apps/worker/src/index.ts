@@ -2,6 +2,7 @@ import { loadEnv } from "@guardora/config";
 import { assertRlsRuntime, validateRuntimeDbConfig } from "@guardora/db";
 import { log } from "./logger";
 import { processPendingWebhookEvents, resumePendingTenantDeletions } from "@guardora/sync";
+import { runWebhookRetentionTick } from "./webhook-retention";
 import { proposeForHighRiskItems } from "./proposals";
 import { syncConnectedMetaAccounts } from "./sync";
 import { runTokenExpiryMonitor } from "./token-monitor";
@@ -36,6 +37,19 @@ async function tick(): Promise<void> {
     log.error("cleanup.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
+  }
+
+  // V1.45C3 — webhook retention: minimize raw payloads no longer needed + purge globally-expired rows,
+  // in bounded batches (multi-instance safe via SKIP LOCKED). A failure here must NOT crash provider
+  // sync work. Summary counts + normalized failure class only — never a payload, id, tenant, or raw error.
+  try {
+    const start = Date.now();
+    const r = await runWebhookRetentionTick();
+    if (r.minimized > 0 || r.deleted > 0) {
+      log.info("webhook.retention", { minimized: r.minimized, deleted: r.deleted, durationMs: Date.now() - start });
+    }
+  } catch (err) {
+    log.error("webhook.retention.failed", { error: err instanceof Error ? err.name : "unknown" });
   }
 
   // V1.38 — unified Meta connector health (gated by META_CONNECTOR_HEALTH; off = no-op).
