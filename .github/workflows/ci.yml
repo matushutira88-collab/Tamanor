@@ -1,0 +1,27 @@
+# V1.48P — CI gate: typecheck, lint (real ESLint CLI), and production build on Node 22 LTS.
+# Runtime is pinned to the same Node 22 the web + worker use in production (see .nvmrc / engines).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm -r typecheck
+      - run: pnpm lint
+      - run: pnpm -r build

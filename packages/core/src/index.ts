@@ -15,6 +15,7 @@ export * from "./connector-mode";
 export * from "./connector-account";
 export * from "./reputation";
 export * from "./observability";
+export * from "./rate-limit";
 export * from "./moderation";
 export * from "./brand-rule";
 export * from "./audit";

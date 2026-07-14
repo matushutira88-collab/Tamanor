@@ -1,7 +1,10 @@
 import { loadEnv } from "@guardora/config";
 import { assertRlsRuntime, validateRuntimeDbConfig } from "@guardora/db";
-import { emitOpsEvent, metrics } from "@guardora/core";
+import { emitOpsEvent, metrics, initOpsSink } from "@guardora/core";
 import { log } from "./logger";
+
+// V1.48P — initialize the vendor-neutral observability sink at worker startup (structured stdout).
+initOpsSink("worker", process.env.NODE_ENV ?? "development");
 import { processPendingWebhookEvents, resumePendingTenantDeletions } from "@guardora/sync";
 import { runWebhookRetentionTick } from "./webhook-retention";
 import { proposeForHighRiskItems } from "./proposals";

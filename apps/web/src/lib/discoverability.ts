@@ -41,8 +41,8 @@ export function allPublicPaths(): string[] {
     paths.add(r.path);
     if (r.i18n) {
       const suffix = r.path === "/" ? "" : r.path;
-      paths.add(`/sk${suffix}` || "/sk");
-      paths.add(`/de${suffix}` || "/de");
+      paths.add(`/sk${suffix}`);
+      paths.add(`/de${suffix}`);
     }
   }
   for (const s of SECTION_INDEX_ROUTES) if (s !== "/search") paths.add(s);
@@ -64,8 +64,8 @@ export function sitemapUrls(): SitemapUrl[] {
     if (r.i18n) {
       const suffix = r.path === "/" ? "" : r.path;
       const en = abs(r.path);
-      const sk = abs(`/sk${suffix}` || "/sk");
-      const de = abs(`/de${suffix}` || "/de");
+      const sk = abs(`/sk${suffix}`);
+      const de = abs(`/de${suffix}`);
       const alternates = [
         { hreflang: "en", href: en },
         { hreflang: "sk", href: sk },

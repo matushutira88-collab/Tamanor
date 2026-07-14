@@ -3,6 +3,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { getMetaConfig } from "@guardora/config";
 import { emitOpsEvent, metrics } from "@guardora/core";
 import { Platform, recordWebhookEvent } from "@guardora/db";
+import { webhookLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 
 /**
  * Route a Meta webhook `object` to the connector platform. `instagram` events flow
@@ -62,6 +63,14 @@ function verifySignature(
  * processed.
  */
 export async function POST(req: NextRequest) {
+  // V1.48P — bounded per-IP DoS guard (fail-closed) BEFORE any work. Generous limit so legitimate
+  // provider bursts pass; signature verification below remains the authoritative trust decision.
+  const ipKey = ipKeyFromHeader(req.headers.get("x-forwarded-for"));
+  if (!webhookLimiter.check(ipKey).allowed) {
+    metrics.inc("webhook_rate_limited_total");
+    return new Response("Too Many Requests", { status: 429 });
+  }
+
   const raw = await req.text();
   const meta = getMetaConfig();
   const sigHeader = req.headers.get("x-hub-signature-256");

@@ -8,8 +8,8 @@ import type { Locale } from "@/i18n";
  */
 export function marketingAlternates(enPath: string, current: Locale): Metadata["alternates"] {
   const suffix = enPath === "/" ? "" : enPath;
-  const sk = `/sk${suffix}` || "/sk";
-  const de = `/de${suffix}` || "/de";
+  const sk = `/sk${suffix}`;
+  const de = `/de${suffix}`;
   const canonical = current === "en" ? enPath : current === "sk" ? sk : de;
   return {
     canonical,

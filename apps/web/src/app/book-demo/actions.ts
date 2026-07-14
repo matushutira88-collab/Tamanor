@@ -1,7 +1,10 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createLead } from "@guardora/db";
+import { emitOpsEvent, metrics } from "@guardora/core";
+import { publicFormLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -13,12 +16,20 @@ export async function submitLead(formData: FormData): Promise<void> {
   const source = String(formData.get("source") ?? "book_demo");
   const backTo = source === "contact" ? "/contact" : "/book-demo";
 
+  const fail = (reason: string): never =>
+    redirect(`${backTo}?error=${encodeURIComponent(reason)}`);
+
+  // V1.48P — bounded per-IP rate limit (fail-closed). Blocks lead-form spam without storing PII/IP.
+  const ipKey = ipKeyFromHeader((await headers()).get("x-forwarded-for"));
+  if (!publicFormLimiter.check(ipKey).allowed) {
+    metrics.inc("public_form_rate_limited_total", { operation: "lead_submit" });
+    emitOpsEvent("web.5xx", { operation: "lead_submit", reason: "rate_limited" });
+    fail("Too many requests. Please try again in a minute.");
+  }
+
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const consent = formData.get("consent") === "on";
-
-  const fail = (reason: string): never =>
-    redirect(`${backTo}?error=${encodeURIComponent(reason)}`);
 
   if (!name) fail("Please enter your name.");
   if (!EMAIL_RE.test(email)) fail("Please enter a valid email address.");

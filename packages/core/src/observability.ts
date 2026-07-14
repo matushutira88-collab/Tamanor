@@ -75,6 +75,31 @@ export function emitOpsEvent(event: OpsEvent, meta: Record<string, unknown> = {}
   try { sink.emit(event, redact(meta)); } catch { /* telemetry must never break a request/job */ }
 }
 
+/**
+ * V1.48P — a production structured-log sink: one safe JSON line per event, tagged with the service +
+ * environment, already redacted. This is the vendor-neutral default operators centralize from stdout;
+ * a real vendor sink can replace it at startup via setOpsSink without touching call sites. It swallows
+ * its own errors so a logging failure can never break a request/job (fail-safe).
+ */
+export function makeStructuredOpsSink(service: string, env: string): OpsSink {
+  return {
+    emit(event, meta) {
+      try {
+        // eslint-disable-next-line no-console
+        console.log(JSON.stringify({ ts: new Date().toISOString(), service, env, ops: event, ...redact(meta) }));
+      } catch { /* sink must never throw */ }
+    },
+  };
+}
+
+/** Idempotently install the production structured sink (called once at web/worker startup). */
+let opsInitialized = false;
+export function initOpsSink(service: string, env: string): void {
+  if (opsInitialized) return;
+  setOpsSink(makeStructuredOpsSink(service, env));
+  opsInitialized = true;
+}
+
 // ---------------------------------------------------------------------------
 // 2) Correlation IDs — bounded, non-PII. Generate our own; validate untrusted incoming ones.
 // ---------------------------------------------------------------------------

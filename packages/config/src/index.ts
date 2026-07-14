@@ -117,6 +117,14 @@ const EnvSchema = z.object({
   // Meta Page tokens cannot be independently refreshed and the User token is not retained).
   TOKEN_EXPIRY_WARN_DAYS: z.coerce.number().int().min(1).max(90).default(7),
 
+  // V1.48P — public-endpoint rate limiting (bounded, fail-closed, per-instance). Public forms
+  // (book-demo/contact/lead) get a tight per-IP window; the webhook endpoint gets a generous window
+  // (legitimate provider bursts must pass — signature verification stays authoritative).
+  PUBLIC_FORM_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(5),
+  PUBLIC_FORM_RATE_WINDOW_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  WEBHOOK_RATE_LIMIT: z.coerce.number().int().min(10).max(100_000).default(600),
+  WEBHOOK_RATE_WINDOW_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+
   // Meta (Facebook Page + Instagram Business) — official OAuth only.
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
