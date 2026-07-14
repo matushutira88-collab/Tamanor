@@ -64,7 +64,7 @@ export function LandingContent({ dict, locale }: { dict: Dictionary; locale: Loc
             <div className="mb-8 hidden justify-center lg:flex">
               <ShieldEmblem size={128} />
             </div>
-            <HeroMock />
+            <HeroMock availableLabel={t.beta.providersAvailable} researchLabel={t.beta.providersResearch} />
           </div>
         </div>
       </section>

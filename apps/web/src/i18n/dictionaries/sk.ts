@@ -210,6 +210,8 @@ export const sk: Dictionary = {
     igTitle: "Instagram Business",
     igBody: "Monitoring, komentáre, reputácia a rizikové profily. Automatické skrytie zatiaľ nie je zapnuté.",
     igBadge: "Beta · monitoring",
+    providersAvailable: "Dostupné teraz",
+    providersResearch: "Vo vývoji · zatiaľ nedostupné",
     plannedNote: "Ďalšie platformy sú v pláne. Tamanor zatiaľ netvrdí podporu TikTok, YouTube ani LinkedIn.",
     googleConnectorNote: "Google Business Profile — konektor pripravený na schválený prístup k API.",
     accessEyebrow: "Beta pilot",

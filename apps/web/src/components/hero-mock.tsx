@@ -6,7 +6,7 @@ import { BrandIcon } from "@/components/dashboard/platform-icon";
  * action and a "Pending human approval" status. It never depicts an executed or
  * hidden action as reality (Guardora is approval-gated + read-only by default).
  */
-export function HeroMock() {
+export function HeroMock({ availableLabel, researchLabel }: { availableLabel?: string; researchLabel?: string } = {}) {
   return (
     <div className="relative">
       {/* Glow behind the mock */}
@@ -97,18 +97,27 @@ export function HeroMock() {
         </div>
       </div>
 
-      {/* Platform badges */}
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        {[
-          Platform.FacebookPage,
-          Platform.InstagramBusiness,
-          Platform.YouTube,
-          Platform.LinkedInCompany,
-          Platform.TikTok,
-          Platform.GoogleBusiness,
-        ].map((p) => (
-          <BrandIcon key={p} platform={p} size={28} label />
-        ))}
+      {/* V1.49C — provider badges grouped by TRUTHFUL status: the two available (pilot) Meta providers
+          have full emphasis; the not-yet-available providers are visibly dimmed and captioned, so the
+          row never implies parity between live and research integrations. Status is conveyed by a
+          visible text label + reduced opacity + order — not by color alone. */}
+      <div className="mt-4 flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-1.5">
+          {availableLabel ? <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-brand)]">{availableLabel}</span> : null}
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <BrandIcon platform={Platform.FacebookPage} size={28} label />
+            <BrandIcon platform={Platform.InstagramBusiness} size={28} label />
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-1.5 opacity-40">
+          {researchLabel ? <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-muted)]">{researchLabel}</span> : null}
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <BrandIcon platform={Platform.GoogleBusiness} size={24} label />
+            <BrandIcon platform={Platform.YouTube} size={24} label />
+            <BrandIcon platform={Platform.LinkedInCompany} size={24} label />
+            <BrandIcon platform={Platform.TikTok} size={24} label />
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -210,6 +210,8 @@ export const de: Dictionary = {
     igTitle: "Instagram Business",
     igBody: "Monitoring, Kommentare, Reputation und Risikoprofile. Automatisches Verbergen ist noch nicht aktiviert.",
     igBadge: "Beta · Monitoring",
+    providersAvailable: "Jetzt verfügbar",
+    providersResearch: "In Entwicklung · noch nicht verfügbar",
     plannedNote: "Weitere Plattformen sind geplant. Tamanor beansprucht noch keine Unterstützung für TikTok, YouTube oder LinkedIn.",
     googleConnectorNote: "Google Business Profile — Connector bereit für genehmigten API-Zugriff.",
     accessEyebrow: "Beta-Pilot",
