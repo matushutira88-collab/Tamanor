@@ -317,6 +317,8 @@ export function buildInboxWhere(tenantId: string, f: InboxFilterInput): Prisma.R
 export const inboxItemSelect = {
   id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true,
   isRead: true, archivedAt: true, priority: true, inboxWorkflowStatus: true, assignedToUserId: true,
+  // V1.44B — truthful processing state for the inbox card/detail.
+  processingTier: true, processingStatus: true, processingReason: true, lastProcessedAt: true, classifierVersion: true,
   assignedTo: { select: { id: true, name: true, email: true } },
   inboxLabels: { select: { label: { select: { id: true, name: true, colorKey: true } } } },
   _count: { select: { inboxNotes: true } },

@@ -45,7 +45,7 @@ export async function POST() {
         create: { tenantId, brandId: brand.id, connectedAccountId: accountId, platform: platform as never, kind, externalId: extId, text, authorDisplayName: author, rating: rating ?? undefined, publishedAt: new Date() },
         update: { text, rating: rating ?? undefined, authorDisplayName: author },
       });
-      const baseline = { isRead: false, archivedAt: null, priority: "normal" as const, inboxWorkflowStatus: "new" as const, assignedToUserId: null, createdAt: new Date() };
+      const baseline = { isRead: false, archivedAt: null, priority: "normal" as const, inboxWorkflowStatus: "new" as const, assignedToUserId: null, createdAt: new Date(), processingStatus: "processed_rules" as const, processingTier: "rules" as const, processingReason: null, lastProcessedAt: new Date(), classifierVersion: "risk-rules-v1", contentHash: null };
       const existing = await db.reputationItem.findFirst({ where: { contentItemId: content.id } });
       if (existing) {
         await db.reputationItem.update({ where: { id: existing.id }, data: baseline });
@@ -76,6 +76,8 @@ export async function POST() {
       grating: await ensureItem(googleAcc, "e2e_google_rating", "google_business", "review", "", null, 5),
       fbUnhealthy: await ensureItem(fbUnhealthyAcc, "e2e_fb_unhealthy", "facebook_page", "comment", "Comment on a broken connector", "Sam Angry", null),
     };
+    // One item in a truthful LIMIT state so the browser can verify the limit badge + usage link.
+    await db.reputationItem.update({ where: { id: ids.fbUnhealthy }, data: { processingStatus: "premium_limit_reached", processingReason: "premium_call_limit_reached", processingTier: "rules" } });
     const labels = { vip: await ensureLabel("VIP", "brand"), urgent: await ensureLabel("Urgent follow-up", "danger") };
     return { itemId: ids.fb, ids, labels };
   });

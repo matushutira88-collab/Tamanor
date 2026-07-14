@@ -309,6 +309,42 @@ test.describe("inbox a11y + mobile", () => {
   });
 });
 
+test.describe("inbox processing state (V1.44B)", () => {
+  test("cards show a truthful processing badge; limit state links to usage, no fake error", async ({ page }, info) => {
+    test.skip(!isDesktop(info.project.name), "desktop-only");
+    test.setTimeout(90_000);
+    const { itemId, ids } = await seed(page);
+    await gotoItem(page, "/dashboard/comments", itemId);
+
+    // A normally-processed item shows the basic-protection badge (truthful, not a limit/error).
+    const normal = card(page, itemId);
+    await expect(normal).toHaveAttribute("data-processing", "processed_rules");
+    await expect(normal.getByTestId("processing-badge")).toContainText("Checked with basic protection");
+
+    // The seeded limit item shows the truthful limit copy + a link to usage, and NOT a fake error.
+    await gotoItem(page, "/dashboard/comments", ids.fbUnhealthy);
+    const limit = card(page, ids.fbUnhealthy);
+    await expect(limit).toHaveAttribute("data-processing", "premium_limit_reached");
+    await expect(limit.getByTestId("processing-badge")).toContainText("Advanced AI limit reached");
+    await expect(limit.getByTestId("processing-badge")).not.toContainText("could not be completed");
+    await open(page, ids.fbUnhealthy);
+    await expect(limit.getByTestId("processing-detail")).toContainText("Advanced AI limit reached");
+    const link = limit.getByTestId("processing-usage-link");
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", "/dashboard/usage");
+  });
+
+  test("processing badges survive reload (DB-backed, not client)", async ({ page }, info) => {
+    test.skip(!isDesktop(info.project.name), "desktop-only");
+    const { ids } = await seed(page);
+    await gotoItem(page, "/dashboard/comments", ids.fbUnhealthy);
+    await expect(card(page, ids.fbUnhealthy)).toHaveAttribute("data-processing", "premium_limit_reached");
+    await page.reload();
+    await page.waitForTimeout(400);
+    await expect(card(page, ids.fbUnhealthy)).toHaveAttribute("data-processing", "premium_limit_reached");
+  });
+});
+
 test.describe("inbox double-submit", () => {
   test("submit button disables while the mutation is in flight", async ({ page }, info) => {
     test.skip(!isDesktop(info.project.name), "desktop-only");

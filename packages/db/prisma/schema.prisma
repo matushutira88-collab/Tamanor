@@ -118,6 +118,20 @@ enum InboxWorkflowStatus {
   resolved
 }
 
+// V1.44B — truthful per-item AI processing state. NEVER implies fabricated sentiment/risk: a
+// limit/disabled/failed status means the advanced tier did not run, not that analysis was invented.
+enum InboxProcessingStatus {
+  pending
+  processed_rules
+  processed_local
+  processed_paid
+  cached
+  basic_limit_reached
+  premium_limit_reached
+  paid_ai_disabled
+  failed
+}
+
 enum RuleCategory {
   blocked_words
   competitor_mentions
@@ -230,6 +244,9 @@ model Tenant {
   metaOnboarding    MetaOnboardingSession[]
   inboxLabels       InboxLabel[]
   sessions          UserSession[]
+  usagePeriods      UsagePeriod[]
+  usageEvents       UsageEvent[]
+  aiResultCache     AiResultCache[]
 
   @@map("tenants")
 }
@@ -539,6 +556,15 @@ model ReputationItem {
   assignedToUserId    String?
   inboxWorkflowStatus InboxWorkflowStatus @default(new)
 
+  // V1.44B — truthful AI processing state (written ONLY by the metering/classification service).
+  // `processingReason` is a NORMALIZED allowlisted string — never a raw provider error.
+  processingTier    ProcessingTier?
+  processingStatus  InboxProcessingStatus @default(pending)
+  processingReason  String?
+  lastProcessedAt   DateTime?
+  classifierVersion String?
+  contentHash       String?
+
   // Embedded risk assessment (mirrors core ReputationRisk)
   riskLevel      RiskLevel @default(none)
   riskConfidence Float     @default(0)
@@ -593,6 +619,7 @@ model ReputationItem {
   @@index([tenantId, assignedToUserId])
   @@index([tenantId, priority])
   @@index([tenantId, inboxWorkflowStatus])
+  @@index([tenantId, processingStatus])
   // V1.43 — keyset pagination. The inbox lists ORDER BY createdAt DESC, id DESC within a tenant;
   // this composite lets a filtered page seek to the cursor and read rows in index order (no sort,
   // no seq scan), with cost independent of page depth. The second index serves the dominant
@@ -662,6 +689,119 @@ model InboxNote {
 
   @@index([tenantId, reputationItemId])
   @@map("inbox_notes")
+}
+
+// ===========================================================================================
+// V1.44 — Usage metering & AI cost protection (additive, tenant-scoped, RLS-enforced).
+// UsagePeriod counters are the SOURCE OF TRUTH; UsageEvent is an immutable append-only ledger.
+// All money is INTEGER MICROS (BigInt) — never a float.
+// ===========================================================================================
+
+enum ProcessingTier {
+  rules
+  local
+  paid
+}
+
+enum UsageEventStatus {
+  reserved
+  succeeded
+  failed
+  released
+  denied
+  cached
+}
+
+/// Per-tenant per-calendar-month (UTC) usage counters. These aggregate counters — NOT a scan of
+/// the event ledger — are the authoritative quota state read on every reservation.
+model UsagePeriod {
+  id                String   @id @default(cuid())
+  tenantId          String
+  periodStart       DateTime // first instant of the UTC calendar month
+  periodEnd         DateTime // first instant of the next UTC month (exclusive)
+  plan              String
+  basicUnitsUsed    Int      @default(0)
+  premiumCallsUsed  Int      @default(0)
+  premiumCostMicros BigInt   @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  events UsageEvent[]
+
+  @@unique([tenantId, periodStart])
+  @@unique([id, tenantId]) // enables the composite tenant-safe FK from UsageEvent
+  @@index([tenantId, periodEnd])
+  @@map("usage_periods")
+}
+
+/// Immutable append-only ledger of every metered operation. reputationItemId/contentItemId are
+/// DENORMALIZED nullable references (no FK) so the ledger survives item deletion and stays
+/// independent of item lifecycle; tenant isolation is enforced by RLS + the composite-FK'd
+/// usagePeriodId. `idempotencyKey` is unique per tenant so a retry can never double-charge.
+model UsageEvent {
+  id                 String           @id @default(cuid())
+  tenantId           String
+  usagePeriodId      String
+  reputationItemId   String?
+  contentItemId      String?
+  eventType          String
+  processingTier     ProcessingTier
+  provider           String?
+  modelKey           String?
+  units              Int              @default(0)
+  reservedCostMicros BigInt           @default(0)
+  actualCostMicros   BigInt?
+  idempotencyKey     String
+  status             UsageEventStatus
+  reason             String?
+  correlationId      String?
+  createdAt          DateTime         @default(now())
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usagePeriod UsagePeriod @relation(fields: [usagePeriodId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, usagePeriodId])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("usage_events")
+}
+
+/// Cached normalized AI result keyed by content version. A cache HIT never calls a paid provider
+/// and never consumes a unit. Unique per (tenant, contentHash, modelKey, policyVersion).
+model AiResultCache {
+  id               String    @id @default(cuid())
+  tenantId         String
+  contentHash      String
+  modelKey         String
+  policyVersion    String
+  normalizedResult Json
+  createdAt        DateTime  @default(now())
+  expiresAt        DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, contentHash, modelKey, policyVersion])
+  @@index([tenantId, contentHash])
+  @@map("ai_result_cache")
+}
+
+/// V1.44B — GLOBAL (cross-tenant, system-scope) paid-AI daily hard cap. NO tenantId and NO RLS by
+/// design (mirrors the `leads` global table); reached ONLY via the narrow systemDb global-usage repo,
+/// never from tenant-facing web code (boundary-enforced). Makes the daily call/cost hard cap
+/// multi-instance safe via an atomic guarded UPDATE. Per-UTC-day, per-provider.
+model GlobalAiUsagePeriod {
+  id          String   @id @default(cuid())
+  periodStart DateTime // first instant of the UTC day
+  provider    String
+  callsUsed   Int      @default(0)
+  costMicros  BigInt   @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([periodStart, provider])
+  @@map("global_ai_usage_periods")
 }
 
 /// Human feedback on a classification, scoped to a tenant+brand. Brand-local

@@ -29,7 +29,8 @@ import {
   type ConnectedAccount,
 } from "@guardora/db";
 import { randomUUID } from "node:crypto";
-import { classifyHybrid, buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, type ClassifierRule } from "@guardora/ai";
+import { buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, type ClassifierRule } from "@guardora/ai";
+import { classifyWithUsagePolicy } from "./metered-classify";
 import { attemptFacebookHide } from "./live-actions";
 import { loadProductionSafetyContext } from "./production-safety";
 import {
@@ -542,18 +543,21 @@ async function persistNewItem(
   rules: ClassifierRule[],
   hooks?: SyncPhaseHooks,
 ): Promise<IngestOutcome> {
-  // Phase P1 — tenant reads (short tx): brand locale + brand memory rules.
-  const { brand, memoryRules } = await withTenantDb(tenantId, async (db) => {
+  // Phase P1 — tenant reads (short tx): plan + brand locale + brand memory rules.
+  const { plan, brand, memoryRules } = await withTenantDb(tenantId, async (db) => {
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
     const brand = await db.brand.findFirst({ where: { id: account.brandId }, select: { defaultLocale: true } });
     const memoryRules = await db.brandRiskMemoryRule.findMany({
       where: { brandId: account.brandId, tenantId: account.tenantId, isActive: true },
       select: { type: true, normalizedPhrase: true, language: true, severity: true, isActive: true },
     });
-    return { brand, memoryRules };
+    return { plan: tenant?.plan ?? "free", brand, memoryRules };
   });
 
-  // Provider HTTP (classification) — OUTSIDE any transaction.
-  const hybrid = await classifyHybrid(
+  // Classification via the METERED policy service (cache → rules → paid, cost-protected) — OUTSIDE
+  // any transaction. A paid provider is NEVER reached without a prior atomic reservation.
+  const hybrid = await classifyWithUsagePolicy(
+    { tenantId, plan },
     { text: item.text, platform: item.platform, locale: item.author.locale, rating: item.rating, rules },
     {
       workspaceLocale: brand?.defaultLocale ?? "en",
@@ -621,6 +625,13 @@ async function persistNewItem(
         riskEngine: hybrid.engine,
         assessedAt: new Date(),
         ...buildIntelFromHybrid(hybrid),
+        // V1.44B — truthful per-item processing state (from the metering service; normalized reason).
+        processingTier: hybrid.processingTier,
+        processingStatus: hybrid.processingStatus,
+        processingReason: hybrid.processingReason ?? null,
+        lastProcessedAt: new Date(),
+        classifierVersion: "risk-rules-v1",
+        contentHash: hybrid.contentHash,
       },
     });
 
@@ -900,3 +911,5 @@ export * from "./connection-manager";
 export * from "./provider-revoke";
 export * from "./disconnect";
 export * from "./meta-connector";
+export * from "./metered-classify";
+export * from "./paid-ai-guard";

@@ -17,3 +17,5 @@ export * from "./reputation";
 export * from "./moderation";
 export * from "./brand-rule";
 export * from "./audit";
+export * from "./usage-policy";
+export * from "./usage-pricing";

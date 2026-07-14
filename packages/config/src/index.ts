@@ -53,6 +53,24 @@ const EnvSchema = z.object({
   AI_RISK_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.7),
 
   /**
+   * V1.44 — PAID cloud-AI global fuses. ALL fail closed. `AI_PAID_ENABLED` is the master kill
+   * switch (default OFF): with it off, NO paid provider call is ever made regardless of plan/quota.
+   * The daily/rate/concurrency caps are process-level backstops on top of the per-tenant reservation
+   * budget. `AI_PAID_EMERGENCY_DISABLE=true` hard-disables paid AI immediately.
+   */
+  AI_PAID_ENABLED: boolFromEnv,
+  AI_PAID_EMERGENCY_DISABLE: boolFromEnv,
+  AI_PAID_GLOBAL_DAILY_CALL_LIMIT: z.coerce.number().int().nonnegative().default(1_000),
+  AI_PAID_GLOBAL_DAILY_COST_LIMIT_MICROS: z.coerce.number().int().nonnegative().default(5_000_000),
+  AI_PAID_PROVIDER_DAILY_CALL_LIMIT: z.coerce.number().int().nonnegative().default(1_000),
+  AI_PAID_RPM_LIMIT: z.coerce.number().int().positive().default(60),
+  AI_PAID_MAX_CONCURRENCY: z.coerce.number().int().positive().default(4),
+  AI_PAID_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  AI_PAID_MAX_RETRIES: z.coerce.number().int().nonnegative().max(5).default(1),
+  AI_PAID_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(5),
+  AI_PAID_CIRCUIT_COOLDOWN_MS: z.coerce.number().int().positive().default(60_000),
+
+  /**
    * Live platform actions (controlled Facebook comment hide). ALL fail closed:
    * live execution requires LIVE_ACTIONS_ENABLED=true AND FACEBOOK_HIDE_ENABLED=true
    * AND LIVE_ACTIONS_DRY_RUN=false. Default OFF/dry-run — no live action.
@@ -251,6 +269,61 @@ export function getAiRiskConfig(source: NodeJS.ProcessEnv = process.env): {
     provider: env.AI_RISK_PROVIDER,
     minConfidence: env.AI_RISK_MIN_CONFIDENCE,
   };
+}
+
+export interface PaidAiFuseConfig {
+  enabled: boolean;
+  emergencyDisable: boolean;
+  globalDailyCallLimit: number;
+  globalDailyCostLimitMicros: number;
+  providerDailyCallLimit: number;
+  rpmLimit: number;
+  maxConcurrency: number;
+  timeoutMs: number;
+  maxRetries: number;
+  circuitFailureThreshold: number;
+  circuitCooldownMs: number;
+}
+
+/**
+ * V1.44 — resolved paid-AI fuse configuration. Fail-closed: `effectiveEnabled` is true only when
+ * the master switch is on AND emergency disable is off. In production, a nonsensical config (paid
+ * enabled but a zero global daily call/cost cap) also fails closed to disabled.
+ */
+// Parse the paid-AI fields DIRECTLY from `source` (not the globally-cached loadEnv) so tests can
+// inject env per-call and production always reflects the live values.
+const PaidAiFuseSchema = z.object({
+  AI_PAID_ENABLED: boolFromEnv,
+  AI_PAID_EMERGENCY_DISABLE: boolFromEnv,
+  AI_PAID_GLOBAL_DAILY_CALL_LIMIT: z.coerce.number().int().nonnegative().default(1_000),
+  AI_PAID_GLOBAL_DAILY_COST_LIMIT_MICROS: z.coerce.number().int().nonnegative().default(5_000_000),
+  AI_PAID_PROVIDER_DAILY_CALL_LIMIT: z.coerce.number().int().nonnegative().default(1_000),
+  AI_PAID_RPM_LIMIT: z.coerce.number().int().positive().default(60),
+  AI_PAID_MAX_CONCURRENCY: z.coerce.number().int().positive().default(4),
+  AI_PAID_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  AI_PAID_MAX_RETRIES: z.coerce.number().int().nonnegative().max(5).default(1),
+  AI_PAID_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(5),
+  AI_PAID_CIRCUIT_COOLDOWN_MS: z.coerce.number().int().positive().default(60_000),
+});
+
+export function getPaidAiFuseConfig(source: NodeJS.ProcessEnv = process.env): PaidAiFuseConfig & { effectiveEnabled: boolean } {
+  const env = PaidAiFuseSchema.parse(source);
+  const base: PaidAiFuseConfig = {
+    enabled: env.AI_PAID_ENABLED,
+    emergencyDisable: env.AI_PAID_EMERGENCY_DISABLE,
+    globalDailyCallLimit: env.AI_PAID_GLOBAL_DAILY_CALL_LIMIT,
+    globalDailyCostLimitMicros: env.AI_PAID_GLOBAL_DAILY_COST_LIMIT_MICROS,
+    providerDailyCallLimit: env.AI_PAID_PROVIDER_DAILY_CALL_LIMIT,
+    rpmLimit: env.AI_PAID_RPM_LIMIT,
+    maxConcurrency: env.AI_PAID_MAX_CONCURRENCY,
+    timeoutMs: env.AI_PAID_TIMEOUT_MS,
+    maxRetries: env.AI_PAID_MAX_RETRIES,
+    circuitFailureThreshold: env.AI_PAID_CIRCUIT_FAILURE_THRESHOLD,
+    circuitCooldownMs: env.AI_PAID_CIRCUIT_COOLDOWN_MS,
+  };
+  const configInvalid = base.globalDailyCallLimit <= 0 || base.globalDailyCostLimitMicros <= 0;
+  const effectiveEnabled = base.enabled && !base.emergencyDisable && !configInvalid;
+  return { ...base, effectiveEnabled };
 }
 
 /** Per-platform connector credentials. All optional (placeholder-friendly). */

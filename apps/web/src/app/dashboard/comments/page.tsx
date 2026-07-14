@@ -55,6 +55,7 @@ interface Row {
   actorLevel: ActorRiskLevel | null; cantHide: boolean; isReview: boolean; rating: number | null; providerKey: string;
   isRead: boolean; archived: boolean; priority: string; workflowStatus: string; assigneeId: string | null; assigneeName: string | null;
   labels: LabelLite[]; noteCount: number; connectorHealth: ConnectorHealthState;
+  processingStatus: string; processingTier: string | null; processingReason: string | null; lastProcessedAt: Date | null; classifierVersion: string | null;
 }
 
 // Honest connector-health tone (never a fake green). Only a truly healthy connector is "ok".
@@ -66,6 +67,26 @@ const HEALTH_LABEL: Record<ConnectorHealthState, string> = {
   healthy: "Connector healthy", verification_pending: "Verification pending", rate_limited: "Rate limited",
   permission_missing: "Permission missing", disconnected: "Disconnected", api_unavailable: "Not available", error: "Connector error",
 };
+
+// V1.44B — truthful per-item processing state. A limit/disabled/failed status NEVER implies
+// fabricated analysis — it means the advanced tier did not run.
+const PROCESSING_COPY: Record<string, string> = {
+  pending: "Awaiting analysis",
+  processed_rules: "Checked with basic protection",
+  processed_local: "Checked with local AI",
+  processed_paid: "Checked with advanced AI",
+  cached: "Reused previous analysis",
+  basic_limit_reached: "Monthly basic AI limit reached",
+  premium_limit_reached: "Advanced AI limit reached",
+  paid_ai_disabled: "Advanced AI is currently disabled",
+  failed: "Analysis could not be completed",
+};
+const PROCESSING_TONE: Record<string, "ok" | "neutral" | "warn" | "danger"> = {
+  pending: "neutral", processed_rules: "neutral", processed_local: "neutral", processed_paid: "ok", cached: "neutral",
+  basic_limit_reached: "warn", premium_limit_reached: "warn", paid_ai_disabled: "neutral", failed: "danger",
+};
+const PROCESSING_LIMIT_STATES = new Set(["basic_limit_reached", "premium_limit_reached", "paid_ai_disabled"]);
+const processingCopy = (s: string) => PROCESSING_COPY[s] ?? "Awaiting analysis";
 
 export default async function CommentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const t = await getT();
@@ -207,6 +228,11 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       labels: r.inboxLabels.map((l) => l.label),
       noteCount: r._count.inboxNotes,
       connectorHealth,
+      processingStatus: (r.processingStatus as string) ?? "pending",
+      processingTier: (r.processingTier as string | null) ?? null,
+      processingReason: r.processingReason ?? null,
+      lastProcessedAt: r.lastProcessedAt ?? null,
+      classifierVersion: r.classifierVersion ?? null,
     };
   });
 
@@ -386,7 +412,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                   const notes = notesByItem.get(r.id) ?? [];
                   const audit = auditByItem.get(r.id) ?? [];
                   return (
-                    <div key={r.id} data-inbox-item={r.id} data-read={r.isRead ? "true" : "false"} data-archived={r.archived ? "true" : "false"} data-priority={r.priority} data-status={r.workflowStatus} data-notecount={r.noteCount} data-assignee={r.assigneeId ?? ""} data-connector-health={r.connectorHealth} className="flex items-start gap-2">
+                    <div key={r.id} data-inbox-item={r.id} data-read={r.isRead ? "true" : "false"} data-archived={r.archived ? "true" : "false"} data-priority={r.priority} data-status={r.workflowStatus} data-notecount={r.noteCount} data-assignee={r.assigneeId ?? ""} data-connector-health={r.connectorHealth} data-processing={r.processingStatus} className="flex items-start gap-2">
                       {/* Bulk checkbox lives OUTSIDE the <summary> (an interactive control nested in a
                           summary is an a11y anti-pattern and would toggle the disclosure). */}
                       {canAct ? <div className="pt-4"><SelectCheckbox id={r.id} /></div> : null}
@@ -400,6 +426,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                               <Badge tone={BUCKET_TONE[r.bucket]}>{t.rep[`bucket_${r.bucket}` as "bucket_positive"]}</Badge>
                               {r.priority !== "normal" ? <Badge tone={r.priority === "urgent" ? "danger" : r.priority === "high" ? "warn" : "neutral"}>{r.priority}</Badge> : null}
                               <Badge tone="neutral">{r.workflowStatus.replace(/_/g, " ")}</Badge>
+                              <span data-testid="processing-badge" data-status={r.processingStatus}><Badge tone={PROCESSING_TONE[r.processingStatus] ?? "neutral"}>{processingCopy(r.processingStatus)}</Badge></span>
                               {r.archived ? <Badge tone="neutral">Archived</Badge> : null}
                               {r.assigneeName ? <Badge tone="neutral">@{r.assigneeName}</Badge> : null}
                               {r.labels.map((l) => <Badge key={l.id} tone={l.colorKey}>{l.name}</Badge>)}
@@ -430,6 +457,17 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                             </dl>
                             {r.hiddenPublic ? <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs text-[var(--color-muted)]">{t.common.hiddenFromPublicHelp}</p> : null}
                             {r.cantHide ? <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs text-[var(--color-muted)]">{t.comments.cantHideNote}</p> : null}
+
+                            {/* V1.44B — truthful processing state. Limit/disabled states link to usage; never a fake error. */}
+                            <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs" data-testid="processing-detail" data-status={r.processingStatus}>
+                              <span className="font-medium">{processingCopy(r.processingStatus)}</span>
+                              {r.processingTier ? <span className="text-[var(--color-muted)]"> · {r.processingTier} tier</span> : null}
+                              {r.lastProcessedAt ? <span className="text-[var(--color-muted)]"> · checked {relativeTime(r.lastProcessedAt, rel, now)}</span> : null}
+                              {r.classifierVersion ? <span className="text-[var(--color-muted)]"> · {r.classifierVersion}</span> : null}
+                              {PROCESSING_LIMIT_STATES.has(r.processingStatus) ? (
+                                <div className="mt-1"><Link href="/dashboard/usage" className="text-[var(--color-brand)] hover:underline" data-testid="processing-usage-link">View usage &amp; limits →</Link></div>
+                              ) : null}
+                            </div>
 
                             {/* Internal workflow controls. Archive is a Tamanor-side action, NOT a
                                 provider hide; "resolved" never implies provider moderation. */}
