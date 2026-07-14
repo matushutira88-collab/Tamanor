@@ -4,7 +4,8 @@ import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { withTenant } from "@guardora/db";
 import { requirePermission } from "@/server/auth";
 import { navItem } from "@/lib/nav";
-import { getT } from "@/i18n/server";
+import { getTL } from "@/i18n/server";
+import type { Locale } from "@/i18n";
 import { humanize, formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -17,13 +18,36 @@ const ACTOR_TONE: Record<string, string> = {
   system: "neutral",
 };
 
+const COPY: Record<Locale, {
+  actor: Record<string, string>;
+  emptyFilters: string;
+  appendOnly: string;
+}> = {
+  en: {
+    actor: { ai: "AI", human: "Human", rule: "Rule", system: "System" },
+    emptyFilters: "No audit entries match these filters.",
+    appendOnly: "Append-only ·",
+  },
+  sk: {
+    actor: { ai: "AI", human: "Človek", rule: "Pravidlo", system: "Systém" },
+    emptyFilters: "Týmto filtrom nezodpovedajú žiadne položky auditu.",
+    appendOnly: "Iba na pripájanie ·",
+  },
+  de: {
+    actor: { ai: "KI", human: "Mensch", rule: "Regel", system: "System" },
+    emptyFilters: "Keine Audit-Einträge entsprechen diesen Filtern.",
+    appendOnly: "Nur anfügbar ·",
+  },
+};
+
 export default async function AuditPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requirePermission(Permission.AuditView);
-  const hdrT = await getT();
+  const { t: hdrT, locale } = await getTL();
+  const c = COPY[locale];
   const sp = await searchParams;
 
   const brandId = sp.brand || undefined;
@@ -61,7 +85,7 @@ export default async function AuditPage({
   ];
   const actorOptions = [
     { value: "", label: hdrT.dash.allActors },
-    ...Object.values(ActorKind).map((v) => ({ value: v, label: humanize(v) })),
+    ...Object.values(ActorKind).map((v) => ({ value: v, label: c.actor[v] ?? humanize(v) })),
   ];
 
   return (
@@ -106,7 +130,7 @@ export default async function AuditPage({
         </div>
         {logs.length === 0 ? (
           <div className="px-4 py-16 text-center text-sm text-[var(--color-muted)]">
-            No audit entries match these filters.
+            {c.emptyFilters}
           </div>
         ) : (
           logs.map((l) => (
@@ -120,7 +144,7 @@ export default async function AuditPage({
               <span className="font-mono text-xs">{l.event}</span>
               <span>
                 <Badge tone={ACTOR_TONE[l.actorKind] ?? "neutral"}>
-                  {humanize(l.actorKind)}
+                  {c.actor[l.actorKind] ?? humanize(l.actorKind)}
                 </Badge>
               </span>
               <span className="truncate text-xs text-[var(--color-muted)]">
@@ -131,7 +155,7 @@ export default async function AuditPage({
         )}
       </div>
       <p className="mt-3 text-xs text-[var(--color-muted)]">
-        Append-only · {hdrT.dash.showing} {logs.length} {hdrT.dash.items} · {hdrT.dash.max} 200.
+        {c.appendOnly} {hdrT.dash.showing} {logs.length} {hdrT.dash.items} · {hdrT.dash.max} 200.
       </p>
     </>
   );
