@@ -4,7 +4,9 @@ import { getMetaConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { DangerZone } from "@/components/dashboard/danger-zone";
+import { AccountDangerZone } from "@/components/dashboard/account-danger-zone";
 import { requireSession } from "@/server/auth";
+import { analyzeUserErasability } from "@guardora/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { getLocale } from "@/i18n/locale-server";
@@ -13,9 +15,12 @@ import { getDictionary } from "@/i18n";
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/settings");
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ danger?: string }> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ danger?: string; account?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
+  // V1.45C2 — advisory sole-owner analysis for the account Danger Zone (the erasure service re-checks
+  // atomically). Uses the authenticated user's OWN id; blockers are the user's own owned workspaces.
+  const erasability = await analyzeUserErasability(session.userId);
   const hdrT = await getT();
   const meta = getMetaConfig();
   const locale = await getLocale();
@@ -109,6 +114,29 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           }}
         />
       ) : null}
+
+      {/* V1.45C2 — Account (global identity) Danger Zone. Visible to EVERY authenticated user; NO tenant
+          role gates it. Server authorization (self-only) is authoritative; this is self-service. */}
+      <AccountDangerZone
+        email={session.userEmail}
+        blockers={erasability.blockers}
+        notice={sp?.account === "mismatch" ? "mismatch" : sp?.account === "owner" ? "owner" : null}
+        copy={{
+          title: t.accountDangerZone.title,
+          deleteHeading: t.accountDangerZone.deleteHeading,
+          description: t.accountDangerZone.description,
+          historyNote: t.accountDangerZone.historyNote,
+          workspaceNote: t.accountDangerZone.workspaceNote,
+          soleOwnerHeading: t.accountDangerZone.soleOwnerHeading,
+          soleOwnerNote: t.accountDangerZone.soleOwnerNote,
+          soleOwnerDeleting: t.accountDangerZone.soleOwnerDeleting,
+          confirmLabel: t.accountDangerZone.confirmLabel,
+          confirmCheckbox: t.accountDangerZone.confirmCheckbox,
+          button: t.accountDangerZone.button,
+          mismatchNotice: t.accountDangerZone.mismatchNotice,
+          blockedNotice: t.accountDangerZone.blockedNotice,
+        }}
+      />
     </>
   );
 }

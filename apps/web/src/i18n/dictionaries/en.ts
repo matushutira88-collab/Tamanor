@@ -1627,6 +1627,22 @@ export const en = {
     deletingNote: "This workspace is being deleted. Access has been disabled.",
     mismatchNotice: "The name you typed did not match the workspace name. Nothing was deleted.",
   },
+  // V1.45C2 — Account (global identity) erasure. Distinct from workspace deletion above. Truthful copy.
+  accountDangerZone: {
+    title: "Danger zone",
+    deleteHeading: "Delete my account",
+    description: "Permanently delete your personal account (identity). Your login, all your sessions, and your memberships in every workspace are removed. This cannot be undone.",
+    historyNote: "Business and audit records may remain, with your identity references anonymized — not attributed to you.",
+    workspaceNote: "Deleting a workspace is a separate action. Your account deletion does not delete any workspace.",
+    soleOwnerHeading: "Resolve these workspaces first",
+    soleOwnerNote: "You are the only owner of the workspace(s) below. Delete each workspace, or transfer ownership, before you can delete your account:",
+    soleOwnerDeleting: "(deletion in progress — wait for it to finish)",
+    confirmLabel: "Type your email to confirm",
+    confirmCheckbox: "I understand this permanently deletes my account and cannot be undone.",
+    button: "Delete my account permanently",
+    mismatchNotice: "The email you typed did not match your account email. Nothing was deleted.",
+    blockedNotice: "Your account was not deleted because you still solely own one or more workspaces.",
+  },
 };
 
 export type Dictionary = typeof en;

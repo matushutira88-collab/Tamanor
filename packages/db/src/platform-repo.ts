@@ -19,13 +19,15 @@ export { PlatformRole };
 // V1.45C1 — `tenant:delete` is a PLATFORM capability distinct from tenant ownership: it lets a
 // Platform Admin initiate a tenant deletion via a trusted server capability. It is granted ONLY to
 // platform `admin` (NOT `staff`) — platform staff must never be able to destroy a tenant.
-export type PlatformCapability = "leads:read" | "leads:write" | "tenant:delete";
+// V1.45C2 — `user:delete` lets a Platform Admin erase ANOTHER user's global identity. Also admin-only;
+// staff denied; tenant roles grant NO global identity-delete authority.
+export type PlatformCapability = "leads:read" | "leads:write" | "tenant:delete" | "user:delete";
 
-/** Capability policy. `admin` ⊇ `staff`, EXCEPT tenant:delete is admin-only. Nothing else is granted. */
+/** Capability policy. `admin` ⊇ `staff`, EXCEPT tenant:delete and user:delete are admin-only. */
 export function platformRoleSatisfies(role: PlatformRole | null | undefined, cap: PlatformCapability): boolean {
   switch (role) {
-    case PlatformRole.admin: return true;                       // full platform access (incl. tenant:delete)
-    case PlatformRole.staff: return cap === "leads:read" || cap === "leads:write"; // NOT tenant:delete
+    case PlatformRole.admin: return true;                       // full platform access (incl. tenant:delete, user:delete)
+    case PlatformRole.staff: return cap === "leads:read" || cap === "leads:write"; // NOT tenant:delete / user:delete
     default: return false;                                      // none / null / unknown → denied
   }
 }

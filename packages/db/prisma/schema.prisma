@@ -1298,3 +1298,40 @@ model TenantDeletionReceipt {
   @@index([status])
   @@map("tenant_deletion_receipts")
 }
+
+// V1.45C2 — who initiated a user identity erasure. `self` = the authenticated user erasing their own
+// global identity; `platform_admin` = a V1.45A Platform Admin via the separate `user:delete` capability.
+enum UserDeletionInitiator {
+  self
+  platform_admin
+}
+
+// ===========================================================================================
+// V1.45C2 — GLOBAL, PRIVACY-SAFE user-identity deletion receipt. Deliberately has NO User foreign key
+// (it MUST survive the hard-delete of the user as durable proof that an erasure occurred — the app's
+// privacy policy promises GDPR erasure). Reached ONLY via the systemDb user-erasure service. Written
+// in the SAME transaction as the User delete, so a receipt exists iff the erasure committed.
+//
+// It stores AGGREGATE, NON-PII facts only. It MUST NOT contain: email, name, tenant names, membership
+// role names, platformRole, session hashes, tokens, IP/user-agent, content, or raw exception messages.
+// `deletedUserId` and `requestedByUserId` are OPAQUE copied cuids (internal handles, no FK, not PII).
+// No status field: a receipt is created ONLY on a committed erasure (a blocked erase writes nothing).
+// ===========================================================================================
+model UserDeletionReceipt {
+  id                String                @id @default(cuid())
+  // Server-generated, unique — the idempotency key. A converged concurrent/repeat erase reuses the
+  // existing receipt rather than creating a second.
+  operationId       String                @unique
+  deletedUserId     String
+  initiatedBy       UserDeletionInitiator
+  requestedByUserId String?
+  membershipCount   Int                   @default(0)
+  sessionCount      Int                   @default(0)
+  requestedAt       DateTime              @default(now())
+  completedAt       DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([deletedUserId])
+  @@map("user_deletion_receipts")
+}
