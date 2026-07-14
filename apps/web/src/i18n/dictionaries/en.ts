@@ -14,10 +14,13 @@ export const en = {
   common: {
     // V1.33 — public brand. Prefer these keys over hardcoding the name.
     brand: "Tamanor",
-    brandTagline: "Social Account Firewall",
-    brandFull: "Tamanor — Social Account Firewall",
+    brandTagline: "Reputation & moderation platform",
+    brandFull: "Tamanor — reputation & moderation platform",
     requestBetaAccess: "Request beta access",
     startFreeTrial: "Start free trial",
+    // V1.49B — truthful secondary CTA (there is no self-service trial; the platform is pilot-access via demo).
+    reviewSecurity: "Review security",
+    explorePlatform: "Explore the platform",
     bookDemo: "Book a demo",
     contactSales: "Contact sales",
     getNotified: "Get notified",
@@ -53,16 +56,16 @@ export const en = {
   },
 
   hero: {
-    badge: "Beta · Social Account Firewall",
-    titleBefore: "Tamanor —",
-    titleHighlight: "Social Account Firewall",
+    badge: "European reputation & moderation platform",
+    titleBefore: "Online reputation and moderation,",
+    titleHighlight: "under control.",
     subtitle:
-      "Tamanor protects social accounts from spam, scams, harmful comments and repeated risky behavior.",
+      "Tamanor brings the comments, reviews and messages from your connected Meta accounts into one inbox — with AI-assisted risk scoring, human-approved moderation, and a full audit trail. Designed for European privacy and operational requirements.",
   },
 
   platformsSection: {
-    title: "Connect the accounts you already run.",
-    subtitle: "Official OAuth / API only. No scraping. No shared passwords.",
+    title: "Connect the accounts you already run — with official OAuth.",
+    subtitle: "Facebook Pages and Instagram Business today. Verified connections only — no scraping, no shared passwords.",
   },
 
   features: {

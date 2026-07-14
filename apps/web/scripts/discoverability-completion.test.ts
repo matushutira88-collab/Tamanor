@@ -48,7 +48,9 @@ function run() {
 
   // 5–7: metadata / canonical / breadcrumb
   const compareSrc = src("compare/[slug]/page.tsx"), securitySrc = src("security/[slug]/page.tsx");
-  check("5) dynamic routes define metadata", /generateMetadata/.test(compareSrc) && /generateMetadata/.test(securitySrc) && /export const metadata/.test(src("compare/page.tsx")));
+  // The compare index defines LOCALIZED metadata via generateMetadata (reads the active locale) — that
+  // is more correct than a static `export const metadata`, so accept either form here.
+  check("5) dynamic routes define metadata", /generateMetadata/.test(compareSrc) && /generateMetadata/.test(securitySrc) && /generateMetadata|export const metadata/.test(src("compare/page.tsx")));
   check("6) dynamic routes set canonical = entry path", /alternates:\s*{\s*canonical:\s*pathForEntry\(entry\)/.test(compareSrc) && /canonical:\s*pathForEntry\(entry\)/.test(securitySrc)
     && [...entriesIn("compare"), ...entriesIn("security")].every((e) => techArticleLd(e).url === `${SITE}${pathForEntry(e)}`));
   const kvSrc = readFileSync(resolve(process.cwd(), "../web/src/components/knowledge-view.tsx"), "utf8");

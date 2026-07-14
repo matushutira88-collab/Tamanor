@@ -17,6 +17,8 @@ export const de: Dictionary = {
     brandFull: "Tamanor — Social Account Firewall",
     requestBetaAccess: "Beta-Zugang anfragen",
     startFreeTrial: "Kostenlos testen",
+    reviewSecurity: "Sicherheit prüfen",
+    explorePlatform: "Plattform entdecken",
     bookDemo: "Demo buchen",
     contactSales: "Vertrieb kontaktieren",
     getNotified: "Benachrichtigen lassen",
@@ -51,16 +53,16 @@ export const de: Dictionary = {
   },
 
   hero: {
-    badge: "Beta · Social Account Firewall",
-    titleBefore: "Tamanor —",
-    titleHighlight: "Social Account Firewall",
+    badge: "Europäische Plattform für Reputation & Moderation",
+    titleBefore: "Online-Reputation und Moderation,",
+    titleHighlight: "unter Kontrolle.",
     subtitle:
-      "Tamanor schützt Social-Media-Konten vor Spam, Scam, schädlichen Kommentaren und wiederholtem riskantem Verhalten.",
+      "Tamanor führt Kommentare, Bewertungen und Nachrichten aus Ihren verbundenen Meta-Konten in einem Posteingang zusammen — mit KI-gestützter Risikobewertung, von Menschen freigegebener Moderation und einem vollständigen Audit-Trail. Konzipiert für europäische Datenschutz- und Betriebsanforderungen.",
   },
 
   platformsSection: {
-    title: "Ein Reputations-Posteingang für jeden öffentlichen Kanal.",
-    subtitle: "Anbindung über offizielle OAuth-/API-Integrationen. Kein Scraping. Keine geteilten Passwörter.",
+    title: "Verbinden Sie die Konten, die Sie bereits betreiben — per offiziellem OAuth.",
+    subtitle: "Facebook Pages und Instagram Business heute. Nur verifizierte Verbindungen — kein Scraping, keine geteilten Passwörter.",
   },
 
   features: {

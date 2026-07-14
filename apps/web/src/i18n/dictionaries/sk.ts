@@ -17,6 +17,8 @@ export const sk: Dictionary = {
     brandFull: "Tamanor — Social Account Firewall",
     requestBetaAccess: "Požiadať o beta prístup",
     startFreeTrial: "Vyskúšať zdarma",
+    reviewSecurity: "Pozrieť bezpečnosť",
+    explorePlatform: "Preskúmať platformu",
     bookDemo: "Objednať demo",
     contactSales: "Kontaktovať obchod",
     getNotified: "Chcem upozornenie",
@@ -51,16 +53,16 @@ export const sk: Dictionary = {
   },
 
   hero: {
-    badge: "Beta · Social Account Firewall",
-    titleBefore: "Tamanor —",
-    titleHighlight: "Social Account Firewall",
+    badge: "Európska platforma pre reputáciu a moderovanie",
+    titleBefore: "Online reputácia a moderovanie,",
+    titleHighlight: "pod kontrolou.",
     subtitle:
-      "Tamanor chráni sociálne účty pred spamom, scamom, škodlivými komentármi a opakovaným rizikovým správaním.",
+      "Tamanor spája komentáre, recenzie a správy z vašich pripojených Meta účtov do jednej schránky — s hodnotením rizika pomocou AI, moderovaním schvaľovaným človekom a úplným záznamom auditu. Navrhnuté pre európske požiadavky na súkromie a prevádzku.",
   },
 
   platformsSection: {
-    title: "Jedna schránka pre reputáciu naprieč všetkými verejnými kanálmi.",
-    subtitle: "Pripojenie cez oficiálne OAuth / API integrácie. Žiadny scraping. Žiadne zdieľané heslá.",
+    title: "Pripojte účty, ktoré už spravujete — cez oficiálne OAuth.",
+    subtitle: "Facebook Pages a Instagram Business už dnes. Iba overené pripojenia — žiadny scraping, žiadne zdieľané heslá.",
   },
 
   features: {

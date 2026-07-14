@@ -41,7 +41,9 @@ for (const route of ["/", "/login", "/security", "/compare"]) {
 test("mobile: primary CTA remains usable (visible + adequate touch target)", async ({ page }, testInfo) => {
   test.skip(!isMobile(testInfo.project.name), "mobile-only");
   await page.goto("/");
-  const cta = page.getByRole("link", { name: /start free trial/i }).first();
+  // V1.49B — the header primary CTA is "Book a demo" (the former "Start free trial" implied a
+  // self-service trial that does not exist and was removed).
+  const cta = page.getByRole("link", { name: /book a demo/i }).first();
   await expect(cta).toBeVisible();
   const box = await cta.boundingBox();
   expect(box && box.height).toBeGreaterThanOrEqual(36);

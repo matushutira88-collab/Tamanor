@@ -7,7 +7,7 @@ import { ShieldEmblem } from "@/components/logo";
 import { InboxMock, RiskDetailMock, ApprovalMock, TrendsMock } from "./app-mocks";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { IllusShield } from "@/components/illustrations";
-import type { Dictionary, Locale } from "@/i18n";
+import { localePrefix, type Dictionary, type Locale } from "@/i18n";
 
 
 const FEATURE_ICONS = [<IconShield key="s" />, <IconChart key="c" />, <IconReply key="r" />, <IconCheck key="k" />];
@@ -52,10 +52,10 @@ export function LandingContent({ dict, locale }: { dict: Dictionary; locale: Loc
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link href="/book-demo" className="rounded-xl bg-[var(--color-brand)] px-6 py-3 text-center text-sm font-semibold text-[var(--color-brand-fg)] shadow-[0_0_30px_rgba(25,195,154,0.4)] transition hover:bg-[var(--color-brand-strong)]">
-                {t.common.requestBetaAccess}
-              </Link>
-              <Link href="/book-demo" className="rounded-xl border border-[var(--color-border-strong)] px-6 py-3 text-center text-sm font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-2)]">
                 {t.common.bookDemo}
+              </Link>
+              <Link href={`${localePrefix(locale)}/security`} className="rounded-xl border border-[var(--color-border-strong)] px-6 py-3 text-center text-sm font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-2)]">
+                {t.common.reviewSecurity}
               </Link>
             </div>
             <p className="mt-6 text-xs text-[var(--color-muted)]">{t.common.readOnlyTagline}</p>
