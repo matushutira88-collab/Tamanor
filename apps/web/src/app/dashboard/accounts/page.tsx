@@ -33,6 +33,10 @@ const META_PLATFORMS = new Set<string>([
   Platform.InstagramBusiness,
 ]);
 
+// V1.45B — official Facebook page for removing a connected business integration (app). The
+// user finishes provider-side removal here; Meta exposes no per-Page/IG token revoke API.
+const FACEBOOK_REMOVE_APP_URL = "https://www.facebook.com/help/405094243235242";
+
 const CHECK_TONE: Record<string, string> = {
   configured: "ok",
   on: "ok",
@@ -116,6 +120,32 @@ export default async function AccountsPage({
         <div className="mb-5" role="status">
           <Badge tone={metaNotice.tone}>Meta</Badge>{" "}
           <span className="text-sm text-[var(--color-muted)]">{metaNotice.text}</span>
+        </div>
+      ) : null}
+
+      {/* V1.45B — truthful post-disconnect notice: local credential removal is done; for Meta
+          we clearly state provider-side revocation was NOT performed and link the official
+          manual-removal page (no token in the URL, opened safely). */}
+      {sp.disconnected ? (
+        <div className="mb-5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2" role="status">
+          <p className="text-sm font-medium">{hdrT.dash.disconnectedTitle}</p>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">{hdrT.dash.disconnectedLocal}</p>
+          {META_PLATFORMS.has(sp.disconnected) ? (
+            <>
+              <p className="mt-1 text-sm text-[var(--color-muted)]">{hdrT.dash.disconnectedMetaProvider}</p>
+              <p className="mt-1 text-sm text-[var(--color-muted)]">
+                {hdrT.dash.disconnectedManualHint}{" "}
+                <a
+                  href={FACEBOOK_REMOVE_APP_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-[var(--color-brand)] hover:underline"
+                >
+                  {hdrT.dash.disconnectedManualCta} →
+                </a>
+              </p>
+            </>
+          ) : null}
         </div>
       ) : null}
 

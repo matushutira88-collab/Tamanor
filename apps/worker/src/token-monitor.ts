@@ -45,7 +45,8 @@ export async function runTokenExpiryMonitor(): Promise<{ recommended: number; ex
       // throw if the row moved out of scope between discovery and execution.
       if (isExpired) {
         const upd = await db.connectedAccount.updateMany({
-          where: { id: a.id },
+          // V1.45B — never flip a user-disconnected account back to expired/degraded.
+          where: { id: a.id, status: { not: ConnectorStatus.disconnected } },
           data: {
             status: ConnectorStatus.expired,
             health: ConnectorHealth.degraded,
@@ -58,7 +59,7 @@ export async function runTokenExpiryMonitor(): Promise<{ recommended: number; ex
         return "expired" as const;
       }
       const upd = await db.connectedAccount.updateMany({
-        where: { id: a.id },
+        where: { id: a.id, status: { not: ConnectorStatus.disconnected } },
         data: {
           health: ConnectorHealth.degraded,
           lastError: "Reconnect recommended",

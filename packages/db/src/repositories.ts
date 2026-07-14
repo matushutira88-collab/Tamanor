@@ -22,12 +22,34 @@ export function getConnectedAccount(tenantId: string, id: string) {
   return withTenantDb(tenantId, (db) => db.connectedAccount.findFirst({ where: { id } }));
 }
 
-/** Disconnect an account. Returns null for a foreign/absent id (→ not_found, no enumeration). */
+/**
+ * Low-level single-row disconnect (tenant-scoped). Returns null for a foreign/absent id
+ * (→ not_found, no enumeration).
+ *
+ * NOTE: This is the DB-layer primitive used by RLS runtime tests. It is NOT the product
+ * disconnect path — the canonical, credential-clearing, CLUSTER-aware disconnect lives in
+ * `@guardora/sync` `disconnectAccount` (clears the full Meta Page/Instagram token cluster,
+ * invalidates leases, and classifies provider revocation). To avoid leaving a credential
+ * behind even when this primitive is used directly, it clears the token fields too (a
+ * status-only flip would have left a live token on the row — a foot-gun).
+ */
 export function disconnectConnectedAccount(tenantId: string, id: string): Promise<{ id: string; brandId: string; platform: string } | null> {
   return withTenantDb(tenantId, async (db) => {
     const acc = await db.connectedAccount.findFirst({ where: { id }, select: { id: true, brandId: true, platform: true } });
     if (!acc) return null;
-    await db.connectedAccount.update({ where: { id: acc.id }, data: { status: "disconnected" as ConnectorStatus } });
+    await db.connectedAccount.update({
+      where: { id: acc.id },
+      data: {
+        status: "disconnected" as ConnectorStatus,
+        connectionStatus: "disconnected",
+        tokenHealth: "invalid",
+        requiresReconnectReason: "disconnected",
+        accessToken: null,
+        longLivedToken: null,
+        refreshToken: null,
+        tokenExpiresAt: null,
+      },
+    });
     return acc;
   });
 }

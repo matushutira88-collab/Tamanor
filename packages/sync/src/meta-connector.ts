@@ -172,9 +172,12 @@ export async function syncMetaAccountState(
     audit: { event: string; metadata: Record<string, unknown> },
     transient = false,
   ): Promise<MetaSyncStateResult> => {
-    await withTenantDb(tenantId, async (db) => {
-      await db.connectedAccount.update({
-        where: { id: acct.id },
+    const wrote = await withTenantDb(tenantId, async (db) => {
+      // V1.45B — guard against overwriting a disconnected account: a stale health check that
+      // completes after the user disconnects updates ZERO rows (never restores connected/
+      // healthy state). No-op writes are not audited.
+      const res = await db.connectedAccount.updateMany({
+        where: { id: acct.id, status: { not: "disconnected" as never } },
         data: {
           connectionStatus: write.connectionStatus,
           tokenHealth: write.tokenHealth,
@@ -186,6 +189,7 @@ export async function syncMetaAccountState(
           ...(write.extra ?? {}),
         },
       });
+      if (res.count === 0) return false;
       await db.auditLog.create({
         data: {
           tenantId, brandId: acct.brandId, event: audit.event, actorKind: ActorKind.system,
@@ -194,8 +198,9 @@ export async function syncMetaAccountState(
           metadata: { platform, status, ...audit.metadata },
         },
       });
+      return true;
     });
-    return { accountId, platform, status, connectionStatus: write.connectionStatus, tokenHealth: write.tokenHealth, changed: true, transient };
+    return { accountId, platform, status, connectionStatus: write.connectionStatus, tokenHealth: write.tokenHealth, changed: wrote, transient };
   };
 
   if (!token) {
@@ -259,7 +264,8 @@ export async function syncMetaAccountState(
   if (acct.igBusinessId && st.igBusinessId == null) {
     // Mark the linked IG ConnectedAccount disconnected too (detect disconnected IG).
     await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({
-      where: { brandId: acct.brandId, platform: "instagram_business" as never, externalId: acct.igBusinessId! },
+      // V1.45B — never resurrect/rewrite a row the user already disconnected.
+      where: { brandId: acct.brandId, platform: "instagram_business" as never, externalId: acct.igBusinessId!, status: { not: "disconnected" as never } },
       data: { connectionStatus: "disconnected", tokenHealth: "invalid", health: "error" as never, requiresReconnectReason: "instagram_disconnected" },
     }));
     return finish("instagram_disconnected",
@@ -286,7 +292,7 @@ async function finishTransient(
   platform: string,
 ): Promise<MetaSyncStateResult> {
   await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({
-    where: { id: acct.id },
+    where: { id: acct.id, status: { not: "disconnected" as never } },
     data: { lastTokenCheckAt: now, lastTokenCheckResult: errorCode },
   }));
   return { accountId: acct.id, platform, status: "transient_error", connectionStatus: acct.connectionStatus, tokenHealth: acct.tokenHealth, changed: false, transient: true };

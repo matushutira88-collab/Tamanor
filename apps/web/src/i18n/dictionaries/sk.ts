@@ -1275,6 +1275,12 @@ export const sk: Dictionary = {
     configMissing: "Chýba konfigurácia",
     connectMock: "Pripojiť (mock)",
     disconnect: "Odpojiť",
+    // V1.45B — truthful post-disconnect notice (local removal vs. unsupported provider-side revocation).
+    disconnectedTitle: "Účet odpojený",
+    disconnectedLocal: "Tamanor odstránil uložené prihlasovacie údaje pre toto pripojenie a zastavil synchronizáciu.",
+    disconnectedMetaProvider: "Meta nepodporuje zrušenie jednotlivého tokenu stránky alebo Instagramu, takže toto povolenie aplikácie môže zostať v službe Meta aktívne až do vypršania platnosti.",
+    disconnectedManualHint: "Ak chcete odstrániť prístup Tamanoru v službe Meta, odstráňte aplikáciu zo svojich obchodných integrácií na Facebooku:",
+    disconnectedManualCta: "Odstrániť Tamanor na Facebooku",
     developerDiagnostics: "Diagnostika pre vývojárov",
     ready: "Pripravené",
     incomplete: "Neúplné",

@@ -1309,6 +1309,12 @@ export const en = {
     configMissing: "Config missing",
     connectMock: "Connect (mock)",
     disconnect: "Disconnect",
+    // V1.45B — truthful post-disconnect notice (local removal vs. unsupported provider-side revocation).
+    disconnectedTitle: "Account disconnected",
+    disconnectedLocal: "Tamanor removed its stored credentials for this connection and stopped syncing it.",
+    disconnectedMetaProvider: "Meta does not support revoking a single Page or Instagram token, so this app authorization may stay active at Meta until it expires.",
+    disconnectedManualHint: "To remove Tamanor's access at Meta, delete it from your Facebook business integrations:",
+    disconnectedManualCta: "Remove Tamanor on Facebook",
     developerDiagnostics: "Developer diagnostics",
     ready: "Ready",
     incomplete: "Incomplete",

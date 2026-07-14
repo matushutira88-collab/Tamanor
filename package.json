@@ -71,6 +71,7 @@
     "web-rls:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/web-rls.test.ts",
     "ingest-integrity:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/ingest-integrity.test.ts",
     "disconnect-token:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/disconnect-token.test.ts",
+    "disconnect-cluster:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/disconnect-cluster.test.ts",
     "sync-verdict:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/sync-verdict.test.ts",
     "referential-integrity:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/referential-integrity.test.ts",
     "meta-connector:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/meta-connector.test.ts",

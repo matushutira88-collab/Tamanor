@@ -258,7 +258,8 @@ async function revalidateAndRepair(ctx: HideContext, transport: FacebookHideTran
   const now = new Date();
   if (st.ok) {
     await withTenantDb(ctx.tenantId, (db) => db.connectedAccount.updateMany({
-      where: { id: ctx.connectedAccountId },
+      // V1.45B — a self-heal must NEVER restore a user-disconnected account to connected/healthy.
+      where: { id: ctx.connectedAccountId, status: { not: "disconnected" as never } },
       data: { connectionStatus: "connected", tokenHealth: "ok", health: "healthy", requiresReconnectReason: null, lastError: null, lastErrorAt: null, lastTokenCheckAt: now, lastTokenCheckResult: "ok", lastSuccessfulGraphCheckAt: now, tokenExpiresAt: null },
     }));
     ctx.account.connectionStatus = "connected";

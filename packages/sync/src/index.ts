@@ -129,6 +129,45 @@ function nextRetryFor(attempts: number): Date {
 type AccountRow = ConnectedAccount;
 
 /**
+ * V1.45B — apply a TERMINAL account-state write only if this sync still holds its lease
+ * AND the account has not been disconnected. This closes the sync-race:
+ *
+ *  - A disconnect atomically deletes the account's SyncLease → the lease-ownership check
+ *    fails → the stale completion updates ZERO rows (it cannot restore healthy/connected
+ *    state, re-schedule work, or resurrect a token).
+ *  - After a reconnect (which mints a NEW lease with a new holder), this old sync's lease
+ *    id/holder no longer matches → it still writes zero rows, so it can never overwrite the
+ *    freshly reconnected lifecycle.
+ *  - The `status != disconnected` predicate is belt-and-suspenders for the same invariant.
+ *
+ * Returns the number of rows written (0 = benign stale completion).
+ */
+async function writeAccountIfLeaseHeld(
+  db: TenantTx,
+  accountId: string,
+  lease: { id: string; holderId: string },
+  data: Record<string, unknown>,
+): Promise<number> {
+  // Authorization is ATOMIC with the write: lock THIS sync's lease row FOR UPDATE and hold
+  // that lock across the account update (same transaction). A concurrent disconnect deletes
+  // the lease — with the lock held it must serialize against us rather than slipping between
+  // a check and a write, and if it already committed we lock zero rows and skip. This closes
+  // the check-then-write TOCTOU: a stale completion can never land after disconnect, and after
+  // a reconnect (which drops this lease and mints a new one) our lease id no longer exists, so
+  // we cannot overwrite the freshly reconnected lifecycle even though its status is "active".
+  const held = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "sync_leases"
+    WHERE "id" = ${lease.id} AND "connectedAccountId" = ${accountId} AND "holderId" = ${lease.holderId}
+    FOR UPDATE`;
+  if (held.length === 0) return 0; // lease gone → benign stale completion
+  const res = await db.connectedAccount.updateMany({
+    where: { id: accountId, status: { not: ConnectorStatus.disconnected } },
+    data: data as never,
+  });
+  return res.count;
+}
+
+/**
  * V1.37.3B — read-only sync on the RLS runtime. The caller supplies a TRUSTED
  * tenantId (from system discovery or a validated session). Structure follows the
  * read → fetch → write pattern: short tenant transactions for DB work, provider
@@ -170,6 +209,14 @@ export async function runReadOnlySync(
   phase("tenant-read-end");
   if (!account) {
     return zero(false, "Connected account not found.");
+  }
+
+  // V1.45B — a disconnected account is not syncable. Return cleanly WITHOUT acquiring a
+  // lease or opening a SyncRun so a manual sync (or a race between discovery and disconnect)
+  // never resurrects work on a cluster the user just disconnected. Worker discovery already
+  // filters status:"active", so this only guards the direct/manual path.
+  if ((account.status as unknown as string) === ConnectorStatus.disconnected) {
+    return zero(false, "This account is disconnected — reconnect to sync.");
   }
 
   const mode = account.mode as unknown as CoreMode;
@@ -270,15 +317,14 @@ export async function runReadOnlySync(
             finishedAt: new Date(),
           },
         });
-        await db.connectedAccount.update({
-          where: { id: account.id },
-          data: {
-            lastSyncedAt: new Date(),
-            // V1.38.1 — a successful read is the truthful "healthy" permission state.
-            ...(permissionState ? { contentPermissionState: permissionState } : {}),
-            // Only a fully/partly successful run refreshes success markers.
-            ...(verdict !== "failed" ? { lastSuccessfulSyncAt: new Date(), lastCursor: cursor ?? undefined, health: ConnectorHealth.healthy, lastError: null, lastErrorAt: null, syncAttempts: 0, nextRetryAt: null } : {}),
-          },
+        // V1.45B — lease-gated terminal write: a disconnect (which drops the lease) makes
+        // this a zero-row no-op, so a stale success can never restore healthy/connected state.
+        await writeAccountIfLeaseHeld(db, account.id, lease, {
+          lastSyncedAt: new Date(),
+          // V1.38.1 — a successful read is the truthful "healthy" permission state.
+          ...(permissionState ? { contentPermissionState: permissionState } : {}),
+          // Only a fully/partly successful run refreshes success markers.
+          ...(verdict !== "failed" ? { lastSuccessfulSyncAt: new Date(), lastCursor: cursor ?? undefined, health: ConnectorHealth.healthy, lastError: null, lastErrorAt: null, syncAttempts: 0, nextRetryAt: null } : {}),
         });
         await auditTx(db, account, verdict === "partial_success" ? "sync.partial" : "sync.completed", {
           mock: useMock, fetched: fetched.length, created, updated, deduped, failed, verdict, durationMs, trigger,
@@ -326,16 +372,16 @@ export async function runReadOnlySync(
           where: { id: run.id },
           data: { status, error: msg, errors: 1, durationMs, finishedAt: new Date() },
         });
-        await db.connectedAccount.update({
-          where: { id: account.id },
-          data: {
-            lastSyncedAt: new Date(),
-            status: needsReconnect ? ConnectorStatus.expired : undefined,
-            health: needsReconnect ? ConnectorHealth.degraded : retryLater ? ConnectorHealth.degraded : ConnectorHealth.error,
-            // V1.38.1 — persist the truthful IG permission/availability state.
-            ...(permissionState ? { contentPermissionState: permissionState } : {}),
-            lastError: msg, lastErrorAt: new Date(), syncAttempts: attempts, nextRetryAt,
-          },
+        // V1.45B — lease-gated: a stale failure completion after a disconnect writes zero
+        // rows (it cannot set status=expired / a "connected-looking" lastError on a row the
+        // user disconnected, nor schedule another retry).
+        await writeAccountIfLeaseHeld(db, account.id, lease, {
+          lastSyncedAt: new Date(),
+          status: needsReconnect ? ConnectorStatus.expired : undefined,
+          health: needsReconnect ? ConnectorHealth.degraded : retryLater ? ConnectorHealth.degraded : ConnectorHealth.error,
+          // V1.38.1 — persist the truthful IG permission/availability state.
+          ...(permissionState ? { contentPermissionState: permissionState } : {}),
+          lastError: msg, lastErrorAt: new Date(), syncAttempts: attempts, nextRetryAt,
         });
         await auditTx(db, account, event, { error: msg, needsReconnect, retryLater, ...(permissionState ? { permissionState } : {}) });
       });

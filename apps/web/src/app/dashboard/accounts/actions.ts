@@ -81,9 +81,11 @@ export async function disconnect(accountId: string): Promise<void> {
   const session = await requireSession();
   assertCan(session.role, Permission.ConnectorManage);
 
-  // V1.37.4 — safe disconnect: tenant read → best-effort provider revoke (HTTP outside
-  // any tx) → local credential removal (always). A foreign/absent id → not_found.
-  const { account, revoke, status } = await disconnectAccount(session.tenantId, accountId);
+  // V1.37.4 / V1.45B — safe disconnect: tenant read + cluster resolve → best-effort provider
+  // revoke (HTTP outside any tx) → ATOMIC local removal of the whole token-sharing cluster
+  // (always). A foreign/absent id → not_found.
+  const { account, revoke, status, cluster, manualCleanupRecommended } =
+    await disconnectAccount(session.tenantId, accountId);
   if (!account) throw new Error("Account not found");
 
   await writeAudit({
@@ -92,11 +94,25 @@ export async function disconnect(accountId: string): Promise<void> {
     brandId: account.brandId,
     targetType: "connected_account",
     targetId: account.id,
-    // Truthful: local credentials removed + normalized provider-revoke outcome. No token.
-    metadata: { platform: account.platform, localCredentialsRemoved: true, providerRevoke: revoke, status },
+    // Truthful, token-free metadata: the whole local cluster was invalidated; the provider-side
+    // revocation classification (Meta per-account = unsupported); whether manual cleanup is
+    // recommended. Cluster COUNT (not an unbounded id list) + platforms.
+    metadata: {
+      platform: account.platform,
+      localCredentialsRemoved: true,
+      providerRevoke: revoke,
+      status,
+      clusterCount: cluster.count,
+      clusterPlatforms: cluster.platforms,
+      manualCleanupRecommended,
+      resultingStatus: "disconnected",
+    },
   });
 
   revalidatePath("/dashboard/accounts");
+  // Surface a truthful post-disconnect notice (local removal vs. unsupported provider-side
+  // revocation + manual-removal guidance). No token or provider detail is ever put in the URL.
+  redirect(`/dashboard/accounts?disconnected=${encodeURIComponent(account.platform)}&cluster=${cluster.count}`);
 }
 
 /**

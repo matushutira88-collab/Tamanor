@@ -57,7 +57,7 @@ export async function checkAccountToken(
 
   const token = decryptToken(acct.longLivedToken ?? acct.accessToken);
   if (!token) {
-    await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({ where: { id: accountId }, data: { connectionStatus: "needs_reconnect", tokenHealth: "invalid", health: "error", lastError: "no_token", lastErrorAt: now, lastTokenCheckAt: now, lastTokenCheckResult: "no_token", requiresReconnectReason: "no_token" } }));
+    await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({ where: { id: accountId, status: { not: "disconnected" as never } }, data: { connectionStatus: "needs_reconnect", tokenHealth: "invalid", health: "error", lastError: "no_token", lastErrorAt: now, lastTokenCheckAt: now, lastTokenCheckResult: "no_token", requiresReconnectReason: "no_token" } }));
     return { accountId, connectionStatus: "needs_reconnect", tokenHealth: "invalid", result: "no_token" };
   }
 
@@ -74,7 +74,8 @@ export async function checkAccountToken(
     const connectionStatus: ConnectionStatus = permsOk ? "connected" : "missing_permission";
     const tokenHealth: TokenHealth = "ok";
     await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({
-      where: { id: accountId },
+      // V1.45B — a stale healthy write must never resurrect a disconnected account.
+      where: { id: accountId, status: { not: "disconnected" as never } },
       data: {
         connectionStatus, tokenHealth, health: "healthy", lastError: null, lastErrorAt: null,
         lastTokenCheckAt: now, lastTokenCheckResult: permsOk ? "ok" : "missing_permission",
@@ -88,13 +89,13 @@ export async function checkAccountToken(
   const cls = classifyError(state.errorCode);
   if (cls.transient) {
     // Do NOT downgrade a healthy connection on a transient error — only record the check.
-    await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({ where: { id: accountId }, data: { lastTokenCheckAt: now, lastTokenCheckResult: state.errorCode } }));
+    await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({ where: { id: accountId, status: { not: "disconnected" as never } }, data: { lastTokenCheckAt: now, lastTokenCheckResult: state.errorCode } }));
     return { accountId, connectionStatus: acct.connectionStatus as ConnectionStatus, tokenHealth: acct.tokenHealth as TokenHealth, result: state.errorCode, transient: true };
   }
 
   const connectionStatus: ConnectionStatus = state.errorCode === "permission" ? "missing_permission" : "needs_reconnect";
   await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({
-    where: { id: accountId },
+    where: { id: accountId, status: { not: "disconnected" as never } },
     data: {
       connectionStatus, tokenHealth: cls.tokenHealth, health: "error",
       lastError: state.errorCode, lastErrorAt: now, lastTokenCheckAt: now, lastTokenCheckResult: state.errorCode,

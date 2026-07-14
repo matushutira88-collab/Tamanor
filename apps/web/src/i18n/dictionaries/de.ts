@@ -1275,6 +1275,12 @@ export const de: Dictionary = {
     configMissing: "Konfiguration fehlt",
     connectMock: "Verbinden (Mock)",
     disconnect: "Trennen",
+    // V1.45B — truthful post-disconnect notice (local removal vs. unsupported provider-side revocation).
+    disconnectedTitle: "Konto getrennt",
+    disconnectedLocal: "Tamanor hat die gespeicherten Zugangsdaten für diese Verbindung entfernt und die Synchronisierung gestoppt.",
+    disconnectedMetaProvider: "Meta unterstützt kein Widerrufen eines einzelnen Seiten- oder Instagram-Tokens, daher bleibt diese App-Autorisierung bei Meta möglicherweise bis zum Ablauf aktiv.",
+    disconnectedManualHint: "Um den Zugriff von Tamanor bei Meta zu entfernen, löschen Sie die App aus Ihren Facebook-Geschäftsintegrationen:",
+    disconnectedManualCta: "Tamanor auf Facebook entfernen",
     developerDiagnostics: "Entwickler-Diagnose",
     ready: "Bereit",
     incomplete: "Unvollständig",
