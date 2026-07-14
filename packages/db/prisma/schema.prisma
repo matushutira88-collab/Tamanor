@@ -34,6 +34,15 @@ enum Role {
   viewer
 }
 
+// V1.45A — GLOBAL platform-administration role, INDEPENDENT of tenant Role. Governs cross-tenant
+// platform surfaces (e.g. the global prospect/leads admin). Default `none` — a tenant owner/admin
+// has ZERO platform privilege. Never assigned by tenant UI, migration, or startup.
+enum PlatformRole {
+  none
+  staff
+  admin
+}
+
 enum BrandStatus {
   active
   paused
@@ -182,12 +191,14 @@ enum DecisionStatus {
 // --- Identity & tenancy ------------------------------------------------------
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  locale    String   @default("en")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String?
+  locale       String       @default("en")
+  // V1.45A — global platform-admin role (default least-privilege; independent of tenant Role).
+  platformRole PlatformRole @default(none)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   memberships        Membership[]
   proposed           ModerationDecision[] @relation("DecisionProposer")

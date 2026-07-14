@@ -87,4 +87,5 @@ export * from "./repositories";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";
+export * from "./platform-repo";
 export * from "./sync-lease";

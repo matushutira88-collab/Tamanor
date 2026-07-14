@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Permission, can } from "@guardora/core";
-import { LeadStatus, getLeadById } from "@guardora/db";
+import { LeadStatus, platformGetLeadById } from "@guardora/db";
 import { PageHeader, Card, SectionHeader, Badge, Textarea, PrimaryButton } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
-import { requireSession } from "@/server/auth";
+import { requirePlatformCapabilityOrNotFound } from "@/server/platform-auth";
 import { humanize, formatDateTime } from "@/lib/format";
 import { updateLeadStatus, saveLeadNotes } from "../actions";
 
@@ -21,18 +20,11 @@ export default async function LeadDetailPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const session = await requireSession();
+  // Platform boundary FIRST — unauthenticated / ordinary tenant users get a uniform 404 (does not
+  // reveal the lead exists), before any lead query runs.
+  const { userId } = await requirePlatformCapabilityOrNotFound("leads:read");
 
-  if (!can(session.role, Permission.MemberManage)) {
-    return (
-      <>
-        <PageHeader title="Lead" description="Internal lead detail." />
-        <Card>Your role ({session.role}) can&rsquo;t access leads.</Card>
-      </>
-    );
-  }
-
-  const lead = await getLeadById(id);
+  const lead = await platformGetLeadById(userId, id);
   if (!lead) notFound();
 
   return (

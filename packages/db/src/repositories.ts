@@ -263,27 +263,12 @@ export async function ensureE2EViewerUser(tenantId: string): Promise<{ id: strin
 }
 
 // ------------------------- Global `Lead` table (no tenant) -------------------------
-// `leads` is a GLOBAL marketing-capture table with NO tenantId column and NO RLS
-// (platform-admin/system scope; per-tenant ownership is a documented future gap —
-// V1.37.x Lead ownership). These narrow, named system functions are the ONLY
-// sanctioned access; request code must not import the raw client.
+// `leads` is a GLOBAL marketing-capture table with NO tenantId column and NO RLS (platform scope).
+// V1.45A: creation is PUBLIC (the /book-demo & /contact forms). Every READ/MUTATE of leads is now
+// platform-authorized and lives ONLY in `platform-repo.ts` (`platformListLeads`, `platformGetLeadById`,
+// `platformUpdateLead`, `platformGroupLeadsByStatus`). The unguarded read/mutate helpers were REMOVED
+// so no tenant request code can reach global prospect PII.
 
 export function createLead(data: Prisma.LeadCreateInput): Promise<{ id: string }> {
   return systemDb.lead.create({ data, select: { id: true } });
-}
-
-export function listLeads(args: Prisma.LeadFindManyArgs) {
-  return systemDb.lead.findMany(args);
-}
-
-export function groupLeadsByStatus() {
-  return systemDb.lead.groupBy({ by: ["status"], _count: true });
-}
-
-export function getLeadById(id: string) {
-  return systemDb.lead.findUnique({ where: { id } });
-}
-
-export function updateLead(id: string, data: Prisma.LeadUpdateInput): Promise<unknown> {
-  return systemDb.lead.update({ where: { id }, data });
 }

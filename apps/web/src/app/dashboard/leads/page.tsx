@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { Permission, can } from "@guardora/core";
-import { LeadStatus, listLeads, groupLeadsByStatus } from "@guardora/db";
+import { LeadStatus, platformListLeads, platformGroupLeadsByStatus } from "@guardora/db";
 import { PageHeader, Badge, EmptyState, Tabs, Card } from "@/components/dashboard/ui";
-import { requireSession } from "@/server/auth";
+import { requirePlatformCapabilityOrNotFound } from "@/server/platform-auth";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { humanize, formatDate } from "@/lib/format";
@@ -21,19 +20,10 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const session = await requireSession();
+  // Platform boundary FIRST — fail-closed 404 before any lead query runs. Ordinary tenant users
+  // (incl. Owner/Admin) never reach the data below.
+  const { userId } = await requirePlatformCapabilityOrNotFound("leads:read");
   const hdrT = await getT();
-  if (!can(session.role, Permission.MemberManage)) {
-    return (
-      <>
-        <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
-        <EmptyState
-          title="Restricted"
-          body={`Leads are internal. Your role (${session.role}) doesn't have access. Ask an Owner or Admin.`}
-        />
-      </>
-    );
-  }
 
   const sp = await searchParams;
   const status =
@@ -41,10 +31,10 @@ export default async function LeadsPage({
       ? (sp.status as LeadStatus)
       : undefined;
 
-  // Global leads table (no tenant) — system reads via narrow named repos.
+  // GLOBAL (cross-tenant) prospect table — read only via the platform-authorized service.
   const [groups, leads] = await Promise.all([
-    groupLeadsByStatus(),
-    listLeads({ where: status ? { status } : {}, orderBy: { createdAt: "desc" }, take: 200 }),
+    platformGroupLeadsByStatus(userId),
+    platformListLeads(userId, { where: status ? { status } : {}, orderBy: { createdAt: "desc" }, take: 200 }),
   ]);
 
   const count = new Map(groups.map((g) => [g.status, g._count as unknown as number]));
@@ -58,14 +48,14 @@ export default async function LeadsPage({
 
   return (
     <>
-      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
+      <PageHeader title={hdrT.dashHeaders[nav.icon].title} description="Platform-level prospect administration — demo requests and contact messages across the whole platform. Restricted to platform staff." />
       <Tabs active={status ?? ""} tabs={tabs} />
 
       {leads.length === 0 ? (
         <EmptyState
           title="No leads yet"
           body="Demo requests from /book-demo and messages from /contact appear here as soon as they're submitted."
-          hint="Leads are saved to your database — no emails are sent."
+          hint="Prospect submissions are stored platform-wide (not tenant-scoped) — no emails are sent."
         />
       ) : (
         <Card className="!p-0">

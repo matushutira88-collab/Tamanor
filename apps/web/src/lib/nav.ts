@@ -136,7 +136,7 @@ export const DASHBOARD_NAV: NavItem[] = [
   { href: "/dashboard/rules", label: "Rules", description: "Deterministic brand policies layered on the AI Risk Engine.", icon: "rules", hidden: true },
   { href: "/dashboard/insights", label: "Insights", description: "Sentiment, emotions, topics, and risk trends over time.", icon: "insights", hidden: true },
   { href: "/dashboard/reports", label: "Reports", description: "Reputation trends and moderation metrics over time.", icon: "reports", hidden: true },
-  { href: "/dashboard/leads", label: "Leads", description: "Demo requests and contact messages from your public pages.", icon: "leads", hidden: true },
+  { href: "/dashboard/leads", label: "Leads", description: "Platform-level prospect administration (platform staff only). Hidden in nav; access is enforced server-side, not by hiding.", icon: "leads", hidden: true },
   { href: "/dashboard/team", label: "Team", description: "Members and roles across your workspace.", icon: "team", hidden: true },
   { href: "/dashboard/billing", label: "Billing", description: "Your plan, usage, and trial.", icon: "billing", hidden: true },
 ];

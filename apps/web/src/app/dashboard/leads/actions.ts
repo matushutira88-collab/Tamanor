@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Permission, assertCan } from "@guardora/core";
-import { LeadStatus, updateLead } from "@guardora/db";
+import { LeadStatus, platformUpdateLead } from "@guardora/db";
 import { requireSession } from "@/server/auth";
+import { logPlatformSecurityEvent } from "@/server/platform-auth";
 
 function asStatus(raw: string): LeadStatus {
   if (!(Object.values(LeadStatus) as string[]).includes(raw)) {
@@ -13,29 +13,28 @@ function asStatus(raw: string): LeadStatus {
   return raw as LeadStatus;
 }
 
-/** Leads are internal — only members-management roles may act on them. */
-async function requireLeadAccess() {
-  const session = await requireSession();
-  assertCan(session.role, Permission.MemberManage);
-  return session;
-}
-
 function back(id: string, notice: string): never {
   revalidatePath(`/dashboard/leads/${id}`);
   revalidatePath("/dashboard/leads");
   redirect(`/dashboard/leads/${id}?kind=ok&notice=${encodeURIComponent(notice)}`);
 }
 
+// Each mutation INDEPENDENTLY enforces the platform boundary at the service layer — `platformUpdateLead`
+// resolves the platform role from the session user id and throws `platform_forbidden` unless the
+// caller has `leads:write` (platform staff/admin). Tenant Owner/Admin never qualify. Fail-closed;
+// no lead PII is logged (field name only, never the note body / email / status content).
 export async function updateLeadStatus(id: string, status: string): Promise<void> {
-  await requireLeadAccess();
+  const session = await requireSession();
   const next = asStatus(status);
-  await updateLead(id, { status: next });
+  await platformUpdateLead(session.userId, id, { status: next });
+  logPlatformSecurityEvent("platform.lead_mutated", { actorUserId: session.userId, leadId: id, field: "status" });
   back(id, `Status set to ${next}.`);
 }
 
 export async function saveLeadNotes(id: string, formData: FormData): Promise<void> {
-  await requireLeadAccess();
+  const session = await requireSession();
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  await updateLead(id, { notes });
+  await platformUpdateLead(session.userId, id, { notes });
+  logPlatformSecurityEvent("platform.lead_mutated", { actorUserId: session.userId, leadId: id, field: "notes" });
   back(id, "Notes saved.");
 }

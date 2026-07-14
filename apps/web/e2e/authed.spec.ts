@@ -40,6 +40,28 @@ for (const route of AUTH_ROUTES) {
   });
 }
 
+// ---------------- V1.45A — global platform leads P0: tenant Owner is denied ----------------
+// The bootstrapped fixture session is a tenant OWNER with platformRole=none. The platform guard
+// fails closed to a non-revealing not-found for both routes and leaks no prospect PII. (Next returns
+// the not-found body with a 200 status here because the dashboard layout streams before the page's
+// notFound() throws — the SECURITY property is that no lead data renders and a generic not-found is
+// shown, which we assert directly.)
+test("tenant Owner is DENIED the global platform leads page (non-revealing, no PII)", async ({ page }) => {
+  await page.goto("/dashboard/leads");
+  const list = (await page.locator("body").innerText()).toLowerCase();
+  // Denied: no leads table / prospect PII / platform header rendered.
+  expect(list).not.toContain("@example.com");
+  expect(list).not.toContain("prospect administration");
+  expect(list).not.toMatch(/name\s+company\s+source/);
+  // Non-revealing: a generic not-found is shown (not a "restricted" message revealing the resource).
+  expect(list, `denied page must be a generic not-found, got: ${list.slice(0, 120)}`).toMatch(/404|not found|couldn|does.?n.t exist/i);
+
+  await page.goto("/dashboard/leads/any-lead-id");
+  const detail = (await page.locator("body").innerText()).toLowerCase();
+  expect(detail).not.toContain("@example.com");
+  expect(detail).toMatch(/404|not found/i);
+});
+
 test("authenticated account detail (if any) has no horizontal overflow", async ({ page }) => {
   await page.goto("/dashboard/accounts");
   const link = page.locator('a[href^="/dashboard/accounts/"]').first();
