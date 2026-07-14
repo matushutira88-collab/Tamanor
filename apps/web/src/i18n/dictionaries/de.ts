@@ -249,6 +249,8 @@ export const de: Dictionary = {
     insights: "Insights",
     reports: "Berichte",
     auditLog: "Audit-Protokoll",
+    available: "Jetzt verfügbar",
+    inDevelopment: "In Entwicklung",
     rights: "Social Account Firewall für moderne Marken",
     badge: "Standardmäßig schreibgeschützt · Nur offizielles OAuth · Kein Scraping",
   },
@@ -399,6 +401,69 @@ export const de: Dictionary = {
     syncFailed: "Synchronisierung fehlgeschlagen",
     mock: "Mock",
     live: "live",
+  },
+
+  // V1.49D — Tiefe der Startseite: Betriebsmodell, Fähigkeitsgruppen,
+  // Systemarchitektur und eine Käufer-FAQ. Jede Aussage entspricht dem, was das
+  // Produkt heute leistet; noch nicht Verfügbares ist als in Entwicklung markiert.
+  landing: {
+    operating: {
+      eyebrow: "So funktioniert Tamanor",
+      title: "Ein kontrollierter Ablauf, vom Signal bis zur Entscheidung.",
+      subtitle: "Jeder Schritt unten ist real und bereits im Produkt. Nichts Sensibles läuft, ohne dass ein Mensch es freigibt.",
+      steps: [
+        { name: "Verbinden", body: "Verbinden Sie Facebook Pages und Instagram Business über offizielles Meta-OAuth. Zugangsdaten werden im Ruhezustand verschlüsselt." },
+        { name: "Überwachen", body: "Kommentare, Bewertungen und Nachrichten laufen in einem operativen Posteingang zusammen, mit Überwachung des Token-Zustands." },
+        { name: "Prüfen", body: "KI-gestütztes Risiko-Scoring hebt hervor, was Aufmerksamkeit braucht. Ihr Team prüft jedes Element im Kontext." },
+        { name: "Entscheiden", body: "Ein menschlicher Operator gibt jede vorgeschlagene Aktion frei oder lehnt sie ab. Nichts wird automatisch verborgen oder beantwortet." },
+        { name: "Handeln", body: "Freigegebene Aktionen laufen über kontrollierte, auditierte Abläufe gegenüber dem verbundenen Anbieter." },
+        { name: "Verbessern", body: "Audit-Verlauf und Reputationstrends helfen Ihnen, Ihre Moderationsregeln mit der Zeit zu verfeinern." },
+      ],
+    },
+    capabilities: {
+      eyebrow: "Plattform-Fähigkeiten",
+      title: "Eine Plattform, gegliedert nach Ihrer Arbeitsweise.",
+      subtitle: "Sechs Fähigkeitsbereiche. Jedes Element unten entspricht dem, was das Produkt heute leistet.",
+      groups: [
+        { name: "Interaktionsbetrieb", items: ["Einheitlicher Reputations-Posteingang", "Kommentare und Bewertungen an einem Ort", "Moderations-Warteschlange", "Aufgaben zuweisen und nachverfolgen"] },
+        { name: "Reputationsüberwachung", items: ["KI-Risiko-Scoring", "Vorgeschlagene Aktionen", "Priorität und Eskalation", "Reputationstrends im Zeitverlauf"] },
+        { name: "Anbieterverwaltung", items: ["Facebook Pages und Instagram Business", "Offizielle OAuth-Verbindungen", "Überwachung des Token-Zustands", "Geführte Neuverbindung bei Ablauf"] },
+        { name: "Governance und Audit", items: ["Vollständige Audit-Spur", "Menschlicher Freigabe-Ablauf", "Rollen und Berechtigungen", "Vollständiger Aktivitätsverlauf"] },
+        { name: "Datenschutz und Sicherheit", items: ["Zugangsdaten im Ruhezustand verschlüsselt", "Datenbankseitig erzwungene Mandantentrennung", "Konfigurierbare Datenaufbewahrung", "Löschen von Arbeitsbereich und Konto"] },
+        { name: "KI unter menschlicher Kontrolle", items: ["KI-gestützte Klassifizierung", "Begrenzte, kostenkontrollierte KI", "Kostenpflichtige KI standardmäßig aus", "Menschliche Freigabe behält die Kontrolle"] },
+      ],
+    },
+    architecture: {
+      eyebrow: "Wie die Plattform aufgebaut ist",
+      title: "Ein nachprüfbarer Weg vom Anbietersignal zur auditierten Entscheidung.",
+      subtitle: "Jede Interaktion folgt einem kontrollierten Weg — sicher verbunden, mit KI-Unterstützung analysiert, von einem Menschen geprüft und in einer Audit-Spur festgehalten.",
+      stages: [
+        { name: "Verbundene Anbieter", body: "Facebook Pages und Instagram Business, ausschließlich über offizielles Meta-OAuth verbunden." },
+        { name: "OAuth und Signaturprüfung", body: "Verbindungen nutzen offizielles OAuth; eingehende Webhooks werden mit einer laufzeitsicheren Signaturprüfung überprüft." },
+        { name: "Verschlüsselte Kontospeicherung", body: "Anbieter-Zugangsdaten werden im Ruhezustand verschlüsselt und niemals angezeigt oder protokolliert." },
+        { name: "Interaktions-Erfassung", body: "Kommentare, Bewertungen und Nachrichten werden in mandantenisolierten Speicher aufgenommen." },
+        { name: "KI-gestützte Analyse", body: "Regeln und begrenzte KI klassifizieren Risiken und schlagen Aktionen vor — die Ausgabe ist nie endgültig." },
+        { name: "Menschliche Prüfung und Entscheidung", body: "Ein Operator gibt jede vorgeschlagene Aktion frei oder lehnt sie ab, bevor etwas ausgeführt wird." },
+        { name: "Audit, Aufbewahrung und Reporting", body: "Jede Entscheidung wird festgehalten; Aufbewahrungs- und Löschkontrollen gelten durchgehend." },
+      ],
+      note: "Google Business, YouTube, LinkedIn und TikTok befinden sich in Entwicklung und sind noch nicht Teil dieses Ablaufs.",
+    },
+    faq: {
+      eyebrow: "Fragen von Käufern",
+      title: "Klare Antworten, bevor Sie ein Demo buchen.",
+      items: [
+        { q: "Welche Plattformen unterstützt Tamanor heute?", a: "Facebook Pages und Instagram Business, verbunden über offizielles Meta-OAuth. Google Business, YouTube, LinkedIn und TikTok befinden sich in Entwicklung und sind noch nicht verfügbar." },
+        { q: "Verbirgt oder löscht Tamanor Kommentare automatisch?", a: "Nein. KI unterstützt beim Risiko-Scoring und mit Vorschlägen, aber jede Moderationsaktion erfordert vor der Ausführung eine menschliche Freigabe. Es gibt keine autonome Moderation." },
+        { q: "Wie funktioniert Moderation konkret?", a: "Kommentare und Bewertungen kommen mit einem KI-Risikowert in einem Posteingang an. Ihr Team prüft jedes Element im Kontext und gibt die vorgeschlagene Aktion frei oder lehnt sie ab, was dann in der Audit-Spur festgehalten wird." },
+        { q: "Wo werden Daten gespeichert und wie sind sie isoliert?", a: "In einer einzigen Datenbank mit datenbankseitig erzwungener Trennung zwischen Arbeitsbereichen. Anbieter-Zugangsdaten werden im Ruhezustand verschlüsselt. Die Plattform ist für europäische Datenschutz- und Betriebsanforderungen ausgelegt." },
+        { q: "Wie ist der Zugang zu einem Arbeitsbereich gesichert?", a: "Der Zugang ist innerhalb jedes Arbeitsbereichs rollenbasiert, Sitzungen liegen serverseitig und sind widerrufbar, und die Plattform-Admin-Grenze ist von den Mandantenrollen getrennt." },
+        { q: "Kann ein ganzes Team in einem Arbeitsbereich zusammenarbeiten?", a: "Ja. Ein Arbeitsbereich unterstützt mehrere Mitglieder mit Rollen, einen gemeinsamen Posteingang, einen menschlichen Freigabe-Ablauf und eine vollständige Aktivitäts-Audit-Spur." },
+        { q: "Was passiert, wenn ein Anbieter-Token abläuft?", a: "Tokens werden im Ruhezustand verschlüsselt und niemals protokolliert. Tamanor überwacht den Token-Zustand und weist auf eine nötige Neuverbindung hin, bevor ein abgelaufener Token die Synchronisierung stillschweigend stoppt. Meta-Tokens werden nicht automatisch erneuert." },
+        { q: "Wie können Kundendaten gelöscht werden?", a: "Arbeitsbereiche und Nutzeridentitäten lassen sich über integrierte, auditierte Löschabläufe entfernen, und rohe Webhook-Payloads werden minimiert und nach einem konfigurierbaren Aufbewahrungsplan gelöscht." },
+        { q: "Wie nutzt Tamanor KI und können wir die Kosten kontrollieren?", a: "KI ist optional und geregelt: Kostenpflichtige KI ist standardmäßig aus und durch Kostengrenzen pro Arbeitsbereich sowie global begrenzt, die bei Erreichen sicher stoppen." },
+        { q: "Wie legen wir los?", a: "Tamanor onboardet über einen geführten Piloten statt über Selbstregistrierung. Buchen Sie ein Demo, und wir richten gemeinsam Ihren Arbeitsbereich ein und verbinden Ihre Konten." },
+      ],
+    },
   },
 
   enums: {

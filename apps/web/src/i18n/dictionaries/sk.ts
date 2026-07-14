@@ -249,6 +249,8 @@ export const sk: Dictionary = {
     insights: "Prehľady",
     reports: "Reporty",
     auditLog: "Audit",
+    available: "Dostupné teraz",
+    inDevelopment: "Vo vývoji",
     rights: "Social Account Firewall pre moderné značky",
     badge: "Predvolene iba na čítanie · Iba oficiálne OAuth · Žiadny scraping",
   },
@@ -399,6 +401,69 @@ export const sk: Dictionary = {
     syncFailed: "Synchronizácia zlyhala",
     mock: "mock",
     live: "naživo",
+  },
+
+  // V1.49D — hĺbka domovskej stránky: prevádzkový model, skupiny schopností,
+  // architektúra systému a FAQ pre kupujúcich. Každé tvrdenie zodpovedá tomu,
+  // čo produkt dnes robí; čo ešte nie je dostupné, je označené ako vo vývoji.
+  landing: {
+    operating: {
+      eyebrow: "Ako Tamanor funguje",
+      title: "Jeden riadený pracovný postup, od signálu po rozhodnutie.",
+      subtitle: "Každý krok nižšie je reálny a už je v produkte. Nič citlivé sa nespustí bez toho, aby to schválil človek.",
+      steps: [
+        { name: "Pripojenie", body: "Pripojte Facebook Pages a Instagram Business cez oficiálne Meta OAuth. Prihlasovacie údaje sú šifrované v pokoji." },
+        { name: "Monitorovanie", body: "Komentáre, recenzie a správy sa zbierajú do jednej prevádzkovej schránky spolu s monitorovaním stavu tokenov." },
+        { name: "Kontrola", body: "AI hodnotenie rizika zvýrazní, čo si vyžaduje pozornosť. Váš tím posúdi každú položku v kontexte." },
+        { name: "Rozhodnutie", body: "Ľudský operátor schváli alebo zamietne každú navrhnutú akciu. Nič sa neskryje ani neodpovie automaticky." },
+        { name: "Vykonanie", body: "Schválené akcie prebiehajú cez riadené, auditované postupy voči pripojenému poskytovateľovi." },
+        { name: "Zlepšovanie", body: "História auditu a trendy reputácie vám pomáhajú postupne zdokonaľovať pravidlá moderovania." },
+      ],
+    },
+    capabilities: {
+      eyebrow: "Schopnosti platformy",
+      title: "Jedna platforma, usporiadaná podľa toho, ako pracujete.",
+      subtitle: "Šesť oblastí schopností. Každá položka nižšie zodpovedá tomu, čo produkt dnes robí.",
+      groups: [
+        { name: "Prevádzka interakcií", items: ["Jednotná reputačná schránka", "Komentáre a recenzie na jednom mieste", "Fronta moderovania", "Priraďovanie a sledovanie úloh"] },
+        { name: "Monitorovanie reputácie", items: ["AI hodnotenie rizika", "Navrhované akcie", "Priorita a eskalácia", "Trendy reputácie v čase"] },
+        { name: "Správa poskytovateľov", items: ["Facebook Pages a Instagram Business", "Oficiálne OAuth pripojenia", "Monitorovanie stavu tokenov", "Sprevádzané opätovné pripojenie pri expirácii"] },
+        { name: "Governancia a audit", items: ["Úplná auditná stopa", "Postup ľudského schvaľovania", "Role a oprávnenia", "Kompletná história aktivity"] },
+        { name: "Súkromie a bezpečnosť", items: ["Údaje šifrované v pokoji", "Izolácia nájomcov vynútená databázou", "Konfigurovateľné uchovávanie údajov", "Zmazanie pracovného priestoru a účtu"] },
+        { name: "AI pod ľudskou kontrolou", items: ["Klasifikácia s pomocou AI", "Ohraničená AI s kontrolou nákladov", "Platená AI predvolene vypnutá", "Ľudské schválenie zostáva pod kontrolou"] },
+      ],
+    },
+    architecture: {
+      eyebrow: "Ako je platforma postavená",
+      title: "Overiteľná cesta od signálu poskytovateľa po auditované rozhodnutie.",
+      subtitle: "Každá interakcia prechádza jednou riadenou cestou — bezpečne pripojená, analyzovaná s pomocou AI, posúdená človekom a zaznamenaná v auditnej stope.",
+      stages: [
+        { name: "Pripojení poskytovatelia", body: "Facebook Pages a Instagram Business, pripojené výhradne cez oficiálne Meta OAuth." },
+        { name: "OAuth a overenie podpisu", body: "Pripojenia používajú oficiálne OAuth; prichádzajúce webhooky sa overujú časovo bezpečnou kontrolou podpisu." },
+        { name: "Šifrované uloženie účtov", body: "Prihlasovacie údaje poskytovateľov sú šifrované v pokoji a nikdy sa nezobrazujú ani nezapisujú do logov." },
+        { name: "Príjem interakcií", body: "Komentáre, recenzie a správy sa prijímajú do úložiska izolovaného na úrovni nájomcu." },
+        { name: "Analýza s pomocou AI", body: "Pravidlá a ohraničená AI klasifikujú riziko a navrhujú akcie — výstup nie je nikdy konečný." },
+        { name: "Ľudská kontrola a rozhodnutie", body: "Operátor schváli alebo zamietne každú navrhnutú akciu skôr, než sa čokoľvek vykoná." },
+        { name: "Audit, uchovávanie a reporting", body: "Každé rozhodnutie sa zaznamenáva; kontroly uchovávania a zmazania platia počas celého procesu." },
+      ],
+      note: "Google Business, YouTube, LinkedIn a TikTok sú vo vývoji a zatiaľ nie sú súčasťou tohto toku.",
+    },
+    faq: {
+      eyebrow: "Otázky kupujúcich",
+      title: "Priame odpovede skôr, než si objednáte demo.",
+      items: [
+        { q: "Ktoré platformy Tamanor dnes podporuje?", a: "Facebook Pages a Instagram Business, pripojené cez oficiálne Meta OAuth. Google Business, YouTube, LinkedIn a TikTok sú vo vývoji a zatiaľ nie sú dostupné." },
+        { q: "Skrýva alebo maže Tamanor komentáre automaticky?", a: "Nie. AI pomáha s hodnotením rizika a návrhmi, no každá moderačná akcia si pred vykonaním vyžaduje ľudské schválenie. Neexistuje žiadne autonómne moderovanie." },
+        { q: "Ako moderovanie v skutočnosti funguje?", a: "Komentáre a recenzie prichádzajú do jednej schránky s AI hodnotením rizika. Váš tím posúdi každú položku v kontexte a schváli alebo zamietne navrhnutú akciu, ktorá sa potom zaznamená do auditnej stopy." },
+        { q: "Kde sa údaje ukladajú a ako sú izolované?", a: "V jednej databáze s izoláciou medzi pracovnými priestormi vynútenou databázou. Prihlasovacie údaje poskytovateľov sú šifrované v pokoji. Platforma je postavená pre európske požiadavky na súkromie a prevádzku." },
+        { q: "Ako je zabezpečený prístup k pracovnému priestoru?", a: "Prístup je založený na rolách v rámci každého pracovného priestoru, relácie sú na strane servera a odvolateľné a hranica správcu platformy je oddelená od rolí nájomcu." },
+        { q: "Môže v jednom pracovnom priestore spolupracovať celý tím?", a: "Áno. Pracovný priestor podporuje viacero členov s rolami, zdieľanú schránku, postup ľudského schvaľovania a úplnú auditnú stopu aktivity." },
+        { q: "Čo sa stane, keď token poskytovateľa expiruje?", a: "Tokeny sú šifrované v pokoji a nikdy sa nelogujú. Tamanor monitoruje stav tokenov a upozorní na potrebné opätovné pripojenie skôr, než expirovaný token ticho zastaví synchronizáciu. Meta tokeny sa neobnovujú automaticky." },
+        { q: "Ako možno zmazať údaje zákazníka?", a: "Pracovné priestory a identity používateľov možno zmazať cez zabudované, auditované postupy erasure a surové webhookové payloady sa minimalizujú a mažú podľa konfigurovateľného plánu uchovávania." },
+        { q: "Ako Tamanor používa AI a dokážeme kontrolovať náklady?", a: "AI je voliteľná a riadená: platená AI je predvolene vypnutá a ohraničená limitmi nákladov na pracovný priestor aj globálne, ktoré sa pri dosiahnutí limitu bezpečne zastavia." },
+        { q: "Ako začneme?", a: "Tamanor onboarduje cez sprevádzaný pilot, nie cez samoobslužnú registráciu. Objednajte si demo a spoločne nastavíme váš pracovný priestor a pripojíme vaše účty." },
+      ],
+    },
   },
 
   enums: {

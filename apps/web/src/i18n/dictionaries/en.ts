@@ -252,6 +252,8 @@ export const en = {
     insights: "Insights",
     reports: "Reports",
     auditLog: "Audit Log",
+    available: "Available now",
+    inDevelopment: "In development",
     rights: "Social Account Firewall for modern brands",
     badge: "Read-only by default · Official OAuth only · No scraping",
   },
@@ -406,6 +408,69 @@ export const en = {
     syncFailed: "Sync failed",
     mock: "mock",
     live: "live",
+  },
+
+  // V1.49D — homepage depth: operating model, capability groups, system
+  // architecture and a buyer FAQ. Every claim here reflects what the product
+  // does today; anything not yet available is labelled as in development.
+  landing: {
+    operating: {
+      eyebrow: "How Tamanor works",
+      title: "One controlled workflow, from signal to decision.",
+      subtitle: "Every step below is real and already in the product. Nothing sensitive runs without a person approving it.",
+      steps: [
+        { name: "Connect", body: "Connect Facebook Pages and Instagram Business through official Meta OAuth. Credentials are encrypted at rest." },
+        { name: "Monitor", body: "Comments, reviews and messages are collected into one operational inbox, with token-health monitoring." },
+        { name: "Review", body: "AI-assisted risk scoring highlights what needs attention. Your team reviews each item in context." },
+        { name: "Decide", body: "A human operator approves or rejects every proposed action. Nothing is hidden or replied to automatically." },
+        { name: "Act", body: "Approved actions run through controlled, audited workflows against the connected provider." },
+        { name: "Improve", body: "Audit history and reputation trends help you refine your moderation rules over time." },
+      ],
+    },
+    capabilities: {
+      eyebrow: "Platform capabilities",
+      title: "One platform, grouped by how you work.",
+      subtitle: "Six capability areas. Every item below reflects what the product does today.",
+      groups: [
+        { name: "Interaction operations", items: ["Unified reputation inbox", "Comments and reviews in one place", "Moderation queue", "Assign and track follow-up"] },
+        { name: "Reputation monitoring", items: ["AI risk scoring", "Suggested actions", "Priority and escalation", "Reputation trends over time"] },
+        { name: "Provider management", items: ["Facebook Pages and Instagram Business", "Official OAuth connections", "Token-health monitoring", "Guided reconnect on expiry"] },
+        { name: "Governance and audit", items: ["Full audit trail", "Human approval workflow", "Roles and permissions", "Complete activity history"] },
+        { name: "Privacy and security", items: ["Credentials encrypted at rest", "Database-enforced tenant isolation", "Configurable data retention", "Workspace and account deletion"] },
+        { name: "AI with human control", items: ["AI-assisted classification", "Bounded, cost-controlled AI", "Paid AI off by default", "Human approval stays in control"] },
+      ],
+    },
+    architecture: {
+      eyebrow: "How the platform is built",
+      title: "A verifiable path from provider signal to audited decision.",
+      subtitle: "Every interaction follows one controlled path — connected securely, analyzed with AI assistance, reviewed by a person, and recorded in an audit trail.",
+      stages: [
+        { name: "Connected providers", body: "Facebook Pages and Instagram Business, connected only through official Meta OAuth." },
+        { name: "OAuth and signature verification", body: "Connections use official OAuth; inbound webhooks are checked with a timing-safe signature verification." },
+        { name: "Encrypted account storage", body: "Provider credentials are encrypted at rest and never displayed or written to logs." },
+        { name: "Interaction ingestion", body: "Comments, reviews and messages are ingested into tenant-isolated storage." },
+        { name: "AI-assisted analysis", body: "Rules and bounded AI classify risk and suggest actions — the output is never final." },
+        { name: "Human review and decision", body: "An operator approves or rejects each proposed action before anything runs." },
+        { name: "Audit, retention and reporting", body: "Every decision is recorded; retention and deletion controls apply throughout." },
+      ],
+      note: "Google Business, YouTube, LinkedIn and TikTok are in development and not yet part of this flow.",
+    },
+    faq: {
+      eyebrow: "Buyer questions",
+      title: "Straight answers before you book a demo.",
+      items: [
+        { q: "Which platforms does Tamanor support today?", a: "Facebook Pages and Instagram Business, connected through official Meta OAuth. Google Business, YouTube, LinkedIn and TikTok are in development and not yet available." },
+        { q: "Does Tamanor automatically hide or delete comments?", a: "No. AI assists with risk scoring and suggestions, but every moderation action requires human approval before it runs. There is no autonomous moderation." },
+        { q: "How does moderation actually work?", a: "Comments and reviews arrive in one inbox with an AI risk score. Your team reviews each item in context and approves or rejects the proposed action, which is then recorded in the audit trail." },
+        { q: "Where is data stored and how is it isolated?", a: "In a single database with database-enforced isolation between workspaces. Provider credentials are encrypted at rest. The platform is built for European privacy and operational requirements." },
+        { q: "How is access to a workspace secured?", a: "Access is role-based within each workspace, sessions are server-side and revocable, and the platform-admin boundary is kept separate from tenant roles." },
+        { q: "Can a whole team collaborate in one workspace?", a: "Yes. A workspace supports multiple members with roles, a shared inbox, a human approval workflow, and a full activity audit trail." },
+        { q: "What happens when a provider token expires?", a: "Tokens are encrypted at rest and never logged. Tamanor monitors token health and flags a required reconnect before an expired token silently stops sync. Meta tokens are not renewed automatically." },
+        { q: "How can customer data be deleted?", a: "Workspaces and user identities can be deleted through built-in, audited erasure workflows, and raw webhook payloads are minimized and purged on a configurable retention schedule." },
+        { q: "How does Tamanor use AI, and can we control the cost?", a: "AI is optional and governed: paid AI is off by default and bounded by per-workspace and global cost limits that fail closed when a limit is reached." },
+        { q: "How do we get started?", a: "Tamanor onboards through a guided pilot rather than self-service sign-up. Book a demo and we set up your workspace and connect your accounts with you." },
+      ],
+    },
   },
 
   // Enum labels — keyed by the raw stored value. Fallback = prettified value.

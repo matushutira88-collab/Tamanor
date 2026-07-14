@@ -11,7 +11,12 @@ export function SiteFooter({
   const t = dict ?? getDictionary(locale);
   const lp = localePrefix(locale);
 
-  const columns: { title: string; links: { label: string; href: string }[] }[] = [
+  type FooterLink = { label: string; href: string };
+  // A platform column can carry status-labelled groups so the footer stays truthful:
+  // the two live Meta providers are shown as available; the rest are visibly de-emphasised
+  // and captioned "In development" — status is conveyed by a text caption + reduced
+  // emphasis, never by colour alone, matching the homepage.
+  const columns: { title: string; links?: FooterLink[]; groups?: { caption: string; muted?: boolean; links: FooterLink[] }[] }[] = [
     {
       title: t.footer.product,
       links: [
@@ -24,13 +29,24 @@ export function SiteFooter({
     },
     {
       title: t.footer.platforms,
-      links: [
-        { label: "Facebook", href: "/integrations/facebook" },
-        { label: "Instagram", href: "/integrations/instagram" },
-        { label: "Google Business", href: "/integrations/google-business" },
-        { label: "YouTube", href: "/integrations/youtube" },
-        { label: "LinkedIn", href: "/integrations/linkedin" },
-        { label: "TikTok", href: "/integrations/tiktok" },
+      groups: [
+        {
+          caption: t.footer.available,
+          links: [
+            { label: "Facebook Pages", href: "/integrations/facebook" },
+            { label: "Instagram Business", href: "/integrations/instagram" },
+          ],
+        },
+        {
+          caption: t.footer.inDevelopment,
+          muted: true,
+          links: [
+            { label: "Google Business", href: "/integrations/google-business" },
+            { label: "YouTube", href: "/integrations/youtube" },
+            { label: "LinkedIn", href: "/integrations/linkedin" },
+            { label: "TikTok", href: "/integrations/tiktok" },
+          ],
+        },
       ],
     },
     {
@@ -83,13 +99,31 @@ export function SiteFooter({
           {columns.map((c) => (
             <div key={c.title}>
               <p className="text-sm font-semibold">{c.title}</p>
-              <ul className="mt-3 space-y-2 text-sm text-[var(--color-muted)]">
-                {c.links.map((l) => (
-                  <li key={l.label}>
-                    <Link href={l.href} className="transition hover:text-[var(--color-fg)]">{l.label}</Link>
-                  </li>
-                ))}
-              </ul>
+              {c.links ? (
+                <ul className="mt-3 space-y-2 text-sm text-[var(--color-muted)]">
+                  {c.links.map((l) => (
+                    <li key={l.label}>
+                      <Link href={l.href} className="transition hover:text-[var(--color-fg)]">{l.label}</Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {c.groups ? (
+                <div className="mt-3 space-y-4">
+                  {c.groups.map((g) => (
+                    <div key={g.caption} className={g.muted ? "opacity-60" : undefined}>
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--color-muted)]">{g.caption}</p>
+                      <ul className="mt-2 space-y-2 text-sm text-[var(--color-muted)]">
+                        {g.links.map((l) => (
+                          <li key={l.label}>
+                            <Link href={l.href} className="transition hover:text-[var(--color-fg)]">{l.label}</Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
