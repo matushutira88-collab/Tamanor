@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { JsonLd } from "@/components/json-ld";
+import { CookieConsent } from "@/components/cookie-consent";
 import { organizationLd, websiteLd, softwareApplicationLd } from "@/lib/jsonld";
 
 /** Display serif — high-contrast headings, per the Tamanor brand. */
@@ -60,6 +61,7 @@ export default function RootLayout({
       <body>
         <JsonLd data={[organizationLd(), websiteLd(), softwareApplicationLd()]} />
         {children}
+        <CookieConsent />
       </body>
     </html>
   );
