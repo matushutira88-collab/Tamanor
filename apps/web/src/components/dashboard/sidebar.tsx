@@ -7,6 +7,8 @@ import { DASHBOARD_NAV } from "@/lib/nav";
 import { formatNumber } from "@/lib/format";
 import { NavIconGlyph } from "./nav-icons";
 import { signOut } from "@/server/session-actions";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { defaultLocale, type Locale } from "@/i18n/config";
 
 export function Sidebar({
   tenantName,
@@ -15,6 +17,7 @@ export function Sidebar({
   trialUsed,
   trialLimit,
   demo = false,
+  locale = defaultLocale,
   navLabels,
   sidebarStrings,
   onNavigate,
@@ -25,6 +28,7 @@ export function Sidebar({
   trialUsed: number;
   trialLimit: number;
   demo?: boolean;
+  locale?: Locale;
   navLabels?: Record<string, string>;
   sidebarStrings?: Record<string, string>;
   onNavigate?: () => void;
@@ -122,8 +126,13 @@ export function Sidebar({
         </div>
       </div>
 
+      {/* Language switcher */}
+      <div className="mt-3 flex justify-center border-t border-[var(--color-border)] px-3 pt-3">
+        <LanguageSwitcher current={locale} variant="app" />
+      </div>
+
       {/* User box */}
-      <div className="mt-3 border-t border-[var(--color-border)] p-3">
+      <div className="mt-1 p-3">
         <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-brand)] text-sm font-semibold text-white">
             {(userName || cleanTenant).charAt(0).toUpperCase()}

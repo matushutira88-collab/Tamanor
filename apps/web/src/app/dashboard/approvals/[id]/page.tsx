@@ -15,8 +15,9 @@ import {
 import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { requirePermission } from "@/server/auth";
 import { withTenant } from "@guardora/db";
-import { getT } from "@/i18n/server";
+import { getTL } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
+import type { Locale } from "@/i18n";
 import { withEmoji } from "@/lib/enum-emoji";
 import { humanize, formatDateTime } from "@/lib/format";
 import { RISK_TONE, DECISION_TONE } from "@/lib/ui-maps";
@@ -28,6 +29,13 @@ const NOTICE_TONE: Record<string, string> = {
   ok: "ok",
   unsupported: "warn",
   error: "danger",
+};
+
+/** Localized label for the Cancelled status (absent from the decision enum dictionary). */
+const COPY: Record<Locale, { cancelled: string }> = {
+  en: { cancelled: "Cancelled" },
+  sk: { cancelled: "Zrušené" },
+  de: { cancelled: "Abgebrochen" },
 };
 
 /** Whether the platform API supports this action (null = not a platform action). */
@@ -51,7 +59,8 @@ export default async function ProposalDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const session = await requirePermission(Permission.ProposalView);
-  const t = await getT();
+  const { t, locale } = await getTL();
+  const c = COPY[locale];
 
   const d = await withTenant(session.tenantId, (db) => db.moderationDecision.findFirst({
     where: { id, tenantId: session.tenantId },
@@ -235,7 +244,7 @@ export default async function ProposalDetailPage({
                 status === DecisionStatus.Rejected
                   ? tEnum(t, "decision", DecisionStatus.Rejected)
                   : status === DecisionStatus.Cancelled
-                    ? humanize(DecisionStatus.Cancelled)
+                    ? c.cancelled
                     : tEnum(t, "decision", DecisionStatus.Approved)
               }
               when={d.reviewedAt ? formatDateTime(d.reviewedAt) : undefined}
@@ -264,7 +273,7 @@ export default async function ProposalDetailPage({
         status === DecisionStatus.Cancelled ||
         status === DecisionStatus.Failed ? (
           <p className="text-sm text-[var(--color-muted)]">
-            {t.dash.proposalFinalPre} {tEnum(t, "decision", status).toLowerCase()} {t.dash.proposalFinalPost}
+            {t.dash.proposalFinalPre} {(status === DecisionStatus.Cancelled ? c.cancelled : tEnum(t, "decision", status)).toLowerCase()} {t.dash.proposalFinalPost}
           </p>
         ) : (
           <div className="flex flex-wrap items-center gap-2">

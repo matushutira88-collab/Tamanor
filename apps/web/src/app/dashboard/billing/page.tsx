@@ -3,22 +3,30 @@ import { requireSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
 import { formatNumber } from "@/lib/format";
-import { getT } from "@/i18n/server";
+import { getTL } from "@/i18n/server";
+import type { Locale } from "@/i18n";
 
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/billing");
 
 const TRIAL_LIMIT = 500;
 
+const COPY: Record<Locale, { taglines: [string, string, string, string] }> = {
+  en: { taglines: ["For getting started", "For growing brands", "For multi-brand teams", "For scale & compliance"] },
+  sk: { taglines: ["Pre začiatok", "Pre rastúce značky", "Pre multi-brand tímy", "Pre škálovanie a compliance"] },
+  de: { taglines: ["Für den Einstieg", "Für wachsende Marken", "Für Multi-Marken-Teams", "Für Skalierung & Compliance"] },
+};
+
 export default async function BillingPage() {
   const session = await requireSession();
-  const hdrT = await getT();
+  const { locale, t: hdrT } = await getTL();
+  const c = COPY[locale];
   const f = hdrT.dash.feat;
   const PLANS = [
-    { name: "Starter", note: hdrT.dash.free, tagline: hdrT.pricing.plans[0]?.tagline ?? "For getting started", features: [f.brand1, f.accounts2, f.items500, f.readOnlySync, f.communitySupport], cta: hdrT.dash.currentPlan, highlight: false, current: true },
-    { name: "Business", note: hdrT.dash.comingSoon, tagline: hdrT.pricing.plans[1]?.tagline ?? "For growing brands", features: [f.brands5, f.unlimitedAccounts, f.approvalWorkflow, f.insightsReports, f.emailSupport], cta: hdrT.common.getNotified, highlight: true, current: false },
-    { name: "Agency", note: hdrT.dash.comingSoon, tagline: hdrT.pricing.plans[2]?.tagline ?? "For multi-brand teams", features: [f.unlimitedBrands, f.teamRolesSeats, f.auditExports, f.prioritySupport], cta: hdrT.common.getNotified, highlight: false, current: false },
-    { name: "Enterprise", note: hdrT.dash.talkToUs, tagline: hdrT.pricing.plans[3]?.tagline ?? "For scale & compliance", features: [f.ssoSaml, f.dataResidency, f.sla, f.dedicatedSupport], cta: hdrT.common.contactSales, highlight: false, current: false },
+    { name: "Starter", note: hdrT.dash.free, tagline: hdrT.pricing.plans[0]?.tagline ?? c.taglines[0], features: [f.brand1, f.accounts2, f.items500, f.readOnlySync, f.communitySupport], cta: hdrT.dash.currentPlan, highlight: false, current: true },
+    { name: "Business", note: hdrT.dash.comingSoon, tagline: hdrT.pricing.plans[1]?.tagline ?? c.taglines[1], features: [f.brands5, f.unlimitedAccounts, f.approvalWorkflow, f.insightsReports, f.emailSupport], cta: hdrT.common.getNotified, highlight: true, current: false },
+    { name: "Agency", note: hdrT.dash.comingSoon, tagline: hdrT.pricing.plans[2]?.tagline ?? c.taglines[2], features: [f.unlimitedBrands, f.teamRolesSeats, f.auditExports, f.prioritySupport], cta: hdrT.common.getNotified, highlight: false, current: false },
+    { name: "Enterprise", note: hdrT.dash.talkToUs, tagline: hdrT.pricing.plans[3]?.tagline ?? c.taglines[3], features: [f.ssoSaml, f.dataResidency, f.sla, f.dedicatedSupport], cta: hdrT.common.contactSales, highlight: false, current: false },
   ];
   const used = await withTenant(session.tenantId, (db) => db.reputationItem.count({ where: { tenantId: session.tenantId } }));
   const pct = Math.min(100, Math.round((used / TRIAL_LIMIT) * 100));

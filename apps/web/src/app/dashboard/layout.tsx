@@ -31,6 +31,7 @@ export default async function DashboardLayout({
       trialUsed={itemsProcessed}
       trialLimit={TRIAL_ITEM_LIMIT}
       demo={isDemoWorkspace}
+      locale={locale}
       navLabels={dict.dashboardNav}
       sidebarStrings={dict.sidebar}
     >

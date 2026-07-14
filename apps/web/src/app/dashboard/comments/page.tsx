@@ -16,7 +16,8 @@ import {
   type InboxItemRow, type InboxFilterInput, type InboxView,
 } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
-import { getT } from "@/i18n/server";
+import { getTL } from "@/i18n/server";
+import type { Locale } from "@/i18n";
 import { tEnum } from "@/i18n/labels";
 import { relativeTime } from "@/lib/format";
 
@@ -36,16 +37,6 @@ type FilterKey = (typeof SENT_FILTERS)[number];
 const HIDE_REASONS = ["live_hide_executed", "already_hidden"];
 const BUCKET_TONE: Record<SentimentBucket, "ok" | "neutral" | "warn" | "danger"> = { positive: "ok", neutral: "neutral", negative: "warn", risky: "danger" };
 
-// V1.42B — human labels for the item audit timeline (internal, never provider moderation).
-const AUDIT_LABEL: Record<string, string> = {
-  "inbox.mark_read": "Marked read", "inbox.mark_unread": "Marked unread",
-  "inbox.archive": "Archived in Tamanor", "inbox.unarchive": "Unarchived",
-  "inbox.set_priority": "Priority changed", "inbox.set_workflow_status": "Status changed",
-  "inbox.assign": "Assigned", "inbox.unassign": "Unassigned",
-  "inbox.label_assign": "Label added", "inbox.label_remove": "Label removed",
-  "inbox.note_add": "Note added",
-};
-
 interface AuditLite { id: string; label: string; actor: string; at: string }
 
 interface Row {
@@ -63,33 +54,245 @@ const HEALTH_TONE: Record<ConnectorHealthState, "ok" | "warn" | "danger" | "neut
   healthy: "ok", verification_pending: "warn", rate_limited: "warn",
   permission_missing: "danger", disconnected: "danger", api_unavailable: "neutral", error: "danger",
 };
-const HEALTH_LABEL: Record<ConnectorHealthState, string> = {
-  healthy: "Connector healthy", verification_pending: "Verification pending", rate_limited: "Rate limited",
-  permission_missing: "Permission missing", disconnected: "Disconnected", api_unavailable: "Not available", error: "Connector error",
-};
 
 // V1.44B — truthful per-item processing state. A limit/disabled/failed status NEVER implies
 // fabricated analysis — it means the advanced tier did not run.
-const PROCESSING_COPY: Record<string, string> = {
-  pending: "Awaiting analysis",
-  processed_rules: "Checked with basic protection",
-  processed_local: "Checked with local AI",
-  processed_paid: "Checked with advanced AI",
-  cached: "Reused previous analysis",
-  basic_limit_reached: "Monthly basic AI limit reached",
-  premium_limit_reached: "Advanced AI limit reached",
-  paid_ai_disabled: "Advanced AI is currently disabled",
-  failed: "Analysis could not be completed",
-};
 const PROCESSING_TONE: Record<string, "ok" | "neutral" | "warn" | "danger"> = {
   pending: "neutral", processed_rules: "neutral", processed_local: "neutral", processed_paid: "ok", cached: "neutral",
   basic_limit_reached: "warn", premium_limit_reached: "warn", paid_ai_disabled: "neutral", failed: "danger",
 };
 const PROCESSING_LIMIT_STATES = new Set(["basic_limit_reached", "premium_limit_reached", "paid_ai_disabled"]);
-const processingCopy = (s: string) => PROCESSING_COPY[s] ?? "Awaiting analysis";
+
+// ---- In-file localized copy for every human-visible string not already covered by the shared
+// dictionary (t.*). Identifiers/proper nouns (Tamanor, platform names, AI/KI) are intentional. ----
+interface CommentsCopy {
+  audit: Record<string, string>;
+  health: Record<ConnectorHealthState, string>;
+  processing: Record<string, string>;
+  priority: Record<string, string>;
+  workflow: Record<string, string>;
+  removedMember: string;
+  systemActor: string;
+  allTime: string;
+  viewInbox: string;
+  viewUnread: string;
+  viewArchived: string;
+  viewAssignedMe: string;
+  viewUnassigned: string;
+  anyPriority: string;
+  anyStatus: string;
+  anyRisk: string;
+  allLabels: string;
+  emptyUnread: string;
+  emptyArchived: string;
+  emptyAssignedMe: string;
+  emptyUnassigned: string;
+  onThisPage: (shown: number, total: number) => string;
+  unreadTitle: string;
+  notes: (n: number) => string;
+  ratingOnly: string;
+  tierLabel: (tier: string) => string;
+  checkedPrefix: string;
+  viewUsage: string;
+  workflowHeading: string;
+  labelsHeading: string;
+  notesHeading: string;
+  notesHeadingSub: string;
+  activityHeading: string;
+  noActivity: string;
+  pageNewest: string;
+  pagePrev: string;
+  pageNext: string;
+  showingOf: (shown: number, total: number) => string;
+}
+
+const COPY: Record<Locale, CommentsCopy> = {
+  en: {
+    audit: {
+      "inbox.mark_read": "Marked read", "inbox.mark_unread": "Marked unread",
+      "inbox.archive": "Archived in Tamanor", "inbox.unarchive": "Unarchived",
+      "inbox.set_priority": "Priority changed", "inbox.set_workflow_status": "Status changed",
+      "inbox.assign": "Assigned", "inbox.unassign": "Unassigned",
+      "inbox.label_assign": "Label added", "inbox.label_remove": "Label removed",
+      "inbox.note_add": "Note added",
+    },
+    health: {
+      healthy: "Connector healthy", verification_pending: "Verification pending", rate_limited: "Rate limited",
+      permission_missing: "Permission missing", disconnected: "Disconnected", api_unavailable: "Not available", error: "Connector error",
+    },
+    processing: {
+      pending: "Awaiting analysis",
+      processed_rules: "Checked with basic protection",
+      processed_local: "Checked with local AI",
+      processed_paid: "Checked with advanced AI",
+      cached: "Reused previous analysis",
+      basic_limit_reached: "Monthly basic AI limit reached",
+      premium_limit_reached: "Advanced AI limit reached",
+      paid_ai_disabled: "Advanced AI is currently disabled",
+      failed: "Analysis could not be completed",
+    },
+    priority: { low: "low", normal: "normal", high: "high", urgent: "urgent" },
+    workflow: { new: "new", in_review: "in review", action_required: "action required", resolved: "resolved" },
+    removedMember: "Removed member",
+    systemActor: "System",
+    allTime: "All time",
+    viewInbox: "Inbox",
+    viewUnread: "Unread",
+    viewArchived: "Archived",
+    viewAssignedMe: "Assigned to me",
+    viewUnassigned: "Unassigned",
+    anyPriority: "Any priority",
+    anyStatus: "Any status",
+    anyRisk: "Any risk",
+    allLabels: "All labels",
+    emptyUnread: "No unread items.",
+    emptyArchived: "Nothing archived.",
+    emptyAssignedMe: "Nothing assigned to you.",
+    emptyUnassigned: "No unassigned items.",
+    onThisPage: (shown, total) => `${shown} on this page · ${total} total`,
+    unreadTitle: "Unread",
+    notes: (n) => `${n} note${n === 1 ? "" : "s"}`,
+    ratingOnly: "Rating only — no written review.",
+    tierLabel: (tier) => `${tier} tier`,
+    checkedPrefix: "checked",
+    viewUsage: "View usage & limits →",
+    workflowHeading: "Workflow",
+    labelsHeading: "Labels",
+    notesHeading: "Notes",
+    notesHeadingSub: "· internal, never sent to the platform",
+    activityHeading: "Activity",
+    noActivity: "No activity yet.",
+    pageNewest: "⇤ Newest",
+    pagePrev: "← Previous",
+    pageNext: "Next →",
+    showingOf: (shown, total) => (shown ? `Showing ${shown} of ${total}` : `0 of ${total}`),
+  },
+  sk: {
+    audit: {
+      "inbox.mark_read": "Označené ako prečítané", "inbox.mark_unread": "Označené ako neprečítané",
+      "inbox.archive": "Archivované v Tamanor", "inbox.unarchive": "Vrátené z archívu",
+      "inbox.set_priority": "Zmenená priorita", "inbox.set_workflow_status": "Zmenený stav",
+      "inbox.assign": "Priradené", "inbox.unassign": "Zrušené priradenie",
+      "inbox.label_assign": "Pridaný štítok", "inbox.label_remove": "Odstránený štítok",
+      "inbox.note_add": "Pridaná poznámka",
+    },
+    health: {
+      healthy: "Konektor v poriadku", verification_pending: "Čaká sa na overenie", rate_limited: "Obmedzený počet požiadaviek",
+      permission_missing: "Chýba oprávnenie", disconnected: "Odpojené", api_unavailable: "Nedostupné", error: "Chyba konektora",
+    },
+    processing: {
+      pending: "Čaká na analýzu",
+      processed_rules: "Skontrolované základnou ochranou",
+      processed_local: "Skontrolované lokálnou AI",
+      processed_paid: "Skontrolované pokročilou AI",
+      cached: "Použitá predchádzajúca analýza",
+      basic_limit_reached: "Mesačný limit základnej AI dosiahnutý",
+      premium_limit_reached: "Limit pokročilej AI dosiahnutý",
+      paid_ai_disabled: "Pokročilá AI je momentálne vypnutá",
+      failed: "Analýzu sa nepodarilo dokončiť",
+    },
+    priority: { low: "nízka", normal: "normálna", high: "vysoká", urgent: "urgentná" },
+    workflow: { new: "nové", in_review: "v riešení", action_required: "vyžaduje akciu", resolved: "vyriešené" },
+    removedMember: "Odstránený člen",
+    systemActor: "Systém",
+    allTime: "Celé obdobie",
+    viewInbox: "Doručené",
+    viewUnread: "Neprečítané",
+    viewArchived: "Archivované",
+    viewAssignedMe: "Priradené mne",
+    viewUnassigned: "Nepriradené",
+    anyPriority: "Ľubovoľná priorita",
+    anyStatus: "Ľubovoľný stav",
+    anyRisk: "Ľubovoľné riziko",
+    allLabels: "Všetky štítky",
+    emptyUnread: "Žiadne neprečítané položky.",
+    emptyArchived: "Nič nie je archivované.",
+    emptyAssignedMe: "Vám nie je nič priradené.",
+    emptyUnassigned: "Žiadne nepriradené položky.",
+    onThisPage: (shown, total) => `${shown} na tejto stránke · ${total} celkovo`,
+    unreadTitle: "Neprečítané",
+    notes: (n) => `${n} ${n === 1 ? "poznámka" : n >= 2 && n <= 4 ? "poznámky" : "poznámok"}`,
+    ratingOnly: "Iba hodnotenie — bez písomnej recenzie.",
+    tierLabel: (tier) => `úroveň ${tier}`,
+    checkedPrefix: "skontrolované",
+    viewUsage: "Zobraziť spotrebu a limity →",
+    workflowHeading: "Pracovný postup",
+    labelsHeading: "Štítky",
+    notesHeading: "Poznámky",
+    notesHeadingSub: "· interné, nikdy sa neodosielajú na platformu",
+    activityHeading: "Aktivita",
+    noActivity: "Zatiaľ žiadna aktivita.",
+    pageNewest: "⇤ Najnovšie",
+    pagePrev: "← Predchádzajúce",
+    pageNext: "Ďalšie →",
+    showingOf: (shown, total) => (shown ? `Zobrazuje sa ${shown} z ${total}` : `0 z ${total}`),
+  },
+  de: {
+    audit: {
+      "inbox.mark_read": "Als gelesen markiert", "inbox.mark_unread": "Als ungelesen markiert",
+      "inbox.archive": "In Tamanor archiviert", "inbox.unarchive": "Aus Archiv geholt",
+      "inbox.set_priority": "Priorität geändert", "inbox.set_workflow_status": "Status geändert",
+      "inbox.assign": "Zugewiesen", "inbox.unassign": "Zuweisung aufgehoben",
+      "inbox.label_assign": "Label hinzugefügt", "inbox.label_remove": "Label entfernt",
+      "inbox.note_add": "Notiz hinzugefügt",
+    },
+    health: {
+      healthy: "Konnektor in Ordnung", verification_pending: "Verifizierung ausstehend", rate_limited: "Ratenbegrenzung aktiv",
+      permission_missing: "Berechtigung fehlt", disconnected: "Getrennt", api_unavailable: "Nicht verfügbar", error: "Konnektor-Fehler",
+    },
+    processing: {
+      pending: "Warten auf Analyse",
+      processed_rules: "Mit Basisschutz geprüft",
+      processed_local: "Mit lokaler KI geprüft",
+      processed_paid: "Mit erweiterter KI geprüft",
+      cached: "Vorherige Analyse wiederverwendet",
+      basic_limit_reached: "Monatliches Basis-KI-Limit erreicht",
+      premium_limit_reached: "Limit der erweiterten KI erreicht",
+      paid_ai_disabled: "Erweiterte KI ist derzeit deaktiviert",
+      failed: "Analyse konnte nicht abgeschlossen werden",
+    },
+    priority: { low: "niedrig", normal: "normal", high: "hoch", urgent: "dringend" },
+    workflow: { new: "neu", in_review: "in Prüfung", action_required: "Aktion erforderlich", resolved: "gelöst" },
+    removedMember: "Entferntes Mitglied",
+    systemActor: "System",
+    allTime: "Gesamter Zeitraum",
+    viewInbox: "Posteingang",
+    viewUnread: "Ungelesen",
+    viewArchived: "Archiviert",
+    viewAssignedMe: "Mir zugewiesen",
+    viewUnassigned: "Nicht zugewiesen",
+    anyPriority: "Beliebige Priorität",
+    anyStatus: "Beliebiger Status",
+    anyRisk: "Beliebiges Risiko",
+    allLabels: "Alle Labels",
+    emptyUnread: "Keine ungelesenen Einträge.",
+    emptyArchived: "Nichts archiviert.",
+    emptyAssignedMe: "Ihnen ist nichts zugewiesen.",
+    emptyUnassigned: "Keine nicht zugewiesenen Einträge.",
+    onThisPage: (shown, total) => `${shown} auf dieser Seite · ${total} insgesamt`,
+    unreadTitle: "Ungelesen",
+    notes: (n) => `${n} ${n === 1 ? "Notiz" : "Notizen"}`,
+    ratingOnly: "Nur Sternebewertung — keine schriftliche Bewertung.",
+    tierLabel: (tier) => `Stufe ${tier}`,
+    checkedPrefix: "geprüft",
+    viewUsage: "Nutzung & Limits anzeigen →",
+    workflowHeading: "Workflow",
+    labelsHeading: "Labels",
+    notesHeading: "Notizen",
+    notesHeadingSub: "· intern, wird nie an die Plattform gesendet",
+    activityHeading: "Aktivität",
+    noActivity: "Noch keine Aktivität.",
+    pageNewest: "⇤ Neueste",
+    pagePrev: "← Zurück",
+    pageNext: "Weiter →",
+    showingOf: (shown, total) => (shown ? `${shown} von ${total} angezeigt` : `0 von ${total}`),
+  },
+};
 
 export default async function CommentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const t = await getT();
+  const { t, locale } = await getTL();
+  const c = COPY[locale];
+  const processingCopy = (s: string) => c.processing[s] ?? c.processing.pending ?? "";
   const session = await requireSession();
   const sp = await searchParams;
   const realMode = await getRealModeFilter(session.tenantId);
@@ -254,14 +457,14 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const notesByItem = new Map<string, NoteLite[]>();
   for (const n of noteRows as Array<{ id: string; body: string; reputationItemId: string; authorUserId: string | null; createdAt: Date; author: { name: string | null; email: string } | null }>) {
     const list = notesByItem.get(n.reputationItemId) ?? notesByItem.set(n.reputationItemId, []).get(n.reputationItemId)!;
-    list.push({ id: n.id, body: n.body, authorName: n.author?.name ?? n.author?.email ?? "Removed member", authorId: n.authorUserId ?? null, createdAtLabel: relativeTime(n.createdAt, rel, now) });
+    list.push({ id: n.id, body: n.body, authorName: n.author?.name ?? n.author?.email ?? c.removedMember, authorId: n.authorUserId ?? null, createdAtLabel: relativeTime(n.createdAt, rel, now) });
   }
   const auditByItem = new Map<string, AuditLite[]>();
   for (const a of auditRows as Array<{ id: string; targetId: string | null; event: string; createdAt: Date; actor: { name: string | null; email: string } | null }>) {
     if (!a.targetId) continue;
     const list = auditByItem.get(a.targetId) ?? auditByItem.set(a.targetId, []).get(a.targetId)!;
     if (list.length >= 15) continue;
-    list.push({ id: a.id, label: AUDIT_LABEL[a.event] ?? a.event.replace(/^inbox\./, "").replace(/_/g, " "), actor: a.actor?.name ?? a.actor?.email ?? "System", at: relativeTime(a.createdAt, rel, now) });
+    list.push({ id: a.id, label: c.audit[a.event] ?? a.event.replace(/^inbox\./, "").replace(/_/g, " "), actor: a.actor?.name ?? a.actor?.email ?? c.systemActor, at: relativeTime(a.createdAt, rel, now) });
   }
 
   // Generic, reload-safe URL builder. `current` DELIBERATELY excludes cursor/dir, so changing any
@@ -310,7 +513,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
         <>
           {/* Date range */}
           <div className="mb-4 flex flex-wrap gap-1.5">
-            <a href={params({ range: "" })} className={chipCls(range === "all")} data-testid="range-all">All time</a>
+            <a href={params({ range: "" })} className={chipCls(range === "all")} data-testid="range-all">{c.allTime}</a>
             <a href={params({ range: "today" })} className={chipCls(range === "today")}>{t.comments.rangeToday}</a>
             <a href={params({ range: "7d" })} className={chipCls(range === "7d")}>{t.comments.range7d}</a>
             <a href={params({ range: "30d" })} className={chipCls(range === "30d")}>{t.comments.range30d}</a>
@@ -361,28 +564,28 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
 
           {/* Persisted inbox views (reload-safe; full navigation) with server counts. */}
           <div className="mb-2 flex flex-wrap gap-1.5" data-testid="inbox-views">
-            <a href={params({ view: "" })} className={chipCls(view === "default")} data-testid="view-default">Inbox{cnt(counts.total)}</a>
-            <a href={params({ view: "unread" })} className={chipCls(view === "unread")} data-testid="view-unread">Unread{cnt(counts.unread)}</a>
-            <a href={params({ view: "archived" })} className={chipCls(view === "archived")} data-testid="view-archived">Archived{cnt(counts.archived)}</a>
-            <a href={params({ view: "assigned_me" })} className={chipCls(view === "assigned_me")} data-testid="view-assigned">Assigned to me</a>
-            <a href={params({ view: "unassigned" })} className={chipCls(view === "unassigned")} data-testid="view-unassigned">Unassigned{cnt(counts.unassigned)}</a>
+            <a href={params({ view: "" })} className={chipCls(view === "default")} data-testid="view-default">{c.viewInbox}{cnt(counts.total)}</a>
+            <a href={params({ view: "unread" })} className={chipCls(view === "unread")} data-testid="view-unread">{c.viewUnread}{cnt(counts.unread)}</a>
+            <a href={params({ view: "archived" })} className={chipCls(view === "archived")} data-testid="view-archived">{c.viewArchived}{cnt(counts.archived)}</a>
+            <a href={params({ view: "assigned_me" })} className={chipCls(view === "assigned_me")} data-testid="view-assigned">{c.viewAssignedMe}</a>
+            <a href={params({ view: "unassigned" })} className={chipCls(view === "unassigned")} data-testid="view-unassigned">{c.viewUnassigned}{cnt(counts.unassigned)}</a>
           </div>
 
           {/* Priority / workflow / risk filters (reload-safe) with server counts. */}
           <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="inbox-facets">
-            <a href={params({ priority: "" })} className={chipCls(!prio)}>Any priority</a>
-            {(["low", "normal", "high", "urgent"] as const).map((p) => <a key={p} href={params({ priority: p })} className={chipCls(prio === p)} data-testid={`prio-${p}`}>{p + cnt(counts.byPriority[p])}</a>)}
+            <a href={params({ priority: "" })} className={chipCls(!prio)}>{c.anyPriority}</a>
+            {(["low", "normal", "high", "urgent"] as const).map((p) => <a key={p} href={params({ priority: p })} className={chipCls(prio === p)} data-testid={`prio-${p}`}>{(c.priority[p] ?? p) + cnt(counts.byPriority[p])}</a>)}
             <span className="mx-1 h-4 w-px bg-[var(--color-border)]" />
-            <a href={params({ status: "" })} className={chipCls(!wf)}>Any status</a>
-            {(["new", "in_review", "action_required", "resolved"] as const).map((s) => <a key={s} href={params({ status: s })} className={chipCls(wf === s)} data-testid={`wf-${s}`}>{s.replace(/_/g, " ") + cnt(counts.byWorkflow[s])}</a>)}
+            <a href={params({ status: "" })} className={chipCls(!wf)}>{c.anyStatus}</a>
+            {(["new", "in_review", "action_required", "resolved"] as const).map((s) => <a key={s} href={params({ status: s })} className={chipCls(wf === s)} data-testid={`wf-${s}`}>{(c.workflow[s] ?? s.replace(/_/g, " ")) + cnt(counts.byWorkflow[s])}</a>)}
           </div>
           <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="risk-filter">
-            <a href={params({ risk: "" })} className={chipCls(!riskLevel)}>Any risk</a>
+            <a href={params({ risk: "" })} className={chipCls(!riskLevel)}>{c.anyRisk}</a>
             {(["low", "medium", "high", "critical"] as const).map((rk) => <a key={rk} href={params({ risk: rk })} className={chipCls(riskLevel === rk)} data-testid={`risk-${rk}`}>{tEnum(t, "risk", rk)}</a>)}
           </div>
           {allLabels.length ? (
             <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="label-filter">
-              <a href={params({ label: "" })} className={chipCls(!labelFilter)}>All labels</a>
+              <a href={params({ label: "" })} className={chipCls(!labelFilter)}>{c.allLabels}</a>
               {allLabels.map((l) => <a key={l.id} href={params({ label: l.id })} className={chipCls(labelFilter === l.id)} data-testid={`label-filter-${l.id}`}><Badge tone={l.colorKey}>{l.name}{cnt(counts.byLabel[l.id])}</Badge></a>)}
             </div>
           ) : null}
@@ -393,10 +596,10 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
           {shown.length === 0 ? (
             <Card className="p-6 text-sm text-[var(--color-muted)]" data-testid="inbox-empty">{
               q ? t.comments.emptySearch
-              : view === "unread" ? "No unread items."
-              : view === "archived" ? "Nothing archived."
-              : view === "assigned_me" ? "Nothing assigned to you."
-              : view === "unassigned" ? "No unassigned items."
+              : view === "unread" ? c.emptyUnread
+              : view === "archived" ? c.emptyArchived
+              : view === "assigned_me" ? c.emptyAssignedMe
+              : view === "unassigned" ? c.emptyUnassigned
               : t.comments.emptyFilter
             }</Card>
           ) : (
@@ -404,7 +607,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
               {canAct ? (
                 <div className="mb-2 flex items-center gap-2">
                   <SelectAllCheckbox ids={shownIds} />
-                  <span className="text-xs text-[var(--color-muted)]">{shown.length} on this page · {counts.total} total</span>
+                  <span className="text-xs text-[var(--color-muted)]">{c.onThisPage(shown.length, counts.total)}</span>
                 </div>
               ) : null}
               <div className="space-y-3">
@@ -420,27 +623,27 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                         <details className="group">
                           <summary className="flex cursor-pointer flex-col gap-2 p-4">
                             <div className="flex flex-wrap items-center gap-2">
-                              {!r.isRead ? <span data-testid="unread-dot" className="inline-block h-2 w-2 rounded-full bg-[var(--color-brand)]" title="Unread" /> : null}
+                              {!r.isRead ? <span data-testid="unread-dot" className="inline-block h-2 w-2 rounded-full bg-[var(--color-brand)]" title={c.unreadTitle} /> : null}
                               {r.isReview ? <Badge tone="brand">{t.gbp.reviewType}</Badge> : null}
                               {r.isReview && r.rating ? <span className="text-xs font-semibold text-[var(--color-warn)]">{"★".repeat(Math.max(0, Math.min(5, r.rating)))}{"☆".repeat(Math.max(0, 5 - r.rating))}</span> : null}
                               <Badge tone={BUCKET_TONE[r.bucket]}>{t.rep[`bucket_${r.bucket}` as "bucket_positive"]}</Badge>
-                              {r.priority !== "normal" ? <Badge tone={r.priority === "urgent" ? "danger" : r.priority === "high" ? "warn" : "neutral"}>{r.priority}</Badge> : null}
-                              <Badge tone="neutral">{r.workflowStatus.replace(/_/g, " ")}</Badge>
+                              {r.priority !== "normal" ? <Badge tone={r.priority === "urgent" ? "danger" : r.priority === "high" ? "warn" : "neutral"}>{c.priority[r.priority] ?? r.priority}</Badge> : null}
+                              <Badge tone="neutral">{c.workflow[r.workflowStatus] ?? r.workflowStatus.replace(/_/g, " ")}</Badge>
                               <span data-testid="processing-badge" data-status={r.processingStatus}><Badge tone={PROCESSING_TONE[r.processingStatus] ?? "neutral"}>{processingCopy(r.processingStatus)}</Badge></span>
-                              {r.archived ? <Badge tone="neutral">Archived</Badge> : null}
+                              {r.archived ? <Badge tone="neutral">{c.viewArchived}</Badge> : null}
                               {r.assigneeName ? <Badge tone="neutral">@{r.assigneeName}</Badge> : null}
                               {r.labels.map((l) => <Badge key={l.id} tone={l.colorKey}>{l.name}</Badge>)}
-                              {r.noteCount > 0 ? <Badge tone="neutral">{r.noteCount} note{r.noteCount === 1 ? "" : "s"}</Badge> : null}
+                              {r.noteCount > 0 ? <Badge tone="neutral">{c.notes(r.noteCount)}</Badge> : null}
                               {r.category ? <Badge tone="neutral">{tEnum(t, "autoProtectCategory", r.category)}</Badge> : null}
                               {r.hiddenPublic ? <Badge tone="warn">{t.comments.hiddenPublic}</Badge> : null}
                               {r.pending ? <Badge tone="neutral">{t.comments.pendingDecision}</Badge> : null}
                               {r.actorLevel ? <Link href="/dashboard/actor-risk"><Badge tone={r.actorLevel === "medium" ? "warn" : "danger"}>{t.actor.badgePrefix}: {t.actor[`level_${r.actorLevel}` as "level_medium"]}</Badge></Link> : null}
                             </div>
                             {/* Rating-only reviews carry no text — never fabricate one. */}
-                            {r.text ? <p className="text-sm">{r.text}</p> : r.isReview ? <p className="text-sm italic text-[var(--color-muted)]" data-testid="rating-only">Rating only — no written review.</p> : null}
+                            {r.text ? <p className="text-sm">{r.text}</p> : r.isReview ? <p className="text-sm italic text-[var(--color-muted)]" data-testid="rating-only">{c.ratingOnly}</p> : null}
                             <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-[var(--color-muted)]">
                               <span>{r.author} · {r.platformLabel} · {r.account} · {relativeTime(r.createdAt, rel, now)} · {t.comments[r.statusKey as "st_captured"]}</span>
-                              <span data-testid="connector-health" data-health={r.connectorHealth}><StatusDot tone={HEALTH_TONE[r.connectorHealth]}>{HEALTH_LABEL[r.connectorHealth]}</StatusDot></span>
+                              <span data-testid="connector-health" data-health={r.connectorHealth}><StatusDot tone={HEALTH_TONE[r.connectorHealth]}>{c.health[r.connectorHealth]}</StatusDot></span>
                             </p>
                           </summary>
 
@@ -461,11 +664,11 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                             {/* V1.44B — truthful processing state. Limit/disabled states link to usage; never a fake error. */}
                             <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs" data-testid="processing-detail" data-status={r.processingStatus}>
                               <span className="font-medium">{processingCopy(r.processingStatus)}</span>
-                              {r.processingTier ? <span className="text-[var(--color-muted)]"> · {r.processingTier} tier</span> : null}
-                              {r.lastProcessedAt ? <span className="text-[var(--color-muted)]"> · checked {relativeTime(r.lastProcessedAt, rel, now)}</span> : null}
+                              {r.processingTier ? <span className="text-[var(--color-muted)]"> · {c.tierLabel(r.processingTier)}</span> : null}
+                              {r.lastProcessedAt ? <span className="text-[var(--color-muted)]"> · {c.checkedPrefix} {relativeTime(r.lastProcessedAt, rel, now)}</span> : null}
                               {r.classifierVersion ? <span className="text-[var(--color-muted)]"> · {r.classifierVersion}</span> : null}
                               {PROCESSING_LIMIT_STATES.has(r.processingStatus) ? (
-                                <div className="mt-1"><Link href="/dashboard/usage" className="text-[var(--color-brand)] hover:underline" data-testid="processing-usage-link">View usage &amp; limits →</Link></div>
+                                <div className="mt-1"><Link href="/dashboard/usage" className="text-[var(--color-brand)] hover:underline" data-testid="processing-usage-link">{c.viewUsage}</Link></div>
                               ) : null}
                             </div>
 
@@ -473,31 +676,31 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                                 provider hide; "resolved" never implies provider moderation. */}
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
                               <section>
-                                <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">Workflow</h4>
+                                <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{c.workflowHeading}</h4>
                                 <InboxControls id={r.id} isRead={r.isRead} archived={r.archived} priority={r.priority} workflowStatus={r.workflowStatus} canAct={canAct} />
                                 <div className="mt-2"><AssigneeSelector itemId={r.id} assigneeId={r.assigneeId} members={memberList} selfId={session.userId} canAct={canAct} /></div>
                               </section>
                               <section>
-                                <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">Labels</h4>
+                                <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{c.labelsHeading}</h4>
                                 <LabelSelector itemId={r.id} labels={r.labels} allLabels={allLabels} canAct={canAct} />
                               </section>
                             </div>
 
                             <section className="mt-4">
-                              <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">Notes <span className="font-normal normal-case text-[var(--color-muted)]">· internal, never sent to the platform</span></h4>
+                              <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{c.notesHeading} <span className="font-normal normal-case text-[var(--color-muted)]">{c.notesHeadingSub}</span></h4>
                               <NotesSection itemId={r.id} notes={notes} selfId={session.userId} canAct={canAct} />
                             </section>
 
                             {/* Audit timeline (internal actions; body never shown). */}
                             <section className="mt-4">
-                              <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">Activity</h4>
+                              <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{c.activityHeading}</h4>
                               <ul className="flex flex-col gap-1 text-xs" data-testid="audit-timeline">
                                 {audit.length ? audit.map((a) => (
                                   <li key={a.id} className="flex flex-wrap items-center gap-2 text-[var(--color-muted)]">
                                     <span className="font-medium text-[var(--color-fg)]">{a.label}</span>
                                     <span>· {a.actor} · {a.at}</span>
                                   </li>
-                                )) : <li className="text-[var(--color-muted)]">No activity yet.</li>}
+                                )) : <li className="text-[var(--color-muted)]">{c.noActivity}</li>}
                               </ul>
                             </section>
 
@@ -521,12 +724,12 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
               refresh reloads the SAME page. Changing any filter above drops cursor → back to page 1. */}
           <nav className="mt-4 flex items-center justify-between gap-2" data-testid="inbox-pager">
             <div className="flex gap-1.5">
-              {!onFirstPage ? <a href={params({ cursor: "", dir: "" })} className={chipCls(false)} data-testid="page-newest">⇤ Newest</a> : null}
-              {page.hasPrev ? <a href={params({ cursor: page.prevCursor ?? undefined, dir: "prev" })} className={chipCls(false)} data-testid="page-prev">← Previous</a> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">← Previous</span>}
+              {!onFirstPage ? <a href={params({ cursor: "", dir: "" })} className={chipCls(false)} data-testid="page-newest">{c.pageNewest}</a> : null}
+              {page.hasPrev ? <a href={params({ cursor: page.prevCursor ?? undefined, dir: "prev" })} className={chipCls(false)} data-testid="page-prev">{c.pagePrev}</a> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">{c.pagePrev}</span>}
             </div>
-            <span className="text-xs text-[var(--color-muted)]" data-testid="page-info">{shown.length ? `Showing ${shown.length} of ${counts.total}` : `0 of ${counts.total}`}</span>
+            <span className="text-xs text-[var(--color-muted)]" data-testid="page-info">{c.showingOf(shown.length, counts.total)}</span>
             <div>
-              {page.hasNext ? <a href={params({ cursor: page.nextCursor ?? undefined, dir: "next" })} className={chipCls(false)} data-testid="page-next">Next →</a> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">Next →</span>}
+              {page.hasNext ? <a href={params({ cursor: page.nextCursor ?? undefined, dir: "next" })} className={chipCls(false)} data-testid="page-next">{c.pageNext}</a> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">{c.pageNext}</span>}
             </div>
           </nav>
 

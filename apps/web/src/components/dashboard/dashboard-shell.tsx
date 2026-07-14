@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/logo";
 import { Sidebar } from "./sidebar";
+import { defaultLocale, type Locale } from "@/i18n/config";
 
 export function DashboardShell({
   tenantName,
@@ -11,6 +12,7 @@ export function DashboardShell({
   trialUsed,
   trialLimit,
   demo = false,
+  locale = defaultLocale,
   navLabels,
   sidebarStrings,
   children,
@@ -21,6 +23,7 @@ export function DashboardShell({
   trialUsed: number;
   trialLimit: number;
   demo?: boolean;
+  locale?: Locale;
   navLabels?: Record<string, string>;
   sidebarStrings?: Record<string, string>;
   children: React.ReactNode;
@@ -28,7 +31,7 @@ export function DashboardShell({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
-  const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, demo, navLabels, sidebarStrings };
+  const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, demo, locale, navLabels, sidebarStrings };
 
   // V1.39C — mobile drawer a11y: Escape closes and returns focus to the trigger; opening
   // moves focus into the drawer's first link so keyboard users land inside the menu.

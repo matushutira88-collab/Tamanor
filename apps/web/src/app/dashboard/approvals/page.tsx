@@ -13,8 +13,9 @@ import { PageHeader, Badge, EmptyState, Tabs } from "@/components/dashboard/ui";
 import { requirePermission } from "@/server/auth";
 import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
-import { getT } from "@/i18n/server";
+import { getTL } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
+import type { Locale } from "@/i18n";
 import { withEmoji } from "@/lib/enum-emoji";
 import { humanize, formatDate } from "@/lib/format";
 import { RISK_TONE, DECISION_TONE } from "@/lib/ui-maps";
@@ -22,6 +23,36 @@ import type { Dictionary } from "@/i18n/dictionaries/en";
 
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/approvals");
+
+const COPY: Record<
+  Locale,
+  { all: string; pending: string; emptyBody: string; emptyHint: string }
+> = {
+  en: {
+    all: "All",
+    pending: "pending",
+    emptyBody:
+      "Proposals appear when the AI engine or a reviewer suggests an action. Nothing runs until it's approved and executed.",
+    emptyHint:
+      "Runtime keeps moderation actions disabled — this is a safe review queue.",
+  },
+  sk: {
+    all: "Všetky",
+    pending: "čaká",
+    emptyBody:
+      "Návrhy sa zobrazia, keď AI engine alebo posudzovateľ navrhne akciu. Nič sa nevykoná, kým to nie je schválené a vykonané.",
+    emptyHint:
+      "Runtime ponecháva moderačné akcie vypnuté — toto je bezpečný front na kontrolu.",
+  },
+  de: {
+    all: "Alle",
+    pending: "ausstehend",
+    emptyBody:
+      "Vorschläge erscheinen, wenn die KI-Engine oder ein Prüfer eine Aktion vorschlägt. Nichts wird ausgeführt, bis es genehmigt und ausgeführt ist.",
+    emptyHint:
+      "Die Runtime hält Moderationsaktionen deaktiviert — dies ist eine sichere Prüf-Warteschlange.",
+  },
+};
 
 type SP = Record<string, string | undefined>;
 
@@ -49,7 +80,8 @@ export default async function ApprovalsPage({
   searchParams: Promise<SP>;
 }) {
   const session = await requirePermission(Permission.ProposalView);
-  const hdrT = await getT();
+  const { t: hdrT, locale } = await getTL();
+  const c = COPY[locale];
   const sp = await searchParams;
 
   const status = pick(DecisionStatus, sp.status);
@@ -110,7 +142,7 @@ export default async function ApprovalsPage({
   const tabHref = (s: string) => `/dashboard/approvals?status=${s}${suffix}`.replace("status=&", "");
 
   const tabs = [
-    { key: "", label: "All", href: `/dashboard/approvals?${otherFilters.toString()}`, count: totalCount },
+    { key: "", label: c.all, href: `/dashboard/approvals?${otherFilters.toString()}`, count: totalCount },
     { key: DecisionStatus.Proposed, label: tEnum(hdrT, "decision", DecisionStatus.Proposed), href: tabHref(DecisionStatus.Proposed), count: countByStatus.get(DecisionStatus.Proposed) ?? 0 },
     { key: DecisionStatus.Approved, label: tEnum(hdrT, "decision", DecisionStatus.Approved), href: tabHref(DecisionStatus.Approved), count: countByStatus.get(DecisionStatus.Approved) ?? 0 },
     { key: DecisionStatus.Executed, label: tEnum(hdrT, "decision", DecisionStatus.Executed), href: tabHref(DecisionStatus.Executed), count: countByStatus.get(DecisionStatus.Executed) ?? 0 },
@@ -122,7 +154,7 @@ export default async function ApprovalsPage({
       <PageHeader
         title={hdrT.dashHeaders[nav.icon].title}
         description={hdrT.dashHeaders[nav.icon].desc}
-        action={<Badge tone="warn">{countByStatus.get(DecisionStatus.Proposed) ?? 0} pending</Badge>}
+        action={<Badge tone="warn">{countByStatus.get(DecisionStatus.Proposed) ?? 0} {c.pending}</Badge>}
       />
 
       <Tabs active={status ?? ""} tabs={tabs} />
@@ -145,8 +177,8 @@ export default async function ApprovalsPage({
       {decisions.length === 0 ? (
         <EmptyState
           title={hdrT.dash.noProposalsHere}
-          body="Proposals appear when the AI engine or a reviewer suggests an action. Nothing runs until it's approved and executed."
-          hint="Runtime keeps moderation actions disabled — this is a safe review queue."
+          body={c.emptyBody}
+          hint={c.emptyHint}
         />
       ) : (
       <div className="gu-card overflow-hidden">
