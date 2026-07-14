@@ -77,7 +77,8 @@ export function withTenant<T>(tenantId: string, fn: (db: TenantTx) => Promise<T>
 
 export function findSyncCandidates(): Promise<Array<{ id: string; tenantId: string; brandId: string; platform: string }>> {
   return systemDb.connectedAccount.findMany({
-    where: { status: "active" },
+    // V1.45C1 — never surface accounts of a tenant that is being deleted (no new sync/data).
+    where: { status: "active", tenant: { deletionState: "active" } },
     select: { id: true, tenantId: true, brandId: true, platform: true },
   });
 }
@@ -102,6 +103,8 @@ export function findMetaSyncCandidates(statuses: string[]): Promise<MetaSyncCand
     where: {
       platform: { in: ["facebook_page", "instagram_business"] as never },
       status: { in: statuses as never },
+      // V1.45C1 — exclude a deleting tenant so worker auto-sync never picks up its accounts.
+      tenant: { deletionState: "active" },
     },
     select: {
       id: true, tenantId: true, brandId: true, platform: true,
@@ -120,7 +123,7 @@ export function countMockMetaAccounts(): Promise<number> {
 /** Active Facebook Page accounts for the token watchdog. Cross-tenant discovery; trusted tenantId. */
 export function findActiveFacebookAccounts(): Promise<Array<{ id: string; tenantId: string }>> {
   return systemDb.connectedAccount.findMany({
-    where: { platform: "facebook_page" as never, status: "active" as never },
+    where: { platform: "facebook_page" as never, status: "active" as never, tenant: { deletionState: "active" } },
     select: { id: true, tenantId: true },
   });
 }
@@ -128,7 +131,7 @@ export function findActiveFacebookAccounts(): Promise<Array<{ id: string; tenant
 /** V1.38 — active Meta accounts (Facebook Page + Instagram) for the connector health monitor. */
 export function findActiveMetaAccounts(): Promise<Array<{ id: string; tenantId: string }>> {
   return systemDb.connectedAccount.findMany({
-    where: { platform: { in: ["facebook_page", "instagram_business"] as never }, status: "active" as never },
+    where: { platform: { in: ["facebook_page", "instagram_business"] as never }, status: "active" as never, tenant: { deletionState: "active" } },
     select: { id: true, tenantId: true },
   });
 }
@@ -136,7 +139,7 @@ export function findActiveMetaAccounts(): Promise<Array<{ id: string; tenantId: 
 /** Accounts whose OAuth token has an expiry and are currently healthy/unknown. No token material returned. */
 export function findAccountsForTokenCheck(): Promise<Array<{ id: string; tenantId: string; brandId: string; platform: string; tokenExpiresAt: Date | null }>> {
   return systemDb.connectedAccount.findMany({
-    where: { tokenExpiresAt: { not: null }, health: { in: ["healthy", "unknown"] as never } },
+    where: { tokenExpiresAt: { not: null }, health: { in: ["healthy", "unknown"] as never }, tenant: { deletionState: "active" } },
     select: { id: true, tenantId: true, brandId: true, platform: true, tokenExpiresAt: true },
   });
 }
@@ -148,6 +151,8 @@ export function findItemsForProposal(limit: number): Promise<Array<{ id: string;
       riskLevel: { in: ["high", "critical"] as never },
       status: { in: ["new", "classified"] as never },
       decisions: { none: { status: { in: ["proposed", "approved"] as never } } },
+      // V1.45C1 — never propose new work for a deleting tenant.
+      tenant: { deletionState: "active" },
     },
     take: limit,
     select: { id: true, tenantId: true, brandId: true },
@@ -157,7 +162,7 @@ export function findItemsForProposal(limit: number): Promise<Array<{ id: string;
 /** Active accounts matching webhook page IDs. Cross-tenant discovery; trusted tenantId. */
 export function findAccountsByExternalIds(externalIds: string[]): Promise<Array<{ id: string; tenantId: string; brandId: string }>> {
   return systemDb.connectedAccount.findMany({
-    where: { externalId: { in: externalIds }, platform: "facebook_page" as never, status: "active" as never },
+    where: { externalId: { in: externalIds }, platform: "facebook_page" as never, status: "active" as never, tenant: { deletionState: "active" } },
     select: { id: true, tenantId: true, brandId: true },
   });
 }
@@ -169,9 +174,56 @@ export function findAccountsByExternalIds(externalIds: string[]): Promise<Array<
  */
 export function findMetaAccountsByExternalIds(externalIds: string[]): Promise<Array<{ id: string; tenantId: string; brandId: string; platform: string }>> {
   return systemDb.connectedAccount.findMany({
-    where: { externalId: { in: externalIds }, platform: { in: ["facebook_page", "instagram_business"] as never }, status: "active" as never },
+    // V1.45C1 — a webhook whose page/IG id maps to a DELETING tenant's account no longer matches, so
+    // the event is marked ignored (never processed) and can never recreate content/accounts.
+    where: { externalId: { in: externalIds }, platform: { in: ["facebook_page", "instagram_business"] as never }, status: "active" as never, tenant: { deletionState: "active" } },
     select: { id: true, tenantId: true, brandId: true, platform: true },
   });
+}
+
+// ----------------------- V1.45C1 tenant-deletion system helpers -----------------------
+// Trusted CLEANUP path: unlike the discovery queries above, these DO reach a `deleting` tenant — they
+// are the only queries permitted to, and are used solely by the deletion orchestrator + webhook link.
+
+/** Enumerate ALL connected accounts of a tenant (any status) for orchestrated disconnect cleanup. */
+export function findTenantConnectedAccountsForCleanup(tenantId: string): Promise<Array<{ id: string; platform: string; parentAccountId: string | null }>> {
+  return systemDb.connectedAccount.findMany({
+    where: { tenantId },
+    select: { id: true, platform: true, parentAccountId: true },
+  });
+}
+
+/** Delete ALL sync leases for a tenant (belt-and-suspenders; disconnect already drops per-cluster leases). */
+export function deleteTenantSyncLeases(tenantId: string): Promise<{ count: number }> {
+  return systemDb.syncLease.deleteMany({ where: { tenantId } });
+}
+
+/**
+ * V1.45C1 — tenants STRANDED in `deleting` (a crash/timeout after the request transition, which
+ * revokes the initiator's session, would otherwise leave the operation with no user able to retry —
+ * a deleting tenant is unreachable). `olderThan` skips a fresh deletion still running inline. Carries
+ * the trusted server-generated operationId so the system resume runner needs no session. No PII.
+ */
+export function findTenantsPendingDeletion(olderThan: Date, limit = 50): Promise<Array<{ id: string; deletionOperationId: string | null }>> {
+  return systemDb.tenant.findMany({
+    where: { deletionState: "deleting", deletionRequestedAt: { lt: olderThan } },
+    select: { id: true, deletionOperationId: true },
+    orderBy: { deletionRequestedAt: "asc" },
+    take: limit,
+  });
+}
+
+/**
+ * V1.45C1 — durably link a matched raw webhook event to its trusted tenant + account (resolved from
+ * the matched active account, NEVER from the payload). Best-effort: a link failure never blocks
+ * webhook processing. Enables the explicit tenant-deletion purge.
+ */
+export async function linkWebhookEventToTenant(id: string, tenantId: string, connectedAccountId: string): Promise<void> {
+  try {
+    await systemDb.webhookEvent.update({ where: { id }, data: { tenantId, connectedAccountId } });
+  } catch {
+    // non-fatal — the event is still processed; only the durable purge link is best-effort.
+  }
 }
 
 /**

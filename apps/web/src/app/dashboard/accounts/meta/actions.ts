@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
 import { checkAccountToken, linkMetaAssets } from "@guardora/sync";
-import { encryptToken, withTenant } from "@guardora/db";
+import { encryptToken, withTenant, assertTenantActive } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
 
@@ -19,6 +19,8 @@ export async function confirmMetaSelection(
 ): Promise<void> {
   const session = await requireSession();
   assertCan(session.role, Permission.ConnectorManage);
+  // V1.45C1 — a deleting tenant persists no real provider connection (defence-in-depth).
+  await assertTenantActive(session.tenantId);
 
   const pageId = String(formData.get("pageId") ?? "");
   const connectIg = formData.get("connectIg") === "on";

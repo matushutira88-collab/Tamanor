@@ -10,7 +10,7 @@ import {
   assertCan,
 } from "@guardora/core";
 import { runReadOnlySync, disconnectAccount } from "@guardora/sync";
-import { withTenant } from "@guardora/db";
+import { withTenant, assertTenantActive } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 
@@ -32,6 +32,9 @@ export async function connectMock(
 ): Promise<void> {
   const session = await requireSession();
   assertCan(session.role, Permission.ConnectorManage);
+  // V1.45C1 — a deleting tenant accepts no new/refreshed provider connection (defence-in-depth; the
+  // session guard already fails closed the instant the tenant is deleting).
+  await assertTenantActive(session.tenantId);
   const platform = asPlatform(platformRaw);
 
   await withTenant(session.tenantId, async (db) => {

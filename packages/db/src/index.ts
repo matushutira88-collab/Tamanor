@@ -89,3 +89,5 @@ export * from "./usage-repo";
 export * from "./global-usage-repo";
 export * from "./platform-repo";
 export * from "./sync-lease";
+export * from "./tenant-lifecycle";
+export * from "./tenant-deletion";

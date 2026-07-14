@@ -33,6 +33,10 @@ export enum Permission {
   ReportView = "report:view",
   // Members
   MemberManage = "member:manage",
+  // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
+  // and deliberately absent from every other role's list below (Admin included). Server authorization
+  // remains authoritative — this is the UI/gating capability.
+  TenantDelete = "tenant:delete",
 }
 
 const OWNER_ALL: readonly Permission[] = Object.values(Permission);

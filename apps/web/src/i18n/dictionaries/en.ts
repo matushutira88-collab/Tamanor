@@ -1611,6 +1611,22 @@ export const en = {
     languageHintClean: "Interface language for this workspace.",
     displayNameHint: "Optional public-facing name",
   },
+  // V1.45C1 — Danger Zone (Owner-only workspace deletion). Copy is deliberately TRUTHFUL about
+  // what deletion does and does not guarantee.
+  dangerZone: {
+    title: "Danger zone",
+    deleteHeading: "Delete this workspace",
+    description: "Permanently delete this workspace and all of its data — brands, connected accounts, inbox items, rules, reports, usage records, and audit history. This cannot be undone.",
+    credentialsNote: "Your locally stored provider credentials are removed and every connected account is disconnected.",
+    providerNote: "Some providers (e.g. Meta) do not support remote token revocation — that authorization may remain valid at the provider until it expires or you remove the app manually there.",
+    backupsNote: "Encrypted backups may retain data for a limited period according to infrastructure retention.",
+    confirmLabel: "Type the workspace name to confirm",
+    confirmCheckbox: "I understand this permanently deletes this workspace and all of its data.",
+    button: "Delete workspace permanently",
+    deletingBadge: "Deletion in progress",
+    deletingNote: "This workspace is being deleted. Access has been disabled.",
+    mismatchNotice: "The name you typed did not match the workspace name. Nothing was deleted.",
+  },
 };
 
 export type Dictionary = typeof en;

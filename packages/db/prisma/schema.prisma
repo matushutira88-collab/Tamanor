@@ -43,6 +43,23 @@ enum PlatformRole {
   admin
 }
 
+// V1.45C1 — tenant deletion lifecycle. `active` is the only state in which ordinary tenant
+// activity (sessions, sync, webhook ingest, membership/provider changes) may proceed. Once a
+// tenant transitions to `deleting`, every activity path fails closed (see assertTenantActive /
+// the session guard) and only the deletion orchestrator + narrow system cleanup may touch it.
+// The final tenant row is PHYSICALLY deleted at the end — there is no `deleted` state.
+enum TenantDeletionState {
+  active
+  deleting
+}
+
+// V1.45C1 — status of a durable, PRIVACY-SAFE global deletion receipt (see TenantDeletionReceipt).
+enum TenantDeletionStatus {
+  requested
+  completed
+  failed
+}
+
 enum BrandStatus {
   active
   paused
@@ -243,6 +260,14 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // V1.45C1 — deletion lifecycle. Default `active`; NON-NULL. A tenant is marked `deleting`
+  // atomically at the start of the deletion lifecycle (see requestTenantDeletion). The
+  // operation id is server-generated (never client-chosen) and unique so two concurrent
+  // requests converge on one operation and a stale op-id can never affect another lifecycle.
+  deletionState       TenantDeletionState @default(active)
+  deletionRequestedAt DateTime?
+  deletionOperationId String?             @unique
+
   memberships       Membership[]
   brands            Brand[]
   connectedAccounts ConnectedAccount[]
@@ -258,6 +283,21 @@ model Tenant {
   usagePeriods      UsagePeriod[]
   usageEvents       UsageEvent[]
   aiResultCache     AiResultCache[]
+
+  // V1.45C1 — tenant-scoped tables that previously carried only a `tenantId` string (RLS-isolated
+  // but NOT FK-linked). These now cascade on tenant deletion so the DB cascade graph is COMPLETE
+  // and provable (no orphaned tenant-scoped rows survive a tenant delete).
+  brandRiskFeedback        BrandRiskFeedback[]
+  brandRiskMemoryRules     BrandRiskMemoryRule[]
+  controlPolicies          ControlPolicy[]
+  actionQueueItems         ActionQueueItem[]
+  incidents                Incident[]
+  brandAutoProtectPolicies BrandAutoProtectPolicy[]
+  autoProtectDecisions     AutoProtectDecision[]
+  platformActionExecutions PlatformActionExecution[]
+  providerCalls            ProviderCall[]
+  // V1.45C1 — durable tenant link for matched raw webhook events (explicit purge on deletion).
+  webhookEvents            WebhookEvent[]
 
   @@map("tenants")
 }
@@ -403,11 +443,13 @@ model ConnectedAccount {
   // account_not_discoverable|api_unavailable|rate_limited. Set ONLY from a real signal.
   contentPermissionState String?
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  brand        Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  contentItems ContentItem[]
-  syncRuns     SyncRun[]
-  syncLeases   SyncLease[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand         Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contentItems  ContentItem[]
+  syncRuns      SyncRun[]
+  syncLeases    SyncLease[]
+  // V1.45C1 — informational back-link from matched raw webhook events (ON DELETE SetNull).
+  webhookEvents WebhookEvent[]
 
   @@unique([brandId, platform, externalId])
   @@index([tenantId])
@@ -511,10 +553,24 @@ model WebhookEvent {
   // V1.38.1 — stable dedup/replay key (the X-Hub-Signature-256 over the raw body).
   // A redelivered event has the same signature → the unique index rejects the replay.
   dedupeKey      String?  @unique
-  receivedAt     DateTime @default(now())
+  // V1.45C1 — durable tenant/account linkage populated at PROCESSING time (never inferred from the
+  // untrusted payload at deletion time). The tenant is resolved from the matched, active connected
+  // account. `tenantId` is the purge key for tenant deletion (explicit purge before the tenant row
+  // is removed) with ON DELETE Cascade as a defence-in-depth backstop — it is DELETED (never nulled)
+  // with the tenant, so the association is never lost before the explicit purge. `connectedAccountId`
+  // is informational (SetNull) so an account removal never blocks or orphan-nulls the tenant link.
+  // Legacy pre-V1.45C1 rows have neither link and remain subject to future global retention (V1.45C3).
+  tenantId           String?
+  connectedAccountId String?
+  receivedAt         DateTime @default(now())
+
+  tenant           Tenant?           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connectedAccount ConnectedAccount? @relation(fields: [connectedAccountId], references: [id], onDelete: SetNull)
 
   @@index([platform, receivedAt])
   @@index([processed])
+  @@index([tenantId])
+  @@index([connectedAccountId])
   @@map("webhook_events")
 }
 
@@ -833,6 +889,9 @@ model BrandRiskFeedback {
   note               String?
   createdAt          DateTime @default(now())
 
+  // V1.45C1 — cascade on tenant deletion (was tenantId-only, RLS-isolated).
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, brandId])
   @@index([brandId, feedbackType])
   @@map("brand_risk_feedback")
@@ -858,6 +917,9 @@ model BrandRiskMemoryRule {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  // V1.45C1 — cascade on tenant deletion (was tenantId-only, RLS-isolated).
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, brandId, isActive])
   @@index([brandId, type])
   @@map("brand_risk_memory_rules")
@@ -881,6 +943,9 @@ model ControlPolicy {
   createdBy          String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  // V1.45C1 — cascade on tenant deletion (was tenantId-only, RLS-isolated).
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([brandId, platform, sourceType, category])
   @@index([tenantId, brandId, isActive])
@@ -907,6 +972,9 @@ model ActionQueueItem {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  // V1.45C1 — cascade on tenant deletion (was tenantId-only, RLS-isolated).
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, brandId, queueState])
   @@map("action_queue_items")
 }
@@ -927,6 +995,9 @@ model Incident {
   createdAt      DateTime  @default(now())
   resolvedAt     DateTime?
 
+  // V1.45C1 — cascade on tenant deletion (was tenantId-only, RLS-isolated). Deleting a tenant
+  // cascades its incidents, which in turn cascade their IncidentRelatedItem join rows.
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   relatedItems IncidentRelatedItem[]
 
   @@unique([id, tenantId])
@@ -973,6 +1044,9 @@ model BrandAutoProtectPolicy {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // V1.45C1 — cascade on tenant deletion (was tenantId-only, RLS-isolated).
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([brandId, category])
   @@index([tenantId, brandId, isActive])
   @@map("brand_auto_protect_policies")
@@ -991,6 +1065,9 @@ model AutoProtectDecision {
   decision        String // no_action | monitor | requires_approval | would_auto_hide | blocked_by_safety
   reason          String?
   createdAt       DateTime @default(now())
+
+  // V1.45C1 — cascade on tenant deletion (was tenantId-only, RLS-isolated).
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, brandId])
   @@index([brandId, decision])
@@ -1027,6 +1104,10 @@ model PlatformActionExecution {
   executedAt           DateTime?
   rolledBackAt         DateTime?
 
+  // V1.45C1 — cascade on tenant deletion (was tenantId-only, RLS-isolated). The nullable
+  // itemId/queueItemId history FKs (V1.37.5B, raw-SQL, ON DELETE SetNull) are unaffected.
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, brandId])
   @@index([status])
   @@index([itemId])
@@ -1046,6 +1127,11 @@ model ProviderCall {
   tenantId  String?
   brandId   String?
   createdAt DateTime @default(now())
+
+  // V1.45C1 — cascade on tenant deletion (was tenantId-only, RLS-isolated). Optional because a
+  // provider call may be global/tenant-less (tenantId NULL) — those rows are unaffected by the FK.
+  // The nullable itemId history FK (V1.37.5B, raw-SQL, ON DELETE SetNull) is unaffected.
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([type, createdAt])
   @@index([tenantId])
@@ -1173,4 +1259,42 @@ model Lead {
 
   @@index([status, createdAt])
   @@map("leads")
+}
+
+// ===========================================================================================
+// V1.45C1 — GLOBAL, PRIVACY-SAFE tenant-deletion receipt. Deliberately has NO tenant foreign key
+// (it must SURVIVE the tenant cascade as durable proof that a deletion occurred). Reached ONLY via
+// the systemDb tenant-deletion service — never tenant-facing web code.
+//
+// It stores AGGREGATE, NON-PII facts only. It MUST NOT contain: tenant name, user email/name,
+// tokens, webhook payloads, content text, provider response bodies, internal notes, or raw
+// exception messages. `deletedTenantId` and `requestedByUserId` are OPAQUE cuids (internal
+// handles, not personal data). `providerResultSummary` is a safe count-by-classification object.
+// `failureClass` is a NORMALIZED allowlisted classification, never a raw error string.
+// ===========================================================================================
+model TenantDeletionReceipt {
+  id                   String               @id @default(cuid())
+  // Server-generated, unique — the idempotency key for the whole lifecycle. Two concurrent
+  // requests converge on one operationId; a retry re-uses it; a stale one affects nothing.
+  operationId          String               @unique
+  deletedTenantId      String
+  requestedByUserId    String?
+  // "tenant_owner" | "platform_admin" — the authority that initiated deletion (never a tenant name).
+  initiatedAuthority   String
+  status               TenantDeletionStatus @default(requested)
+  requestedAt          DateTime             @default(now())
+  completedAt          DateTime?
+  providerAccountCount Int                  @default(0)
+  // Safe aggregate, e.g. { "revoked_provider": 0, "revoke_unsupported": 2, "clustersInvalidated": 1 }.
+  providerResultSummary Json?
+  webhookEventsPurged  Int                  @default(0)
+  tenantRowDeleted     Boolean              @default(false)
+  // Normalized failure classification (e.g. "provider_cleanup_failed", "cascade_failed"); never PII.
+  failureClass         String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([deletedTenantId])
+  @@index([status])
+  @@map("tenant_deletion_receipts")
 }

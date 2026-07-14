@@ -51,7 +51,7 @@ export default defineConfig({
     { name: "public-mobile", testMatch: /public\.spec\.ts/, use: mobile(390, 844) },
     { name: "public-mobile-small", testMatch: /public\.spec\.ts/, use: mobile(375, 812) },
     // Authenticated flows — reuse the bootstrapped storageState.
-    { name: "auth-desktop", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STORAGE } },
+    { name: "auth-desktop", testMatch: /(authed|inbox|usage|danger-zone)(\.scale)?\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STORAGE } },
     { name: "auth-mobile", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { ...mobile(390, 844), storageState: STORAGE } },
     { name: "auth-mobile-small", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { ...mobile(375, 812), storageState: STORAGE } },
     { name: "auth-tablet", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { browserName: "chromium", viewport: { width: 768, height: 1024 }, hasTouch: true, storageState: STORAGE } },

@@ -16,13 +16,16 @@ import { prisma, systemDb } from "./index";
 
 export { PlatformRole };
 
-export type PlatformCapability = "leads:read" | "leads:write";
+// V1.45C1 — `tenant:delete` is a PLATFORM capability distinct from tenant ownership: it lets a
+// Platform Admin initiate a tenant deletion via a trusted server capability. It is granted ONLY to
+// platform `admin` (NOT `staff`) — platform staff must never be able to destroy a tenant.
+export type PlatformCapability = "leads:read" | "leads:write" | "tenant:delete";
 
-/** Capability policy. `admin` ⊇ `staff`. Anything not explicitly granted is denied. */
+/** Capability policy. `admin` ⊇ `staff`, EXCEPT tenant:delete is admin-only. Nothing else is granted. */
 export function platformRoleSatisfies(role: PlatformRole | null | undefined, cap: PlatformCapability): boolean {
   switch (role) {
-    case PlatformRole.admin: return true;                       // full platform access
-    case PlatformRole.staff: return cap === "leads:read" || cap === "leads:write";
+    case PlatformRole.admin: return true;                       // full platform access (incl. tenant:delete)
+    case PlatformRole.staff: return cap === "leads:read" || cap === "leads:write"; // NOT tenant:delete
     default: return false;                                      // none / null / unknown → denied
   }
 }

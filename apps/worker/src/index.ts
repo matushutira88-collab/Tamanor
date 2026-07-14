@@ -1,7 +1,7 @@
 import { loadEnv } from "@guardora/config";
 import { assertRlsRuntime, validateRuntimeDbConfig } from "@guardora/db";
 import { log } from "./logger";
-import { processPendingWebhookEvents } from "@guardora/sync";
+import { processPendingWebhookEvents, resumePendingTenantDeletions } from "@guardora/sync";
 import { proposeForHighRiskItems } from "./proposals";
 import { syncConnectedMetaAccounts } from "./sync";
 import { runTokenExpiryMonitor } from "./token-monitor";
@@ -44,6 +44,18 @@ async function tick(): Promise<void> {
     if (mh.enabled) log.info("meta_health.done", { checked: mh.checked, changed: mh.changed });
   } catch (err) {
     log.error("meta_health.failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // V1.45C1 — resume any tenant deletion stranded in `deleting` (crash/timeout after the request
+  // transition revoked the initiator's session). System context, idempotent, no session required.
+  // This is the REQUIRED production recovery path so a deletion can never be permanently stuck.
+  try {
+    const res = await resumePendingTenantDeletions();
+    if (res.pending > 0) log.info("tenant_deletion.resume", { pending: res.pending, resumed: res.resumed, failed: res.failed });
+  } catch (err) {
+    log.error("tenant_deletion.resume.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
   }

@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { Role } from "@guardora/core";
 import { getMetaConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { DangerZone } from "@/components/dashboard/danger-zone";
 import { requireSession } from "@/server/auth";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
@@ -11,8 +13,9 @@ import { getDictionary } from "@/i18n";
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/settings");
 
-export default async function SettingsPage() {
-  await requireSession();
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ danger?: string }> }) {
+  const session = await requireSession();
+  const sp = await searchParams;
   const hdrT = await getT();
   const meta = getMetaConfig();
   const locale = await getLocale();
@@ -85,6 +88,27 @@ export default async function SettingsPage() {
           </Card>
         ))}
       </div>
+
+      {/* V1.45C1 — Owner-only Danger Zone. Server authorization is authoritative; this gate only
+          controls visibility. Admin/Analyst/Reviewer/Viewer never see it and are denied server-side. */}
+      {session.role === Role.Owner ? (
+        <DangerZone
+          workspaceName={session.tenantName}
+          showMismatch={sp?.danger === "mismatch"}
+          copy={{
+            title: t.dangerZone.title,
+            deleteHeading: t.dangerZone.deleteHeading,
+            description: t.dangerZone.description,
+            credentialsNote: t.dangerZone.credentialsNote,
+            providerNote: t.dangerZone.providerNote,
+            backupsNote: t.dangerZone.backupsNote,
+            confirmLabel: t.dangerZone.confirmLabel,
+            confirmCheckbox: t.dangerZone.confirmCheckbox,
+            button: t.dangerZone.button,
+            mismatchNotice: t.dangerZone.mismatchNotice,
+          }}
+        />
+      ) : null}
     </>
   );
 }

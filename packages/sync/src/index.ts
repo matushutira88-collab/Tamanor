@@ -23,6 +23,8 @@ import {
   findMetaAccountsByExternalIds,
   listUnprocessedMetaWebhooks,
   markWebhookProcessed,
+  linkWebhookEventToTenant,
+  getTenantActivityState,
   acquireSyncLease,
   releaseSyncLease,
   type TenantTx,
@@ -200,6 +202,14 @@ export async function runReadOnlySync(
 ): Promise<SyncOutcome> {
   const { accountId, tenantId } = target;
   const phase = (p: string) => hooks?.onPhase?.(p);
+
+  // V1.45C1 — reject a DELETING tenant before any work (no lease, no SyncRun, no content). Worker
+  // discovery + webhook match already exclude deleting tenants; this guards the direct/manual path and
+  // any race between marking-deleting and an in-flight tick, so a deletion can never ingest new data.
+  const activity = await getTenantActivityState(tenantId);
+  if (!activity.ok) {
+    return zero(false, "This workspace is being deleted — sync is disabled.");
+  }
 
   // --- Phase A: tenant read (short tx) — load the account under RLS. ---
   phase("tenant-read-start");
@@ -899,6 +909,12 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
         continue;
       }
 
+      // V1.45C1 — durably link this raw event to its trusted tenant + account (resolved from the
+      // matched active account, NEVER from the payload). This is the link the tenant-deletion purge
+      // uses; a webhook mapping to a deleting tenant already failed to match above (→ ignored).
+      const primary = accounts[0]!;
+      await linkWebhookEventToTenant(ev.id, primary.tenantId, primary.id);
+
       for (const a of accounts) {
         if (syncedAccounts.has(a.id)) continue;
         syncedAccounts.add(a.id);
@@ -956,6 +972,7 @@ export * from "./production-safety";
 export * from "./connection-manager";
 export * from "./provider-revoke";
 export * from "./disconnect";
+export * from "./tenant-deletion";
 export * from "./meta-connector";
 export * from "./metered-classify";
 export * from "./paid-ai-guard";

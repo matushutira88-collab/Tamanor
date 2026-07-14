@@ -1565,4 +1565,18 @@ export const de: Dictionary = {
     languageHintClean: "Oberflächensprache für diesen Arbeitsbereich.",
     displayNameHint: "Optionaler öffentlicher Name",
   },
+  dangerZone: {
+    title: "Gefahrenzone",
+    deleteHeading: "Diesen Arbeitsbereich löschen",
+    description: "Diesen Arbeitsbereich und alle seine Daten dauerhaft löschen — Marken, verbundene Konten, Posteingangselemente, Regeln, Berichte, Nutzungsdaten und Audit-Verlauf. Dies kann nicht rückgängig gemacht werden.",
+    credentialsNote: "Lokal gespeicherte Anbieter-Zugangsdaten werden entfernt und jedes verbundene Konto wird getrennt.",
+    providerNote: "Einige Anbieter (z. B. Meta) unterstützen keinen Remote-Widerruf von Tokens — diese Autorisierung kann beim Anbieter gültig bleiben, bis sie abläuft oder Sie die App dort manuell entfernen.",
+    backupsNote: "Verschlüsselte Backups können Daten gemäß der Aufbewahrungsrichtlinie der Infrastruktur für begrenzte Zeit aufbewahren.",
+    confirmLabel: "Geben Sie zur Bestätigung den Namen des Arbeitsbereichs ein",
+    confirmCheckbox: "Mir ist bewusst, dass dies diesen Arbeitsbereich und alle seine Daten dauerhaft löscht.",
+    button: "Arbeitsbereich dauerhaft löschen",
+    deletingBadge: "Löschung läuft",
+    deletingNote: "Dieser Arbeitsbereich wird gelöscht. Der Zugriff wurde deaktiviert.",
+    mismatchNotice: "Der eingegebene Name stimmt nicht mit dem Namen des Arbeitsbereichs überein. Es wurde nichts gelöscht.",
+  },
 };

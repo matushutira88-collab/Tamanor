@@ -24,7 +24,10 @@ export type SessionRejectReason =
   | "session_revoked"
   | "membership_missing"
   | "user_missing"
-  | "tenant_missing";
+  | "tenant_missing"
+  // V1.45C1 — the active tenant is being deleted. Every session for it fails closed IMMEDIATELY
+  // (this is the single choke point: render reads and mutation paths all funnel through hydrate).
+  | "tenant_deleting";
 
 export interface ResolvedSession {
   sessionId: string;
@@ -58,12 +61,23 @@ export async function assertMembership(userId: string, tenantId: string): Promis
  * Deterministically resolve the active tenant for a user: honor an explicit,
  * membership-backed request; otherwise pick the earliest membership (createdAt,
  * then id) — never an unspecified DB order. Returns null if the user has none.
+ *
+ * V1.45C1 — a `deleting` tenant is NEVER selectable: an explicit request for one is rejected, and
+ * the earliest-membership fallback skips deleting tenants. This blocks starting a session in, or
+ * switching/logging into, a tenant that is being deleted.
  */
 export async function resolveActiveTenant(userId: string, requestedTenantId?: string): Promise<string | null> {
   if (requestedTenantId) {
-    return (await assertMembership(userId, requestedTenantId)) ? requestedTenantId : null;
+    if (!(await assertMembership(userId, requestedTenantId))) return null;
+    const t = await prisma.tenant.findUnique({ where: { id: requestedTenantId }, select: { deletionState: true } });
+    if (!t || t.deletionState !== "active") return null;
+    return requestedTenantId;
   }
-  const m = await prisma.membership.findFirst({ where: { userId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { tenantId: true } });
+  const m = await prisma.membership.findFirst({
+    where: { userId, tenant: { deletionState: "active" } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { tenantId: true },
+  });
   return m?.tenantId ?? null;
 }
 
@@ -96,6 +110,10 @@ async function hydrate(sessionId: string, userId: string, tenantId: string, expi
     include: { user: true, tenant: true },
   });
   if (!membership) return { ok: false, reason: "membership_missing" };
+  // V1.45C1 — fail closed the instant the active tenant is being deleted. Read FRESH on every
+  // hydrate (never cached), so a deletion invalidates every in-flight session immediately, and no
+  // stale cookie can restore access. The tenant row survives (as `deleting`) until the final cascade.
+  if (membership.tenant.deletionState !== "active") return { ok: false, reason: "tenant_deleting" };
   return {
     ok: true,
     session: {

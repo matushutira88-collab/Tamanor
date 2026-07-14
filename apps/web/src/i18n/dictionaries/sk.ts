@@ -1565,4 +1565,18 @@ export const sk: Dictionary = {
     languageHintClean: "Jazyk rozhrania pre tento pracovný priestor.",
     displayNameHint: "Voliteľný verejný názov",
   },
+  dangerZone: {
+    title: "Nebezpečná zóna",
+    deleteHeading: "Odstrániť tento pracovný priestor",
+    description: "Natrvalo odstrániť tento pracovný priestor a všetky jeho údaje — značky, pripojené účty, položky schránky, pravidlá, reporty, záznamy o spotrebe a históriu auditu. Túto akciu nie je možné vrátiť späť.",
+    credentialsNote: "Lokálne uložené prihlasovacie údaje poskytovateľov sa odstránia a každý pripojený účet sa odpojí.",
+    providerNote: "Niektorí poskytovatelia (napr. Meta) nepodporujú vzdialené zrušenie tokenu — dané oprávnenie môže u poskytovateľa zostať platné až do vypršania alebo kým aplikáciu manuálne neodstránite tam.",
+    backupsNote: "Šifrované zálohy môžu podľa retenčnej politiky infraštruktúry uchovávať údaje po obmedzený čas.",
+    confirmLabel: "Pre potvrdenie napíšte názov pracovného priestoru",
+    confirmCheckbox: "Rozumiem, že sa tým natrvalo odstráni tento pracovný priestor a všetky jeho údaje.",
+    button: "Natrvalo odstrániť pracovný priestor",
+    deletingBadge: "Prebieha odstraňovanie",
+    deletingNote: "Tento pracovný priestor sa odstraňuje. Prístup bol zakázaný.",
+    mismatchNotice: "Zadaný názov sa nezhoduje s názvom pracovného priestoru. Nič sa neodstránilo.",
+  },
 };
