@@ -82,6 +82,8 @@ export * from "@prisma/client";
 export * from "./token-crypto";
 export * from "./meta-account";
 export * from "./session";
+export * from "./password";
+export * from "./registration";
 export * from "./tenant-db";
 export * from "./repositories";
 export * from "./inbox-repo";

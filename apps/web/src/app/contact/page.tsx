@@ -41,7 +41,7 @@ const COPY: Record<
     securityLabel: string;
     liveWalkthroughTitle: string;
     liveWalkthroughBody: string;
-    bookDemo: string;
+    startFree: string;
     sentTitle: string;
     sentBody: string;
     nameLabel: string;
@@ -62,9 +62,9 @@ const COPY: Record<
     subtitle: "Questions, partnerships, or a personalized walkthrough — we're here.",
     emailLabel: "Email",
     securityLabel: "Security",
-    liveWalkthroughTitle: "Prefer a live walkthrough?",
-    liveWalkthroughBody: "See Tamanor protect a brand in read-only mode.",
-    bookDemo: "Book a demo",
+    liveWalkthroughTitle: "Prefer to explore it yourself?",
+    liveWalkthroughBody: "Create a free workspace and a 14-day trial in a couple of minutes.",
+    startFree: "Start free",
     sentTitle: "Message received.",
     sentBody:
       "Thanks for reaching out — your message was saved and we’ll get back to you shortly.",
@@ -85,9 +85,9 @@ const COPY: Record<
     subtitle: "Otázky, partnerstvá alebo personalizovaná prehliadka — sme tu pre vás.",
     emailLabel: "E-mail",
     securityLabel: "Bezpečnosť",
-    liveWalkthroughTitle: "Uprednostňujete živú prehliadku?",
-    liveWalkthroughBody: "Pozrite si, ako Tamanor chráni značku v režime iba na čítanie.",
-    bookDemo: "Rezervovať demo",
+    liveWalkthroughTitle: "Chcete si to vyskúšať sami?",
+    liveWalkthroughBody: "Vytvorte si pracovný priestor a 14-dňovú skúšobnú verziu za pár minút.",
+    startFree: "Začať zdarma",
     sentTitle: "Správa prijatá.",
     sentBody: "Ďakujeme, že ste nás kontaktovali — vaša správa bola uložená a čoskoro sa vám ozveme.",
     nameLabel: "Meno *",
@@ -107,9 +107,9 @@ const COPY: Record<
     subtitle: "Fragen, Partnerschaften oder eine persönliche Vorführung — wir sind für Sie da.",
     emailLabel: "E-Mail",
     securityLabel: "Sicherheit",
-    liveWalkthroughTitle: "Lieber eine Live-Vorführung?",
-    liveWalkthroughBody: "Erleben Sie, wie Tamanor eine Marke im schreibgeschützten Modus schützt.",
-    bookDemo: "Demo buchen",
+    liveWalkthroughTitle: "Lieber selbst ausprobieren?",
+    liveWalkthroughBody: "Erstellen Sie in wenigen Minuten einen Arbeitsbereich und eine 14-tägige Testphase.",
+    startFree: "Kostenlos starten",
     sentTitle: "Nachricht erhalten.",
     sentBody:
       "Danke für Ihre Kontaktaufnahme — Ihre Nachricht wurde gespeichert und wir melden uns in Kürze bei Ihnen.",
@@ -150,8 +150,8 @@ export default async function ContactPage({
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
             <p className="text-sm font-semibold">{c.liveWalkthroughTitle}</p>
             <p className="mt-1 text-sm text-[var(--color-muted)]">{c.liveWalkthroughBody}</p>
-            <Link href="/book-demo" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
-              {c.bookDemo}
+            <Link href="/register" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
+              {c.startFree}
             </Link>
           </div>
         </div>

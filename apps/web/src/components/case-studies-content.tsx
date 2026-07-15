@@ -45,11 +45,11 @@ export function CaseStudiesContent({ dict, locale }: { dict: Dictionary; locale:
       <div className="mt-10 rounded-2xl border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-6 text-center">
         <p className="text-sm text-[var(--color-muted)]">{t.footerNote}</p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-          <Link href="/book-demo" className="rounded-xl bg-[var(--color-brand)] px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
-            {dict.common.bookDemo}
+          <Link href="/register" className="rounded-xl bg-[var(--color-brand)] px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
+            {dict.common.startFree}
           </Link>
           <Link href="/login" className="rounded-xl border border-[var(--color-border-strong)] px-5 py-2.5 text-sm font-semibold transition hover:bg-[var(--color-surface-2)]">
-            {dict.common.startFreeTrial}
+            {dict.common.logIn}
           </Link>
         </div>
       </div>

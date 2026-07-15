@@ -6,8 +6,8 @@
  * `premiumCostLimitMicros` is an integer micros budget (bigint) — never a float. A `null` limit
  * means "no cap for this KNOWN plan" (enterprise), which the reservation layer treats as unbounded.
  */
-export type UsagePlan = "free" | "starter" | "pro" | "enterprise";
-export const USAGE_PLANS: readonly UsagePlan[] = ["free", "starter", "pro", "enterprise"];
+export type UsagePlan = "free" | "free_trial" | "starter" | "pro" | "enterprise";
+export const USAGE_PLANS: readonly UsagePlan[] = ["free", "free_trial", "starter", "pro", "enterprise"];
 
 export type UsagePolicy = {
   plan: UsagePlan;
@@ -41,6 +41,11 @@ const FREE: UsagePolicy = {
   allowGeneratedReplies: false,
 };
 
+// V1.50A — a new self-service workspace runs on the Free Trial. It maps to the
+// SAME conservative AI quotas as Free (paid AI stays bounded + fail-closed); the
+// trial is a time window (Tenant.trialStartsAt/EndsAt), not a paid entitlement.
+const FREE_TRIAL: UsagePolicy = { ...FREE, plan: "free_trial" };
+
 const STARTER: UsagePolicy = {
   plan: "starter",
   basicUnitsPerPeriod: 5_000, premiumCallsPerPeriod: 200, premiumCostLimitMicros: 5_000_000n,
@@ -62,7 +67,7 @@ const ENTERPRISE: UsagePolicy = {
   allowRules: true, allowLocalModel: true, allowPaidFallback: true, allowGeneratedReplies: true,
 };
 
-const POLICIES: Record<UsagePlan, UsagePolicy> = { free: FREE, starter: STARTER, pro: PRO, enterprise: ENTERPRISE };
+const POLICIES: Record<UsagePlan, UsagePolicy> = { free: FREE, free_trial: FREE_TRIAL, starter: STARTER, pro: PRO, enterprise: ENTERPRISE };
 
 export function isKnownPlan(plan: unknown): plan is UsagePlan {
   return typeof plan === "string" && (USAGE_PLANS as readonly string[]).includes(plan);

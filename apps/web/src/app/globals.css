@@ -171,6 +171,34 @@ body {
   );
 }
 
+/* Alternating raised section band — gives the long landing page a natural
+   rhythm instead of one hard divider between every block. Slightly lighter
+   surface with a faint teal wash bleeding down from the top edge. */
+.gu-band {
+  position: relative;
+  background:
+    radial-gradient(80rem 24rem at 50% -10%, rgba(31, 208, 164, 0.05), transparent 60%),
+    var(--color-bg-soft);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Card depth on hover — a subtle lift + brand edge so grids feel tactile
+   rather than flat. Pairs with border-[var(--color-border)] base cards. */
+.gu-lift {
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background-color 0.22s ease;
+}
+.gu-lift:hover {
+  transform: translateY(-3px);
+  border-color: var(--color-brand);
+  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.65);
+}
+
+/* Soft depth for anchor cards (pricing highlight, floating stat panel). */
+.gu-elevate {
+  box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.7);
+}
+
 /* =============================================================================
    Brand typography — high-contrast display serif for headings and big stats,
    echoing the Guardora brand mockup (elegant serif on deep teal).

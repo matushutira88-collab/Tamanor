@@ -20,4 +20,15 @@ export const webhookLimiter = new RateLimiter({
   maxKeys: 20_000,
 });
 
+/**
+ * V1.50A — brute-force / abuse guard for the credential auth endpoints (register +
+ * login). Checked per-IP AND per-email (distinct keys) so neither a single IP nor a
+ * single targeted account can be hammered. Fail-closed at the limit. Bounded memory.
+ */
+export const authLimiter = new RateLimiter({
+  limit: 10,
+  windowMs: 5 * 60_000,
+  maxKeys: 20_000,
+});
+
 export { ipKeyFromHeader };

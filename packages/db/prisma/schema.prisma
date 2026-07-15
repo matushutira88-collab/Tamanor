@@ -211,6 +211,9 @@ model User {
   id           String       @id @default(cuid())
   email        String       @unique
   name         String?
+  // V1.50A — self-service credential auth. Argon2id PHC string (never plaintext).
+  // Nullable: dev-seed/E2E/future-OAuth users may have no local password.
+  passwordHash String?
   locale       String       @default("en")
   // V1.45A — global platform-admin role (default least-privilege; independent of tenant Role).
   platformRole PlatformRole @default(none)
@@ -218,6 +221,7 @@ model User {
   updatedAt    DateTime     @updatedAt
 
   memberships        Membership[]
+  oauthAccounts      OAuthAccount[]
   proposed           ModerationDecision[] @relation("DecisionProposer")
   reviewed           ModerationDecision[] @relation("DecisionReviewer")
   auditLogs          AuditLog[]
@@ -227,6 +231,28 @@ model User {
   inboxNotes         InboxNote[]          @relation("InboxNoteAuthor")
 
   @@map("users")
+}
+
+// V1.50B — external identity link for USER authentication (Google / Facebook Login).
+// This is ONE user with potentially MANY login providers. It is entirely separate from
+// the Meta Page/Business connector (ConnectedAccount / MetaOnboardingSession): it stores
+// only the provider's opaque account id for sign-in, never a Page/business access token,
+// and is never used to act on a platform. No provider access/refresh token is persisted —
+// once the callback has read the account id + email, the token is discarded.
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String   // "google" | "facebook" (USER login providers only)
+  providerAccountId String   // the provider's stable subject/user id (e.g. Google `sub`)
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One external identity maps to at most one Tamanor user; a user has at most one link per provider.
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("oauth_accounts")
 }
 
 // V1.37.1 — opaque, DB-backed session. The cookie holds a random token; only
@@ -257,6 +283,15 @@ model Tenant {
   name      String
   slug      String   @unique
   plan      String   @default("free")
+  // V1.50A — self-service Free Trial. On registration: plan="free_trial" with a
+  // 14-day window. Billing is out of scope (V1.50B+); these are informational only.
+  trialStartsAt DateTime?
+  trialEndsAt   DateTime?
+  // Optional company country captured at registration (no downstream logic yet).
+  country       String?
+  // V1.50B — onboarding state. NULL = onboarding pending (new workspace); set when the
+  // owner finishes or skips the onboarding wizard, so it is shown once, not on every login.
+  onboardingCompletedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

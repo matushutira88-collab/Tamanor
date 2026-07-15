@@ -13,7 +13,17 @@ const nextConfig = {
     "@guardora/db",
     "@guardora/sync",
   ],
-  serverExternalPackages: ["@prisma/client", ".prisma/client"],
+  serverExternalPackages: ["@prisma/client", ".prisma/client", "@node-rs/argon2"],
+  // V1.50A — @node-rs/argon2 is a native (.node) addon reached through the transpiled
+  // @guardora/db package, so `serverExternalPackages` alone doesn't externalize it.
+  // Keep it OUT of the webpack bundle on the server (required at runtime by Node); it is
+  // never in the client graph (password hashing is server-only).
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals = [...(config.externals ?? []), { "@node-rs/argon2": "commonjs @node-rs/argon2" }];
+    }
+    return config;
+  },
   // V1.38.2 / V1.48P — baseline security headers + production Content-Security-Policy.
   async headers() {
     // V1.48P — production CSP. Materially restrictive (no object/eval, framing denied, base-uri &
@@ -21,6 +31,13 @@ const nextConfig = {
     // 'unsafe-inline' is required for Next's hydration bootstrap + styled inline until a nonce-based
     // strict-dynamic policy (via middleware) is adopted — that is the documented follow-up hardening.
     // NO 'unsafe-eval'. `connect-src` is 'self' (the app only calls its own same-origin API).
+    //
+    // DEV EXCEPTION: `upgrade-insecure-requests` and HSTS are PRODUCTION-ONLY. On http://localhost
+    // they force browsers (Safari especially — it has no localhost exemption) to fetch all
+    // /_next/* assets over https://localhost, where no TLS exists → every stylesheet and script
+    // fails with a TLS error and the page renders unstyled. Dev additionally needs 'unsafe-eval'
+    // for React Refresh / HMR eval'd source maps.
+    const isProd = process.env.NODE_ENV === "production";
     const csp = [
       "default-src 'self'",
       "base-uri 'self'",
@@ -30,10 +47,10 @@ const nextConfig = {
       "img-src 'self' data: https:",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline'",
+      isProd ? "script-src 'self' 'unsafe-inline'" : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "connect-src 'self'",
       "frame-src 'self'",
-      "upgrade-insecure-requests",
+      ...(isProd ? ["upgrade-insecure-requests"] : []),
     ].join("; ");
     const security = [
       { key: "Content-Security-Policy", value: csp },
@@ -41,7 +58,11 @@ const nextConfig = {
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
       { key: "X-Frame-Options", value: "SAMEORIGIN" },
       { key: "X-DNS-Prefetch-Control", value: "on" },
-      { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+      // HSTS only in production — sending it on localhost poisons the browser's HSTS cache
+      // and forces https://localhost even after the header is removed.
+      ...(isProd
+        ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }]
+        : []),
       { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
     ];
     return [{ source: "/:path*", headers: security }];

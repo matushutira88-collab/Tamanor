@@ -29,20 +29,19 @@ export function SiteHeader({
         </nav>
         <div className="flex items-center gap-2">
           <LanguageSwitcher current={locale} variant="marketing" />
-          {/* V1.49B — truthful CTA hierarchy: primary = Book a demo (pilot access is via a demo, not
-              self-service). The former "Start free trial → /login" implied a self-service trial that
-              does not exist (no billing / no public sign-up); replaced with a real "Review security" link. */}
+          {/* V1.50A — self-service CTA hierarchy: secondary = Log in (existing users),
+              primary = Start free (self-service registration + 14-day free trial). */}
           <Link
-            href={`${localePrefix(locale)}/security`}
+            href="/login"
             className="hidden rounded-lg border border-[var(--color-border-strong)] px-4 py-2 text-sm font-medium text-[var(--color-fg)] transition hover:bg-[var(--color-surface-2)] sm:inline-block"
           >
-            {t.common.reviewSecurity}
+            {t.common.logIn}
           </Link>
           <Link
-            href="/book-demo"
+            href="/register"
             className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] shadow-[0_0_24px_rgba(25,195,154,0.35)] transition hover:bg-[var(--color-brand-strong)]"
           >
-            {t.common.bookDemo}
+            {t.common.startFree}
           </Link>
         </div>
       </div>

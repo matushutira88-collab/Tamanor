@@ -88,11 +88,11 @@ export function SiteFooter({
             <span className="text-lg font-semibold">Tamanor</span>
             <p className="mt-3 max-w-xs text-sm text-[var(--color-muted)]">{t.footer.tagline}</p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Link href="/login" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-xs font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
-                {t.common.startFreeTrial}
+              <Link href="/register" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-xs font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
+                {t.common.startFree}
               </Link>
-              <Link href="/book-demo" className="rounded-lg border border-[var(--color-border-strong)] px-4 py-2 text-xs font-semibold transition hover:bg-[var(--color-surface-2)]">
-                {t.common.bookDemo}
+              <Link href="/login" className="rounded-lg border border-[var(--color-border-strong)] px-4 py-2 text-xs font-semibold transition hover:bg-[var(--color-surface-2)]">
+                {t.common.logIn}
               </Link>
             </div>
           </div>

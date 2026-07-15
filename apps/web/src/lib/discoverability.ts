@@ -26,7 +26,6 @@ export const MARKETING_ROUTES: { path: string; changefreq: string; priority: num
   { path: "/about", changefreq: "monthly", priority: 0.5 },
   { path: "/case-studies", changefreq: "monthly", priority: 0.5, i18n: true },
   { path: "/contact", changefreq: "yearly", priority: 0.3 },
-  { path: "/book-demo", changefreq: "yearly", priority: 0.4 },
   { path: "/privacy", changefreq: "yearly", priority: 0.3 },
   { path: "/terms", changefreq: "yearly", priority: 0.3 },
 ];
@@ -128,6 +127,8 @@ export function buildRobotsTxt(): string {
   lines.push("Disallow: /dashboard/");
   lines.push("Disallow: /api/");
   lines.push("Disallow: /login");
+  lines.push("Disallow: /register");
+  lines.push("Disallow: /onboarding");
   lines.push("");
   // Explicitly welcome documented AI crawlers to the public site.
   for (const ua of AI_CRAWLERS) {

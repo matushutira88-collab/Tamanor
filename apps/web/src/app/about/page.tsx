@@ -40,7 +40,7 @@ const COPY: Record<
     approachBody: string;
     whereTitle: string;
     whereBody: string;
-    bookDemo: string;
+    startFree: string;
     reachUsPre: string;
     reachUsPost: string;
   }
@@ -59,7 +59,7 @@ const COPY: Record<
     whereTitle: "Where we are",
     whereBody:
       "Tamanor is an early-stage product being built in the open with its first design partners. If that sounds like your team, we’d love to talk.",
-    bookDemo: "Book a demo",
+    startFree: "Start free",
     reachUsPre: "or reach us at",
     reachUsPost: ".",
   },
@@ -77,7 +77,7 @@ const COPY: Record<
     whereTitle: "Kde sa nachádzame",
     whereBody:
       "Tamanor je produkt v ranej fáze, ktorý vyvíjame otvorene s prvými dizajnovými partnermi. Ak to znie ako váš tím, radi sa s vami porozprávame.",
-    bookDemo: "Rezervovať demo",
+    startFree: "Začať zdarma",
     reachUsPre: "alebo nás kontaktujte na",
     reachUsPost: ".",
   },
@@ -95,7 +95,7 @@ const COPY: Record<
     whereTitle: "Wo wir stehen",
     whereBody:
       "Tamanor ist ein Produkt in einer frühen Phase, das offen mit seinen ersten Design-Partnern entwickelt wird. Wenn das nach Ihrem Team klingt, sprechen wir gerne mit Ihnen.",
-    bookDemo: "Demo buchen",
+    startFree: "Kostenlos starten",
     reachUsPre: "oder erreichen Sie uns unter",
     reachUsPost: ".",
   },
@@ -121,8 +121,8 @@ export default async function AboutPage() {
       <Section title={c.whereTitle}>
         <p>{c.whereBody}</p>
         <p>
-          <Link href="/book-demo" className="text-[var(--color-brand)] hover:underline">
-            {c.bookDemo}
+          <Link href="/register" className="text-[var(--color-brand)] hover:underline">
+            {c.startFree}
           </Link>{" "}
           {c.reachUsPre}{" "}
           <a href="mailto:hello@guardora.ai" className="text-[var(--color-brand)] hover:underline">
