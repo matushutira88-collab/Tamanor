@@ -7,6 +7,8 @@ import { emitOpsEvent, metrics } from "@guardora/core";
 import { authLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 import { startSession } from "@/server/session";
 import { isSameOrigin } from "@/server/csrf";
+import { issueVerificationEmail } from "@/server/auth-email";
+import { getLocale } from "@/i18n/locale-server";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 10;
@@ -66,10 +68,12 @@ export async function registerAction(formData: FormData): Promise<void> {
     throw e;
   }
 
-  // Establish the session for the new user (owner of the just-created tenant), then
-  // send them into onboarding. Both are OUTSIDE the try/catch so the redirect throw
-  // (NEXT_REDIRECT) is never swallowed.
+  // V1.50C — the account starts UNVERIFIED. Open a session (so the user reaches the
+  // verification-required screen + resend), issue a one-time verification email, then land
+  // on /verify-email. Onboarding/dashboard are gated until the email is verified. All OUTSIDE
+  // the try/catch so the redirect throw (NEXT_REDIRECT) is never swallowed.
   await startSession(userId);
+  await issueVerificationEmail(userId, normalizeEmail(email), await getLocale());
   metrics.inc("auth_register_total", { operation: "register", result: "ok" });
-  redirect("/onboarding");
+  redirect("/verify-email");
 }

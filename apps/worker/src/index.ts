@@ -1,5 +1,5 @@
 import { loadEnv } from "@guardora/config";
-import { assertRlsRuntime, validateRuntimeDbConfig } from "@guardora/db";
+import { assertRlsRuntime, validateRuntimeDbConfig, cleanupExpiredAuthTokens } from "@guardora/db";
 import { emitOpsEvent, metrics, initOpsSink } from "@guardora/core";
 import { log } from "./logger";
 
@@ -56,6 +56,19 @@ async function tick(): Promise<void> {
   } catch (err) {
     log.error("webhook.retention.failed", { error: err instanceof Error ? err.name : "unknown" });
     emitOpsEvent("webhook.retention_failed", { operation: "webhook_retention", reason: err instanceof Error ? err.name : "unknown" });
+  }
+
+  // V1.50C — auth token cleanup: delete expired/consumed verification + reset tokens in bounded,
+  // index-backed batches (id-scoped deletes are multi-worker safe). A failure here must NOT crash
+  // sync. Summary counts only — never a token, hash, user, or raw error.
+  try {
+    const c = await cleanupExpiredAuthTokens();
+    if (c.verificationRemoved > 0 || c.resetRemoved > 0) {
+      log.info("auth.token_cleanup", { verificationRemoved: c.verificationRemoved, resetRemoved: c.resetRemoved });
+    }
+  } catch (err) {
+    log.error("auth.token_cleanup.failed", { error: err instanceof Error ? err.name : "unknown" });
+    emitOpsEvent("auth.token_cleanup_failed", { operation: "auth_token_cleanup", reason: err instanceof Error ? err.name : "unknown" });
   }
 
   // V1.38 — unified Meta connector health (gated by META_CONNECTOR_HEALTH; off = no-op).

@@ -8,7 +8,7 @@
  * Fail-closed: returns 404 unless `E2E_TEST_MODE === "true"` (never set in real production).
  * It only issues a session via sanctioned paths and creates no privileged access.
  */
-import { listDevLoginUsers, ensureE2EViewerUser } from "@guardora/db";
+import { listDevLoginUsers, ensureE2EViewerUser, systemDb } from "@guardora/db";
 import { startSession } from "@/server/session";
 import { e2eSeamEnabled } from "@/lib/e2e-seam";
 
@@ -32,6 +32,9 @@ export async function POST(req: Request) {
     await startSession(viewer.id, tenantId);
     return Response.json({ ok: true, role: "viewer" }, { status: 200 });
   }
+  // V1.50C — ensure the fixture is verified so it passes the dashboard verification gate
+  // (test-only; the fixture is a pre-existing dev/seed user).
+  await systemDb.user.updateMany({ where: { id: primary.id, emailVerifiedAt: null }, data: { emailVerifiedAt: new Date() } });
   await startSession(primary.id);
   return Response.json({ ok: true, tenant: primary.memberships[0]?.tenant.name ?? null }, { status: 200 });
 }

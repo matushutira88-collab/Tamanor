@@ -39,6 +39,23 @@ test("self-service funnel: homepage → Start free → register form, and → Lo
   await expect(page.getByRole("link", { name: /continue with facebook/i })).toHaveAttribute("href", /\/api\/auth\/facebook\/start/);
 });
 
+test("password recovery: login → forgot-password → generic sent screen", async ({ page }, testInfo) => {
+  test.skip(isMobile(testInfo.project.name), "desktop-only funnel nav");
+  await page.goto("/login");
+  await page.getByRole("link", { name: /forgot password/i }).click();
+  await expect(page).toHaveURL(/\/forgot-password/);
+  await page.getByLabel(/work email/i).fill("someone@example.com");
+  await page.getByRole("button", { name: /send reset link/i }).click();
+  // Enumeration-safe: always the same generic confirmation.
+  await expect(page.getByText(/if an account exists/i)).toBeVisible();
+});
+
+test("reset-password without a token shows an invalid-link state (no form)", async ({ page }) => {
+  await page.goto("/reset-password");
+  await expect(page.getByText(/invalid or expired/i)).toBeVisible();
+  await expect(page.getByLabel(/new password/i)).toHaveCount(0);
+});
+
 test("unknown route renders the safe 404 not-found", async ({ page }) => {
   const res = await page.goto("/this-route-does-not-exist-xyz");
   expect(res?.status()).toBe(404);
@@ -52,7 +69,7 @@ test("login page renders a sign-in affordance", async ({ page }) => {
   await expect(page.getByLabel(/work email/i)).toBeVisible();
 });
 
-for (const route of ["/", "/login", "/register", "/security", "/compare"]) {
+for (const route of ["/", "/login", "/register", "/forgot-password", "/reset-password", "/verify-email", "/security", "/compare"]) {
   test(`no horizontal overflow at mobile widths: ${route}`, async ({ page }, testInfo) => {
     test.skip(!isMobile(testInfo.project.name), "mobile-only");
     await page.goto(route);
@@ -79,7 +96,7 @@ test("keyboard: Tab moves focus on the login page", async ({ page }, testInfo) =
   expect(["A", "BUTTON", "INPUT"]).toContain(active);
 });
 
-for (const route of ["/", "/login", "/register", "/security"]) {
+for (const route of ["/", "/login", "/register", "/forgot-password", "/reset-password", "/verify-email", "/security"]) {
   test(`no critical axe violations: ${route}`, async ({ page }, testInfo) => {
     test.skip(isMobile(testInfo.project.name), "run axe once on desktop");
     await page.goto(route);

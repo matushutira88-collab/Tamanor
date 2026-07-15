@@ -55,7 +55,8 @@ export async function loginAction(formData: FormData): Promise<void> {
     return;
   }
 
-  await startSession(user.id); // opaque DB session; fail-closed on missing membership
+  const session = await startSession(user.id); // opaque DB session; fail-closed on missing membership
   metrics.inc("auth_login_total", { operation: "login", result: "ok" });
-  redirect("/dashboard");
+  // V1.50C — an unverified email/password user goes to the verification-required screen.
+  redirect(session.emailVerified ? "/dashboard" : "/verify-email");
 }

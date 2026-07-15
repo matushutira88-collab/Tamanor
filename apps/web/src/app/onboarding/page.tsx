@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { systemDb } from "@guardora/db";
 import { Logo } from "@/components/logo";
-import { requireSession } from "@/server/auth";
+import { requireVerifiedSession } from "@/server/auth";
 import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
 import { completeOnboarding } from "./actions";
@@ -71,7 +71,7 @@ function StepCard({ n, title, body }: { n: number; title: string; body: string }
 }
 
 export default async function OnboardingPage() {
-  const session = await requireSession();
+  const session = await requireVerifiedSession();
   const c = COPY[await getLocale()];
   const tenant = await systemDb.tenant.findUnique({
     where: { id: session.tenantId },

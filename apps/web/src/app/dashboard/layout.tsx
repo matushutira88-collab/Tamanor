@@ -1,5 +1,5 @@
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { requireSession } from "@/server/auth";
+import { requireVerifiedSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
 import { getLocale } from "@/i18n/locale-server";
 import { getDictionary } from "@/i18n";
@@ -11,7 +11,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await requireSession();
+  const session = await requireVerifiedSession();
   const locale = await getLocale();
   const dict = getDictionary(locale);
   const [itemsProcessed, tenant] = await withTenant(session.tenantId, (db) => Promise.all([

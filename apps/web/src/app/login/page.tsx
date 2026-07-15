@@ -16,17 +16,24 @@ export const dynamic = "force-dynamic";
 
 type Copy = {
   title: string; subtitle: string;
-  email: string; password: string; submit: string;
+  email: string; password: string; forgot: string; submit: string;
   or: string; google: string; facebook: string;
   noAccount: string; startFree: string;
   devTitle: string; devIntro: string; noUsers: (cmd: string) => string; mockNote: string;
   errors: Record<string, string>;
+  notices: Record<string, string>;
 };
+
+const NOTICES = {
+  en: { verified: "Email verified — please log in.", reset: "Password updated — please log in with your new password." },
+  sk: { verified: "E-mail overený — prihláste sa.", reset: "Heslo zmenené — prihláste sa novým heslom." },
+  de: { verified: "E-Mail bestätigt — bitte anmelden.", reset: "Passwort aktualisiert — bitte mit dem neuen Passwort anmelden." },
+} as const;
 
 const COPY: Record<Locale, Copy> = {
   en: {
     title: "Log in", subtitle: "Welcome back to Tamanor.",
-    email: "Work email", password: "Password",
+    email: "Work email", password: "Password", forgot: "Forgot password?",
     submit: "Log in", or: "or", google: "Continue with Google", facebook: "Continue with Facebook",
     noAccount: "New to Tamanor?", startFree: "Start for free",
     devTitle: "Developer sign-in", devIntro: "Local development only — choose a workspace user to continue.",
@@ -39,10 +46,11 @@ const COPY: Record<Locale, Copy> = {
       csrf: "Your session expired. Please reload the page and try again.",
       server_error: "Something went wrong. Please try again.",
     },
+    notices: NOTICES.en,
   },
   sk: {
     title: "Prihlásenie", subtitle: "Vitajte späť v Tamanore.",
-    email: "Pracovný e-mail", password: "Heslo",
+    email: "Pracovný e-mail", password: "Heslo", forgot: "Zabudli ste heslo?",
     submit: "Prihlásiť sa", or: "alebo", google: "Pokračovať cez Google", facebook: "Pokračovať cez Facebook",
     noAccount: "Ste v Tamanore noví?", startFree: "Začať zdarma",
     devTitle: "Vývojové prihlásenie", devIntro: "Iba pre lokálny vývoj — pokračujte výberom používateľa.",
@@ -55,10 +63,11 @@ const COPY: Record<Locale, Copy> = {
       csrf: "Vaša relácia vypršala. Obnovte stránku a skúste znova.",
       server_error: "Niečo sa pokazilo. Skúste znova.",
     },
+    notices: NOTICES.sk,
   },
   de: {
     title: "Anmelden", subtitle: "Willkommen zurück bei Tamanor.",
-    email: "Geschäftliche E-Mail", password: "Passwort",
+    email: "Geschäftliche E-Mail", password: "Passwort", forgot: "Passwort vergessen?",
     submit: "Anmelden", or: "oder", google: "Mit Google fortfahren", facebook: "Mit Facebook fortfahren",
     noAccount: "Neu bei Tamanor?", startFree: "Kostenlos starten",
     devTitle: "Entwickler-Anmeldung", devIntro: "Nur lokale Entwicklung — wählen Sie einen Benutzer, um fortzufahren.",
@@ -71,17 +80,19 @@ const COPY: Record<Locale, Copy> = {
       csrf: "Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite neu und versuchen Sie es erneut.",
       server_error: "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
     },
+    notices: NOTICES.de,
   },
 };
 
 const field = "mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-brand)]";
 const label = "block text-sm font-medium";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; verified?: string; reset?: string }> }) {
   if (await getSession()) redirect("/dashboard");
   const c = COPY[await getLocale()];
-  const errorCode = (await searchParams).error;
-  const errorMsg = errorCode ? c.errors[errorCode] ?? c.errors.server_error : null;
+  const sp = await searchParams;
+  const errorMsg = sp.error ? c.errors[sp.error] ?? c.errors.server_error : null;
+  const noticeMsg = sp.reset ? c.notices.reset : sp.verified ? c.notices.verified : null;
 
   // The dev sign-in picker is fail-closed OFF in production; it lists real users and
   // the signInAs action itself is disabled in production. Real credential login (above)
@@ -97,6 +108,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <h1 className="text-xl font-semibold">{c.title}</h1>
           <p className="mt-1 text-sm text-[var(--color-muted)]">{c.subtitle}</p>
 
+          {noticeMsg ? (
+            <p role="status" className="mt-4 rounded-lg border border-[var(--color-brand)] bg-[var(--color-brand-soft)] px-3 py-2 text-sm text-[var(--color-brand)]">
+              {noticeMsg}
+            </p>
+          ) : null}
           {errorMsg ? (
             <p role="alert" className="mt-4 rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger-soft)] px-3 py-2 text-sm text-[var(--color-danger)]">
               {errorMsg}
@@ -109,7 +125,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               <input id="email" name="email" type="email" required autoComplete="email" inputMode="email" className={field} />
             </div>
             <div>
-              <label htmlFor="password" className={label}>{c.password}</label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className={label}>{c.password}</label>
+                <Link href="/forgot-password" className="text-xs font-medium text-[var(--color-brand)] hover:underline">{c.forgot}</Link>
+              </div>
               <input id="password" name="password" type="password" required autoComplete="current-password" className={field} />
             </div>
             <button type="submit" className="w-full rounded-xl bg-[var(--color-brand)] px-4 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">

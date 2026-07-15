@@ -27,13 +27,19 @@ export type SessionRejectReason =
   | "tenant_missing"
   // V1.45C1 — the active tenant is being deleted. Every session for it fails closed IMMEDIATELY
   // (this is the single choke point: render reads and mutation paths all funnel through hydrate).
-  | "tenant_deleting";
+  | "tenant_deleting"
+  // V1.50C — defense-in-depth: a session created before the user's last password change is stale
+  // (a password reset revokes all sessions explicitly; this backstop catches any that slipped through).
+  | "password_changed";
 
 export interface ResolvedSession {
   sessionId: string;
   userId: string;
   userName: string;
   userEmail: string;
+  // V1.50C — whether the user's email is verified. Email/password users start false;
+  // OAuth (provider-verified) users start true. Gates verification-required product access.
+  emailVerified: boolean;
   tenantId: string;
   tenantName: string;
   role: string;
@@ -98,13 +104,13 @@ export async function createUserSession(input: { userId: string; activeTenantId?
   const now = Date.now();
   const expiresAt = new Date(now + (input.ttlMs ?? SESSION_TTL_MS));
   const created = await prisma.userSession.create({ data: { tokenHash, userId: input.userId, activeTenantId: tenantId, expiresAt } });
-  const session = await hydrate(created.id, input.userId, tenantId, expiresAt);
+  const session = await hydrate(created.id, input.userId, tenantId, expiresAt, created.createdAt);
   if (!session.ok) throw new Error(`createUserSession: could not hydrate (${session.reason})`);
   return { token, sessionId: created.id, session: session.session! };
 }
 
 /** Load full session context (user + active-tenant membership + role). */
-async function hydrate(sessionId: string, userId: string, tenantId: string, expiresAt: Date): Promise<ReadSessionResult> {
+async function hydrate(sessionId: string, userId: string, tenantId: string, expiresAt: Date, sessionCreatedAt?: Date): Promise<ReadSessionResult> {
   const membership = await prisma.membership.findUnique({
     where: { userId_tenantId: { userId, tenantId } },
     include: { user: true, tenant: true },
@@ -114,6 +120,11 @@ async function hydrate(sessionId: string, userId: string, tenantId: string, expi
   // hydrate (never cached), so a deletion invalidates every in-flight session immediately, and no
   // stale cookie can restore access. The tenant row survives (as `deleting`) until the final cascade.
   if (membership.tenant.deletionState !== "active") return { ok: false, reason: "tenant_deleting" };
+  // V1.50C — password-change backstop: a session minted before the last password change is stale.
+  const changedAt = membership.user.passwordChangedAt;
+  if (sessionCreatedAt && changedAt && changedAt.getTime() > sessionCreatedAt.getTime()) {
+    return { ok: false, reason: "password_changed" };
+  }
   return {
     ok: true,
     session: {
@@ -121,6 +132,7 @@ async function hydrate(sessionId: string, userId: string, tenantId: string, expi
       userId: membership.user.id,
       userName: membership.user.name ?? membership.user.email,
       userEmail: membership.user.email,
+      emailVerified: membership.user.emailVerifiedAt !== null,
       tenantId: membership.tenant.id,
       tenantName: membership.tenant.name,
       role: membership.role as string,
@@ -139,8 +151,8 @@ export async function readUserSession(token: string | null | undefined, now: Dat
   if (!row) return { ok: false, reason: "unauthenticated" };
   if (row.revokedAt) return { ok: false, reason: "session_revoked" };
   if (row.expiresAt.getTime() <= now.getTime()) return { ok: false, reason: "session_expired" };
-  const result = await hydrate(row.id, row.userId, row.activeTenantId, row.expiresAt);
-  if (!result.ok) return result; // membership_missing / etc.
+  const result = await hydrate(row.id, row.userId, row.activeTenantId, row.expiresAt, row.createdAt);
+  if (!result.ok) return result; // membership_missing / password_changed / etc.
   await prisma.userSession.update({ where: { id: row.id }, data: { lastSeenAt: now } });
   return result;
 }

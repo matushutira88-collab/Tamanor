@@ -35,7 +35,12 @@ export type OpsEvent =
   | "rls.health_failed"
   | "service.readiness_failed"
   | "db.unavailable"
-  | "web.5xx";
+  | "web.5xx"
+  // V1.50C — email verification / password recovery (never carry email, token, URL, or body).
+  | "auth.email_delivery_failed"
+  | "auth.verification_failed"
+  | "auth.password_reset_failed"
+  | "auth.token_cleanup_failed";
 
 /** Low-cardinality label keys allowed on ops events + metrics. Anything else is a cardinality risk. */
 export type SafeLabel = "platform" | "result" | "operation" | "env" | "reason" | "severity";

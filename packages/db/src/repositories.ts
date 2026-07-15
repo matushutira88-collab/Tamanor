@@ -327,7 +327,12 @@ export function listDevLoginUsers() {
  */
 export async function ensureE2EViewerUser(tenantId: string): Promise<{ id: string }> {
   const email = "e2e-viewer@tamanor.test";
-  const user = await systemDb.user.upsert({ where: { email }, create: { email, name: "E2E Viewer" }, update: {} });
+  // V1.50C — E2E fixtures are pre-verified so they pass the dashboard verification gate.
+  const user = await systemDb.user.upsert({
+    where: { email },
+    create: { email, name: "E2E Viewer", emailVerifiedAt: new Date() },
+    update: { emailVerifiedAt: new Date() },
+  });
   await systemDb.membership.upsert({
     where: { userId_tenantId: { userId: user.id, tenantId } },
     create: { userId: user.id, tenantId, role: Role.viewer },

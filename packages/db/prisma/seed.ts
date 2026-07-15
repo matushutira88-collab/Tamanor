@@ -123,6 +123,9 @@ async function main() {
       email: "dev@guardora.ai",
       name: "Dev User",
       locale: "en",
+      // V1.50C — the dev user is pre-verified so local dev + E2E reach the dashboard
+      // (the unverified state gates dashboard access; a fresh dev seed should not).
+      emailVerifiedAt: new Date(),
     },
   });
 

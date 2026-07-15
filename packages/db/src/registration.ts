@@ -66,6 +66,8 @@ type ProvisionInput = {
   country?: string | null;
   workspaceName: string;
   brandName: string;
+  /** V1.50C — set for OAuth provider-verified emails (start verified); null for email/password. */
+  emailVerifiedAt?: Date | null;
   /** When set, link this external identity to the new user in the same transaction. */
   oauth?: { provider: OAuthProvider; providerAccountId: string } | null;
 };
@@ -85,7 +87,7 @@ async function provisionAccount(input: ProvisionInput): Promise<{ userId: string
     try {
       return await systemDb.$transaction(async (tx) => {
         const user = await tx.user.create({
-          data: { email: input.email, passwordHash: input.passwordHash, name: input.name ?? null, locale: input.locale },
+          data: { email: input.email, passwordHash: input.passwordHash, name: input.name ?? null, locale: input.locale, emailVerifiedAt: input.emailVerifiedAt ?? null },
           select: { id: true },
         });
         const tenant = await tx.tenant.create({
@@ -213,18 +215,30 @@ export async function resolveOAuthLogin(input: OAuthLoginInput): Promise<OAuthLo
   if (!email || !input.emailVerified) throw new OAuthEmailRequiredError();
 
   // 2) Link to an existing user with the same verified email.
-  const byEmail = await systemDb.user.findUnique({ where: { email }, select: { id: true } });
+  const byEmail = await systemDb.user.findUnique({ where: { email }, select: { id: true, emailVerifiedAt: true } });
   if (byEmail) {
-    try {
-      await systemDb.oAuthAccount.create({ data: { userId: byEmail.id, provider, providerAccountId } });
-    } catch (e) {
-      // Concurrent link of the same identity → treat as linked (idempotent).
-      if (!isUniqueViolation(e, "provider") && !isUniqueViolation(e, "userId")) throw e;
-    }
+    await systemDb.$transaction(async (tx) => {
+      try {
+        await tx.oAuthAccount.create({ data: { userId: byEmail.id, provider, providerAccountId } });
+      } catch (e) {
+        // Concurrent link of the same identity → treat as linked (idempotent).
+        if (!isUniqueViolation(e, "provider") && !isUniqueViolation(e, "userId")) throw e;
+      }
+      // V1.50C — the provider proved ownership of this exact email. If the existing account was
+      // NOT yet verified, mark it verified AND invalidate any pre-registration password + sessions
+      // (anti account-pre-hijacking: an attacker who set a password on an unverified email must not
+      // retain access once the real owner arrives via a provider-verified login). Already-verified
+      // accounts keep their password untouched.
+      if (byEmail.emailVerifiedAt === null) {
+        const now = new Date();
+        await tx.user.update({ where: { id: byEmail.id }, data: { emailVerifiedAt: now, passwordHash: null, passwordChangedAt: now } });
+        await tx.userSession.updateMany({ where: { userId: byEmail.id, revokedAt: null }, data: { revokedAt: now } });
+      }
+    });
     return { userId: byEmail.id, tenantId: null, isNew: false };
   }
 
-  // 3) Brand-new identity → new user + workspace + link.
+  // 3) Brand-new identity → new user + workspace + link. Provider-verified → starts verified.
   const workspaceName = deriveWorkspaceName(input.name, email);
   try {
     const res = await provisionAccount({
@@ -235,6 +249,7 @@ export async function resolveOAuthLogin(input: OAuthLoginInput): Promise<OAuthLo
       country: null,
       workspaceName,
       brandName: workspaceName || "My Brand",
+      emailVerifiedAt: new Date(),
       oauth: { provider, providerAccountId },
     });
     return { userId: res.userId, tenantId: res.tenantId, isNew: true };

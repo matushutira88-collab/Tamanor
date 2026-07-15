@@ -127,6 +127,18 @@ renewal**; expiring tokens are flagged for reconnect.
 
 ---
 
+### Email verification & password reset (V1.50C)
+- **Delivery:** set `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` + a verified `EMAIL_FROM`, and
+  `APP_BASE_URL` (one-time links). Unconfigured → flows report "temporarily unavailable" (never a
+  fake success); email/password sign-up still creates the account (unverified).
+- **Symptoms:** spike in `auth.email_delivery_failed` → the provider/key is misconfigured or the
+  provider is down. Verification/reset links won't arrive. Fix env; users can resend.
+- **Verification gate:** unverified email/password users are held on `/verify-email` (no dashboard);
+  OAuth provider-verified users pass immediately. A password reset **revokes all sessions**.
+- **Token cleanup:** the worker maintenance tick deletes expired/consumed verification + reset tokens
+  in bounded batches; a failure emits `auth.token_cleanup_failed` and never blocks auth or sync.
+- **Privacy:** no email, raw token, token hash, or reset/verification URL is ever logged or emitted.
+
 ### Integration point (production configuration required)
 No external alerting vendor is wired. Ops events emit a safe structured log line by default; wire a
 vendor sink at startup via `setOpsSink(...)` (payload already redacted). Alerting should **aggregate**

@@ -214,14 +214,23 @@ model User {
   // V1.50A — self-service credential auth. Argon2id PHC string (never plaintext).
   // Nullable: dev-seed/E2E/future-OAuth users may have no local password.
   passwordHash String?
+  // V1.50C — email verification + password lifecycle.
+  //   emailVerifiedAt: null until the email is verified (email/password) or set at creation
+  //     for an OAuth provider-verified email. Gates verification-required product access.
+  //   passwordChangedAt: set on every password reset; a session created before this is stale
+  //     (defense-in-depth backstop in session hydrate, on top of explicit session revocation).
+  emailVerifiedAt   DateTime?
+  passwordChangedAt DateTime?
   locale       String       @default("en")
   // V1.45A — global platform-admin role (default least-privilege; independent of tenant Role).
   platformRole PlatformRole @default(none)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  memberships        Membership[]
-  oauthAccounts      OAuthAccount[]
+  memberships             Membership[]
+  oauthAccounts           OAuthAccount[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
   proposed           ModerationDecision[] @relation("DecisionProposer")
   reviewed           ModerationDecision[] @relation("DecisionReviewer")
   auditLogs          AuditLog[]
@@ -253,6 +262,43 @@ model OAuthAccount {
   @@unique([userId, provider])
   @@index([userId])
   @@map("oauth_accounts")
+}
+
+// V1.50C — one-time email verification token. Same fail-closed design as the session:
+// a random raw token is emailed to the user; only its SHA-256 hash is stored here. A raw
+// token NEVER touches the DB. One-time via an atomic guarded consume (consumedAt). Separate
+// from UserSession — session tokens are never reused for email flows.
+model EmailVerificationToken {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  userId     String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
+}
+
+// V1.50C — one-time password-reset token. Identical fail-closed, hash-at-rest design.
+// A successful reset consumes the token, sets User.passwordChangedAt, and revokes every
+// existing session for the user.
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  userId     String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // V1.37.1 — opaque, DB-backed session. The cookie holds a random token; only

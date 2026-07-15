@@ -31,4 +31,16 @@ export const authLimiter = new RateLimiter({
   maxKeys: 20_000,
 });
 
+/**
+ * V1.50C — bounded fail-closed limit for outbound-email auth flows (resend verification,
+ * forgot-password). A tight window enforces a cooldown + a per-window cap; checked per-IP
+ * AND per-normalized-email so neither a single IP nor a targeted address can be flooded.
+ * (No raw IP/email is persisted — only transient in-memory counters.)
+ */
+export const emailSendLimiter = new RateLimiter({
+  limit: 5,
+  windowMs: 60 * 60_000, // 1 hour
+  maxKeys: 20_000,
+});
+
 export { ipKeyFromHeader };

@@ -18,6 +18,8 @@ export interface AppSession {
   userId: string;
   userName: string;
   userEmail: string;
+  // V1.50C — email verification state (email/password users start false; OAuth verified users true).
+  emailVerified: boolean;
   tenantId: string;
   tenantName: string;
   role: Role;
@@ -31,6 +33,7 @@ export async function getSession(): Promise<AppSession | null> {
     userId: s.userId,
     userName: s.userName,
     userEmail: s.userEmail,
+    emailVerified: s.emailVerified,
     tenantId: s.tenantId,
     tenantName: s.tenantName,
     role: s.role as Role,
@@ -41,6 +44,18 @@ export async function getSession(): Promise<AppSession | null> {
 export async function requireSession(): Promise<AppSession> {
   const session = await getSession();
   if (!session) redirect("/login");
+  return session;
+}
+
+/**
+ * V1.50C — require a session with a VERIFIED email. Unverified email/password users are
+ * sent to the verification-required screen; they cannot reach the dashboard or onboarding
+ * until verified (OAuth provider-verified users pass immediately). This is the single gate
+ * for verification-required product access.
+ */
+export async function requireVerifiedSession(): Promise<AppSession> {
+  const session = await requireSession();
+  if (!session.emailVerified) redirect("/verify-email");
   return session;
 }
 

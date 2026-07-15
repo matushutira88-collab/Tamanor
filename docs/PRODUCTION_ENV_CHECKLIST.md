@@ -18,6 +18,27 @@ Legend: **M**=mandatory · **O**=optional · **F**=feature-flag · **S**=secret 
 | `TOKEN_ENCRYPTION_MODE` | **M** | `aes-gcm` (or `kms`) in prod — **`plaintext` is rejected**; readiness → misconfigured otherwise |
 | `TOKEN_ENCRYPTION_KEY` | **M · S** | required for `aes-gcm` |
 
+## Social login — USER auth (V1.50B)
+Dedicated apps, SEPARATE from the Meta Page connector. Unset → the Google/Facebook buttons
+degrade truthfully (redirect back "temporarily unavailable"); email sign-in still works.
+| Var | Class | Notes |
+|---|---|---|
+| `GOOGLE_AUTH_CLIENT_ID` / `GOOGLE_AUTH_CLIENT_SECRET` | O · S | Google Sign-In (OpenID). Register callback `${APP_BASE_URL}/api/auth/google/callback`. |
+| `GOOGLE_AUTH_REDIRECT_URI` | O | override only if the registered callback differs |
+| `FACEBOOK_AUTH_CLIENT_ID` / `FACEBOOK_AUTH_CLIENT_SECRET` | O · S | **dedicated Facebook LOGIN app — NOT `META_APP_*`**. Callback `${APP_BASE_URL}/api/auth/facebook/callback`. |
+| `FACEBOOK_AUTH_REDIRECT_URI` | O | override only if the registered callback differs |
+
+## Transactional email — verification & reset (V1.50C)
+Unset `EMAIL_FROM` → delivery fails truthfully; verification/reset flows report "temporarily
+unavailable" (no fake success). Keys are read from env only and never logged.
+| Var | Class | Notes |
+|---|---|---|
+| `EMAIL_PROVIDER` | M | `resend` (prod) or `console` (dev — logs metadata only, no token/URL) |
+| `EMAIL_FROM` | **M** | verified sending address; blank disables delivery |
+| `EMAIL_REPLY_TO` | O | optional reply-to |
+| `RESEND_API_KEY` | **M · S** | required when `EMAIL_PROVIDER=resend` |
+| `APP_BASE_URL` | **M** | absolute base for one-time email links (falls back to `APP_URL`) |
+
 ## Meta
 | Var | Class | Notes |
 |---|---|---|

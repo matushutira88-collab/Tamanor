@@ -129,6 +129,9 @@ export function buildRobotsTxt(): string {
   lines.push("Disallow: /login");
   lines.push("Disallow: /register");
   lines.push("Disallow: /onboarding");
+  lines.push("Disallow: /verify-email");
+  lines.push("Disallow: /forgot-password");
+  lines.push("Disallow: /reset-password");
   lines.push("");
   // Explicitly welcome documented AI crawlers to the public site.
   for (const ua of AI_CRAWLERS) {
