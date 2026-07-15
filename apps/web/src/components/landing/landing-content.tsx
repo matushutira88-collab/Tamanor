@@ -5,6 +5,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { HeroMock } from "@/components/hero-mock";
 import { ShieldEmblem } from "@/components/logo";
 import { InboxMock, RiskDetailMock, ApprovalMock, TrendsMock } from "./app-mocks";
+import { PricingPlans } from "./pricing-plans";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { IllusShield } from "@/components/illustrations";
 import { JsonLd } from "@/components/json-ld";
@@ -373,29 +374,25 @@ export function LandingContent({ dict, locale }: { dict: Dictionary; locale: Loc
             <h2 className="mt-4 gu-display text-3xl md:text-4xl">{t.beta.pricingTitle}</h2>
             <p className="mt-3 text-[var(--color-muted)]">{t.beta.pricingSubtitle}</p>
           </div>
-          <div className="grid items-start gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {t.beta.plans.map((p, i) => {
-              const highlight = i === 1;
-              return (
-                <div key={p.name} className={`flex flex-col rounded-3xl border bg-[var(--color-surface)] p-6 ${highlight ? "gu-elevate border-[var(--color-brand)] lg:-mt-3 lg:pb-9" : "gu-lift border-[var(--color-border)]"}`}>
-                  {highlight ? <span className="mb-2 inline-block w-fit rounded-full bg-[var(--color-brand)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--color-brand-fg)]">{t.beta.mostPopular}</span> : null}
-                  <h3 className="text-xl font-semibold">{p.name}</h3>
-                  <p className="mt-3"><span className="gu-display text-3xl font-semibold text-[var(--color-brand)]">{p.price}</span><span className="text-sm text-[var(--color-muted)]">{t.beta.perMonth}</span></p>
-                  <p className="mt-2 text-sm text-[var(--color-muted)]">{p.tagline}</p>
-                  <ul className="mt-4 flex-1 space-y-1.5 text-sm">
-                    {p.features.map((f) => (<li key={f} className="flex items-start gap-2"><span className="mt-0.5 text-[var(--color-brand)]"><IconCheckSmall /></span>{f}</li>))}
-                  </ul>
-                  <Link href="/register" className={`mt-5 block rounded-xl px-4 py-2.5 text-center text-sm font-semibold transition ${highlight ? "bg-[var(--color-brand)] text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]" : "border border-[var(--color-border-strong)] hover:bg-[var(--color-surface-2)]"}`}>{t.common.startFree}</Link>
-                </div>
-              );
-            })}
-            <div className="gu-lift flex flex-col rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
-              <h3 className="text-xl font-semibold">{t.beta.enterpriseName}</h3>
-              <p className="mt-3 gu-display text-2xl font-semibold text-[var(--color-brand)]">{t.pricing.talkToUs}</p>
-              <p className="mt-2 flex-1 text-sm text-[var(--color-muted)]">{t.beta.enterpriseTagline}</p>
-              <Link href="/contact" className="mt-5 block rounded-xl border border-[var(--color-border-strong)] px-4 py-2.5 text-center text-sm font-semibold transition hover:bg-[var(--color-surface-2)]">{t.beta.enterpriseCta}</Link>
-            </div>
-          </div>
+          <PricingPlans
+            plans={t.beta.plans}
+            enterprise={{
+              name: t.beta.enterpriseName,
+              price: t.pricing.talkToUs,
+              tagline: t.beta.enterpriseTagline,
+              features: t.beta.enterpriseFeatures,
+              cta: t.beta.enterpriseCta,
+            }}
+            labels={{
+              mostPopular: t.beta.mostPopular,
+              perMonth: t.beta.perMonth,
+              perYear: t.beta.perYear,
+              monthly: t.beta.billingMonthly,
+              yearly: t.beta.billingYearly,
+              startFree: t.common.startFree,
+            }}
+            locale={locale}
+          />
           <p className="mt-6 text-center text-xs text-[var(--color-muted)]">{t.beta.betaNote}</p>
         </div>
       </section>

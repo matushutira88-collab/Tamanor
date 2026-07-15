@@ -219,6 +219,9 @@ export const de: Dictionary = {
     pricingTitle: "Einfache Pläne. Kostenlos starten.",
     pricingSubtitle: "Jeder Plan beginnt mit einer 14-tägigen kostenlosen Testphase — ohne Kreditkarte. Kostenpflichtige Abos werden finalisiert; die Preise unten sind Richtwerte.",
     perMonth: "/Mon.",
+    perYear: "/Jahr",
+    billingMonthly: "Monatlich",
+    billingYearly: "Jährlich",
     mostPopular: "Am beliebtesten",
     betaNote: "Sie können heute kostenlos starten. Abrechnung und kostenpflichtige Abos folgen in einer späteren Version; während der Testphase wird nichts berechnet.",
     plans: [
@@ -229,6 +232,7 @@ export const de: Dictionary = {
     enterpriseName: "Enterprise / Individuell",
     enterpriseTagline: "Für Medien, Personen des öffentlichen Lebens und größere Marken.",
     enterpriseCta: "Vertrieb kontaktieren",
+    enterpriseFeatures: ["Individuelles Volumen & Skalierung", "Mehrere Marken nach Vereinbarung", "Erweiterte Kontrollen & Rollen", "Dedizierter Ansprechpartner", "Onboarding & Support"],
   },
 
   footer: {

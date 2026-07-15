@@ -222,6 +222,9 @@ export const en = {
     pricingTitle: "Simple plans. Start free.",
     pricingSubtitle: "Every plan begins with a 14-day free trial — no credit card. Paid subscriptions are being finalized; prices below are indicative.",
     perMonth: "/mo",
+    perYear: "/yr",
+    billingMonthly: "Monthly",
+    billingYearly: "Yearly",
     mostPopular: "Most popular",
     betaNote: "You can start free today. Billing and paid subscriptions arrive in a later release; nothing is charged during the trial.",
     plans: [
@@ -232,6 +235,7 @@ export const en = {
     enterpriseName: "Enterprise / Custom",
     enterpriseTagline: "For media, public figures and larger brands.",
     enterpriseCta: "Contact sales",
+    enterpriseFeatures: ["Custom volume & scale", "Multiple brands by agreement", "Advanced controls & roles", "Dedicated contact", "Onboarding & support"],
   },
 
   footer: {

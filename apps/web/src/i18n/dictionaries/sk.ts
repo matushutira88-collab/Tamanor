@@ -219,6 +219,9 @@ export const sk: Dictionary = {
     pricingTitle: "Jednoduché plány. Začnite zdarma.",
     pricingSubtitle: "Každý plán začína 14-dňovou skúšobnou verziou zdarma — bez platobnej karty. Platené predplatné sa finalizuje; ceny nižšie sú orientačné.",
     perMonth: "/mes.",
+    perYear: "/rok",
+    billingMonthly: "Mesačne",
+    billingYearly: "Ročne",
     mostPopular: "Najobľúbenejšie",
     betaNote: "Začať môžete zdarma už dnes. Fakturácia a platené predplatné prídu v neskoršej verzii; počas skúšobnej verzie sa nič neúčtuje.",
     plans: [
@@ -229,6 +232,7 @@ export const sk: Dictionary = {
     enterpriseName: "Enterprise / Na mieru",
     enterpriseTagline: "Pre médiá, verejné osoby a väčšie značky.",
     enterpriseCta: "Kontaktovať obchod",
+    enterpriseFeatures: ["Objem a rozsah na mieru", "Viac značiek podľa dohody", "Pokročilé kontroly a role", "Vyhradený kontakt", "Onboarding a podpora"],
   },
 
   footer: {
