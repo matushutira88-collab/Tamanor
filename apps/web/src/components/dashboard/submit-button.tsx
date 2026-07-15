@@ -1,6 +1,8 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
+import type { AnalyticsEventName } from "@guardora/core/analytics";
+import { track } from "@/lib/analytics/track";
 
 /**
  * Submit button that disables itself while its parent <form> server action is in
@@ -13,11 +15,14 @@ export function SubmitButton({
   pendingLabel,
   variant = "primary",
   className = "",
+  trackEvent,
 }: {
   children: React.ReactNode;
   pendingLabel?: string;
   variant?: "primary" | "secondary";
   className?: string;
+  /** V1.53 — fire this analytics event when the button is clicked (submit intent). Optional. */
+  trackEvent?: AnalyticsEventName;
 }) {
   const { pending } = useFormStatus();
   const base =
@@ -29,6 +34,7 @@ export function SubmitButton({
       type="submit"
       disabled={pending}
       aria-disabled={pending}
+      onClick={trackEvent ? () => track(trackEvent) : undefined}
       className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${base} ${className}`}
     >
       {pending && pendingLabel ? pendingLabel : children}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TrackView } from "@/components/analytics/track-view";
 import {
   PLATFORM_META,
   Platform,
@@ -96,6 +97,7 @@ export default async function DashboardPage() {
 
   return (
     <>
+      <TrackView event="dashboard_opened" />
       <PageHeader
         eyebrow={t.home.eyebrow}
         title={`${t.home.greeting}, ${firstName}`}

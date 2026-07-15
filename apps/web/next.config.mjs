@@ -38,6 +38,14 @@ const nextConfig = {
     // fails with a TLS error and the page renders unstyled. Dev additionally needs 'unsafe-eval'
     // for React Refresh / HMR eval'd source maps.
     const isProd = process.env.NODE_ENV === "production";
+    // V1.53 — analytics provider origins. Consent-gated + env-gated at runtime (nothing loads until
+    // an id is configured in production and the visitor consents), but the static CSP must allowlist
+    // the script/connect hosts so GA4 (googletagmanager + google-analytics), Google Ads (same gtag.js)
+    // and the Meta Pixel (connect.facebook.net + facebook.com) can load when enabled. Image beacons
+    // are already covered by `img-src https:`. No third-party frames or eval are permitted.
+    const analyticsScript = "https://www.googletagmanager.com https://connect.facebook.net";
+    const analyticsConnect =
+      "https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.facebook.com https://connect.facebook.net";
     const csp = [
       "default-src 'self'",
       "base-uri 'self'",
@@ -47,8 +55,10 @@ const nextConfig = {
       "img-src 'self' data: https:",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      isProd ? "script-src 'self' 'unsafe-inline'" : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "connect-src 'self'",
+      isProd
+        ? `script-src 'self' 'unsafe-inline' ${analyticsScript}`
+        : `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${analyticsScript}`,
+      `connect-src 'self' ${analyticsConnect}`,
       "frame-src 'self'",
       ...(isProd ? ["upgrade-insecure-requests"] : []),
     ].join("; ");

@@ -6,6 +6,7 @@ import { HeroMock } from "@/components/hero-mock";
 import { ShieldEmblem } from "@/components/logo";
 import { InboxMock, RiskDetailMock, ApprovalMock, TrendsMock } from "./app-mocks";
 import { PricingPlans } from "./pricing-plans";
+import { TrackView } from "@/components/analytics/track-view";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { IllusShield } from "@/components/illustrations";
 import { JsonLd } from "@/components/json-ld";
@@ -368,6 +369,7 @@ export function LandingContent({ dict, locale }: { dict: Dictionary; locale: Loc
 
       {/* Beta pricing — cards only, no billing and no payment flow */}
       <section id="pricing" className="scroll-mt-20">
+        <TrackView event="pricing_viewed" />
         <div className="mx-auto max-w-7xl px-6 py-20 lg:py-24">
           <div className="mb-12 text-center">
             <Eyebrow center>{t.beta.accessEyebrow}</Eyebrow>

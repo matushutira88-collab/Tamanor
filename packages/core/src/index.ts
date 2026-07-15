@@ -15,6 +15,7 @@ export * from "./connector-mode";
 export * from "./connector-account";
 export * from "./reputation";
 export * from "./observability";
+export * from "./analytics";
 export * from "./email";
 export * from "./billing";
 export * from "./entitlements";

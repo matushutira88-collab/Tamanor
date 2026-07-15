@@ -3,6 +3,7 @@ import { Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { JsonLd } from "@/components/json-ld";
 import { CookieConsent } from "@/components/cookie-consent";
+import { AnalyticsProvider } from "@/components/analytics/analytics-provider";
 import { organizationLd, websiteLd, softwareApplicationLd } from "@/lib/jsonld";
 
 /** Display serif — high-contrast headings, per the Tamanor brand. */
@@ -60,6 +61,7 @@ export default function RootLayout({
     <html lang="en" className={displaySerif.variable}>
       <body>
         <JsonLd data={[organizationLd(), websiteLd(), softwareApplicationLd()]} />
+        <AnalyticsProvider />
         {children}
         <CookieConsent />
       </body>
