@@ -18,7 +18,7 @@
     "@guardora/core": "workspace:*",
     "@guardora/db": "workspace:*",
     "@guardora/sync": "workspace:*",
-    "next": "^15.4.7",
+    "next": "^15.5.20",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "stripe": "^22.3.1"
