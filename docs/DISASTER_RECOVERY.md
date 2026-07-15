@@ -83,6 +83,20 @@ automated backups + PITR and run one **provider-level PITR restore drill** (§3)
 ```
 ```
 
+### 8b. V1.51 — automated logical backup/restore drill (repeatable, `pg_dump`/`pg_restore`)
+A committed, one-command drill now exists: **`bash packages/db/scripts/restore-drill.sh`**. It runs the
+FULL loop against a **disposable** database (never the real DB): create → `prisma migrate deploy` (all
+**40** migrations) → seed a representative tenant/user/membership/**subscription**/brand/connected-account
+→ **`pg_dump -Fc`** → **simulate catastrophic loss** (drop + recreate empty, verified 0 tables) →
+**`pg_restore`** → verify → destroy. Verification asserts row counts (tenants/users/memberships/
+subscriptions/brands/connected_accounts), the migration count, FK integrity (membership→tenant), and that
+**`FORCE ROW LEVEL SECURITY` is preserved after restore on BOTH `content_items` and the new
+`subscriptions` table**.
+
+**Last run: PASS** — 40 migrations, all counts intact, RLS + FKs preserved post-restore. This is the
+strongest drill runnable locally (uses the Docker Postgres client tools). The **provider-level managed
+PITR restore drill** (§3) remains the one outstanding operator action before multi-customer.
+
 ## 9. Release-verdict impact
 - **Trusted pilot:** CONDITIONAL — requires (a) a **manual snapshot immediately before launch** and
   (b) a scheduled provider-level restore drill during the pilot. RPO ≤ 24h accepted for one tenant.

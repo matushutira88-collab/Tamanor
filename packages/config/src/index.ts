@@ -388,6 +388,29 @@ export function loadConnectorCredentials(
 
 export const isProd = (): boolean => loadEnv().NODE_ENV === "production";
 
+/**
+ * V1.51 — deployment environment (Vercel-aware). On Vercel, `VERCEL_ENV` is authoritatively
+ * "production" | "preview" | "development"; both preview AND production builds set
+ * `NODE_ENV=production`, so `NODE_ENV` alone cannot tell a preview apart from production. Off
+ * Vercel (self-hosted worker, local), `VERCEL_ENV` is unset and we fall back to `NODE_ENV`.
+ */
+export type DeploymentEnv = "production" | "preview" | "development";
+export function deploymentEnv(source: NodeJS.ProcessEnv = process.env): DeploymentEnv {
+  const v = (source.VERCEL_ENV ?? "").trim().toLowerCase();
+  if (v === "production" || v === "preview" || v === "development") return v;
+  return source.NODE_ENV === "production" ? "production" : "development";
+}
+
+/**
+ * TRUE only on a Vercel PREVIEW deployment. Used as a defense-in-depth kill-switch so a preview
+ * can never fire real side effects (live Stripe charges, real transactional email, ingesting
+ * production Meta webhooks) even if a secret was mis-scoped to Preview in the Vercel dashboard.
+ * Production (`VERCEL_ENV=production`) and non-Vercel hosts (unset) are unaffected.
+ */
+export function isPreviewDeployment(source: NodeJS.ProcessEnv = process.env): boolean {
+  return (source.VERCEL_ENV ?? "").trim().toLowerCase() === "preview";
+}
+
 /** Resolved Meta OAuth configuration + which required vars are missing. */
 export interface MetaConfig {
   configured: boolean;

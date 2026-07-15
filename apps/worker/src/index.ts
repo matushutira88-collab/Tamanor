@@ -42,6 +42,7 @@ async function tick(): Promise<void> {
     log.error("cleanup.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
+    emitOpsEvent("worker.maintenance_failed", { operation: "onboarding_cleanup", reason: err instanceof Error ? err.name : "unknown" });
   }
 
   // V1.45C3 — webhook retention: minimize raw payloads no longer needed + purge globally-expired rows,
@@ -93,6 +94,7 @@ async function tick(): Promise<void> {
     log.error("meta_health.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
+    emitOpsEvent("worker.maintenance_failed", { operation: "meta_health", reason: err instanceof Error ? err.name : "unknown" });
   }
 
   // V1.45C1 — resume any tenant deletion stranded in `deleting` (crash/timeout after the request
@@ -120,6 +122,7 @@ async function tick(): Promise<void> {
     log.error("webhook.process.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
+    emitOpsEvent("worker.maintenance_failed", { operation: "webhook_followup_sync", reason: err instanceof Error ? err.name : "unknown" });
   }
 
   // Propose (never execute) actions for high-risk items. Auto-execution is off.
@@ -130,7 +133,14 @@ async function tick(): Promise<void> {
     log.error("proposals.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
+    emitOpsEvent("worker.maintenance_failed", { operation: "proposals", reason: err instanceof Error ? err.name : "unknown" });
   }
+
+  // V1.51 — liveness heartbeat: emit a positive "worker is alive" signal + a monotonic gauge at the
+  // end of every maintenance tick, so an operator can alert on STALENESS (missing heartbeat) rather
+  // than only on the absence of logs. Carries no PII/ids — just the tick cadence.
+  metrics.setGauge("worker_last_tick_epoch_ms", Date.now());
+  emitOpsEvent("worker.heartbeat", { operation: "maintenance_tick" });
 }
 
 /**
@@ -182,9 +192,33 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     log.info("worker.shutdown", { signal });
     state.running = false;
+    // V1.51 — bounded drain: the loops only check `state.running` BETWEEN ticks, so a tick blocked
+    // on a slow provider call could delay exit indefinitely. Guarantee the process exits within a
+    // deadline (default 25s) so an orchestrator's SIGTERM→SIGKILL window is respected cleanly.
+    const graceMs = Number(process.env.WORKER_SHUTDOWN_GRACE_MS ?? 25_000);
+    const t = setTimeout(() => {
+      log.error("worker.shutdown.forced", { reason: "drain_deadline_exceeded" });
+      process.exit(0);
+    }, Math.max(1_000, graceMs));
+    // Don't let this timer keep the loop alive once the loops have exited cleanly.
+    if (typeof t.unref === "function") t.unref();
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+  // V1.51 — defense-in-depth crash safety: surface an otherwise-silent unhandled rejection /
+  // uncaught exception as a bounded ops event (normalized name only) and exit non-zero so the
+  // supervisor restarts a persistent worker. Per-job try/catch still isolates ordinary failures.
+  process.on("unhandledRejection", (reason) => {
+    log.error("worker.unhandled_rejection", { error: reason instanceof Error ? reason.name : "unknown" });
+    emitOpsEvent("worker.fatal", { reason: reason instanceof Error ? reason.name : "unhandled_rejection" });
+    process.exit(1);
+  });
+  process.on("uncaughtException", (err) => {
+    log.error("worker.uncaught_exception", { error: err instanceof Error ? err.name : "unknown" });
+    emitOpsEvent("worker.fatal", { reason: err instanceof Error ? err.name : "uncaught_exception" });
+    process.exit(1);
+  });
 
   // Maintenance loop: token monitor, cleanup, webhooks, proposals.
   const maintenance = (async () => {

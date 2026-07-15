@@ -34,8 +34,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const locale = await getLocale();
   const dict = getDictionary(locale);
   const now = new Date();
-  const [tenant, period, billing, ent] = await Promise.all([
-    withTenant(session.tenantId, (db) => db.tenant.findUnique({ where: { id: session.tenantId }, select: { name: true } })),
+  // V1.51 perf — the tenant NAME already rides the validated session (`session.tenantName`), so the
+  // former per-render `tenant.findUnique(name)` withTenant transaction was a redundant round trip.
+  // Dropped: one fewer tenant transaction (set_config + query) on every dashboard navigation.
+  const [period, billing, ent] = await Promise.all([
     // V1.50E — authoritative PERIOD-scoped processed-item usage (current billing month), not an
     // all-time count. Avoids impossible values like "5038 / 500" on a fresh trial.
     withTenant(session.tenantId, (db) => db.usagePeriod.findFirst({
@@ -46,12 +48,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     getTenantEntitlements(session.tenantId),
   ]);
 
-  const isDemoWorkspace = (tenant?.name ?? "").toLowerCase().includes("demo");
+  const isDemoWorkspace = session.tenantName.toLowerCase().includes("demo");
   const trialDaysLeft = billing?.trialEndsAt ? Math.max(0, Math.ceil((billing.trialEndsAt.getTime() - Date.now()) / DAY)) : null;
 
   return (
     <DashboardShell
-      tenantName={tenant?.name ?? session.tenantName}
+      tenantName={session.tenantName}
       userName={session.userName}
       role={session.role}
       trialUsed={period?.basicUnitsUsed ?? 0}

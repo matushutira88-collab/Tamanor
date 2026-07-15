@@ -56,7 +56,8 @@ const nextConfig = {
       { key: "Content-Security-Policy", value: csp },
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      // V1.51 — align legacy XFO with CSP `frame-ancestors 'none'` (the app never frames itself).
+      { key: "X-Frame-Options", value: "DENY" },
       { key: "X-DNS-Prefetch-Control", value: "on" },
       // HSTS only in production — sending it on localhost poisons the browser's HSTS cache
       // and forces https://localhost even after the header is removed.

@@ -32,6 +32,9 @@ export type OpsEvent =
   // platform / infra
   | "worker.maintenance_failed"
   | "worker.fatal"
+  // V1.51 — worker liveness: a positive heartbeat so "worker stopped / heartbeat missing" is
+  // detectable by staleness (not only by the ABSENCE of logs). Carries no PII/ids.
+  | "worker.heartbeat"
   | "rls.health_failed"
   | "service.readiness_failed"
   | "db.unavailable"

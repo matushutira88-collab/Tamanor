@@ -98,6 +98,12 @@ export class MemoryEmailTransport implements EmailTransport {
 
 export function createEmailTransport(cfg: EmailConfig | null): EmailTransport {
   if (!cfg) return new NullEmailTransport();
+  // V1.51 — preview kill-switch: a Vercel PREVIEW deployment must never send REAL transactional
+  // email (a throwaway preview mailing real users). Downgrade a `resend` transport to the metadata-
+  // only console transport when VERCEL_ENV=preview. Production / self-hosted are unaffected (unset).
+  if (cfg.provider === "resend" && (process.env.VERCEL_ENV ?? "").trim().toLowerCase() === "preview") {
+    return new ConsoleTransport();
+  }
   if (cfg.provider === "resend") return new ResendTransport(cfg);
   if (cfg.provider === "console") return new ConsoleTransport();
   return new NullEmailTransport();

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { getMetaConfig } from "@guardora/config";
+import { getMetaConfig, isPreviewDeployment } from "@guardora/config";
 import { emitOpsEvent, metrics } from "@guardora/core";
 import { Platform, recordWebhookEvent } from "@guardora/db";
 import { webhookLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
@@ -63,6 +63,15 @@ function verifySignature(
  * processed.
  */
 export async function POST(req: NextRequest) {
+  // V1.51 — preview kill-switch: a Vercel PREVIEW deployment must never INGEST production Meta
+  // webhook payloads (a preview sharing the app secret could persist real events). ACK 200 so Meta
+  // does not retry, but store/process nothing. Production / self-hosted are unaffected (unset).
+  if (isPreviewDeployment()) {
+    metrics.inc("webhook_skipped_total", { reason: "preview" });
+    emitOpsEvent("webhook.sync_skipped", { reason: "preview" });
+    return new Response("EVENT_RECEIVED", { status: 200 });
+  }
+
   // V1.48P — bounded per-IP DoS guard (fail-closed) BEFORE any work. Generous limit so legitimate
   // provider bursts pass; signature verification below remains the authoritative trust decision.
   const ipKey = ipKeyFromHeader(req.headers.get("x-forwarded-for"));

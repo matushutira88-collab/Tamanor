@@ -5,6 +5,7 @@
  * a DB URL, role credential, token or secret. 200 when ready, 503 otherwise.
  */
 import { checkRlsRuntime, validateRuntimeDbConfig, tokenStorageStatus } from "@guardora/db";
+import { emitOpsEvent } from "@guardora/core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,10 +40,24 @@ export async function GET() {
   const sessionOk = Boolean((process.env.AUTH_SECRET ?? "").trim()) || !isProd;
   checks.push({ name: "session_config", status: sessionOk ? "healthy" : "misconfigured" });
 
+  // 6) V1.51 — email link base URL. Transactional emails (verify/reset) embed one-time links built
+  //    from APP_BASE_URL; in production it MUST be an absolute https origin (never a preview URL or a
+  //    relative "") or the links break. Fail-closed so this surfaces before any email is sent.
+  const emailBase = (process.env.APP_BASE_URL || process.env.APP_URL || "").trim();
+  const emailBaseOk = !isProd || /^https:\/\/[^\s]+$/.test(emailBase);
+  checks.push({ name: "email_base_url", status: emailBaseOk ? "healthy" : "misconfigured" });
+
   const anyUnavailable = checks.some((c) => c.status === "unavailable");
   const anyMisconfigured = checks.some((c) => c.status === "misconfigured");
   const overall: CheckStatus = anyUnavailable ? "unavailable" : anyMisconfigured ? "misconfigured" : checks.some((c) => c.status === "degraded") ? "degraded" : "healthy";
   const ready = overall === "healthy" || overall === "degraded";
+
+  // V1.51 — emit the spec-required readiness alert on a NOT-READY result (503). The failing check
+  // name is a low-cardinality label; no URL/credential/secret is included (fail-safe telemetry).
+  if (!ready) {
+    const failing = checks.find((c) => c.status === "unavailable" || c.status === "misconfigured");
+    emitOpsEvent("service.readiness_failed", { reason: failing?.name ?? "unknown", severity: "critical" });
+  }
 
   return Response.json({ status: overall, ready, checks }, { status: ready ? 200 : 503 });
 }
