@@ -1,17 +1,20 @@
 import { type NextRequest } from "next/server";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+
 import { getMetaConfig, isPreviewDeployment } from "@guardora/config";
-import { emitOpsEvent, metrics } from "@guardora/core";
-import { Platform, recordWebhookEvent } from "@guardora/db";
+import { emitOpsEvent, metrics, Platform } from "@guardora/core";
+import { recordWebhookEvent } from "@guardora/db";
+
 import { webhookLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 
 /**
- * Route a Meta webhook `object` to the connector platform. `instagram` events flow
- * through the SAME unified connector as `page` events (V1.38). Unknown objects default
- * to facebook_page (the Meta ingestion table only holds Meta platforms here).
+ * Route a Meta webhook `object` to the connector platform.
+ * Instagram events use the same unified Meta connector.
  */
 function platformForObject(object: string | null): Platform {
-  return object === "instagram" ? Platform.instagram_business : Platform.facebook_page;
+  return object === "instagram"
+    ? Platform.InstagramBusiness
+    : Platform.FacebookPage;
 }
 
 export const runtime = "nodejs";
