@@ -1,5 +1,5 @@
 import { loadEnv } from "@guardora/config";
-import { assertRlsRuntime, validateRuntimeDbConfig, cleanupExpiredAuthTokens } from "@guardora/db";
+import { assertRlsRuntime, validateRuntimeDbConfig, cleanupExpiredAuthTokens, sweepTrialExpirations, purgeStripeWebhookEvents } from "@guardora/db";
 import { emitOpsEvent, metrics, initOpsSink } from "@guardora/core";
 import { log } from "./logger";
 
@@ -69,6 +69,20 @@ async function tick(): Promise<void> {
   } catch (err) {
     log.error("auth.token_cleanup.failed", { error: err instanceof Error ? err.name : "unknown" });
     emitOpsEvent("auth.token_cleanup_failed", { operation: "auth_token_cleanup", reason: err instanceof Error ? err.name : "unknown" });
+  }
+
+  // V1.50D — billing maintenance: move trial-expired tenants (no active subscription) to restricted
+  // access (never delete/disconnect), and purge old Stripe webhook audit rows. Bounded + idempotent;
+  // a failure must NOT crash sync. No payment PII in logs.
+  try {
+    const now = new Date();
+    const restricted = await sweepTrialExpirations(now);
+    const purged = await purgeStripeWebhookEvents(new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000));
+    if (restricted > 0) { log.info("billing.trial_swept", { restricted }); emitOpsEvent("billing.access_restricted", { reason: "trial_expired" }); }
+    if (purged > 0) log.info("billing.webhook_purged", { purged });
+  } catch (err) {
+    log.error("billing.maintenance.failed", { error: err instanceof Error ? err.name : "unknown" });
+    emitOpsEvent("billing.webhook_failed", { operation: "billing_maintenance", reason: err instanceof Error ? err.name : "unknown" });
   }
 
   // V1.38 — unified Meta connector health (gated by META_CONNECTOR_HEALTH; off = no-op).

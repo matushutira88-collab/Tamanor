@@ -85,6 +85,7 @@ export * from "./session";
 export * from "./password";
 export * from "./registration";
 export * from "./auth-tokens";
+export * from "./billing-repo";
 export * from "./tenant-db";
 export * from "./repositories";
 export * from "./inbox-repo";

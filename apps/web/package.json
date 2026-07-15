@@ -20,7 +20,8 @@
     "@guardora/sync": "workspace:*",
     "next": "^15.4.7",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "stripe": "^22.3.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

@@ -16,6 +16,7 @@ const AUTH_ROUTES = [
   "/dashboard/comments",
   "/dashboard/action-queue",
   "/dashboard/settings",
+  "/dashboard/billing",
 ];
 
 async function overflow(page: Page): Promise<{ docX: number; bodyX: number }> {
@@ -142,7 +143,7 @@ test("double-submit is blocked while a mutation is pending (exactly one request)
 
 // ---------------- Authenticated axe smoke (desktop) ----------------
 
-for (const route of ["/dashboard", "/dashboard/accounts", "/dashboard/comments", "/dashboard/settings"]) {
+for (const route of ["/dashboard", "/dashboard/accounts", "/dashboard/comments", "/dashboard/settings", "/dashboard/billing"]) {
   test(`no critical axe violations (authenticated): ${route}`, async ({ page }, testInfo) => {
     test.skip(isMobile(testInfo.project.name), "run axe once on desktop");
     await page.goto(route);

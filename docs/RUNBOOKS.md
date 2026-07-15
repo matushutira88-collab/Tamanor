@@ -139,6 +139,20 @@ renewal**; expiring tokens are flagged for reconnect.
   in bounded batches; a failure emits `auth.token_cleanup_failed` and never blocks auth or sync.
 - **Privacy:** no email, raw token, token hash, or reset/verification URL is ever logged or emitted.
 
+### Subscription billing — Stripe (V1.50D)
+- **Activation:** paid access is granted ONLY by the verified Stripe webhook (`/api/webhooks/stripe`),
+  never by the checkout success redirect. Configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, the 6
+  price IDs, and the Customer Portal; test with Stripe test keys + `stripe listen`/test events.
+- **States:** `resolveAccessState` centrally maps Stripe status → `full_access` / `grace_period` /
+  `restricted` / `suspended`. Trial expiry and a failed payment past the grace window (default 7 days)
+  move a tenant to `restricted`: login, billing, and account deletion stay available; new paid AI and
+  operational writes stop. Data is never deleted and provider accounts are never disconnected.
+- **Symptoms:** spike in `billing.webhook_signature_invalid` → wrong `STRIPE_WEBHOOK_SECRET` or a
+  spoofed caller; `billing.webhook_failed` → a DB write failed (Stripe retries — the event is not
+  acked). `billing.payment_failed` → dunning; `billing.access_restricted` → a tenant lapsed.
+- **Privacy:** the DB stores only safe Stripe IDs + billing state; no card data, no raw payloads. The
+  `stripe_webhook_events` audit table is idempotency-keyed on the Stripe event id and purged after 90d.
+
 ### Integration point (production configuration required)
 No external alerting vendor is wired. Ops events emit a safe structured log line by default; wire a
 vendor sink at startup via `setOpsSink(...)` (payload already redacted). Alerting should **aggregate**

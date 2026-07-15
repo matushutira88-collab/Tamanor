@@ -600,20 +600,22 @@ async function persistNewItem(
   hooks?: SyncPhaseHooks,
 ): Promise<IngestOutcome> {
   // Phase P1 — tenant reads (short tx): plan + brand locale + brand memory rules.
-  const { plan, brand, memoryRules } = await withTenantDb(tenantId, async (db) => {
-    const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
+  const { plan, accessState, brand, memoryRules } = await withTenantDb(tenantId, async (db) => {
+    // V1.50D — read the billing access state alongside the plan so paid AI is refused for a
+    // restricted (trial-expired / lapsed) tenant, regardless of the stored plan.
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, accessState: true } });
     const brand = await db.brand.findFirst({ where: { id: account.brandId }, select: { defaultLocale: true } });
     const memoryRules = await db.brandRiskMemoryRule.findMany({
       where: { brandId: account.brandId, tenantId: account.tenantId, isActive: true },
       select: { type: true, normalizedPhrase: true, language: true, severity: true, isActive: true },
     });
-    return { plan: tenant?.plan ?? "free", brand, memoryRules };
+    return { plan: tenant?.plan ?? "free", accessState: tenant?.accessState ?? "full_access", brand, memoryRules };
   });
 
   // Classification via the METERED policy service (cache → rules → paid, cost-protected) — OUTSIDE
   // any transaction. A paid provider is NEVER reached without a prior atomic reservation.
   const hybrid = await classifyWithUsagePolicy(
-    { tenantId, plan },
+    { tenantId, plan, accessState },
     { text: item.text, platform: item.platform, locale: item.author.locale, rating: item.rating, rules },
     {
       workspaceLocale: brand?.defaultLocale ?? "en",

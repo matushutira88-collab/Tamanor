@@ -6,8 +6,8 @@
  * `premiumCostLimitMicros` is an integer micros budget (bigint) — never a float. A `null` limit
  * means "no cap for this KNOWN plan" (enterprise), which the reservation layer treats as unbounded.
  */
-export type UsagePlan = "free" | "free_trial" | "starter" | "pro" | "enterprise";
-export const USAGE_PLANS: readonly UsagePlan[] = ["free", "free_trial", "starter", "pro", "enterprise"];
+export type UsagePlan = "free" | "free_trial" | "starter" | "growth" | "agency" | "pro" | "enterprise";
+export const USAGE_PLANS: readonly UsagePlan[] = ["free", "free_trial", "starter", "growth", "agency", "pro", "enterprise"];
 
 export type UsagePolicy = {
   plan: UsagePlan;
@@ -60,6 +60,22 @@ const PRO: UsagePolicy = {
   allowRules: true, allowLocalModel: true, allowPaidFallback: true, allowGeneratedReplies: true,
 };
 
+// V1.50D — paid tiers used by the billing catalogue (Starter/Growth/Agency). Growth sits
+// between Starter and the legacy Pro; Agency mirrors Pro-level headroom with generated replies.
+const GROWTH: UsagePolicy = {
+  plan: "growth",
+  basicUnitsPerPeriod: 20_000, premiumCallsPerPeriod: 1_000, premiumCostLimitMicros: 25_000_000n,
+  maxInputTokensPerCall: 6_000, maxOutputTokensPerCall: 1_536,
+  allowRules: true, allowLocalModel: true, allowPaidFallback: true, allowGeneratedReplies: false,
+};
+
+const AGENCY: UsagePolicy = {
+  plan: "agency",
+  basicUnitsPerPeriod: 50_000, premiumCallsPerPeriod: 5_000, premiumCostLimitMicros: 100_000_000n,
+  maxInputTokensPerCall: 8_000, maxOutputTokensPerCall: 2_048,
+  allowRules: true, allowLocalModel: true, allowPaidFallback: true, allowGeneratedReplies: true,
+};
+
 const ENTERPRISE: UsagePolicy = {
   plan: "enterprise",
   basicUnitsPerPeriod: null, premiumCallsPerPeriod: null, premiumCostLimitMicros: null,
@@ -67,7 +83,18 @@ const ENTERPRISE: UsagePolicy = {
   allowRules: true, allowLocalModel: true, allowPaidFallback: true, allowGeneratedReplies: true,
 };
 
-const POLICIES: Record<UsagePlan, UsagePolicy> = { free: FREE, free_trial: FREE_TRIAL, starter: STARTER, pro: PRO, enterprise: ENTERPRISE };
+// V1.50D — RESTRICTED policy for a tenant whose trial expired or subscription lapsed past the
+// grace period. Rules + local classification still run (no data loss / no lockout), but NO paid
+// AI work may start — allowPaidFallback is false and all premium quotas are zero. This is the
+// lowest-permitted access; unknown billing state fails safe to it (via resolveEffectiveUsagePolicy).
+const RESTRICTED: UsagePolicy = {
+  plan: "free",
+  basicUnitsPerPeriod: 500, premiumCallsPerPeriod: 0, premiumCostLimitMicros: 0n,
+  maxInputTokensPerCall: 2_000, maxOutputTokensPerCall: 512,
+  allowRules: true, allowLocalModel: true, allowPaidFallback: false, allowGeneratedReplies: false,
+};
+
+const POLICIES: Record<UsagePlan, UsagePolicy> = { free: FREE, free_trial: FREE_TRIAL, starter: STARTER, growth: GROWTH, agency: AGENCY, pro: PRO, enterprise: ENTERPRISE };
 
 export function isKnownPlan(plan: unknown): plan is UsagePlan {
   return typeof plan === "string" && (USAGE_PLANS as readonly string[]).includes(plan);
@@ -80,4 +107,17 @@ export function isKnownPlan(plan: unknown): plan is UsagePlan {
  */
 export function resolveUsagePolicy(plan: string | null | undefined): UsagePolicy {
   return isKnownPlan(plan) ? POLICIES[plan] : FREE;
+}
+
+/**
+ * V1.50D — the ONLY sanctioned way to resolve a policy for actual AI work: combines the plan with
+ * the tenant's trusted billing access state. A `restricted` / `suspended` tenant (trial expired,
+ * subscription lapsed past grace) gets the {@link RESTRICTED} policy — NO paid AI, regardless of
+ * plan — so Stripe state can never bypass AI-cost protection. `full_access` / `grace_period` (and an
+ * unknown/undefined state, which fails safe to plan-only) use the plan policy. The global paid-AI
+ * fuse remains authoritative on top of this.
+ */
+export function resolveEffectiveUsagePolicy(plan: string | null | undefined, accessState: string | null | undefined): UsagePolicy {
+  if (accessState === "restricted" || accessState === "suspended") return RESTRICTED;
+  return resolveUsagePolicy(plan);
 }

@@ -138,5 +138,5 @@ export const DASHBOARD_NAV: NavItem[] = [
   { href: "/dashboard/reports", label: "Reports", description: "Reputation trends and moderation metrics over time.", icon: "reports", hidden: true },
   { href: "/dashboard/leads", label: "Leads", description: "Platform-level prospect administration (platform staff only). Hidden in nav; access is enforced server-side, not by hiding.", icon: "leads", hidden: true },
   { href: "/dashboard/team", label: "Team", description: "Members and roles across your workspace.", icon: "team", hidden: true },
-  { href: "/dashboard/billing", label: "Billing", description: "Your plan, usage, and trial.", icon: "billing", hidden: true },
+  { href: "/dashboard/billing", label: "Billing", description: "Your plan, subscription, and invoices.", icon: "billing", hidden: false },
 ];

@@ -39,6 +39,19 @@ unavailable" (no fake success). Keys are read from env only and never logged.
 | `RESEND_API_KEY` | **M · S** | required when `EMAIL_PROVIDER=resend` |
 | `APP_BASE_URL` | **M** | absolute base for one-time email links (falls back to `APP_URL`) |
 
+## Subscription billing — Stripe (V1.50D)
+Read from env only; never commit keys/price IDs. Unset `STRIPE_SECRET_KEY` → checkout/portal report
+"not available" (the 14-day trial still works). Use TEST keys for verification, LIVE for production.
+| Var | Class | Notes |
+|---|---|---|
+| `STRIPE_SECRET_KEY` | **M · S** | server-side Stripe API key (test → live) |
+| `STRIPE_PUBLISHABLE_KEY` / `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | M | publishable (safe in the browser bundle) |
+| `STRIPE_WEBHOOK_SECRET` | **M · S** | signing secret for the `/api/webhooks/stripe` endpoint |
+| `STRIPE_PRICE_{STARTER,GROWTH,AGENCY}_{MONTHLY,YEARLY}` | **M** | Stripe price IDs (6). Unset → that plan's checkout is disabled truthfully |
+| `STRIPE_BILLING_PORTAL_RETURN_URL` | O | absolute return URL from the Customer Portal (else same-origin `/dashboard/billing`) |
+
+**Setup:** create the products/prices in Stripe, add a webhook endpoint `POST {APP_BASE_URL}/api/webhooks/stripe` (events: checkout.session.completed, customer.subscription.*, invoice.paid, invoice.payment_failed, invoice.finalization_failed), copy its signing secret, and enable the Customer Portal. Rotate keys via the Stripe Dashboard; the app reads them from env at runtime (no redeploy of code needed).
+
 ## Meta
 | Var | Class | Notes |
 |---|---|---|

@@ -338,6 +338,11 @@ model Tenant {
   // V1.50B — onboarding state. NULL = onboarding pending (new workspace); set when the
   // owner finishes or skips the onboarding wizard, so it is shown once, not on every login.
   onboardingCompletedAt DateTime?
+  // V1.50D — billing state (derived from Stripe via the webhook; the Subscription row holds the
+  // detail). `billingStatus` is the truthful Stripe-aligned status; `accessState` is the central
+  // application access decision. Defaults keep a trial-only tenant on full access.
+  billingStatus String @default("no_subscription")
+  accessState   String @default("full_access")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -364,6 +369,7 @@ model Tenant {
   usagePeriods      UsagePeriod[]
   usageEvents       UsageEvent[]
   aiResultCache     AiResultCache[]
+  subscription      Subscription?
 
   // V1.45C1 — tenant-scoped tables that previously carried only a `tenantId` string (RLS-isolated
   // but NOT FK-linked). These now cascade on tenant deletion so the DB cascade graph is COMPLETE
@@ -381,6 +387,49 @@ model Tenant {
   webhookEvents            WebhookEvent[]
 
   @@map("tenants")
+}
+
+// V1.50D — the tenant's subscription. Stores ONLY safe Stripe identifiers + billing state; never
+// card numbers, CVC, payment methods, or raw payloads. One subscription per tenant (the active
+// billing relationship). Written ONLY by the Stripe webhook processor from trusted Stripe data.
+model Subscription {
+  id                   String    @id @default(cuid())
+  tenantId             String    @unique
+  stripeCustomerId     String    @unique
+  stripeSubscriptionId String?   @unique
+  stripePriceId        String?
+  plan                 String    // billing plan id (starter|growth|agency|enterprise|free_trial)
+  billingInterval      String?   // "monthly" | "yearly"
+  status               String    // Stripe-aligned status
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  canceledAt           DateTime?
+  trialEndsAt          DateTime?
+  latestInvoiceStatus  String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([stripeCustomerId])
+  @@map("subscriptions")
+}
+
+// V1.50D — Stripe webhook idempotency + bounded audit. The Stripe event ID is UNIQUE, so a retried
+// or replayed delivery is processed at most once. Stores a SAFE result classification only — never
+// the full payment payload, card data, email, or Stripe response body. Old rows are purged on a
+// bounded retention schedule (like webhook_events).
+model StripeWebhookEvent {
+  id          String    @id @default(cuid())
+  stripeEventId String  @unique
+  eventType   String
+  result      String    // "processed" | "ignored" | "failed"
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([createdAt])
+  @@map("stripe_webhook_events")
 }
 
 model Membership {

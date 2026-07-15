@@ -37,6 +37,10 @@ export enum Permission {
   // and deliberately absent from every other role's list below (Admin included). Server authorization
   // remains authoritative — this is the UI/gating capability.
   TenantDelete = "tenant:delete",
+  // V1.50D — subscription billing (checkout, portal, plan change). OWNER-EXCLUSIVE like TenantDelete:
+  // granted only via OWNER_ALL and absent from every other role below. No Viewer/Analyst/Reviewer/
+  // Admin billing writes; server authorization is authoritative.
+  BillingManage = "billing:manage",
 }
 
 const OWNER_ALL: readonly Permission[] = Object.values(Permission);

@@ -67,6 +67,8 @@
     "auth-session:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/auth-session.test.ts",
     "auth-registration:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/auth-registration.test.ts",
     "auth-email:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/auth-email.test.ts",
+    "billing:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/billing.test.ts",
+    "billing-webhook:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/billing-webhook.test.ts",
     "session-cookie:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/session-cookie.test.ts",
     "rls-isolation:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/rls-isolation.test.ts",
     "rls-runtime:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/rls-runtime.test.ts",

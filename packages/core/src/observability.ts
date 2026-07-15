@@ -40,7 +40,16 @@ export type OpsEvent =
   | "auth.email_delivery_failed"
   | "auth.verification_failed"
   | "auth.password_reset_failed"
-  | "auth.token_cleanup_failed";
+  | "auth.token_cleanup_failed"
+  // V1.50D — subscription billing (never carry payment PII, card, email, or Stripe response body).
+  | "billing.checkout_failed"
+  | "billing.portal_failed"
+  | "billing.webhook_signature_invalid"
+  | "billing.webhook_failed"
+  | "billing.subscription_activated"
+  | "billing.subscription_canceled"
+  | "billing.payment_failed"
+  | "billing.access_restricted";
 
 /** Low-cardinality label keys allowed on ops events + metrics. Anything else is a cardinality risk. */
 export type SafeLabel = "platform" | "result" | "operation" | "env" | "reason" | "severity";

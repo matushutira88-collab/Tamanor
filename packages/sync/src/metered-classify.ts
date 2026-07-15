@@ -9,7 +9,7 @@
  * provider error) which the ingest layer persists on the ReputationItem.
  */
 import { classifyHybrid, type HybridConfig, type HybridResult, type ClassificationInput } from "@guardora/ai";
-import { resolveUsagePolicy, POLICY_VERSION, estimateCostMicros } from "@guardora/core";
+import { resolveEffectiveUsagePolicy, POLICY_VERSION, estimateCostMicros } from "@guardora/core";
 import { getPaidAiFuseConfig } from "@guardora/config";
 import {
   contentVersionHash, consumeBasicUnit, reservePremiumCall, finalizePremiumCall, releaseReservation,
@@ -22,7 +22,7 @@ export type ProcessingStatus =
   | "processed_rules" | "processed_local" | "processed_paid" | "cached"
   | "basic_limit_reached" | "premium_limit_reached" | "paid_ai_disabled" | "failed";
 
-export interface MeteredCtx { tenantId: string; plan: string; reputationItemId?: string; contentItemId?: string; correlationId?: string }
+export interface MeteredCtx { tenantId: string; plan: string; accessState?: string; reputationItemId?: string; contentItemId?: string; correlationId?: string }
 export interface MeteredDeps {
   /** TEST-ONLY provider injection. Production uses the internal classifyHybrid (paid) path. */
   callProvider?: (input: ClassificationInput, cfg: HybridConfig) => Promise<HybridResult>;
@@ -41,7 +41,8 @@ export async function classifyWithUsagePolicy(
   ctx: MeteredCtx, input: ClassificationInput, cfg: HybridConfig, deps: MeteredDeps = {},
 ): Promise<MeteredResult> {
   const now = deps.now ?? new Date();
-  const policy = resolveUsagePolicy(ctx.plan);
+  // V1.50D — billing-aware policy: a restricted/suspended tenant gets NO paid AI regardless of plan.
+  const policy = resolveEffectiveUsagePolicy(ctx.plan, ctx.accessState);
   const provider = cfg.aiRisk.provider || "none";
   const modelKey = provider;
   const contentHash = contentVersionHash({
