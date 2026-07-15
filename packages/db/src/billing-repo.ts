@@ -1,5 +1,8 @@
 import { Prisma } from "@prisma/client";
-import { resolveAccessState, type AccessState, type BillingStatus } from "@guardora/core";
+import {
+  resolveAccessState, resolveEntitlements, accessAllowsOperations,
+  type AccessState, type BillingStatus, type PlanEntitlements,
+} from "@guardora/core";
 import { systemDb } from "./index";
 
 /**
@@ -54,6 +57,26 @@ export async function getTenantBilling(tenantId: string): Promise<TenantBilling 
         }
       : null,
   };
+}
+
+/**
+ * V1.50E — the tenant's resolved entitlements (limits + capabilities) with access-state precedence.
+ * Deletion state > suspended/restricted (operations off, creation blocked) > plan. Unknown plan
+ * fails safe to the lowest access. This is the single server-side entitlement resolver.
+ */
+export async function getTenantEntitlements(tenantId: string): Promise<PlanEntitlements> {
+  const t = await systemDb.tenant.findUnique({
+    where: { id: tenantId },
+    select: { plan: true, accessState: true, deletionState: true },
+  });
+  return resolveEntitlements(t?.plan, t?.accessState, { deletingTenant: !!t && t.deletionState !== "active" });
+}
+
+/** Whether NEW operations (sync, moderation execution, provider actions) may run for this tenant. */
+export async function tenantAllowsOperations(tenantId: string): Promise<boolean> {
+  const t = await systemDb.tenant.findUnique({ where: { id: tenantId }, select: { accessState: true, deletionState: true } });
+  if (!t || t.deletionState !== "active") return false;
+  return accessAllowsOperations(t.accessState as AccessState);
 }
 
 /** Resolve the Stripe customer id already stored for a tenant (for reuse at checkout). */

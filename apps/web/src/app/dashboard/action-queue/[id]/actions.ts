@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { attemptFacebookHide, findPreflightDryRun } from "@guardora/sync";
-import { decryptToken, withTenant } from "@guardora/db";
+import { decryptToken, withTenant, tenantAllowsOperations } from "@guardora/db";
+import { emitOpsEvent } from "@guardora/core";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 
@@ -25,6 +26,13 @@ async function runHideForQueueItem(
   q: Awaited<ReturnType<typeof loadQueueItem>>,
   opts?: { retry?: boolean; liveAttempt?: boolean },
 ): Promise<{ note: string; kind: "ok" | "error" }> {
+  // V1.50E — a live provider execution is blocked for a restricted/suspended/deleting tenant
+  // (server-side, not UI-only). Non-live preflights/dry-runs remain available.
+  if (opts?.liveAttempt && !(await tenantAllowsOperations(session.tenantId))) {
+    emitOpsEvent("entitlement.restricted_blocked", { operation: "moderation_execution", reason: "billing_restricted" });
+    return { note: "Your access is restricted. Restore your subscription to run provider actions.", kind: "error" };
+  }
+
   // Phase 1 — tenant reads (short tx): item + connected account + control policy.
   const { item, policy } = await withTenant(session.tenantId, async (db) => ({
     item: await db.reputationItem.findFirst({

@@ -16,6 +16,7 @@ import {
 import { createConnectorRuntime, type ActionResult } from "@guardora/connectors";
 import { withTenantDb, type TenantTx } from "@guardora/db";
 import { writeAudit } from "./audit";
+import { assertTenantOperationAllowed } from "./entitlements";
 import type { AppSession } from "./auth";
 
 export interface ActionOutcome {
@@ -231,6 +232,10 @@ export async function executeProposal(
   proposalId: string,
 ): Promise<ActionOutcome> {
   assertCan(session.role, Permission.ProposalExecute);
+  // V1.50E — role AND access-state gate: a restricted/suspended/deleting tenant must NOT execute a
+  // provider-side moderation action (hide/delete/reply), even though the review UI stays visible.
+  // Server-side enforcement (never UI-only). Throws EntitlementError("billing_restricted") if denied.
+  await assertTenantOperationAllowed(session.tenantId, "moderation_execution");
 
   // Phase 1 — tenant READ (short tx). RLS confirms ownership; foreign id → not_found.
   const decision = await withTenantDb(session.tenantId, (db) => db.moderationDecision.findFirst({

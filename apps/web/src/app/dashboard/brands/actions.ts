@@ -12,6 +12,7 @@ import { DEFAULT_AUTO_PROTECT_POLICIES } from "@guardora/ai";
 import { withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
+import { checkCreationLimit } from "@/server/entitlements";
 
 function enumValue<T extends Record<string, string>>(
   e: T,
@@ -30,6 +31,12 @@ export async function createBrand(formData: FormData): Promise<void> {
 
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Brand name is required");
+
+  // V1.50E — plan brand limit (server-counted; restricted tenants are blocked). Preserves existing
+  // data on downgrade — only NEW creation is refused.
+  const brandCount = await withTenant(session.tenantId, (db) => db.brand.count({ where: { tenantId: session.tenantId } }));
+  const limit = await checkCreationLimit(session.tenantId, "brand", brandCount);
+  if (limit) redirect(`/dashboard/brands?error=${limit}`);
 
   const brand = await withTenant(session.tenantId, async (db) => {
     const brand = await db.brand.create({

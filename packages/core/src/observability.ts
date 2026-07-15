@@ -49,7 +49,11 @@ export type OpsEvent =
   | "billing.subscription_activated"
   | "billing.subscription_canceled"
   | "billing.payment_failed"
-  | "billing.access_restricted";
+  | "billing.access_restricted"
+  // V1.50E — entitlement enforcement (only plan/operation/result/reason labels; never PII/IDs).
+  | "entitlement.denied"
+  | "entitlement.limit_reached"
+  | "entitlement.restricted_blocked";
 
 /** Low-cardinality label keys allowed on ops events + metrics. Anything else is a cardinality risk. */
 export type SafeLabel = "platform" | "result" | "operation" | "env" | "reason" | "severity";

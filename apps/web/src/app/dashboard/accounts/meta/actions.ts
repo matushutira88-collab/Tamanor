@@ -8,6 +8,7 @@ import { checkAccountToken, linkMetaAssets } from "@guardora/sync";
 import { encryptToken, withTenant, assertTenantActive } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
+import { checkCreationLimit } from "@/server/entitlements";
 
 /**
  * Confirm the Page (and optionally IG) selection. Only here — after explicit
@@ -42,6 +43,22 @@ export async function confirmMetaSelection(
   const page = pages.find((p) => p.pageId === pageId);
   if (!page) {
     redirect("/dashboard/accounts/meta/select?flow=bad_page");
+  }
+
+  // V1.50E — plan connection limit. CLUSTER RULE: a Facebook Page and its linked Instagram Business
+  // account are ONE connection bundle (we count Pages, never the linked IG separately). Reconnecting
+  // an existing Page consumes no slot; a NEW page is checked against the plan limit (restricted → 0),
+  // enforced HERE on the real OAuth-finalize path (not UI-only).
+  const existingPage = await withTenant(session.tenantId, (db) => db.connectedAccount.findFirst({
+    where: { tenantId: session.tenantId, platform: "facebook_page" as never, pageId: page.pageId },
+    select: { id: true },
+  }));
+  if (!existingPage) {
+    const pageCount = await withTenant(session.tenantId, (db) => db.connectedAccount.count({
+      where: { tenantId: session.tenantId, platform: "facebook_page" as never },
+    }));
+    const limit = await checkCreationLimit(session.tenantId, "account", pageCount);
+    if (limit) redirect(`/dashboard/accounts?error=${encodeURIComponent(limit)}`);
   }
 
   // Scopes actually requested/granted for THIS flow (env-driven).

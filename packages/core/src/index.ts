@@ -17,6 +17,7 @@ export * from "./reputation";
 export * from "./observability";
 export * from "./email";
 export * from "./billing";
+export * from "./entitlements";
 export * from "./rate-limit";
 export * from "./moderation";
 export * from "./brand-rule";

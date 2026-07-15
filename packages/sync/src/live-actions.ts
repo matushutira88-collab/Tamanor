@@ -377,6 +377,10 @@ export async function attemptFacebookHide(
   };
   trace("start", { hasToken: !!ctx.account.accessToken, connectionStatus: ctx.account.connectionStatus, tokenHealth: ctx.account.tokenHealth, health: ctx.account.health, tokenExpiresAt: ctx.account.tokenExpiresAt ?? null, needsReconnect: ctx.account.needsReconnect ?? false });
 
+  // NOTE (V1.50E): the billing access-state gate lives at the CALLERS of this primitive (the worker
+  // autonomous path in ./index.ts, the manual action-queue action, and executeProposal) rather than
+  // here — this keeps `attemptFacebookHide` a pure, DB-injection-free execution primitive.
+
   // --- Idempotency (V1.25B/V1.26): never create duplicate executions. ---
   const existing = await findExistingExecutions(ctx);
   trace("existing", { count: existing.length, latest: existing[0] ? `${existing[0].status}/${existing[0].reason}` : null });

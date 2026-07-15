@@ -40,6 +40,7 @@ import {
   Platform as CorePlatform,
   isRealConnection,
   modeAllowsSync,
+  accessAllowsOperations,
 } from "@guardora/core";
 import {
   createConnectorRuntime,
@@ -755,7 +756,9 @@ async function persistNewItem(
     // loadProductionSafetyContext + attemptFacebookHide manage their OWN short tenant
     // transactions and provider HTTP; they are called OUTSIDE any open transaction here.
     const matchedPolicy = controlPolicies.find((p) => p.category === decision.matchedCategory);
-    if (matchedPolicy?.mode === "autonomous" && decision.wouldExecute) {
+    // V1.50E — a restricted/suspended tenant must NOT run autonomous (background) provider execution.
+    // The item stays queued for human review once billing is restored; nothing is executed or lost.
+    if (matchedPolicy?.mode === "autonomous" && decision.wouldExecute && accessAllowsOperations(accessState as never)) {
       const safety = await loadProductionSafetyContext({
         tenantId: account.tenantId, brandId: account.brandId, connectedAccountId: account.id, category: decision.matchedCategory,
       });

@@ -13,6 +13,7 @@ import { runReadOnlySync, disconnectAccount } from "@guardora/sync";
 import { withTenant, assertTenantActive } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
+import { checkCreationLimit } from "@/server/entitlements";
 
 function asPlatform(raw: string): Platform {
   if (!(Object.values(Platform) as string[]).includes(raw)) {
@@ -36,6 +37,17 @@ export async function connectMock(
   // session guard already fails closed the instant the tenant is deleting).
   await assertTenantActive(session.tenantId);
   const platform = asPlatform(platformRaw);
+
+  // V1.50E — plan connection limit. Only a NEW account consumes a slot; reconnecting/refreshing an
+  // existing one does not. A restricted tenant (limit forced to 0) is blocked here on the server.
+  const preflight = await withTenant(session.tenantId, async (db) => ({
+    isNew: !(await db.connectedAccount.findFirst({ where: { brandId, platform }, select: { id: true } })),
+    count: await db.connectedAccount.count({ where: { tenantId: session.tenantId } }),
+  }));
+  if (preflight.isNew) {
+    const limit = await checkCreationLimit(session.tenantId, "account", preflight.count);
+    if (limit) redirect(`/dashboard/accounts?error=${limit}`);
+  }
 
   await withTenant(session.tenantId, async (db) => {
     // Ensure the brand belongs to the tenant.
