@@ -28,16 +28,30 @@ degrade truthfully (redirect back "temporarily unavailable"); email sign-in stil
 | `FACEBOOK_AUTH_CLIENT_ID` / `FACEBOOK_AUTH_CLIENT_SECRET` | O · S | **dedicated Facebook LOGIN app — NOT `META_APP_*`**. Callback `${APP_BASE_URL}/api/auth/facebook/callback`. |
 | `FACEBOOK_AUTH_REDIRECT_URI` | O | override only if the registered callback differs |
 
-## Transactional email — verification & reset (V1.50C)
-Unset `EMAIL_FROM` → delivery fails truthfully; verification/reset flows report "temporarily
-unavailable" (no fake success). Keys are read from env only and never logged.
+## Transactional email — Google Workspace / Gmail API (V1.51B)
+**Production provider is Google Workspace / Gmail API** — a dedicated Workspace mailbox
+(`no-reply@tamanor.com`) authenticated with an OAuth 2.0 **refresh token**; access tokens are minted
+server-side on demand and never stored. **Resend is removed as a production provider.** Credentials
+are read from env only and never logged. In production `/api/ready` **fails closed** unless
+`EMAIL_PROVIDER=google` + a `@tamanor.com` sender + complete Google credentials + an absolute `https`
+`APP_BASE_URL`, and no `RESEND_API_KEY` residue remains.
 | Var | Class | Notes |
 |---|---|---|
-| `EMAIL_PROVIDER` | M | `resend` (prod) or `console` (dev — logs metadata only, no token/URL) |
-| `EMAIL_FROM` | **M** | verified sending address; blank disables delivery |
-| `EMAIL_REPLY_TO` | O | optional reply-to |
-| `RESEND_API_KEY` | **M · S** | required when `EMAIL_PROVIDER=resend` |
-| `APP_BASE_URL` | **M** | absolute base for one-time email links (falls back to `APP_URL`) |
+| `EMAIL_PROVIDER=google` | **M** | `google` (production) or `console` (dev — logs metadata only, no token/URL). `console`/`null` are forbidden for production readiness. |
+| `GOOGLE_EMAIL_SENDER` | **M** | production sender, e.g. `no-reply@tamanor.com` — MUST be a verified `tamanor.com` Workspace address |
+| `GOOGLE_EMAIL_CLIENT_ID` / `GOOGLE_EMAIL_CLIENT_SECRET` | **M · S** | dedicated Gmail-send OAuth client — SEPARATE from `GOOGLE_AUTH_*` (login) and `GOOGLE_BUSINESS_*` |
+| `GOOGLE_EMAIL_REFRESH_TOKEN` | **M · S** | long-lived refresh token for the sender mailbox; rotate per the runbook |
+| `GOOGLE_EMAIL_PROJECT_ID` / `GOOGLE_EMAIL_DELEGATED_USER` | O | only if the service-account/delegation variant is chosen |
+| `EMAIL_REPLY_TO` | O | reply-to, e.g. `support@tamanor.com` |
+| `APP_BASE_URL` | **M** | absolute `https://tamanor.com` base for one-time email links (falls back to `APP_URL`) |
+| `RESEND_API_KEY` | **deprecated** | must be UNSET in production — readiness flags any residue |
+
+**Gmail send scope:** grant only `https://www.googleapis.com/auth/gmail.send` (send-only; no read).
+
+## Shared-store rate limiting (V1.51B)
+| Var | Class | Notes |
+|---|---|---|
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | O · S | set BOTH to activate the cross-instance limiter for a multi-instance launch; unset → per-instance in-memory fallback. Sensitive auth/email paths fail closed if the shared store is unreachable. |
 
 ## Subscription billing — Stripe (V1.50D)
 Read from env only; never commit keys/price IDs. Unset `STRIPE_SECRET_KEY` → checkout/portal report
@@ -101,7 +115,7 @@ Read from env only; never commit keys/price IDs. Unset `STRIPE_SECRET_KEY` → c
 
 ## Feature flags (default state)
 `META_LIVE_SYNC`=off · `META_WEBHOOK_SYNC`=off · `AUTO_SYNC_ENABLED`=off · `AI_PAID_ENABLED`=off ·
-`LIVE_ACTIONS_ENABLED`=off · `GOOGLE_BUSINESS_*` unset (GBP not a pilot provider).
+`LIVE_ACTIONS_ENABLED`=off · `GOOGLE_BUSINESS_*` unset (GBP is a future connector, not a launch provider).
 
 ## ⚠️ Pre-launch secret hardening (required)
 1. **Override the committed `tamanor_app` DB-role password** (the RLS migration hardcodes `'tamanor_app'`

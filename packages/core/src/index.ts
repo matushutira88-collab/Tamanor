@@ -20,6 +20,7 @@ export * from "./billing";
 export * from "./entitlements";
 export * from "./pricing-projection";
 export * from "./rate-limit";
+export * from "./rate-limit-store";
 export * from "./moderation";
 export * from "./brand-rule";
 export * from "./audit";

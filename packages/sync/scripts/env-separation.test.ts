@@ -24,20 +24,21 @@ check("isPreviewDeployment: preview → true", isPreviewDeployment({ VERCEL_ENV:
 check("isPreviewDeployment: production → false (unaffected)", isPreviewDeployment({ VERCEL_ENV: "production" } as never) === false);
 check("isPreviewDeployment: unset → false (self-host unaffected)", isPreviewDeployment({ NODE_ENV: "production" } as never) === false);
 
-// Email kill-switch: resend downgrades to console ONLY under a preview deployment.
+// Email kill-switch: the production Google transport downgrades to console ONLY under a preview.
+const googleCfg = { provider: "google", from: "no-reply@tamanor.com", google: { clientId: "id", clientSecret: "sec", refreshToken: "rt" } };
 const prev = process.env.VERCEL_ENV;
 try {
   process.env.VERCEL_ENV = "preview";
-  const t1 = createEmailTransport({ provider: "resend", from: "a@b.com", apiKey: "re_x" });
-  check("preview: resend transport downgraded to console (no real send)", t1.name === "console", t1.name);
+  const t1 = createEmailTransport({ ...googleCfg });
+  check("preview: google transport downgraded to console (no real send)", t1.name === "console", t1.name);
 
   process.env.VERCEL_ENV = "production";
-  const t2 = createEmailTransport({ provider: "resend", from: "a@b.com", apiKey: "re_x" });
-  check("production: resend transport used (real send)", t2.name === "resend", t2.name);
+  const t2 = createEmailTransport({ ...googleCfg });
+  check("production: google transport used (real send)", t2.name === "google", t2.name);
 
   delete process.env.VERCEL_ENV;
-  const t3 = createEmailTransport({ provider: "resend", from: "a@b.com", apiKey: "re_x" });
-  check("self-host (unset): resend transport used (unaffected)", t3.name === "resend", t3.name);
+  const t3 = createEmailTransport({ ...googleCfg });
+  check("self-host (unset): google transport used (unaffected)", t3.name === "google", t3.name);
 } finally {
   if (prev === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = prev;
 }

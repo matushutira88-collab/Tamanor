@@ -138,9 +138,9 @@ async function run() {
   check("memory transport captures a sent message", send.ok && memory.sent.length === 1 && memory.last()?.subject === "s");
   const nullT = createEmailTransport(null);
   check("no config → null transport fails truthfully", (await nullT.send({ to: "x@y.z", subject: "s", html: "", text: "" })).ok === false);
-  check("resolveEmailConfig returns null without EMAIL_FROM", resolveEmailConfig({}) === null);
-  const cfg = resolveEmailConfig({ EMAIL_FROM: "no-reply@tamanor.com", EMAIL_PROVIDER: "resend", RESEND_API_KEY: "re_secret" });
-  check("resolveEmailConfig reads provider config from env", cfg?.provider === "resend" && cfg?.from === "no-reply@tamanor.com");
+  check("resolveEmailConfig returns null without a sender", resolveEmailConfig({}) === null);
+  const cfg = resolveEmailConfig({ GOOGLE_EMAIL_SENDER: "no-reply@tamanor.com", EMAIL_PROVIDER: "google", GOOGLE_EMAIL_CLIENT_ID: "id", GOOGLE_EMAIL_CLIENT_SECRET: "sec", GOOGLE_EMAIL_REFRESH_TOKEN: "rt", EMAIL_REPLY_TO: "support@tamanor.com" });
+  check("resolveEmailConfig reads Google provider config from env", cfg?.provider === "google" && cfg?.from === "no-reply@tamanor.com" && !!cfg?.google && cfg?.replyTo === "support@tamanor.com");
 
   // 9) Cleanup removes expired/consumed tokens (bounded, idempotent).
   const cleaned = await cleanupExpiredAuthTokens();

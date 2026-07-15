@@ -47,6 +47,21 @@ export async function GET() {
   const emailBaseOk = !isProd || /^https:\/\/[^\s]+$/.test(emailBase);
   checks.push({ name: "email_base_url", status: emailBaseOk ? "healthy" : "misconfigured" });
 
+  // 7) V1.51B — production transactional email MUST be the Google Workspace / Gmail API provider,
+  //    with a tamanor.com sender and complete OAuth refresh-token credentials, and NO leftover Resend
+  //    configuration. Fail-closed in production; never sends a real email. No secret is returned.
+  const provider = (process.env.EMAIL_PROVIDER ?? "").trim().toLowerCase();
+  const sender = (process.env.GOOGLE_EMAIL_SENDER ?? process.env.EMAIL_FROM ?? "").trim();
+  const senderDomainOk = /@tamanor\.com$/i.test(sender);
+  const googleCredsComplete = Boolean(
+    (process.env.GOOGLE_EMAIL_CLIENT_ID ?? "").trim() &&
+    (process.env.GOOGLE_EMAIL_CLIENT_SECRET ?? "").trim() &&
+    (process.env.GOOGLE_EMAIL_REFRESH_TOKEN ?? "").trim(),
+  );
+  const resendResidue = Boolean((process.env.RESEND_API_KEY ?? "").trim()) || provider === "resend";
+  const emailProviderOk = !isProd || (provider === "google" && senderDomainOk && googleCredsComplete && !resendResidue);
+  checks.push({ name: "email_provider", status: emailProviderOk ? "healthy" : "misconfigured" });
+
   const anyUnavailable = checks.some((c) => c.status === "unavailable");
   const anyMisconfigured = checks.some((c) => c.status === "misconfigured");
   const overall: CheckStatus = anyUnavailable ? "unavailable" : anyMisconfigured ? "misconfigured" : checks.some((c) => c.status === "degraded") ? "degraded" : "healthy";

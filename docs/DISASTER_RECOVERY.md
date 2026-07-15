@@ -17,13 +17,13 @@ Part §7 records the **restore drill actually performed** in this environment.
 - **Retention:** **14–30 days** of daily snapshots (choose per data-retention policy). This bounds how
   long erased data can persist in backups — document the exact number for the privacy policy.
 - Application-level dumps are NOT required (single DB); a periodic `pg_dump` to encrypted object
-  storage is an optional second copy for the pilot.
+  storage is an optional second copy for the production launch.
 
 ## 2. PITR strategy
 - Enable **Point-In-Time Recovery** (continuous WAL archiving) on the managed instance — the standard
   toggle on RDS/Cloud SQL/Neon. PITR lets you restore to any second within the retention window.
 - **Target RPO ≤ 5 minutes** (WAL-based PITR). **Without PITR** (snapshots only) RPO = up to 24h — not
-  acceptable beyond a trusted pilot.
+  acceptable for a public production launch.
 
 ## 3. Restore procedure (managed provider)
 1. Identify the target timestamp (or snapshot).
@@ -64,7 +64,7 @@ gpg -d tamanor_YYYY-MM-DD.dump.gpg | pg_restore --no-owner --dbname tamanor_rest
   integrity is in doubt.
 
 ## 7. RPO / RTO targets
-- **RPO:** ≤ 5 min (PITR) — pilot minimum: ≤ 24h (daily snapshot) with a documented accepted risk.
+- **RPO:** ≤ 5 min (PITR) required for the public production launch (daily-snapshot ≤ 24h is a fallback only with a documented accepted risk).
 - **RTO:** ≤ 2h to restore into a new instance and cut over.
 - **Who can restore:** the named incident owner + one backup operator with managed-DB console access.
 
@@ -98,7 +98,6 @@ strongest drill runnable locally (uses the Docker Postgres client tools). The **
 PITR restore drill** (§3) remains the one outstanding operator action before multi-customer.
 
 ## 9. Release-verdict impact
-- **Trusted pilot:** CONDITIONAL — requires (a) a **manual snapshot immediately before launch** and
-  (b) a scheduled provider-level restore drill during the pilot. RPO ≤ 24h accepted for one tenant.
+- **Public production launch:** requires (a) managed automated backups + PITR enabled, (b) a **manual snapshot immediately before launch**, and (c) a scheduled provider-level restore drill. RPO ≤ 5 min / RTO ≤ 2h validated.
 - **Multi-customer:** **NO-GO** until automated backups + PITR + a **tested** provider restore exist,
   with RPO ≤ 5 min and RTO ≤ 2h validated.

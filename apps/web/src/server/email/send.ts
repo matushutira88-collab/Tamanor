@@ -92,10 +92,10 @@ const RESET: Record<Locale, (url: string) => Built> = {
 
 export function sendVerificationEmail(to: string, locale: Locale, url: string): Promise<EmailSendResult> {
   const built = VERIFY[locale](url);
-  return getEmailTransport().send({ to, subject: built.subject, html: built.html, text: built.text });
+  return getEmailTransport().send({ to, subject: built.subject, html: built.html, text: built.text, template: "verification", locale });
 }
 
 export function sendPasswordResetEmail(to: string, locale: Locale, url: string): Promise<EmailSendResult> {
   const built = RESET[locale](url);
-  return getEmailTransport().send({ to, subject: built.subject, html: built.html, text: built.text });
+  return getEmailTransport().send({ to, subject: built.subject, html: built.html, text: built.text, template: "password_reset", locale });
 }

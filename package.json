@@ -71,6 +71,8 @@
     "entitlements:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/entitlements.test.ts",
     "entitlement-limits:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/entitlement-limits.test.ts",
     "env-separation:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/env-separation.test.ts",
+    "google-email:test": "pnpm --filter @guardora/db exec tsx scripts/google-email.test.ts",
+    "rate-limit-store:test": "pnpm --filter @guardora/db exec tsx scripts/rate-limit-store.test.ts",
     "billing-webhook:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/billing-webhook.test.ts",
     "session-cookie:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/session-cookie.test.ts",
     "rls-isolation:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/rls-isolation.test.ts",

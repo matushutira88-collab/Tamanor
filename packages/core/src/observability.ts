@@ -44,6 +44,14 @@ export type OpsEvent =
   | "auth.verification_failed"
   | "auth.password_reset_failed"
   | "auth.token_cleanup_failed"
+  // V1.51B — Google Workspace transactional email transport (never carry recipient, credential,
+  // access/refresh token, body, action URL, raw Gmail response, or Google project/client id).
+  | "email.send_succeeded"
+  | "email.send_failed"
+  | "email.refresh_failed"
+  | "email.rate_limited"
+  | "email.configuration_invalid"
+  | "email.provider_unavailable"
   // V1.50D — subscription billing (never carry payment PII, card, email, or Stripe response body).
   | "billing.checkout_failed"
   | "billing.portal_failed"
@@ -67,7 +75,9 @@ export type OpsEvent =
 /** Low-cardinality label keys allowed on ops events + metrics. Anything else is a cardinality risk. */
 // V1.50F — `plan` + `capability` added for entitlement/route observability (both LOW cardinality:
 // ~5 plans, ~5 capabilities). Never a tenant/user/provider id.
-export type SafeLabel = "platform" | "result" | "operation" | "env" | "reason" | "severity" | "plan" | "capability";
+// V1.51B — `template` + `locale` + `environment` for transactional-email observability (LOW
+// cardinality: a handful of templates, 3 locales, 3 environments). Never a recipient/credential.
+export type SafeLabel = "platform" | "result" | "operation" | "env" | "reason" | "severity" | "plan" | "capability" | "template" | "locale" | "environment";
 
 const SECRET_KEY = /(token|secret|password|cookie|authorization|database_url|app_database_url|api[_-]?key|encryption[_-]?key|email|payload)/i;
 const SECRET_VALUE = /(bearer\s+[a-z0-9._-]+|postgres(?:ql)?:\/\/|plain:v1:|aesgcm:v1:|eyj[a-z0-9._-]+|@[a-z0-9.-]+\.[a-z]{2,})/i;
@@ -186,7 +196,7 @@ export function classifyTokenLifecycle(expiresAt: Date | number | null | undefin
 // ---------------------------------------------------------------------------
 /** Label VALUES that are cardinality/PII risks (ids, emails, tokens). Rejected — never become labels. */
 const HIGH_CARDINALITY_VALUE = /(@|:\/\/|^[0-9a-f-]{16,}$|^c[a-z0-9]{20,}$|bearer|token)/i;
-const ALLOWED_LABEL_KEYS = new Set<string>(["platform", "result", "operation", "env", "reason", "severity"]);
+const ALLOWED_LABEL_KEYS = new Set<string>(["platform", "result", "operation", "env", "reason", "severity", "template", "locale", "environment"]);
 
 export type MetricLabels = Partial<Record<SafeLabel, string>>;
 

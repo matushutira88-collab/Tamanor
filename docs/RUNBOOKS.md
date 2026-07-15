@@ -127,12 +127,22 @@ renewal**; expiring tokens are flagged for reconnect.
 
 ---
 
-### Email verification & password reset (V1.50C)
-- **Delivery:** set `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` + a verified `EMAIL_FROM`, and
-  `APP_BASE_URL` (one-time links). Unconfigured → flows report "temporarily unavailable" (never a
-  fake success); email/password sign-up still creates the account (unverified).
-- **Symptoms:** spike in `auth.email_delivery_failed` → the provider/key is misconfigured or the
-  provider is down. Verification/reset links won't arrive. Fix env; users can resend.
+### Email verification & password reset (V1.50C / V1.51B)
+- **Delivery (production = Google Workspace / Gmail API):** set `EMAIL_PROVIDER=google`,
+  `GOOGLE_EMAIL_SENDER=no-reply@tamanor.com`, `GOOGLE_EMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN`,
+  `EMAIL_REPLY_TO`, and `APP_BASE_URL=https://tamanor.com`. Unconfigured → flows report "temporarily
+  unavailable" (never a fake success); email/password sign-up still creates the account (unverified).
+  **Resend is removed** — any `RESEND_API_KEY` residue fails `/api/ready` in production.
+- **Symptoms & triage (bounded email.* events; no PII):**
+  - `email.refresh_failed` → the Gmail OAuth **refresh token is revoked/expired** or the client
+    secret rotated. Re-mint the refresh token for `no-reply@tamanor.com` (see PRODUCTION_ENV_CHECKLIST)
+    and update `GOOGLE_EMAIL_REFRESH_TOKEN`. Access tokens are minted server-side; no redeploy needed.
+  - `email.rate_limited` → Gmail send quota hit. Back off; check for a send loop; request a higher quota.
+  - `email.configuration_invalid` / `email.provider_unavailable` → provider misconfigured/unset →
+    fix env; `/api/ready` `email_provider` check will be `misconfigured` until corrected.
+  - `email.send_failed` (reason=`delivery_failed`/`invalid_recipient`) → transient 5xx are retried
+    (bounded); a permanent 4xx is a bad recipient/config (no retry). `auth.email_delivery_failed`
+    still fires at the auth layer for verification/reset specifically.
 - **Verification gate:** unverified email/password users are held on `/verify-email` (no dashboard);
   OAuth provider-verified users pass immediately. A password reset **revokes all sessions**.
 - **Token cleanup:** the worker maintenance tick deletes expired/consumed verification + reset tokens
