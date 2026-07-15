@@ -136,7 +136,8 @@ export async function GET(req: NextRequest) {
     : null;
 
   // Tenant write AFTER all provider HTTP has completed (read → fetch → write).
-  const onboarding = await withTenant(session.tenantId, (db) => db.metaOnboardingSession.create({
+  const onboardingId = (await withTenant(session.tenantId, async (db) => {
+  const onboarding = await db.metaOnboardingSession.create({
     data: {
       tenantId: session.tenantId,
       brandId,
@@ -150,9 +151,15 @@ export async function GET(req: NextRequest) {
       pages: pages as never,
       expiresAt: new Date(Date.now() + ONBOARDING_TTL_MS),
     },
-  }));
+    select: {
+      id: true,
+    },
+  });
 
-  jar.set(ONBOARDING_COOKIE, onboarding.id, {
+  return onboarding.id;
+})) as string;
+
+jar.set(ONBOARDING_COOKIE, onboardingId, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
