@@ -5,6 +5,9 @@ import { ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
+import { requireDashboardCapability } from "@/server/route-guard";
+import { CapabilityLockedState } from "@/components/dashboard/capability-locked";
+import { getLocale } from "@/i18n/locale-server";
 import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
@@ -18,6 +21,8 @@ export const dynamic = "force-dynamic";
 
 export default async function ControlCenterPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const t = await getT();
+  const cap = await requireDashboardCapability("controlCenter");
+  if (!cap.allowed) return <CapabilityLockedState capability={cap.locked.capability} plan={cap.locked.plan} locale={await getLocale()} />;
   const session = await requireSession();
   const sp = await searchParams;
   const manage = can(session.role, Permission.RuleManage);

@@ -7,12 +7,13 @@ import {
   BrandTone,
   Permission,
   assertCan,
+  EntitlementError,
+  emitOpsEvent,
 } from "@guardora/core";
 import { DEFAULT_AUTO_PROTECT_POLICIES } from "@guardora/ai";
-import { withTenant } from "@guardora/db";
+import { withTenant, createWithinResourceLimit } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
-import { checkCreationLimit } from "@/server/entitlements";
 
 function enumValue<T extends Record<string, string>>(
   e: T,
@@ -32,43 +33,39 @@ export async function createBrand(formData: FormData): Promise<void> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Brand name is required");
 
-  // V1.50E — plan brand limit (server-counted; restricted tenants are blocked). Preserves existing
-  // data on downgrade — only NEW creation is refused.
-  const brandCount = await withTenant(session.tenantId, (db) => db.brand.count({ where: { tenantId: session.tenantId } }));
-  const limit = await checkCreationLimit(session.tenantId, "brand", brandCount);
-  if (limit) redirect(`/dashboard/brands?error=${limit}`);
-
-  const brand = await withTenant(session.tenantId, async (db) => {
-    const brand = await db.brand.create({
-      data: {
-        tenantId: session.tenantId,
-        name,
-        displayName: String(formData.get("displayName") ?? "").trim() || null,
-        defaultLocale: String(formData.get("defaultLocale") ?? "en").trim() || "en",
-        timezone: String(formData.get("timezone") ?? "UTC").trim() || "UTC",
-        defaultTone: enumValue(BrandTone, formData.get("defaultTone"), BrandTone.Professional),
-        status: enumValue(BrandStatus, formData.get("status"), BrandStatus.Active),
-      },
+  // V1.50F — ATOMIC brand limit: the advisory-locked count + create run in ONE transaction, so two
+  // concurrent creates can never exceed maxBrands; a restricted tenant (limit 0) is denied; a failed
+  // create consumes no capacity. Downgrade preserves existing brands — only NEW creation is blocked.
+  let brand;
+  try {
+    brand = await createWithinResourceLimit(session.tenantId, "brands", async (db) => {
+      const b = await db.brand.create({
+        data: {
+          tenantId: session.tenantId,
+          name,
+          displayName: String(formData.get("displayName") ?? "").trim() || null,
+          defaultLocale: String(formData.get("defaultLocale") ?? "en").trim() || "en",
+          timezone: String(formData.get("timezone") ?? "UTC").trim() || "UTC",
+          defaultTone: enumValue(BrandTone, formData.get("defaultTone"), BrandTone.Professional),
+          status: enumValue(BrandStatus, formData.get("status"), BrandStatus.Active),
+        },
+      });
+      await db.brandAutoProtectPolicy.createMany({
+        data: DEFAULT_AUTO_PROTECT_POLICIES.map((p) => ({
+          tenantId: session.tenantId, brandId: b.id, category: p.category, mode: p.mode,
+          minConfidence: 0.7, isActive: true, createdBy: session.userId,
+        })),
+      });
+      await writeAudit({ session, db, event: "brand.created", brandId: b.id, targetType: "brand", targetId: b.id, metadata: { name: b.name, autoProtectDefaults: DEFAULT_AUTO_PROTECT_POLICIES.length } });
+      return b;
     });
-
-    // Safe Auto-Protect defaults (shadow mode only; criticism stays monitor).
-    await db.brandAutoProtectPolicy.createMany({
-      data: DEFAULT_AUTO_PROTECT_POLICIES.map((p) => ({
-        tenantId: session.tenantId, brandId: brand.id, category: p.category, mode: p.mode,
-        minConfidence: 0.7, isActive: true, createdBy: session.userId,
-      })),
-    });
-
-    await writeAudit({
-      session, db,
-      event: "brand.created",
-      brandId: brand.id,
-      targetType: "brand",
-      targetId: brand.id,
-      metadata: { name: brand.name, autoProtectDefaults: DEFAULT_AUTO_PROTECT_POLICIES.length },
-    });
-    return brand;
-  });
+  } catch (e) {
+    if (e instanceof EntitlementError) {
+      emitOpsEvent("entitlement.limit_reached", { operation: "create_brand", reason: e.reason });
+      redirect(`/dashboard/brands?error=${e.reason}`);
+    }
+    throw e;
+  }
 
   revalidatePath("/dashboard/brands");
   redirect(`/dashboard/brands/${brand.id}`);

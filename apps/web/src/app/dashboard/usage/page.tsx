@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { requireSession } from "@/server/auth";
-import { withTenant, getUsageSummary, getUsageDiagnostic, type UsageStatus } from "@guardora/db";
+import { withTenant, getUsageSummary, getUsageDiagnostic, getTenantResourceUsage, getTenantBilling, type UsageStatus } from "@guardora/db";
+import { planEntitlements } from "@guardora/core";
 import { getPaidAiFuseConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { getLocale } from "@/i18n/locale-server";
@@ -22,6 +24,12 @@ const COPY: Record<Locale, {
   meterBudget: string;
   usageCopy: string;
   paidStatus: (on: boolean) => string;
+  resourcesTitle: string;
+  meterConnections: string;
+  meterBrands: string;
+  overLimit: string;
+  paymentIssue: string;
+  manageBilling: string;
   diagnosticTitle: string;
   adminOnly: string;
   dEffectivePlan: string;
@@ -49,6 +57,12 @@ const COPY: Record<Locale, {
     meterBudget: "Advanced AI budget",
     usageCopy: "Advanced AI pauses when the monthly limit is reached. Your inbox remains available.",
     paidStatus: (on) => `Advanced (paid) AI is ${on ? "enabled" : "disabled"}.`,
+    resourcesTitle: "Plan resources",
+    meterConnections: "Connected accounts",
+    meterBrands: "Brands",
+    overLimit: "You're over your plan limit — no new items can be added until you upgrade or remove some. Existing data stays intact.",
+    paymentIssue: "There's a problem with your billing. Restore full access to keep syncing and taking action.",
+    manageBilling: "Manage billing",
     diagnosticTitle: "Diagnostic",
     adminOnly: "· admin only",
     dEffectivePlan: "Effective plan",
@@ -76,6 +90,12 @@ const COPY: Record<Locale, {
     meterBudget: "Rozpočet na pokročilú AI",
     usageCopy: "Pokročilá AI sa pozastaví po dosiahnutí mesačného limitu. Vaša schránka zostáva dostupná.",
     paidStatus: (on) => `Pokročilá (platená) AI je ${on ? "zapnutá" : "vypnutá"}.`,
+    resourcesTitle: "Zdroje plánu",
+    meterConnections: "Pripojené účty",
+    meterBrands: "Značky",
+    overLimit: "Prekročili ste limit plánu — kým neprejdete na vyšší plán alebo niečo neodstránite, nedajú sa pridať nové položky. Existujúce dáta zostávajú nedotknuté.",
+    paymentIssue: "S vašou fakturáciou je problém. Obnovte plný prístup, aby synchronizácia a akcie pokračovali.",
+    manageBilling: "Spravovať fakturáciu",
     diagnosticTitle: "Diagnostika",
     adminOnly: "· len pre správcu",
     dEffectivePlan: "Efektívny plán",
@@ -103,6 +123,12 @@ const COPY: Record<Locale, {
     meterBudget: "Budget für erweiterte KI",
     usageCopy: "Die erweiterte KI pausiert, sobald das monatliche Limit erreicht ist. Ihr Postfach bleibt verfügbar.",
     paidStatus: (on) => `Die erweiterte (kostenpflichtige) KI ist ${on ? "aktiviert" : "deaktiviert"}.`,
+    resourcesTitle: "Tarif-Ressourcen",
+    meterConnections: "Verbundene Konten",
+    meterBrands: "Marken",
+    overLimit: "Sie haben Ihr Tariflimit überschritten — bis zu einem Upgrade oder Entfernen können keine neuen Einträge hinzugefügt werden. Vorhandene Daten bleiben erhalten.",
+    paymentIssue: "Mit Ihrer Abrechnung stimmt etwas nicht. Stellen Sie den vollen Zugriff wieder her, damit Synchronisierung und Aktionen weiterlaufen.",
+    manageBilling: "Abrechnung verwalten",
     diagnosticTitle: "Diagnose",
     adminOnly: "· nur für Administratoren",
     dEffectivePlan: "Effektiver Tarif",
@@ -149,6 +175,15 @@ export default async function UsagePage() {
   const locale = await getLocale();
   const c = COPY[locale];
 
+  // Canonical resource usage — the SAME counting helpers + plan limits the server enforces at create time.
+  const resources = await getTenantResourceUsage(session.tenantId);
+  const planLimits = planEntitlements(plan);
+  const billing = await getTenantBilling(session.tenantId);
+  const pct = (used: number, limit: number | null) => (limit === null || limit <= 0 ? (used > 0 ? 100 : 0) : Math.round((used / limit) * 100));
+  const isOver = (used: number, limit: number | null) => limit !== null && used > limit;
+  const overLimit = isOver(resources.connections, planLimits.maxConnectedAccounts) || isOver(resources.brands, planLimits.maxBrands);
+  const paymentIssue = billing?.accessState === "restricted" || billing?.billingStatus === "past_due" || billing?.billingStatus === "unpaid";
+
   return (
     <>
       <PageHeader eyebrow={c.eyebrow} title={c.title} description={c.description} />
@@ -178,6 +213,39 @@ export default async function UsagePage() {
           <span className={`inline-block h-2 w-2 rounded-full ${fuse.effectiveEnabled ? "bg-[var(--color-ok)]" : "bg-[var(--color-muted)]"}`} />
           <span className="text-[var(--color-muted)]">{c.paidStatus(fuse.effectiveEnabled)}</span>
         </p>
+      </Card>
+      </div>
+
+      <div data-testid="usage-resources" className="mt-4" data-over-limit={overLimit ? "true" : "false"}>
+      <Card className="p-5">
+        <h3 className="mb-4 text-sm font-semibold">{c.resourcesTitle}</h3>
+        <div className="flex flex-col gap-4">
+          <Meter
+            testid="usage-connections"
+            label={c.meterConnections}
+            used={formatNumber(resources.connections)}
+            limit={planLimits.maxConnectedAccounts === null ? "∞" : formatNumber(planLimits.maxConnectedAccounts)}
+            percent={pct(resources.connections, planLimits.maxConnectedAccounts)}
+          />
+          <Meter
+            testid="usage-brands"
+            label={c.meterBrands}
+            used={formatNumber(resources.brands)}
+            limit={planLimits.maxBrands === null ? "∞" : formatNumber(planLimits.maxBrands)}
+            percent={pct(resources.brands, planLimits.maxBrands)}
+          />
+        </div>
+        {overLimit ? (
+          <p role="alert" className="mt-4 rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger-soft)] px-3 py-2 text-xs text-[var(--color-danger)]" data-testid="usage-over-limit">
+            {c.overLimit}
+          </p>
+        ) : null}
+        {paymentIssue ? (
+          <p role="alert" className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-3 py-2 text-xs text-[var(--color-warn)]" data-testid="usage-payment-issue">
+            <span>{c.paymentIssue}</span>
+            <Link href="/dashboard/billing" className="font-semibold underline">{c.manageBilling}</Link>
+          </p>
+        ) : null}
       </Card>
       </div>
 

@@ -4,6 +4,9 @@ import { PageHeader, Card, SectionHeader, StatCard, Badge, EmptyState, Tabs } fr
 import { TrendChart, BarList } from "@/components/dashboard/trend-chart";
 import { PlatformBreakdown } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
+import { requireDashboardCapability } from "@/server/route-guard";
+import { CapabilityLockedState } from "@/components/dashboard/capability-locked";
+import { getLocale } from "@/i18n/locale-server";
 import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
@@ -20,6 +23,10 @@ const TABS = ["overview", "sentiment", "emotions", "posts", "topics"] as const;
 type Where = { tenantId: string };
 
 export default async function InsightsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  // V1.50F — Growth-only capability. A Starter/free-trial tenant hitting this URL directly gets a
+  // truthful locked state and NO data is queried (backend guard is authoritative; no URL bypass).
+  const cap = await requireDashboardCapability("reputationAnalytics");
+  if (!cap.allowed) return <CapabilityLockedState capability={cap.locked.capability} plan={cap.locked.plan} locale={await getLocale()} />;
   const session = await requireSession();
   const hdrT = await getT();
   const sp = await searchParams;

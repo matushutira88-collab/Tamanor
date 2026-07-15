@@ -1,5 +1,8 @@
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
+import { requireDashboardCapability } from "@/server/route-guard";
+import { CapabilityLockedState } from "@/components/dashboard/capability-locked";
+import { getLocale } from "@/i18n/locale-server";
 import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { getT } from "@/i18n/server";
@@ -12,6 +15,8 @@ const SEVERITY_TONE: Record<string, string> = { critical: "danger", high: "dange
 
 export default async function IncidentsPage() {
   const t = await getT();
+  const cap = await requireDashboardCapability("incidents");
+  if (!cap.allowed) return <CapabilityLockedState capability={cap.locked.capability} plan={cap.locked.plan} locale={await getLocale()} />;
   const session = await requireSession();
   const realMode = await getRealModeFilter(session.tenantId);
   const where = { tenantId: session.tenantId, ...realMode.brandWhere };

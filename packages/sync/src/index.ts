@@ -25,6 +25,7 @@ import {
   markWebhookProcessed,
   linkWebhookEventToTenant,
   getTenantActivityState,
+  getTenantOperationGate,
   acquireSyncLease,
   releaseSyncLease,
   type TenantTx,
@@ -41,6 +42,8 @@ import {
   isRealConnection,
   modeAllowsSync,
   accessAllowsOperations,
+  emitOpsEvent,
+  metrics,
 } from "@guardora/core";
 import {
   createConnectorRuntime,
@@ -210,6 +213,17 @@ export async function runReadOnlySync(
   const activity = await getTenantActivityState(tenantId);
   if (!activity.ok) {
     return zero(false, "This workspace is being deleted — sync is disabled.");
+  }
+
+  // V1.50F — READ-ONLY SYNC PAUSE. Every sync entry (manual, background/autosync, webhook-triggered)
+  // funnels through here, so this ONE fresh access-state check pauses all ingestion for a restricted/
+  // suspended tenant: no lease, no SyncRun, no content/reputation item is created, and no provider
+  // health is resurrected. Active/trial/grace tenants continue normally. Deletion is handled above.
+  const gate = await getTenantOperationGate(tenantId);
+  if (!gate.allowed && gate.reason !== "tenant_deleting") {
+    metrics.inc("sync_restricted_skipped_total", { reason: gate.reason ?? "unknown" });
+    emitOpsEvent("sync.restricted_skipped", { reason: gate.reason ?? "unknown" });
+    return zero(false, "Sync is paused — your billing access is restricted.");
   }
 
   // --- Phase A: tenant read (short tx) — load the account under RLS. ---

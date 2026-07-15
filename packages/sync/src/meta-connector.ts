@@ -11,7 +11,8 @@
  * and runs strictly BETWEEN short tenant transactions: read → provider HTTP → write.
  * A provider failure is classified as transient and never corrupts local state.
  */
-import { withTenantDb, decryptToken, encryptToken, metaConnectedAccountFields, ActorKind } from "@guardora/db";
+import { withTenantDb, decryptToken, encryptToken, metaConnectedAccountFields, ActorKind, acquireTenantResourceLock, countCommercialConnections } from "@guardora/db";
+import { EntitlementError, isWithinLimit } from "@guardora/core";
 import {
   GraphMetaConnectorTransport,
   type MetaConnectorTransport,
@@ -62,6 +63,9 @@ export interface MetaLinkInput {
   encryptedToken: string;
   tokenType: string | null;
   tokenExpiresAt: Date | null;
+  /** V1.50F — when set, enforce the connection limit ATOMICALLY (advisory-locked) as a NEW Page is
+   *  connected. A Page + its linked IG count as ONE bundle. Throws EntitlementError over the limit. */
+  enforceLimit?: { max: number | null };
 }
 
 export interface MetaLinkResult {
@@ -90,10 +94,17 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
   });
 
   return withTenantDb(tenantId, async (db) => {
+    // V1.50F — serialize connection creation against the plan limit inside THIS transaction (advisory
+    // lock). A NEW Page over the limit throws → the whole tx rolls back → no partial Page/IG cluster.
+    await acquireTenantResourceLock(db, tenantId, "connections");
     const existingPage = await db.connectedAccount.findFirst({
       where: { brandId, platform: "facebook_page" as never, externalId: page.pageId },
       select: { id: true },
     });
+    if (!existingPage && input.enforceLimit) {
+      const count = await countCommercialConnections(db, tenantId);
+      if (!isWithinLimit(count, input.enforceLimit.max)) throw new EntitlementError("account_limit_reached");
+    }
     const pageAcc = await db.connectedAccount.upsert({
       where: { brandId_platform_externalId: { brandId, platform: "facebook_page" as never, externalId: page.pageId } },
       create: { tenantId, brandId, platform: "facebook_page" as never, externalId: page.pageId, ...fields },

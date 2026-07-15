@@ -53,10 +53,18 @@ export type OpsEvent =
   // V1.50E — entitlement enforcement (only plan/operation/result/reason labels; never PII/IDs).
   | "entitlement.denied"
   | "entitlement.limit_reached"
-  | "entitlement.restricted_blocked";
+  | "entitlement.restricted_blocked"
+  // V1.50F — route locking, restricted sync pause, atomic limits (low-cardinality labels only).
+  | "route.capability_denied"
+  | "sync.restricted_skipped"
+  | "webhook.sync_skipped"
+  | "limit.concurrent_contention"
+  | "limit.over_limit_detected";
 
 /** Low-cardinality label keys allowed on ops events + metrics. Anything else is a cardinality risk. */
-export type SafeLabel = "platform" | "result" | "operation" | "env" | "reason" | "severity";
+// V1.50F — `plan` + `capability` added for entitlement/route observability (both LOW cardinality:
+// ~5 plans, ~5 capabilities). Never a tenant/user/provider id.
+export type SafeLabel = "platform" | "result" | "operation" | "env" | "reason" | "severity" | "plan" | "capability";
 
 const SECRET_KEY = /(token|secret|password|cookie|authorization|database_url|app_database_url|api[_-]?key|encryption[_-]?key|email|payload)/i;
 const SECRET_VALUE = /(bearer\s+[a-z0-9._-]+|postgres(?:ql)?:\/\/|plain:v1:|aesgcm:v1:|eyj[a-z0-9._-]+|@[a-z0-9.-]+\.[a-z]{2,})/i;

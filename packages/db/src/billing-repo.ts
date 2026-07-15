@@ -74,9 +74,23 @@ export async function getTenantEntitlements(tenantId: string): Promise<PlanEntit
 
 /** Whether NEW operations (sync, moderation execution, provider actions) may run for this tenant. */
 export async function tenantAllowsOperations(tenantId: string): Promise<boolean> {
+  return (await getTenantOperationGate(tenantId)).allowed;
+}
+
+export type OperationGateReason = "tenant_deleting" | "billing_restricted" | "suspended" | "tenant_missing";
+
+/**
+ * V1.50F — central operation gate with a NORMALIZED reason (for sync-pause skips + observability).
+ * Precedence: deletion > suspended > restricted > allowed. This is the ONE place sync/execution
+ * paths consult; they never re-derive restricted-state logic. Unknown/missing tenant → not allowed.
+ */
+export async function getTenantOperationGate(tenantId: string): Promise<{ allowed: boolean; reason: OperationGateReason | null }> {
   const t = await systemDb.tenant.findUnique({ where: { id: tenantId }, select: { accessState: true, deletionState: true } });
-  if (!t || t.deletionState !== "active") return false;
-  return accessAllowsOperations(t.accessState as AccessState);
+  if (!t) return { allowed: false, reason: "tenant_missing" };
+  if (t.deletionState !== "active") return { allowed: false, reason: "tenant_deleting" };
+  if (t.accessState === "suspended") return { allowed: false, reason: "suspended" };
+  if (!accessAllowsOperations(t.accessState as AccessState)) return { allowed: false, reason: "billing_restricted" };
+  return { allowed: true, reason: null };
 }
 
 /** Resolve the Stripe customer id already stored for a tenant (for reuse at checkout). */

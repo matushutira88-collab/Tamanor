@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Permission, assertCan } from "@guardora/core";
+import { Permission, assertCan, EntitlementError, emitOpsEvent } from "@guardora/core";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
 import { checkAccountToken, linkMetaAssets } from "@guardora/sync";
-import { encryptToken, withTenant, assertTenantActive } from "@guardora/db";
+import { encryptToken, withTenant, assertTenantActive, getTenantEntitlements } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
-import { checkCreationLimit } from "@/server/entitlements";
 
 /**
  * Confirm the Page (and optionally IG) selection. Only here — after explicit
@@ -45,42 +44,38 @@ export async function confirmMetaSelection(
     redirect("/dashboard/accounts/meta/select?flow=bad_page");
   }
 
-  // V1.50E — plan connection limit. CLUSTER RULE: a Facebook Page and its linked Instagram Business
-  // account are ONE connection bundle (we count Pages, never the linked IG separately). Reconnecting
-  // an existing Page consumes no slot; a NEW page is checked against the plan limit (restricted → 0),
-  // enforced HERE on the real OAuth-finalize path (not UI-only).
-  const existingPage = await withTenant(session.tenantId, (db) => db.connectedAccount.findFirst({
-    where: { tenantId: session.tenantId, platform: "facebook_page" as never, pageId: page.pageId },
-    select: { id: true },
-  }));
-  if (!existingPage) {
-    const pageCount = await withTenant(session.tenantId, (db) => db.connectedAccount.count({
-      where: { tenantId: session.tenantId, platform: "facebook_page" as never },
-    }));
-    const limit = await checkCreationLimit(session.tenantId, "account", pageCount);
-    if (limit) redirect(`/dashboard/accounts?error=${encodeURIComponent(limit)}`);
-  }
-
   // Scopes actually requested/granted for THIS flow (env-driven).
   const scopes = row.grantedScopes;
   const granted = row.grantedScopes;
   // Page tokens (from a long-lived user token) are long-lived. Encrypt at rest.
   const encryptedToken = encryptToken(page.pageAccessToken);
 
-  // V1.38 — persist the Page (+ optionally its linked IG account) as ONE unified,
-  // idempotent connector. A reconnect refreshes the SAME rows (never a duplicate) and
-  // (re)establishes the canonical IG → Page parentAccountId link. Fully audited inside.
-  const link = await linkMetaAssets({
-    tenantId: session.tenantId,
-    brandId: row.brandId,
-    page,
-    connectIg,
-    scopes,
-    grantedPermissions: granted,
-    encryptedToken,
-    tokenType: row.tokenType,
-    tokenExpiresAt: row.tokenExpiresAt,
-  });
+  // V1.50F — ATOMIC connection limit on the real OAuth-finalize path. `linkMetaAssets` acquires a
+  // tenant advisory lock and rejects a NEW Page over the plan limit INSIDE its own transaction, so a
+  // failed finalize leaves no partial Page/IG cluster and concurrent finalizes cannot over-allocate.
+  // CLUSTER RULE: a Page + its linked IG = ONE bundle. Restricted tenants have max 0 → denied.
+  const ent = await getTenantEntitlements(session.tenantId);
+  let link;
+  try {
+    link = await linkMetaAssets({
+      tenantId: session.tenantId,
+      brandId: row.brandId,
+      page,
+      connectIg,
+      scopes,
+      grantedPermissions: granted,
+      encryptedToken,
+      tokenType: row.tokenType,
+      tokenExpiresAt: row.tokenExpiresAt,
+      enforceLimit: { max: ent.maxConnectedAccounts },
+    });
+  } catch (e) {
+    if (e instanceof EntitlementError) {
+      emitOpsEvent("entitlement.limit_reached", { operation: "connect_account", reason: e.reason });
+      redirect(`/dashboard/accounts?error=${encodeURIComponent(e.reason)}`);
+    }
+    throw e;
+  }
   const fbId = link.pageAccountId;
 
   await clearOnboarding(session, onboardingId);

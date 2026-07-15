@@ -8,12 +8,14 @@ import {
   Permission,
   Platform,
   assertCan,
+  EntitlementError,
+  isWithinLimit,
+  emitOpsEvent,
 } from "@guardora/core";
 import { runReadOnlySync, disconnectAccount } from "@guardora/sync";
-import { withTenant, assertTenantActive } from "@guardora/db";
+import { withTenant, assertTenantActive, getTenantEntitlements, acquireTenantResourceLock, countCommercialConnections } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
-import { checkCreationLimit } from "@/server/entitlements";
 
 function asPlatform(raw: string): Platform {
   if (!(Object.values(Platform) as string[]).includes(raw)) {
@@ -38,56 +40,47 @@ export async function connectMock(
   await assertTenantActive(session.tenantId);
   const platform = asPlatform(platformRaw);
 
-  // V1.50E — plan connection limit. Only a NEW account consumes a slot; reconnecting/refreshing an
-  // existing one does not. A restricted tenant (limit forced to 0) is blocked here on the server.
-  const preflight = await withTenant(session.tenantId, async (db) => ({
-    isNew: !(await db.connectedAccount.findFirst({ where: { brandId, platform }, select: { id: true } })),
-    count: await db.connectedAccount.count({ where: { tenantId: session.tenantId } }),
-  }));
-  if (preflight.isNew) {
-    const limit = await checkCreationLimit(session.tenantId, "account", preflight.count);
-    if (limit) redirect(`/dashboard/accounts?error=${limit}`);
-  }
+  // V1.50F — ATOMIC connection limit: the advisory-locked count + create run in ONE transaction, so
+  // concurrent connects can never exceed maxConnectedAccounts. Only a NEW account consumes a slot;
+  // reconnecting an existing one does not. A restricted tenant (limit 0) is denied on the server.
+  const ent = await getTenantEntitlements(session.tenantId);
+  try {
+    await withTenant(session.tenantId, async (db) => {
+      await acquireTenantResourceLock(db, session.tenantId, "connections");
+      const brand = await db.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true, name: true } });
+      if (!brand) throw new Error("Brand not found");
 
-  await withTenant(session.tenantId, async (db) => {
-    // Ensure the brand belongs to the tenant.
-    const brand = await db.brand.findFirst({
-      where: { id: brandId, tenantId: session.tenantId },
-      select: { id: true, name: true },
+      const existing = await db.connectedAccount.findFirst({ where: { brandId, platform } });
+      if (existing) {
+        await db.connectedAccount.update({ where: { id: existing.id }, data: { status: ConnectorStatus.MockConnected, mode: ConnectorMode.Placeholder } });
+      } else {
+        const count = await countCommercialConnections(db, session.tenantId);
+        if (!isWithinLimit(count, ent.maxConnectedAccounts)) throw new EntitlementError("account_limit_reached");
+        await db.connectedAccount.create({
+          data: {
+            tenantId: session.tenantId, brandId, platform,
+            status: ConnectorStatus.MockConnected, mode: ConnectorMode.Placeholder,
+            externalId: `mock_${platform}_${brandId.slice(-6)}`, externalName: `${brand.name} (mock)`, scopes: [],
+          },
+        });
+      }
+
+      await writeAudit({
+        session, db,
+        event: "connector.mock_connected",
+        brandId,
+        targetType: "connected_account",
+        targetId: `${brandId}:${platform}`,
+        metadata: { platform, mock: true },
+      });
     });
-    if (!brand) throw new Error("Brand not found");
-
-    const existing = await db.connectedAccount.findFirst({ where: { brandId, platform } });
-
-    if (existing) {
-      await db.connectedAccount.update({
-        where: { id: existing.id },
-        data: { status: ConnectorStatus.MockConnected, mode: ConnectorMode.Placeholder },
-      });
-    } else {
-      await db.connectedAccount.create({
-        data: {
-          tenantId: session.tenantId,
-          brandId,
-          platform,
-          status: ConnectorStatus.MockConnected,
-          mode: ConnectorMode.Placeholder,
-          externalId: `mock_${platform}_${brandId.slice(-6)}`,
-          externalName: `${brand.name} (mock)`,
-          scopes: [],
-        },
-      });
+  } catch (e) {
+    if (e instanceof EntitlementError) {
+      emitOpsEvent("entitlement.limit_reached", { operation: "connect_account", reason: e.reason });
+      redirect(`/dashboard/accounts?error=${e.reason}`);
     }
-
-    await writeAudit({
-      session, db,
-      event: "connector.mock_connected",
-      brandId,
-      targetType: "connected_account",
-      targetId: `${brandId}:${platform}`,
-      metadata: { platform, mock: true },
-    });
-  });
+    throw e;
+  }
 
   revalidatePath("/dashboard/accounts");
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Platform } from "@guardora/core";
+import { Platform, publicPricingProjection } from "@guardora/core";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HeroMock } from "@/components/hero-mock";
@@ -374,10 +374,18 @@ export function LandingContent({ dict, locale }: { dict: Dictionary; locale: Loc
             <h2 className="mt-4 gu-display text-3xl md:text-4xl">{t.beta.pricingTitle}</h2>
             <p className="mt-3 text-[var(--color-muted)]">{t.beta.pricingSubtitle}</p>
           </div>
+          {/* V1.50F — prices + plan NAMES come from the single canonical catalogue (publicPricingProjection);
+              the translation dictionary supplies only localized taglines + feature labels. There is no
+              parallel numeric plan array — a translator can never change a commercial price/limit. */}
           <PricingPlans
-            plans={t.beta.plans}
+            plans={publicPricingProjection().plans.map((card, i) => ({
+              name: card.name,
+              price: `€${card.priceMonthly}`,
+              tagline: t.beta.plans[i]?.tagline ?? card.tagline,
+              features: t.beta.plans[i]?.features ?? card.features,
+            }))}
             enterprise={{
-              name: t.beta.enterpriseName,
+              name: publicPricingProjection().enterprise.name,
               price: t.pricing.talkToUs,
               tagline: t.beta.enterpriseTagline,
               features: t.beta.enterpriseFeatures,
