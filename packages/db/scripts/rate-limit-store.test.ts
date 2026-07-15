@@ -32,6 +32,19 @@ async function run() {
   const d1 = await shared.check("ip:9.9.9.9"), d2 = await shared.check("ip:9.9.9.9"), d3 = await shared.check("ip:9.9.9.9");
   check("SharedRateLimiter: allows up to limit then denies", d1.allowed && d2.allowed && !d3.allowed);
 
+  // Distributed counting — TWO SharedRateLimiter "server instances" over ONE shared store share the
+  // count (models multiple Vercel instances hitting Upstash): 5 total hits across both → 3 allowed.
+  const sharedStore = new InMemoryRateLimitStore();
+  const instA = new SharedRateLimiter(sharedStore, { windowMs: 60_000, limit: 3 });
+  const instB = new SharedRateLimiter(sharedStore, { windowMs: 60_000, limit: 3 });
+  const seq = [await instA.check("ip:7"), await instB.check("ip:7"), await instA.check("ip:7"), await instB.check("ip:7"), await instA.check("ip:7")];
+  check("distributed: 2 instances/1 store → exactly `limit` allowed across both", seq.filter((d) => d.allowed).length === 3, String(seq.filter((d) => d.allowed).length));
+  // Retry after expiry — a short-window shared limiter resets.
+  const expStore = new InMemoryRateLimitStore();
+  const expLim = new SharedRateLimiter(expStore, { windowMs: 1, limit: 1 });
+  await expLim.check("k"); await new Promise((r) => setTimeout(r, 5));
+  check("distributed: retry allowed after window expiry", (await expLim.check("k")).allowed === true);
+
   // Fail-closed: when the store throws (unreachable), sensitive path is DENIED by default.
   const throwing: RateLimitStore = { name: "boom", async hit(): Promise<RateLimitDecision> { throw new Error("down"); } };
   check("fail-closed (default): store down → DENIED", (await new SharedRateLimiter(throwing, { windowMs: 1000, limit: 5 }).check("x")).allowed === false);

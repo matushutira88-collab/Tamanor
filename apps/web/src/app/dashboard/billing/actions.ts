@@ -35,7 +35,7 @@ export async function startCheckout(formData: FormData): Promise<void> {
   const session = await requireBillingOwner();
 
   const ip = ipKeyFromHeader((await headers()).get("x-forwarded-for"));
-  if (!authLimiter.check(`checkout:${ip}`).allowed) redirect("/dashboard/billing?error=rate_limited");
+  if (!(await authLimiter.check(`checkout:${ip}`)).allowed) redirect("/dashboard/billing?error=rate_limited");
 
   const plan = String(formData.get("plan") ?? "");
   const interval = String(formData.get("interval") ?? "monthly");
@@ -63,7 +63,7 @@ export async function openBillingPortal(): Promise<void> {
   const session = await requireBillingOwner();
 
   const ip = ipKeyFromHeader((await headers()).get("x-forwarded-for"));
-  if (!authLimiter.check(`portal:${ip}`).allowed) redirect("/dashboard/billing?error=rate_limited");
+  if (!(await authLimiter.check(`portal:${ip}`)).allowed) redirect("/dashboard/billing?error=rate_limited");
 
   const res = await createPortal({ tenantId: session.tenantId, origin: await requestOrigin() });
   if (!res.ok) {

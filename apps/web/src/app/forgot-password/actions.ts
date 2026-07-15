@@ -28,7 +28,7 @@ export async function forgotPasswordAction(formData: FormData): Promise<void> {
   const norm = normalizeEmail(email);
   const ip = ipKeyFromHeader((await headers()).get("x-forwarded-for"));
   // Rate-limited requests STILL return the generic response (no signal).
-  if (emailSendLimiter.check(`forgot:ip:${ip}`).allowed && emailSendLimiter.check(`forgot:email:${norm}`).allowed) {
+  if ((await emailSendLimiter.check(`forgot:ip:${ip}`)).allowed && (await emailSendLimiter.check(`forgot:email:${norm}`)).allowed) {
     const user = await findUserForLogin(norm);
     if (user && user.passwordHash) {
       await issueResetEmail(user.id, norm, await getLocale());

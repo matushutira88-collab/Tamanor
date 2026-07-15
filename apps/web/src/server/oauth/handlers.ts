@@ -25,7 +25,7 @@ export function startHandler(provider: OAuthProvider) {
     const back = (code: string) => NextResponse.redirect(new URL(`/${mode}?error=${code}`, origin));
 
     const ip = ipKeyFromHeader(req.headers.get("x-forwarded-for"));
-    if (!authLimiter.check(`oauth:${ip}`).allowed) {
+    if (!(await authLimiter.check(`oauth:${ip}`)).allowed) {
       metrics.inc("auth_rate_limited_total", { operation: "oauth_start" });
       return back("rate_limited");
     }

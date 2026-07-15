@@ -26,7 +26,7 @@ export async function registerAction(formData: FormData): Promise<void> {
   if (!(await isSameOrigin())) fail("csrf");
 
   const ipKey = ipKeyFromHeader((await headers()).get("x-forwarded-for"));
-  if (!authLimiter.check(`ip:${ipKey}`).allowed) {
+  if (!(await authLimiter.check(`ip:${ipKey}`)).allowed) {
     metrics.inc("auth_rate_limited_total", { operation: "register" });
     fail("rate_limited");
   }
@@ -45,7 +45,7 @@ export async function registerAction(formData: FormData): Promise<void> {
   if (!country) fail("missing_country");
 
   // Per-email limit (after validation, so it counts only well-formed attempts).
-  if (!authLimiter.check(`email:${normalizeEmail(email)}`).allowed) {
+  if (!(await authLimiter.check(`email:${normalizeEmail(email)}`)).allowed) {
     metrics.inc("auth_rate_limited_total", { operation: "register" });
     fail("rate_limited");
   }

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const dest = (path: string) => NextResponse.redirect(new URL(path, origin));
 
   const ip = ipKeyFromHeader(req.headers.get("x-forwarded-for"));
-  if (!authLimiter.check(`verify:${ip}`).allowed) return dest("/verify-email?status=rate_limited");
+  if (!(await authLimiter.check(`verify:${ip}`)).allowed) return dest("/verify-email?status=rate_limited");
 
   const token = req.nextUrl.searchParams.get("token");
   if (!token) return dest("/verify-email?status=invalid");

@@ -22,8 +22,10 @@ import { runMetaConnectorHealth } from "./meta-health";
  * (runReadOnlySync via autoSyncTick / webhooks) — the old non-persisting pipeline
  * skeleton has been removed.
  */
-async function tick(): Promise<void> {
+async function tick(): Promise<boolean> {
   log.info("tick.start", {});
+  // V1.51C — track whether any maintenance job actually did work this tick, to drive adaptive sleep.
+  let worked = false;
 
   // Token expiry monitor: flag expiring/expired connections for reconnect.
   try {
@@ -53,6 +55,7 @@ async function tick(): Promise<void> {
     const r = await runWebhookRetentionTick();
     if (r.minimized > 0 || r.deleted > 0) {
       log.info("webhook.retention", { minimized: r.minimized, deleted: r.deleted, durationMs: Date.now() - start });
+      worked = true;
     }
   } catch (err) {
     log.error("webhook.retention.failed", { error: err instanceof Error ? err.name : "unknown" });
@@ -66,6 +69,7 @@ async function tick(): Promise<void> {
     const c = await cleanupExpiredAuthTokens();
     if (c.verificationRemoved > 0 || c.resetRemoved > 0) {
       log.info("auth.token_cleanup", { verificationRemoved: c.verificationRemoved, resetRemoved: c.resetRemoved });
+      worked = true;
     }
   } catch (err) {
     log.error("auth.token_cleanup.failed", { error: err instanceof Error ? err.name : "unknown" });
@@ -79,8 +83,8 @@ async function tick(): Promise<void> {
     const now = new Date();
     const restricted = await sweepTrialExpirations(now);
     const purged = await purgeStripeWebhookEvents(new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000));
-    if (restricted > 0) { log.info("billing.trial_swept", { restricted }); emitOpsEvent("billing.access_restricted", { reason: "trial_expired" }); }
-    if (purged > 0) log.info("billing.webhook_purged", { purged });
+    if (restricted > 0) { log.info("billing.trial_swept", { restricted }); emitOpsEvent("billing.access_restricted", { reason: "trial_expired" }); worked = true; }
+    if (purged > 0) { log.info("billing.webhook_purged", { purged }); worked = true; }
   } catch (err) {
     log.error("billing.maintenance.failed", { error: err instanceof Error ? err.name : "unknown" });
     emitOpsEvent("billing.webhook_failed", { operation: "billing_maintenance", reason: err instanceof Error ? err.name : "unknown" });
@@ -103,7 +107,7 @@ async function tick(): Promise<void> {
   try {
     const res = await resumePendingTenantDeletions();
     metrics.setGauge("pending_tenant_deletions", res.pending);
-    if (res.pending > 0) log.info("tenant_deletion.resume", { pending: res.pending, resumed: res.resumed, failed: res.failed });
+    if (res.pending > 0) { log.info("tenant_deletion.resume", { pending: res.pending, resumed: res.resumed, failed: res.failed }); worked = true; }
     if (res.failed > 0) emitOpsEvent("tenant.deletion_failed", { operation: "tenant_deletion_resume", reason: "resume_incomplete" });
   } catch (err) {
     log.error("tenant_deletion.resume.failed", {
@@ -117,6 +121,7 @@ async function tick(): Promise<void> {
     const wh = await processPendingWebhookEvents();
     if (wh.enabled) {
       log.info("webhook.processed", { processed: wh.processed, synced: wh.synced });
+      if (wh.processed > 0) worked = true;
     }
   } catch (err) {
     log.error("webhook.process.failed", {
@@ -129,6 +134,7 @@ async function tick(): Promise<void> {
   try {
     const proposed = await proposeForHighRiskItems();
     log.info("tick.done", { proposalsCreated: proposed });
+    if (proposed > 0) worked = true;
   } catch (err) {
     log.error("proposals.failed", {
       error: err instanceof Error ? err.message : String(err),
@@ -141,6 +147,7 @@ async function tick(): Promise<void> {
   // than only on the absence of logs. Carries no PII/ids — just the tick cadence.
   metrics.setGauge("worker_last_tick_epoch_ms", Date.now());
   emitOpsEvent("worker.heartbeat", { operation: "maintenance_tick" });
+  return worked;
 }
 
 /**
@@ -221,12 +228,27 @@ async function main(): Promise<void> {
   });
 
   // Maintenance loop: token monitor, cleanup, webhooks, proposals.
+  // V1.51C — ADAPTIVE sleep: after an IDLE tick (no job did work) back off geometrically up to
+  // MAX (base × MAX_IDLE_MULT), and reset to the base interval the moment a tick does work. This
+  // cuts unnecessary wakeups when the system is quiet WITHOUT starving any job — every job still runs
+  // each tick, and the interval is bounded so nothing waits longer than the ceiling. `runTick` also
+  // records `worker_iteration_ms` (tick duration) and `worker_sleep_ms` (the chosen next sleep).
+  const BASE_MS = env.WORKER_SYNC_INTERVAL_MS;
+  const MAX_IDLE_MULT = Number(process.env.WORKER_MAX_IDLE_MULT ?? 4);
   const maintenance = (async () => {
-    await tick();
+    let sleepMs = BASE_MS;
+    const runTick = async () => {
+      const t0 = Date.now();
+      const worked = await tick();
+      metrics.observe("worker_iteration_ms", Date.now() - t0);
+      sleepMs = worked ? BASE_MS : Math.min(sleepMs * 2, BASE_MS * MAX_IDLE_MULT);
+      metrics.setGauge("worker_sleep_ms", sleepMs);
+    };
+    await runTick();
     while (state.running) {
-      await sleep(env.WORKER_SYNC_INTERVAL_MS);
+      await sleep(sleepMs);
       if (!state.running) break;
-      await tick();
+      await runTick();
     }
   })();
 

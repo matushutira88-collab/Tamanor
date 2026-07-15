@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, request as pwRequest, type Page } from "@playwright/test";
 
 /**
  * V1.43 — SCALABILITY proof at 1,000 / 5,000 / 10,000 items. The inbox is keyset-paginated and
@@ -16,13 +16,28 @@ const PAGE_SIZE = 25;
 const SIZES = [1000, 5000, 10000];
 const isDesktop = (n: string) => n === "auth-desktop";
 const SEARCH = encodeURIComponent("Scale item");
+const BASE_URL = `http://localhost:${process.env.E2E_PORT ?? 3220}`;
+const STORAGE = "e2e/.auth/state.json"; // the bootstrapped owner session (the seam route requires auth)
 
 type SeedResult = { seeded: number; total: number; unread: number; needle: number };
 
-async function seedBulk(page: Page, count: number): Promise<SeedResult> {
-  const res = await page.request.post(`/api/e2e/seed-inbox-bulk?count=${count}`, { timeout: 120_000 });
-  expect(res.ok(), `bulk seed HTTP ${res.status()}`).toBeTruthy();
-  return (await res.json()) as SeedResult;
+/**
+ * V1.51C — bulk seeding moved OUT of the timed test into `beforeAll`, so the ~thousands-of-rows
+ * insert cost is no longer charged against the per-test assertion timeout (the former cause of the
+ * 240s timeout at N=10000). The `beforeAll` has its own generous budget and runs only for the desktop
+ * project (the only one that executes the scale test), so the fixture is seeded exactly once per size.
+ * Seeding uses Node `fetch` against the same E2E seam route (no `page` fixture needed in beforeAll).
+ */
+async function seedBulk(count: number): Promise<SeedResult> {
+  // Authenticated request context (owner storageState) — the E2E seed seam requires a session.
+  const ctx = await pwRequest.newContext({ baseURL: BASE_URL, storageState: STORAGE });
+  try {
+    const res = await ctx.post(`/api/e2e/seed-inbox-bulk?count=${count}`, { timeout: 150_000 });
+    if (!res.ok()) throw new Error(`bulk seed HTTP ${res.status()}`);
+    return (await res.json()) as SeedResult;
+  } finally {
+    await ctx.dispose();
+  }
 }
 const cardCount = (page: Page) => page.locator("[data-inbox-item]").count();
 const indices = (page: Page) => page.locator("[data-inbox-item]").evaluateAll((els) =>
@@ -39,11 +54,24 @@ async function clickPager(page: Page, testid: "page-next" | "page-prev") {
 
 for (const N of SIZES) {
   test.describe(`inbox scalability @ ${N}`, () => {
+    let seed: SeedResult;
+
+    // Seed ONCE (desktop-only) before the timed test, with its own budget — not charged to the test.
+    // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form here.
+    test.beforeAll(async ({}, workerInfo) => {
+      if (!isDesktop(workerInfo.project.name)) return;
+      test.setTimeout(180_000); // hook budget for bulk seeding, separate from the per-test timeout
+      seed = await seedBulk(N);
+    });
+
     test(`keyset pagination, search, filters and memory hold at ${N} items`, async ({ page }, info) => {
       test.skip(!isDesktop(info.project.name), "scale suite runs once, on desktop");
-      test.setTimeout(240_000);
+      test.setTimeout(120_000); // assertions only — seeding happened in beforeAll
 
-      const seed = await seedBulk(page, N);
+      // Suppress the cookie-notice banner (fixed at the bottom, it otherwise intercepts the pager
+      // clicks). It is a localStorage-remembered acknowledgement — pre-set the key on every document.
+      await page.addInitScript(() => window.localStorage.setItem("tamanor_cookie_notice", "1"));
+
       expect(seed.seeded).toBe(N);
 
       // Isolate the bulk fixture via server-side search; newest-first ⇒ ordinals descending.

@@ -13,10 +13,14 @@
  * exercise the exact production authorization path with real tenants/users.
  */
 import { randomBytes, createHash } from "node:crypto";
+import { metrics } from "@guardora/core";
 import { prisma } from "./index";
 
 /** Absolute session lifetime. No sliding extension — expiry is fixed at creation. */
 export const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+
+/** V1.51C — persist `lastSeenAt` at most this often (activity marker; never affects expiry). */
+export const LAST_SEEN_THROTTLE_MS = 1000 * 60 * 10; // 10 minutes
 
 export type SessionRejectReason =
   | "unauthenticated"
@@ -147,13 +151,20 @@ async function hydrate(sessionId: string, userId: string, tenantId: string, expi
  */
 export async function readUserSession(token: string | null | undefined, now: Date = new Date()): Promise<ReadSessionResult> {
   if (!token) return { ok: false, reason: "unauthenticated" };
+  const _q0 = Date.now();
   const row = await prisma.userSession.findUnique({ where: { tokenHash: hashSessionToken(token) } });
+  metrics.observe("db_query_duration", Date.now() - _q0, { operation: "session_read" });
   if (!row) return { ok: false, reason: "unauthenticated" };
   if (row.revokedAt) return { ok: false, reason: "session_revoked" };
   if (row.expiresAt.getTime() <= now.getTime()) return { ok: false, reason: "session_expired" };
   const result = await hydrate(row.id, row.userId, row.activeTenantId, row.expiresAt, row.createdAt);
   if (!result.ok) return result; // membership_missing / password_changed / etc.
-  await prisma.userSession.update({ where: { id: row.id }, data: { lastSeenAt: now } });
+  // V1.51C — THROTTLED lastSeenAt write: only persist when it is stale by > 10 min. `lastSeenAt` is an
+  // approximate activity marker (never used for expiry — that is `expiresAt`), so eliminating the
+  // write on every request removes per-request write-amplification without any correctness loss.
+  if (!row.lastSeenAt || now.getTime() - row.lastSeenAt.getTime() > LAST_SEEN_THROTTLE_MS) {
+    await prisma.userSession.update({ where: { id: row.id }, data: { lastSeenAt: now } });
+  }
   return result;
 }
 

@@ -21,7 +21,7 @@ export async function submitLead(formData: FormData): Promise<void> {
 
   // V1.48P — bounded per-IP rate limit (fail-closed). Blocks lead-form spam without storing PII/IP.
   const ipKey = ipKeyFromHeader((await headers()).get("x-forwarded-for"));
-  if (!publicFormLimiter.check(ipKey).allowed) {
+  if (!(await publicFormLimiter.check(ipKey)).allowed) {
     metrics.inc("public_form_rate_limited_total", { operation: "lead_submit" });
     emitOpsEvent("web.5xx", { operation: "lead_submit", reason: "rate_limited" });
     fail("Too many requests. Please try again in a minute.");

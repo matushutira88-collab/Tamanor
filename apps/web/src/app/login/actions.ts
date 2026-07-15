@@ -23,7 +23,7 @@ export async function loginAction(formData: FormData): Promise<void> {
   if (!(await isSameOrigin())) fail("csrf");
 
   const ipKey = ipKeyFromHeader((await headers()).get("x-forwarded-for"));
-  if (!authLimiter.check(`ip:${ipKey}`).allowed) {
+  if (!(await authLimiter.check(`ip:${ipKey}`)).allowed) {
     metrics.inc("auth_rate_limited_total", { operation: "login" });
     fail("rate_limited");
   }
@@ -32,7 +32,7 @@ export async function loginAction(formData: FormData): Promise<void> {
   const password = String(formData.get("password") ?? "");
 
   if (!EMAIL_RE.test(email) || !password) fail("invalid_credentials");
-  if (!authLimiter.check(`email:${normalizeEmail(email)}`).allowed) {
+  if (!(await authLimiter.check(`email:${normalizeEmail(email)}`)).allowed) {
     metrics.inc("auth_rate_limited_total", { operation: "login" });
     fail("rate_limited");
   }

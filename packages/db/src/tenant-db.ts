@@ -14,6 +14,7 @@
  * the narrow `systemDb` cross-tenant contract.
  */
 import { Prisma, PrismaClient } from "@prisma/client";
+import { metrics } from "@guardora/core";
 import { appDb } from "./index";
 
 export type TenantTx = Prisma.TransactionClient;
@@ -31,11 +32,18 @@ export async function withTenantDb<T>(
   if (!tenantId || typeof tenantId !== "string") {
     throw new Error("withTenantDb: a validated tenantId is required");
   }
-  return client.$transaction(async (tx) => {
-    // `true` = local to this transaction. Parameterized — never string-interpolated.
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-    return fn(tx);
-  });
+  // V1.51C — observe the tenant-transaction duration (db_query_duration, operation label only —
+  // low cardinality, no tenant id). Timed in finally so a rollback is still recorded.
+  const _t0 = Date.now();
+  try {
+    return await client.$transaction(async (tx) => {
+      // `true` = local to this transaction. Parameterized — never string-interpolated.
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+      return fn(tx);
+    });
+  } finally {
+    metrics.observe("db_query_duration", Date.now() - _t0, { operation: "tenant_tx" });
+  }
 }
 
 // ---------------------------------------------------------------------------

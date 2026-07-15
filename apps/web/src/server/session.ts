@@ -1,5 +1,7 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
+import { metrics } from "@guardora/core";
 import type { ResolvedSession } from "@guardora/db";
 import {
   SESSION_COOKIE,
@@ -33,9 +35,27 @@ export async function startSession(userId: string, activeTenantId?: string): Pro
   return startSessionInJar(await jar(), userId, activeTenantId);
 }
 
+/**
+ * V1.51C — REQUEST-SCOPED session memoization. `requestSessionHolder` is wrapped in React `cache()`,
+ * so it returns the SAME mutable holder for every call within a single request (and a fresh one per
+ * request). The first `readSession()` in a request performs the ONE DB lookup and stores the promise;
+ * every later call (getSession → requireSession → requireVerifiedSession, server components, actions)
+ * reuses it — one lookup per request instead of N. The promise is assigned SYNCHRONOUSLY (before the
+ * first `await`) so concurrent callers cannot both miss. Full validation (revocation, expiry,
+ * membership, passwordChangedAt) still runs on the miss — the reused result is valid for the request.
+ */
+const requestSessionHolder = cache((): { promise: Promise<ResolvedSession | null> | null } => ({ promise: null }));
+
 /** Resolve the current session from the cookie, or null. STRICTLY READ-ONLY (render-safe). */
-export async function readSession(): Promise<ResolvedSession | null> {
-  return readSessionFromJar(await jar());
+export function readSession(): Promise<ResolvedSession | null> {
+  const holder = requestSessionHolder();
+  if (holder.promise) {
+    metrics.inc("session_cache_hit");
+    return holder.promise;
+  }
+  metrics.inc("session_cache_miss");
+  holder.promise = (async () => readSessionFromJar(await jar()))();
+  return holder.promise;
 }
 
 /** Server-side logout: revoke the DB session AND clear both cookies. Mutation-safe entry point. */

@@ -25,7 +25,7 @@ export async function resendVerification(): Promise<void> {
 
   const ip = ipKeyFromHeader((await headers()).get("x-forwarded-for"));
   const emailKey = normalizeEmail(session.userEmail);
-  if (!emailSendLimiter.check(`resend:ip:${ip}`).allowed || !emailSendLimiter.check(`resend:email:${emailKey}`).allowed) {
+  if (!(await emailSendLimiter.check(`resend:ip:${ip}`)).allowed || !(await emailSendLimiter.check(`resend:email:${emailKey}`)).allowed) {
     metrics.inc("auth_email_rate_limited_total", { operation: "resend" });
     done("resend_rate_limited");
   }

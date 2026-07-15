@@ -24,7 +24,7 @@ export async function resetPasswordAction(formData: FormData): Promise<void> {
   if (!(await isSameOrigin())) fail("csrf");
 
   const ip = ipKeyFromHeader((await headers()).get("x-forwarded-for"));
-  if (!authLimiter.check(`reset:ip:${ip}`).allowed) {
+  if (!(await authLimiter.check(`reset:ip:${ip}`)).allowed) {
     metrics.inc("auth_rate_limited_total", { operation: "reset" });
     fail("rate_limited");
   }

@@ -832,6 +832,10 @@ model ReputationItem {
   // default/archived views, which additionally constrain archivedAt before the sort keys.
   @@index([tenantId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([tenantId, archivedAt, createdAt(sort: Desc), id(sort: Desc)])
+  // V1.51C — the inbox facet-count panel runs per-sentiment COUNTs per tenant. EXPLAIN-proven: this
+  // turns the sentiment count from a Seq Scan (~986 buffers) into an Index-Only Scan (~37 buffers),
+  // a ~150× execution-time reduction on a 10k-row table. The only index added this milestone.
+  @@index([tenantId, sentiment])
   @@map("reputation_items")
 }
 
