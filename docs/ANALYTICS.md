@@ -74,22 +74,41 @@ For submit intent on a form button:
 <SubmitButton trackEvent="checkout_started">Subscribe</SubmitButton>
 ```
 
-## Supported events (catalogue)
-Type-safe in `@guardora/core` (`AnalyticsEventName`). Wired live today: `dashboard_opened`,
-`pricing_viewed`, plus automatic `page_view`. The rest are callable via `track("<name>")` at their
-natural call site.
+## Supported events (canonical catalogue — V1.53A)
+Type-safe in `@guardora/core` (`AnalyticsEventName`). **22 canonical, explicit successful-state
+names.** Obsolete/ambiguous names were removed: `book_demo`, `login`, `logout`, `password_reset`,
+`checkout_completed`, `subscription_started`, `instagram_connected`, `comment_replied`,
+`bulk_action_used`, `approval_completed`.
 
-- **Auth:** `registration_started`, `registration_completed`, `login`, `logout`, `password_reset`
-- **Onboarding:** `workspace_created`, `brand_created`, `team_member_added`
-- **Meta:** `meta_connect_started`, `meta_connect_completed`, `facebook_page_connected`, `instagram_connected`
-- **Billing:** `checkout_started`, `checkout_completed`, `subscription_started`, `subscription_upgraded`, `subscription_cancelled`
-- **Product:** `dashboard_opened`, `comment_reviewed`, `comment_replied`, `bulk_action_used`, `approval_completed`
-- **Marketing:** `contact_form_sent`, `book_demo`, `pricing_viewed`
+- **Auth:** `registration_started`, `registration_completed`, `login_completed`, `logout_completed`, `email_verified`, `password_reset_completed`
+- **Onboarding:** `workspace_created`, `onboarding_completed`
+- **Meta:** `meta_connect_started`, `meta_connect_completed`, `facebook_page_connected`, `instagram_business_connected`
+- **Billing:** `checkout_started`, `subscription_activated`, `subscription_upgraded`, `subscription_cancelled`
+- **Product:** `dashboard_opened`, `comment_reviewed`, `moderation_action_completed`, `bulk_action_completed`
+- **Marketing:** `pricing_viewed`, `contact_form_sent`
 
-Meta Pixel standard-event mapping (internal): `registration_completed → CompleteRegistration`,
-`checkout_started → InitiateCheckout`, `checkout_completed → Purchase`, `subscription_started →
-Subscribe`, `book_demo`/`contact_form_sent → Lead`, `meta_connect_completed → Contact`. Others are
-sent as custom events.
+### Firing conditions (one precise trigger each)
+- **View events (client, on mount):** `dashboard_opened`, `pricing_viewed` — wired live via `<TrackView>`; `page_view` is automatic (initial + SPA route change).
+- **Intent (client, submit):** `registration_started`, `meta_connect_started` — may fire on interaction/submit. **Success events never fire from a click.**
+- **Success events (server→client marker):** a server action that commits the real transaction redirects with `?ae=<event>`; `AnalyticsMarker` consumes it once. Wired: `registration_completed` (User+Tenant+Owner+Brand+Trial committed → /verify-email), `email_verified` (token consumed → /login), `password_reset_completed` (password + all-session revoke → /login), `contact_form_sent` (lead accepted). Same pattern for `login_completed`, `workspace_created`, `onboarding_completed`, `meta_connect_completed`, `facebook_page_connected`, `instagram_business_connected`, `checkout_started` (valid Stripe session created).
+- **Webhook-confirmed billing:** `subscription_activated`, `subscription_upgraded`, `subscription_cancelled` — fire only from the verified Stripe webhook's state (never from the browser success URL). Delivered to the client via the same one-time marker set when the tenant's billing state transitions; consumed once on the next billing/dashboard load. Never from `?checkout=success`.
+
+### Server→client success delivery (`?ae` marker)
+Server code **never** calls gtag/fbq. On success it redirects with `?ae=<event>`. `AnalyticsMarker`
+(root layout) reads the marker, **strips it from the URL via `replaceState` before firing** (so
+refresh / back / rerender / webhook-retry can't duplicate), validates it against the canonical
+allowlist (`isAnalyticsEvent`), then `track()`s it (consent + env gated). The marker is a plain event
+name — no PII, no id, no token.
+
+### Meta Pixel standard-event mapping (internal, truthful only)
+`registration_completed → CompleteRegistration`, `contact_form_sent → Lead`,
+`checkout_started → InitiateCheckout`, `subscription_activated → Subscribe`. All other events are sent
+as custom events — no misleading standard-event claims.
+
+### Google Ads conversions
+Explicit only: `trackConversion("<label>")`. Registration conversion on `registration_completed`,
+subscription conversion on `subscription_activated`, contact conversion on `contact_form_sent`.
+Missing label = no-op; nothing before marketing consent.
 
 ## How to verify events
 1. Set the GA4 ID in a **production** deployment, accept consent.
@@ -101,14 +120,22 @@ sent as custom events.
 
 ## Privacy (hard guarantees)
 `sanitizeAnalyticsParams` (in `@guardora/core`) runs on **every** event and drops:
-- forbidden keys (anything containing `email`, `token`, `user`, `tenant`, `session`, `auth`,
-  `password`, `secret`, `jwt`, `cookie`, `comment`, `message`, `content`, `text`, `name`, `refresh`,
-  `access`, `bearer`, `credential`, `key`, `ip`, `phone`, `address`, …),
-- PII/secret-shaped values (emails, JWTs, bearer tokens, `postgres://` URLs, Stripe keys, long hex),
+- forbidden keys (anything containing `email`, `token`, `user`, `tenant`, `workspace`, `brand`,
+  `page`, `instagram`, `stripe`, `customer`, `session`, `auth`, `password`, `secret`, `jwt`, `cookie`,
+  `comment`, `message`, `content`, `text`, `code`, `state`, `name`, `refresh`, `access`, `bearer`,
+  `credential`, `key`, `ip`, `phone`, `address`, …),
+- PII/secret-shaped values (emails, JWTs, bearer tokens, `postgres://`, Stripe `cus_`/`sub_`/`price_`/`sk_`, long hex),
 - non-primitive values, and strings > 64 chars.
 
-**Never sent:** email, access/refresh token, JWT, `tenantId`, `userId`, comment/message text,
-cookies, authorization headers. Only anonymous, low-cardinality labels reach a provider.
+**URL / page-path sanitization** — `sanitizePagePath` runs on every `page_view`: it **drops the entire
+query string** (so `?token=`, `?code=`, `?state=`, `?ae=`, `?session_id=`, `?checkout=`, error params
+never reach a provider) and normalizes per-entity id segments to `:id`. Verified for
+`/verify-email?token=…`, `/reset-password?token=…`, OAuth callbacks, Stripe return URLs, connector
+callbacks. Only clean, normalized route information is sent as `page_path`.
+
+**Never sent:** email, phone, `userId`, `tenantId`, `workspaceId`, `brandId`, Page/Instagram ids,
+Stripe ids, tokens, session values, comment/message text, OAuth code/state, verification/reset tokens,
+or a query string with sensitive data. Only anonymous, low-cardinality labels reach a provider.
 
 ## Architecture
 - `packages/core/src/analytics.ts` — pure, shared: the event catalogue (`AnalyticsEventName`),

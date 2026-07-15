@@ -4,6 +4,7 @@ import "./globals.css";
 import { JsonLd } from "@/components/json-ld";
 import { CookieConsent } from "@/components/cookie-consent";
 import { AnalyticsProvider } from "@/components/analytics/analytics-provider";
+import { AnalyticsMarker } from "@/components/analytics/analytics-marker";
 import { organizationLd, websiteLd, softwareApplicationLd } from "@/lib/jsonld";
 
 /** Display serif — high-contrast headings, per the Tamanor brand. */
@@ -62,6 +63,7 @@ export default function RootLayout({
       <body>
         <JsonLd data={[organizationLd(), websiteLd(), softwareApplicationLd()]} />
         <AnalyticsProvider />
+        <AnalyticsMarker />
         {children}
         <CookieConsent />
       </body>

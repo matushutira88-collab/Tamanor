@@ -75,5 +75,5 @@ export async function registerAction(formData: FormData): Promise<void> {
   await startSession(userId);
   await issueVerificationEmail(userId, normalizeEmail(email), await getLocale());
   metrics.inc("auth_register_total", { operation: "register", result: "ok" });
-  redirect("/verify-email");
+  redirect("/verify-email?ae=registration_completed");
 }

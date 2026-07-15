@@ -54,5 +54,5 @@ export async function resetPasswordAction(formData: FormData): Promise<void> {
 
   metrics.inc("auth_password_reset_total", { result: "ok" });
   // All prior sessions are revoked; no session is created — the user logs in fresh.
-  redirect("/login?reset=1");
+  redirect("/login?reset=1&ae=password_reset_completed");
 }

@@ -12,6 +12,12 @@ export function SiteHeader({
 }) {
   const t = dict ?? getDictionary(locale);
   const home = localePrefix(locale) || "/";
+  // V1.53A — the section nav links target the localized HOMEPAGE anchor (`${home}#id`), not a
+  // same-page `#id`. A bare `#id` only resolves on the homepage; on a sub-page (e.g. /case-studies,
+  // which renders this same header via MarketingPage) those anchors don't exist, so the links did
+  // nothing — the confirmed defect. Routing to the homepage anchor makes every link work from any
+  // page (Next scrolls to the id after navigating; on the homepage it scrolls in place).
+  const section = (id: string) => `${home}#${id}`;
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[color-mix(in_oklab,var(--color-bg),transparent_25%)] backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
@@ -19,13 +25,13 @@ export function SiteHeader({
           <Logo />
         </Link>
         <nav className="hidden items-center gap-8 text-sm text-[var(--color-muted)] md:flex">
-          <a href="#platforms" className="transition hover:text-[var(--color-fg)]">{t.nav.platforms}</a>
-          <a href="#features" className="transition hover:text-[var(--color-fg)]">{t.nav.features}</a>
-          <a href="#product" className="transition hover:text-[var(--color-fg)]">{t.nav.product}</a>
-          <a href="#control" className="transition hover:text-[var(--color-fg)]">{t.nav.aiHuman}</a>
+          <Link href={section("platforms")} className="transition hover:text-[var(--color-fg)]">{t.nav.platforms}</Link>
+          <Link href={section("features")} className="transition hover:text-[var(--color-fg)]">{t.nav.features}</Link>
+          <Link href={section("product")} className="transition hover:text-[var(--color-fg)]">{t.nav.product}</Link>
+          <Link href={section("control")} className="transition hover:text-[var(--color-fg)]">{t.nav.aiHuman}</Link>
           <Link href={`${localePrefix(locale)}/case-studies`} className="transition hover:text-[var(--color-fg)]">{t.nav.caseStudies}</Link>
-          <a href="#safety" className="transition hover:text-[var(--color-fg)]">{t.nav.security}</a>
-          <a href="#pricing" className="transition hover:text-[var(--color-fg)]">{t.nav.pricing}</a>
+          <Link href={section("safety")} className="transition hover:text-[var(--color-fg)]">{t.nav.security}</Link>
+          <Link href={section("pricing")} className="transition hover:text-[var(--color-fg)]">{t.nav.pricing}</Link>
         </nav>
         <div className="flex items-center gap-2">
           <LanguageSwitcher current={locale} variant="marketing" />

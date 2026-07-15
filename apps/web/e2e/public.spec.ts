@@ -20,6 +20,29 @@ test("unauthenticated dashboard redirects to login", async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 });
 
+// V1.53A — the confirmed defect: on /case-studies the header's section links (Features, Security,
+// Pricing) were bare `#anchor`s that don't exist off the homepage, so clicking them did nothing.
+// The fix points them at the homepage anchor `/#section`, so they work from any sub-page.
+test("public header nav works from Case Studies (defect fix)", async ({ page }, testInfo) => {
+  test.skip(isMobile(testInfo.project.name), "the public header nav is desktop-only (hidden on mobile)");
+  await page.goto("/case-studies");
+  const header = page.locator("header");
+  // The fix: header section links target the HOMEPAGE anchor (`/#section`), functional off-homepage.
+  await expect(header.locator('a[href="/#features"]')).toBeVisible();
+  await expect(header.locator('a[href="/#safety"]')).toBeVisible();
+  await expect(header.locator('a[href="/#pricing"]')).toBeVisible();
+  await expect(header.locator('a[href="/#platforms"]')).toBeVisible();
+  // Regression guard: NO bare same-page `#anchor` links remain in the header nav (the defect).
+  await expect(header.locator('nav a[href^="#"]')).toHaveCount(0);
+  // Adjacent links that always worked remain present + clickable.
+  await expect(header.locator('a[href*="case-studies"]')).toBeVisible();
+  await expect(header.locator('a[href="/login"]')).toBeVisible();
+  // Clicking a section link from the sub-page now navigates to the homepage (was a no-op before).
+  await header.locator('a[href="/#features"]').click();
+  await expect(page).not.toHaveURL(/case-studies/);
+  await expect(page.locator("h1").first()).toBeVisible();
+});
+
 test("self-service funnel: homepage → Start free → register form, and → Log in", async ({ page }, testInfo) => {
   test.skip(isMobile(testInfo.project.name), "desktop-only funnel nav");
   await page.goto("/");

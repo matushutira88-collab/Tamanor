@@ -24,7 +24,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const res = await consumeEmailVerificationToken(token);
   if (res.ok) {
     metrics.inc("auth_verification_total", { result: "ok" });
-    return dest("/login?verified=1");
+    return dest("/login?verified=1&ae=email_verified");
   }
   metrics.inc("auth_verification_total", { result: "denied" });
   emitOpsEvent("auth.verification_failed", { reason: res.reason });

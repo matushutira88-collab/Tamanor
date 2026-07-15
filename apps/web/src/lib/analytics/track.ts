@@ -9,7 +9,7 @@
  */
 import {
   type AnalyticsEventName, type AnalyticsParams,
-  sanitizeAnalyticsParams, META_PIXEL_STANDARD_EVENTS,
+  sanitizeAnalyticsParams, sanitizePagePath, META_PIXEL_STANDARD_EVENTS,
 } from "@guardora/core/analytics";
 import {
   IS_PRODUCTION_ANALYTICS, GA4_ENABLED, META_PIXEL_ENABLED, GOOGLE_ADS_ENABLED, GOOGLE_ADS_ID,
@@ -41,11 +41,13 @@ export function track(event: AnalyticsEventName, params?: AnalyticsParams): void
   }
 }
 
-/** SPA page_view — fired on initial load and every client route change (see AnalyticsProvider). */
+/** SPA page_view — fired on initial load and every client route change (see AnalyticsProvider).
+ *  The path is sanitized: query string dropped (no `?token=`/`?code=`/`?ae=`) + entity ids normalized. */
 export function trackPageView(path: string): void {
   if (!canEmit()) return;
+  const page_path = sanitizePagePath(path);
   if (GA4_ENABLED && typeof window.gtag === "function") {
-    window.gtag("event", "page_view", { page_path: path });
+    window.gtag("event", "page_view", { page_path });
   }
   if (META_PIXEL_ENABLED && typeof window.fbq === "function") {
     window.fbq("track", "PageView");

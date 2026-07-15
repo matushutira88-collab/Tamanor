@@ -62,5 +62,5 @@ export async function submitLead(formData: FormData): Promise<void> {
     consent,
   });
 
-  redirect(`${backTo}?sent=1`);
+  redirect(`${backTo}?sent=1&ae=contact_form_sent`);
 }
