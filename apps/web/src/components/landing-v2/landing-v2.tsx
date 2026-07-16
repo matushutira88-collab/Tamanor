@@ -33,6 +33,11 @@ const KEYFRAMES = `
 .tmr-v2 details > summary { list-style: none; }
 .tmr-v2 details > summary::-webkit-details-marker { display: none; }
 .tmr-v2 details[open] .tmr-faq-sign { transform: rotate(45deg); }
+/* V1.58D.3 — mobile: stack multi-column sections; no horizontal overflow. */
+@media (max-width: 860px) {
+  .tmr-v2 .tmr-cols { grid-template-columns: 1fr !important; }
+  .tmr-v2 .tmr-kpi { grid-template-columns: repeat(2, 1fr) !important; }
+}
 `;
 
 const mono = "var(--font-mono-v2), ui-monospace, Menlo, monospace";
@@ -129,7 +134,7 @@ function FirewallSim({
         ctx.setLineDash([]);
         ctx.font = "600 9px var(--font-mono-v2), monospace";
         ctx.fillStyle = "rgba(46,227,178,0.8)";
-        ctx.fillText("FIREWALL", wallX - 24, 12);
+        ctx.fillText("TAMANOR", wallX - 22, 12);
 
         const pw = 104;
         const ph = 26;
@@ -358,7 +363,7 @@ export function LandingV2() {
           <p style={{ ...eyebrow, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ height: 1, width: 34, background: C.mint }} />Live defense system · EU
           </p>
-          <h1 style={{ margin: "22px 0 0", maxWidth: "20ch", fontSize: 64, lineHeight: 1.04, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em", textShadow: "0 0 60px rgba(46,227,178,.25)" }}>
+          <h1 style={{ margin: "20px 0 0", maxWidth: "18ch", fontSize: "clamp(32px, 5.4vw, 52px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em", textShadow: "0 0 60px rgba(46,227,178,.25)" }}>
             The wall between your brand <span style={{ fontStyle: "italic", color: C.mint }}>&amp; the internet.</span>
           </h1>
           <div style={{ marginTop: 26, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
@@ -388,7 +393,7 @@ export function LandingV2() {
             <div style={{ position: "absolute", top: 12, right: 16, zIndex: 5, fontSize: 10, letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>
               <Clock /> UTC
             </div>
-            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 5, display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: secBorder, background: "rgba(3,11,9,.9)" }}>
+            <div className="tmr-kpi" style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 5, display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: secBorder, background: "rgba(3,11,9,.9)" }}>
               {[
                 { l: "Threats intercepted", v: <span ref={icRef}>12,847</span>, c: C.red },
                 { l: "Clean delivered", v: <span ref={dcRef}>48,102</span>, c: C.mint },
@@ -427,13 +432,13 @@ export function LandingV2() {
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 20, marginBottom: 44 }}>
             <div>
               <p style={eyebrow}>SYS / 01 — The protocol</p>
-              <h2 style={{ margin: "16px 0 0", fontSize: 38, lineHeight: 1.05, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
+              <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
                 Six phases. <span style={{ fontStyle: "italic", color: C.mint }}>Zero autonomy.</span>
               </h2>
             </div>
             <p style={{ maxWidth: "36ch", fontSize: 13, lineHeight: 1.7, color: C.dim }}>Everything below ships today. The AI proposes — a human disposes. Always.</p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, background: C.line, border: secBorder }}>
+          <div className="tmr-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, background: C.line, border: secBorder }}>
             {STEPS.map((s, i) => (
               <div key={s.name} style={{ background: C.bg, padding: "26px 24px", minHeight: 190 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -450,7 +455,7 @@ export function LandingV2() {
 
       {/* radar */}
       <section id="radar" style={{ borderBottom: secBorder, background: C.panel }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "center", padding: "84px 24px" }}>
+        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "center", padding: "84px 24px" }}>
           <div style={{ position: "relative", margin: "0 auto", height: 420, width: 420 }}>
             {[0, 52, 104, 156].map((inset) => (
               <div key={inset} style={{ position: "absolute", inset, borderRadius: "50%", border: secBorder }} />
@@ -491,7 +496,7 @@ export function LandingV2() {
 
       {/* approval */}
       <section style={{ borderBottom: secBorder }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 48, alignItems: "center", padding: "84px 24px" }}>
+        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 48, alignItems: "center", padding: "84px 24px" }}>
           <div>
             <p style={eyebrow}>SYS / 03 — Command authority</p>
             <h2 style={{ margin: "16px 0 0", fontSize: 44, lineHeight: 1.16, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
@@ -540,7 +545,7 @@ export function LandingV2() {
             <p style={eyebrow}>SYS / 04 — Coverage</p>
             <p style={{ margin: 0, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>Honest about today · no fake logos</p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
+          <div className="tmr-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
             {[
               { n: "Facebook", tag: "Armed", tagStyle: { background: C.mint, color: C.bg }, body: "Full protection — auto-hide pipeline with human approval, comments, reputation, actor risk.", dim: false },
               { n: "Instagram", tag: "Monitoring", tagStyle: { border: `1px solid ${C.amber}`, color: C.amber }, body: "Business accounts — monitoring, comments, reputation and actor risk. Auto-hide not enabled yet.", dim: false },
@@ -561,7 +566,7 @@ export function LandingV2() {
 
       {/* diagnostics */}
       <section id="diag" style={{ borderBottom: secBorder }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 48, padding: "84px 24px" }}>
+        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 48, padding: "84px 24px" }}>
           <div>
             <p style={eyebrow}>SYS / 05 — Diagnostics</p>
             <h2 style={{ margin: "16px 0 0", fontSize: 38, lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
@@ -589,7 +594,7 @@ export function LandingV2() {
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 20, marginBottom: 40 }}>
             <div>
               <p style={eyebrow}>SYS / 06 — Pricing</p>
-              <h2 style={{ margin: "16px 0 0", fontSize: 38, lineHeight: 1.05, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
+              <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
                 Arm your accounts. <span style={{ fontStyle: "italic", color: C.mint }}>Start free.</span>
               </h2>
               <p style={{ margin: "14px 0 0", fontSize: 13, color: C.dim }}>14-day trial on every plan — no credit card. Prices indicative.</p>
@@ -605,7 +610,7 @@ export function LandingV2() {
               })}
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
+          <div className="tmr-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
             {plans.map((p) => (
               <div key={p.name} style={p.pop ? { background: "#061711", padding: "26px 24px", boxShadow: `inset 0 0 0 1px ${C.mint}, 0 0 34px rgba(46,227,178,.14)` } : { background: C.bg, padding: "26px 24px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
