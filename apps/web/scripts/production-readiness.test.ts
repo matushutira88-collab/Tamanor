@@ -95,8 +95,18 @@ function run() {
   // directly; otherwise Vercel's traced function omits the native module and every route
   // importing @guardora/db throws MODULE_NOT_FOUND at import time (500 on /api/ready, login,
   // registration). Declaring it on packages/db alone is insufficient for the app's trace.
-  const webPkg = JSON.parse(src("package.json")) as { dependencies?: Record<string, string> };
+  const webPkg = JSON.parse(src("package.json")) as { dependencies?: Record<string, string>; scripts?: Record<string, string> };
   check("25) apps/web declares @node-rs/argon2 as a direct runtime dependency (Vercel native packaging)", Boolean(webPkg.dependencies?.["@node-rs/argon2"]));
+
+  // ---------------- Prisma native engine packaging (V1.55B.3) ----------------
+  // The RHEL Query Engine must be generated for Vercel's serverless runtime, and the
+  // deployed package (apps/web) must own @prisma/client so Next output-file-tracing
+  // includes libquery_engine-rhel-openssl-3.0.x.so.node in every Prisma-using function.
+  // Missing either -> PrismaClientInitializationError (engine not found) -> /api/ready,
+  // login and registration fail at DB init in production.
+  const prismaSchema = readFileSync(join(WEB, "../../packages/db/prisma/schema.prisma"), "utf8");
+  check("26) prisma schema declares native + rhel-openssl-3.0.x binary targets (Vercel runtime engine)", /binaryTargets\s*=\s*\[[^\]]*["']rhel-openssl-3\.0\.x["'][^\]]*\]/.test(prismaSchema) && /["']native["']/.test(prismaSchema));
+  check("27) apps/web owns @prisma/client + build runs prisma generate (engine generated & traced)", Boolean(webPkg.dependencies?.["@prisma/client"]) && /generate/.test(webPkg.scripts?.build ?? ""));
 
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — production readiness (V1.39)`);
   process.exit(failures === 0 ? 0 : 1);
