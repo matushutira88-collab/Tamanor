@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Playfair_Display } from "next/font/google";
+import { Playfair_Display, Sora, Source_Sans_3, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { JsonLd } from "@/components/json-ld";
 import { CookieConsent } from "@/components/cookie-consent";
@@ -14,6 +14,11 @@ const displaySerif = Playfair_Display({
   variable: "--font-serif-src",
   display: "swap",
 });
+
+/** V1.58D — landing v2 "mission control" fonts, exposed as CSS variables consumed by LandingV2. */
+const dispV2 = Sora({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-disp-v2", display: "swap" });
+const sansV2 = Source_Sans_3({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-sans-v2", display: "swap" });
+const monoV2 = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-mono-v2", display: "swap" });
 
 const TITLE = "Tamanor — European reputation-security platform for social accounts";
 const DESCRIPTION =
@@ -59,7 +64,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={displaySerif.variable}>
+    <html lang="en" className={`${displaySerif.variable} ${dispV2.variable} ${sansV2.variable} ${monoV2.variable}`}>
       <body>
         <JsonLd data={[organizationLd(), websiteLd(), softwareApplicationLd()]} />
         <AnalyticsProvider />
