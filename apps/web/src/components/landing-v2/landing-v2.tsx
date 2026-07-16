@@ -9,6 +9,16 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { FooterV2 } from "./footer-v2";
+import type { Dictionary, Locale } from "@/i18n";
+
+type L2 = Dictionary["landingV2"];
+export type LandingV2Props = {
+  copy: L2;
+  startFree: string;
+  logIn: string;
+  footer: Dictionary["footer"];
+  locale: Locale;
+};
 
 /* ---------- palette ---------- */
 const C = {
@@ -52,9 +62,11 @@ type Ripple = { x: number; y: number; r: number; a: number; mint?: boolean };
 function FirewallSim({
   threatRatio = 0.38,
   onCount,
+  tags,
 }: {
   threatRatio?: number;
   onCount?: (intercepted: number, delivered: number) => void;
+  tags: { threat: readonly string[]; clean: readonly string[] };
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -100,16 +112,14 @@ function FirewallSim({
         if (t - lastSpawn > 620) {
           lastSpawn = t;
           const threat = Math.random() < threatRatio;
-          const tags = threat
-            ? ["SCAM", "SPAM", "THREAT", "PHISH", "ABUSE"]
-            : ["OK", "FEEDBACK", "QUESTION", "REVIEW"];
+          const pool = threat ? tags.threat : tags.clean;
           packets.push({
             x: -110,
             y: laneTop + Math.random() * (laneBot - laneTop - 30),
             vx: 1.5 + Math.random() * 1.1,
             threat,
             crossed: false,
-            tag: tags[Math.floor(Math.random() * tags.length)] ?? "",
+            tag: pool[Math.floor(Math.random() * pool.length)] ?? "",
           });
         }
 
@@ -259,38 +269,7 @@ function Clock() {
   return <span ref={ref}>00:00:00</span>;
 }
 
-/* ---------- data ---------- */
-
-const STEPS = [
-  { name: "Connect", body: "Facebook Pages and Instagram Business via official Meta OAuth. Credentials encrypted at rest — we never see passwords." },
-  { name: "Monitor", body: "Comments, reviews and messages stream into one operational inbox with token-health monitoring." },
-  { name: "Score", body: "AI risk scoring flags spam, scams, threats and abuse — and proposes an action per item." },
-  { name: "Review", body: "Your team sees each flagged item in context: sender history, thread, reputation signals." },
-  { name: "Decide", body: "A human approves or rejects every action. No autonomous moderation, ever." },
-  { name: "Audit", body: "Approved actions execute through controlled workflows and land in a complete audit trail." },
-];
-
-const TICKER = [
-  { time: "14:02:11", verb: "Intercepted", what: "crypto giveaway spam · fb/page", bad: true },
-  { time: "14:01:48", verb: "Delivered", what: "customer question · ig/business", bad: false },
-  { time: "14:01:02", verb: "Intercepted", what: "credible threat · escalated to human", bad: true },
-  { time: "14:00:37", verb: "Delivered", what: "negative review · kept visible", bad: false },
-  { time: "13:59:54", verb: "Intercepted", what: "phishing link · 12 duplicates grouped", bad: true },
-  { time: "13:59:10", verb: "Delivered", what: "shipping feedback · kept visible", bad: false },
-];
-
-const DIAG = [
-  "OAUTH_ONLY_CONNECTIONS", "ZERO_PASSWORD_STORAGE", "NO_SCRAPING", "TOKENS_ENCRYPTED_AT_REST",
-  "HUMAN_APPROVAL_REQUIRED", "FULL_AUDIT_TRAIL", "TENANT_ISOLATION_DB_ENFORCED", "READ_ONLY_DEFAULT_MODE",
-];
-
-const FAQS = [
-  { q: "which platforms are live today?", a: "Facebook Pages and Instagram Business via official Meta OAuth. Google Business connector is built and awaiting approved API access. YouTube, LinkedIn and TikTok are in development — we don't claim them until they ship." },
-  { q: "does it auto-hide comments?", a: "No. The AI scores risk and proposes actions, but every moderation action requires a human to approve it first. Autonomous actions executed to date: zero." },
-  { q: "is this censorship?", a: "Normal criticism is never hidden. The firewall separates real feedback from spam, scams, profanity and threats — and you own the rules. Unclear cases go to your team." },
-  { q: "where does our data live?", a: "One database with database-enforced tenant isolation. Provider credentials encrypted at rest, never logged. Built for European privacy and operational requirements." },
-  { q: "what if a token expires?", a: "Token health is monitored continuously — you get a guided reconnect before an expired token silently stops sync." },
-];
+/* ---------- data (non-textual / technical only) ---------- */
 
 const BLIPS = [
   { top: "22%", left: "60%", danger: true, label: "fb:8842 · 0.91" },
@@ -299,22 +278,32 @@ const BLIPS = [
   { top: "74%", left: "34%", danger: true, label: "fb:9917 · 0.87" },
 ];
 
+// Self-serve monthly prices by plan index (Starter/Growth/Agency); Enterprise (index 3) is contact-sales.
+const PLAN_PRICES = [49, 149, 399, null] as const;
+
 /* ---------- page ---------- */
 
-export function LandingV2() {
+export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2Props) {
   const [yearly, setYearly] = useState(false);
   const icRef = useRef<HTMLSpanElement | null>(null);
   const dcRef = useRef<HTMLSpanElement | null>(null);
 
   const price = (m: number) => `€${yearly ? m * 10 : m}`;
-  const per = yearly ? "/yr" : "/mo";
+  const per = yearly ? copy.perYr : copy.perMo;
 
-  const plans = [
-    { name: "Starter", pop: false, price: price(49), per, tagline: "Small brand, creator or local business.", cta: "Start free", features: ["1 brand", "1 Facebook Page", "Comments & queue", "Basic reputation", "Manual review"] },
-    { name: "Growth", pop: true, price: price(149), per, tagline: "Active e-shop, brand or agency client.", cta: "Start free", features: ["Up to 3 accounts", "Facebook protection", "Instagram monitoring", "Reputation analytics", "Actor risk & rules"] },
-    { name: "Agency", pop: false, price: price(399), per, tagline: "Agencies managing multiple clients.", cta: "Start free", features: ["Multiple brands", "Onboarding support", "Multi-account monitoring", "Reputation + actor risk", "Priority support"] },
-    { name: "Enterprise", pop: false, price: "Talk", per: "to us", tagline: "Media, public figures, larger brands.", cta: "Contact sales", features: ["Custom scale", "Advanced roles", "Dedicated contact", "Onboarding & SLA"] },
-  ];
+  const plans = copy.plans.map((p, i) => {
+    const m = PLAN_PRICES[i] ?? null;
+    return {
+      name: p.name,
+      pop: i === 1,
+      isEnterprise: i === 3,
+      price: m === null ? copy.entPrice : price(m),
+      per: m === null ? copy.entPer : per,
+      tagline: p.tagline,
+      cta: p.cta,
+      features: p.features,
+    };
+  });
 
   const navA: React.CSSProperties = { color: C.dim, fontFamily: mono };
   const secBorder = `1px solid ${C.line}`;
@@ -338,21 +327,21 @@ export function LandingV2() {
             </svg>
             <span style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
               <span style={{ fontFamily: disp, fontSize: 18, textTransform: "none", letterSpacing: "-0.01em", color: C.text, fontWeight: 600 }}>Tamanor</span>
-              <span style={{ marginTop: 3, fontSize: 8, letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>REPUTATION FIREWALL</span>
+              <span style={{ marginTop: 3, fontSize: 8, letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>{copy.tagline}</span>
             </span>
           </span>
-          <nav style={{ display: "flex", gap: 22 }}>
-            <a href="#wall" style={navA}>Firewall</a>
-            <a href="#phases" style={navA}>Protocol</a>
-            <a href="#radar" style={navA}>Actor risk</a>
-            <a href="#diag" style={navA}>Diagnostics</a>
-            <a href="#pricing" style={navA}>Pricing</a>
+          <nav className="tmr-nav" style={{ display: "flex", gap: 22 }}>
+            <a href="#wall" style={navA}>{copy.navFirewall}</a>
+            <a href="#phases" style={navA}>{copy.navProtocol}</a>
+            <a href="#radar" style={navA}>{copy.navActorRisk}</a>
+            <a href="#diag" style={navA}>{copy.navDiagnostics}</a>
+            <a href="#pricing" style={navA}>{copy.navPricing}</a>
           </nav>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.dim, fontFamily: mono }}>
-              <span style={{ height: 6, width: 6, borderRadius: 9999, background: C.mint, boxShadow: `0 0 8px ${C.mint}` }} />Online
+            <span className="tmr-online" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.dim, fontFamily: mono }}>
+              <span style={{ height: 6, width: 6, borderRadius: 9999, background: C.mint, boxShadow: `0 0 8px ${C.mint}` }} />{copy.online}
             </span>
-            <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "8px 16px", fontWeight: 600, fontFamily: mono }}>Start free</Link>
+            <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "8px 16px", fontWeight: 600, fontFamily: mono }}>{startFree}</Link>
           </div>
         </div>
       </header>
@@ -361,18 +350,18 @@ export function LandingV2() {
       <section id="wall" style={{ position: "relative", borderBottom: secBorder, background: "radial-gradient(70rem 30rem at 50% -20%, rgba(46,227,178,.09), transparent 60%)" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "66px 24px 28px" }}>
           <p style={{ ...eyebrow, display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ height: 1, width: 34, background: C.mint }} />Live defense system · EU
+            <span style={{ height: 1, width: 34, background: C.mint }} />{copy.heroEyebrow}
           </p>
           <h1 style={{ margin: "20px 0 0", maxWidth: "18ch", fontSize: "clamp(32px, 5.4vw, 52px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em", textShadow: "0 0 60px rgba(46,227,178,.25)" }}>
-            The wall between your brand <span style={{ fontStyle: "italic", color: C.mint }}>&amp; the internet.</span>
+            {copy.heroA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.heroB}</span>
           </h1>
           <div style={{ marginTop: 26, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
             <p style={{ margin: 0, maxWidth: "52ch", fontSize: 15, lineHeight: 1.75, color: C.dim }}>
-              Every comment, review and message on your connected accounts passes through Tamanor. Spam, scams and threats are stopped at the wall — held for human approval. Real feedback flies straight through.
+              {copy.heroBody}
             </p>
             <div style={{ display: "flex", gap: 10 }}>
-              <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "14px 26px", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", boxShadow: "0 0 34px rgba(46,227,178,.35)", fontFamily: mono }}>Deploy free</Link>
-              <a href="#phases" style={{ border: secBorder, color: C.text, padding: "14px 26px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>The protocol</a>
+              <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "14px 26px", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", boxShadow: "0 0 34px rgba(46,227,178,.35)", fontFamily: mono }}>{copy.deployFree}</Link>
+              <a href="#phases" style={{ border: secBorder, color: C.text, padding: "14px 26px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{copy.theProtocol}</a>
             </div>
           </div>
         </div>
@@ -382,23 +371,24 @@ export function LandingV2() {
           <div style={{ position: "relative", height: 340, border: secBorder, background: C.panel }}>
             <Corner pos="tl" /><Corner pos="tr" /><Corner pos="bl" /><Corner pos="br" />
             <FirewallSim
+              tags={copy.tags}
               onCount={(ic, dc) => {
                 if (icRef.current) icRef.current.textContent = ic.toLocaleString("en-US");
                 if (dcRef.current) dcRef.current.textContent = dc.toLocaleString("en-US");
               }}
             />
             <div style={{ position: "absolute", top: 12, left: 16, zIndex: 5, display: "flex", gap: 18, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>
-              <span>Feed · inbound</span><span style={{ color: C.mint }}>◉ Live simulation</span>
+              <span>{copy.feedInbound}</span><span style={{ color: C.mint }}>{copy.liveSim}</span>
             </div>
             <div style={{ position: "absolute", top: 12, right: 16, zIndex: 5, fontSize: 10, letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>
-              <Clock /> UTC
+              <Clock /> {copy.utc}
             </div>
             <div className="tmr-kpi" style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 5, display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: secBorder, background: "rgba(3,11,9,.9)" }}>
               {[
-                { l: "Threats intercepted", v: <span ref={icRef}>12,847</span>, c: C.red },
-                { l: "Clean delivered", v: <span ref={dcRef}>48,102</span>, c: C.mint },
-                { l: "Awaiting your approval", v: "3", c: C.amber },
-                { l: "Autonomous actions", v: <>0 <span style={{ fontSize: 11, fontFamily: mono, color: C.faint }}>— humans decide</span></>, c: C.text },
+                { l: copy.c1, v: <span ref={icRef}>12,847</span>, c: C.red },
+                { l: copy.c2, v: <span ref={dcRef}>48,102</span>, c: C.mint },
+                { l: copy.c3, v: "3", c: C.amber },
+                { l: copy.c4, v: <>0 <span style={{ fontSize: 11, fontFamily: mono, color: C.faint }}>{copy.humansDecide}</span></>, c: C.text },
               ].map((s, i) => (
                 <div key={i} style={{ padding: "12px 16px", borderRight: i < 3 ? secBorder : "none" }}>
                   <p style={{ margin: 0, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.16em", color: C.faint, fontFamily: mono }}>{s.l}</p>
@@ -408,7 +398,7 @@ export function LandingV2() {
             </div>
           </div>
           <p style={{ margin: "14px 0 0", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", color: C.faint, fontFamily: mono }}>
-            ◦ Official OAuth only &nbsp;◦ No scraping &nbsp;◦ Read-only by default &nbsp;◦ Every action audited
+            {copy.heroFootnote}
           </p>
         </div>
       </section>
@@ -416,7 +406,7 @@ export function LandingV2() {
       {/* ticker */}
       <section style={{ borderBottom: secBorder, background: C.panel, overflow: "hidden" }}>
         <div style={{ display: "inline-flex", whiteSpace: "nowrap", animation: "tmr-tkr 28s linear infinite", padding: "10px 0", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: mono }}>
-          {[...TICKER, ...TICKER].map((t, i) => (
+          {[...copy.ticker, ...copy.ticker].map((t, i) => (
             <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 34 }}>
               <span style={{ color: C.faint }}>{t.time}</span>
               <span style={{ color: t.bad ? C.red : C.mint }}>{t.verb}</span>
@@ -431,18 +421,18 @@ export function LandingV2() {
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "84px 24px" }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 20, marginBottom: 44 }}>
             <div>
-              <p style={eyebrow}>SYS / 01 — The protocol</p>
+              <p style={eyebrow}>SYS / 01 — {copy.protocolEyebrow}</p>
               <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
-                Six phases. <span style={{ fontStyle: "italic", color: C.mint }}>Zero autonomy.</span>
+                {copy.phasesA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.phasesB}</span>
               </h2>
             </div>
-            <p style={{ maxWidth: "36ch", fontSize: 13, lineHeight: 1.7, color: C.dim }}>Everything below ships today. The AI proposes — a human disposes. Always.</p>
+            <p style={{ maxWidth: "36ch", fontSize: 13, lineHeight: 1.7, color: C.dim }}>{copy.phasesSub}</p>
           </div>
           <div className="tmr-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, background: C.line, border: secBorder }}>
-            {STEPS.map((s, i) => (
+            {copy.steps.map((s, i) => (
               <div key={s.name} style={{ background: C.bg, padding: "26px 24px", minHeight: 190 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.18em", color: C.faint, fontFamily: mono }}>Phase 0{i + 1}</span>
+                  <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.18em", color: C.faint, fontFamily: mono }}>{copy.phaseWord} 0{i + 1}</span>
                   <span style={{ height: 6, width: 6, borderRadius: 9999, background: C.mint, boxShadow: `0 0 8px ${C.mint}` }} />
                 </div>
                 <h3 style={{ margin: "14px 0 0", fontSize: 21, fontWeight: 600, color: C.bright, fontFamily: disp }}>{s.name}</h3>
@@ -472,21 +462,17 @@ export function LandingV2() {
             ))}
           </div>
           <div>
-            <p style={eyebrow}>SYS / 02 — Actor risk</p>
-            <h2 style={{ margin: "16px 0 0", fontSize: 38, lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
-              Repeat offenders don&rsquo;t get a <span style={{ fontStyle: "italic", color: C.mint }}>second first impression.</span>
+            <p style={eyebrow}>SYS / 02 — {copy.actorEyebrow}</p>
+            <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
+              {copy.radarA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.radarB}</span>
             </h2>
             <p style={{ margin: "20px 0 0", maxWidth: "46ch", fontSize: 15, lineHeight: 1.75, color: C.dim }}>
-              Tamanor tracks risky behavior per actor across time. Four risky comments in 24 hours? The actor crosses the risk threshold and every future message gets flagged before your audience ever sees it.
+              {copy.radarBody}
             </p>
             <div style={{ marginTop: 26, display: "flex", flexDirection: "column", gap: 8, fontSize: 12, fontFamily: mono }}>
-              {[
-                { a: "actor · fb:8842", s: "RISK 0.91 ▲ watchlist", c: C.red },
-                { a: "actor · ig:2214", s: "RISK 0.44 · elevated", c: C.amber },
-                { a: "actor · fb:1093", s: "RISK 0.06 · clear", c: C.mint },
-              ].map((r) => (
+              {copy.actors.map((r, i) => (
                 <div key={r.a} style={{ display: "flex", justifyContent: "space-between", border: secBorder, padding: "10px 14px" }}>
-                  <span style={{ color: C.dim }}>{r.a}</span><span style={{ color: r.c }}>{r.s}</span>
+                  <span style={{ color: C.dim }}>{r.a}</span><span style={{ color: [C.red, C.amber, C.mint][i] ?? C.dim }}>{r.s}</span>
                 </div>
               ))}
             </div>
@@ -498,42 +484,42 @@ export function LandingV2() {
       <section style={{ borderBottom: secBorder }}>
         <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 48, alignItems: "center", padding: "84px 24px" }}>
           <div>
-            <p style={eyebrow}>SYS / 03 — Command authority</p>
-            <h2 style={{ margin: "16px 0 0", fontSize: 44, lineHeight: 1.16, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
-              AI proposes.<br /><span style={{ fontStyle: "italic", color: C.mint }}>You dispose.</span>
+            <p style={eyebrow}>SYS / 03 — {copy.commandEyebrow}</p>
+            <h2 style={{ margin: "16px 0 0", fontSize: "clamp(30px, 4vw, 44px)", lineHeight: 1.16, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
+              {copy.cmdA}<br /><span style={{ fontStyle: "italic", color: C.mint }}>{copy.cmdB}</span>
             </h2>
             <p style={{ margin: "22px 0 0", maxWidth: "46ch", fontSize: 15, lineHeight: 1.75, color: C.dim }}>
-              Nothing is hidden, deleted or answered without a human pressing the button. Normal criticism is never touched — the firewall separates feedback from attacks, and you set where the line sits.
+              {copy.cmdBody}
             </p>
             <p style={{ margin: "18px 0 0", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>
-              It&rsquo;s not censorship. It&rsquo;s a firewall<span style={{ animation: "tmr-blink 1.1s step-end infinite" }}>_</span>
+              {copy.cmdCursor}<span style={{ animation: "tmr-blink 1.1s step-end infinite" }}>_</span>
             </p>
           </div>
           <div style={{ border: secBorder, background: C.panel, padding: 22 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>
-              <span>Incoming · facebook page</span><span style={{ color: C.amber }}>◉ Pending approval</span>
+              <span>{copy.cardSource}</span><span style={{ color: C.amber }}>{copy.cardPending}</span>
             </div>
             <p style={{ margin: "16px 0 0", fontSize: 14, lineHeight: 1.65, color: C.text }}>
-              &ldquo;This brand is a total scam, don&rsquo;t waste your money — worst service ever.&rdquo;
+              {copy.cardComment}
             </p>
             <div style={{ marginTop: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: mono }}>
-                <span style={{ color: C.faint }}>AI risk score</span><span style={{ color: C.red }}>0.82 · High</span>
+                <span style={{ color: C.faint }}>{copy.cardScore}</span><span style={{ color: C.red }}>{copy.cardHigh}</span>
               </div>
               <div style={{ marginTop: 7, height: 5, background: C.line }}>
                 <div style={{ height: "100%", width: "82%", background: `linear-gradient(90deg,${C.amber},${C.red})`, boxShadow: "0 0 12px rgba(255,77,94,.5)" }} />
               </div>
               <div style={{ marginTop: 12, display: "flex", gap: 6 }}>
-                {["Brand attack", "Scam claim"].map((t) => (
+                {[copy.cardTag1, copy.cardTag2].map((t) => (
                   <span key={t} style={{ border: "1px solid #3a1620", background: "#160a0e", color: C.red, padding: "3px 10px", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{t}</span>
                 ))}
               </div>
             </div>
             <div style={{ marginTop: 20, display: "flex", gap: 8 }}>
-              <button style={{ flex: 1, border: secBorder, background: "transparent", color: C.dim, padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono }}>Reject</button>
-              <button style={{ flex: 2, border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono, boxShadow: "0 0 22px rgba(46,227,178,.4)" }}>Approve &amp; execute — hide</button>
+              <button style={{ flex: 1, border: secBorder, background: "transparent", color: C.dim, padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono }}>{copy.cardReject}</button>
+              <button style={{ flex: 2, border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono, boxShadow: "0 0 22px rgba(46,227,178,.4)" }}>{copy.cardApprove}</button>
             </div>
-            <p style={{ margin: "12px 0 0", fontSize: 10, color: C.faint, fontFamily: mono }}>→ logged to audit trail · reversible · author still sees own comment</p>
+            <p style={{ margin: "12px 0 0", fontSize: 10, color: C.faint, fontFamily: mono }}>{copy.cardFootnote}</p>
           </div>
         </div>
       </section>
@@ -542,24 +528,23 @@ export function LandingV2() {
       <section style={{ borderBottom: secBorder, background: C.panel }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "70px 24px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 34 }}>
-            <p style={eyebrow}>SYS / 04 — Coverage</p>
-            <p style={{ margin: 0, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>Honest about today · no fake logos</p>
+            <p style={eyebrow}>SYS / 04 — {copy.coverageEyebrow}</p>
+            <p style={{ margin: 0, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>{copy.covNote}</p>
           </div>
           <div className="tmr-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
-            {[
-              { n: "Facebook", tag: "Armed", tagStyle: { background: C.mint, color: C.bg }, body: "Full protection — auto-hide pipeline with human approval, comments, reputation, actor risk.", dim: false },
-              { n: "Instagram", tag: "Monitoring", tagStyle: { border: `1px solid ${C.amber}`, color: C.amber }, body: "Business accounts — monitoring, comments, reputation and actor risk. Auto-hide not enabled yet.", dim: false },
-              { n: "Google Business", tag: "Ready", tagStyle: { border: secBorder, color: C.dim }, body: "Connector built — awaiting approved API access. Reviews stay read-only by design.", dim: true },
-              { n: "More", tag: "Planned", tagStyle: { border: secBorder, color: C.dim }, body: "YouTube, LinkedIn, TikTok — in development. We don't claim them until they ship.", dim: true },
-            ].map((p) => (
-              <div key={p.n} style={{ background: C.bg, padding: 24, opacity: p.dim ? 0.55 : 1 }}>
+            {copy.platforms.map((p, i) => {
+              const tagStyle: React.CSSProperties = i === 0 ? { background: C.mint, color: C.bg } : i === 1 ? { border: `1px solid ${C.amber}`, color: C.amber } : { border: secBorder, color: C.dim };
+              const dim = i >= 2;
+              return (
+              <div key={p.n} style={{ background: C.bg, padding: 24, opacity: dim ? 0.55 : 1 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 19, fontWeight: 600, color: C.bright, fontFamily: disp }}>{p.n}</span>
-                  <span style={{ padding: "2px 8px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono, ...p.tagStyle }}>{p.tag}</span>
+                  <span style={{ padding: "2px 8px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono, ...tagStyle }}>{p.tag}</span>
                 </div>
                 <p style={{ margin: "12px 0 0", fontSize: 12, lineHeight: 1.65, color: C.dim }}>{p.body}</p>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -568,20 +553,20 @@ export function LandingV2() {
       <section id="diag" style={{ borderBottom: secBorder }}>
         <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 48, padding: "84px 24px" }}>
           <div>
-            <p style={eyebrow}>SYS / 05 — Diagnostics</p>
-            <h2 style={{ margin: "16px 0 0", fontSize: 38, lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
-              Safe <span style={{ fontStyle: "italic", color: C.mint }}>by design.</span>
+            <p style={eyebrow}>SYS / 05 — {copy.diagnosticsEyebrow}</p>
+            <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
+              {copy.diagA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.diagB}</span>
             </h2>
             <p style={{ margin: "20px 0 0", maxWidth: "40ch", fontSize: 15, lineHeight: 1.75, color: C.dim }}>
-              Run the checklist yourself. Built for European privacy and operational requirements — every guarantee verifiable in the product.
+              {copy.diagBody}
             </p>
           </div>
           <div style={{ border: secBorder, background: C.panel, padding: "8px 0", fontSize: 12, fontFamily: mono }}>
-            {DIAG.map((d) => (
+            {copy.diag.map((d) => (
               <div key={d} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "10px 20px" }}>
                 <span style={{ color: C.dim, flexShrink: 0 }}>{d}</span>
                 <span style={{ flex: 1, borderBottom: `1px dotted ${C.line}`, transform: "translateY(-3px)" }} />
-                <span style={{ color: C.mint, flexShrink: 0, textShadow: "0 0 10px rgba(46,227,178,.5)" }}>PASS</span>
+                <span style={{ color: C.mint, flexShrink: 0, textShadow: "0 0 10px rgba(46,227,178,.5)" }}>{copy.pass}</span>
               </div>
             ))}
           </div>
@@ -593,18 +578,18 @@ export function LandingV2() {
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "84px 24px" }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 20, marginBottom: 40 }}>
             <div>
-              <p style={eyebrow}>SYS / 06 — Pricing</p>
+              <p style={eyebrow}>SYS / 06 — {copy.pricingEyebrow}</p>
               <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
-                Arm your accounts. <span style={{ fontStyle: "italic", color: C.mint }}>Start free.</span>
+                {copy.priceA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.priceB}</span>
               </h2>
-              <p style={{ margin: "14px 0 0", fontSize: 13, color: C.dim }}>14-day trial on every plan — no credit card. Prices indicative.</p>
+              <p style={{ margin: "14px 0 0", fontSize: 13, color: C.dim }}>{copy.priceSub}</p>
             </div>
-            <div style={{ display: "inline-flex", border: secBorder }}>
-              {(["Monthly", "Yearly"] as const).map((label) => {
-                const on = (label === "Yearly") === yearly;
+            <div style={{ display: "inline-flex", border: secBorder }} role="group" aria-label={copy.pricingEyebrow}>
+              {[{ label: copy.monthly, y: false }, { label: copy.yearly, y: true }].map((opt) => {
+                const on = opt.y === yearly;
                 return (
-                  <button key={label} onClick={() => setYearly(label === "Yearly")} style={{ border: "none", cursor: "pointer", fontFamily: mono, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", padding: "10px 20px", background: on ? C.mint : "transparent", color: on ? C.bg : C.dim, fontWeight: 600 }}>
-                    {label}
+                  <button key={opt.label} type="button" aria-pressed={on} onClick={() => setYearly(opt.y)} style={{ border: "none", cursor: "pointer", fontFamily: mono, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", padding: "10px 20px", background: on ? C.mint : "transparent", color: on ? C.bg : C.dim, fontWeight: 600 }}>
+                    {opt.label}
                   </button>
                 );
               })}
@@ -615,14 +600,14 @@ export function LandingV2() {
               <div key={p.name} style={p.pop ? { background: "#061711", padding: "26px 24px", boxShadow: `inset 0 0 0 1px ${C.mint}, 0 0 34px rgba(46,227,178,.14)` } : { background: C.bg, padding: "26px 24px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.16em", color: p.pop ? C.mint : C.dim, fontFamily: mono }}>{p.name}</span>
-                  {p.pop && <span style={{ background: C.mint, color: C.bg, padding: "2px 8px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>Popular</span>}
+                  {p.pop && <span style={{ background: C.mint, color: C.bg, padding: "2px 8px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{copy.popular}</span>}
                 </div>
                 <div style={{ margin: "18px 0 4px", display: "flex", alignItems: "baseline", gap: 5 }}>
                   <span style={{ fontSize: 34, fontWeight: 600, color: C.bright, fontFamily: disp }}>{p.price}</span>
                   <span style={{ fontSize: 11, color: C.faint, fontFamily: mono }}>{p.per}</span>
                 </div>
                 <p style={{ margin: "0 0 18px", fontSize: 12, lineHeight: 1.6, color: C.dim, minHeight: 38 }}>{p.tagline}</p>
-                <Link href={p.name === "Enterprise" ? "/contact" : "/register"} style={{ display: "block", textAlign: "center", padding: 11, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono, fontWeight: p.pop ? 600 : 400, ...(p.pop ? { border: `1px solid ${C.mint}`, background: C.mint, color: C.bg } : { border: secBorder, color: C.text }) }}>
+                <Link href={p.isEnterprise ? "/contact" : "/register"} style={{ display: "block", textAlign: "center", padding: 11, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono, fontWeight: p.pop ? 600 : 400, ...(p.pop ? { border: `1px solid ${C.mint}`, background: C.mint, color: C.bg } : { border: secBorder, color: C.text }) }}>
                   {p.cta}
                 </Link>
                 <ul style={{ listStyle: "none", margin: "18px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -641,10 +626,10 @@ export function LandingV2() {
       {/* faq */}
       <section style={{ borderBottom: secBorder }}>
         <div style={{ maxWidth: 880, margin: "0 auto", padding: "76px 24px" }}>
-          <p style={eyebrow}>Query the system</p>
-          <h2 style={{ margin: "14px 0 34px", fontSize: 32, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>Straight answers.</h2>
+          <p style={eyebrow}>{copy.faqEyebrow}</p>
+          <h2 style={{ margin: "14px 0 34px", fontSize: "clamp(24px, 3vw, 32px)", fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>{copy.faqTitle}</h2>
           <div style={{ borderTop: secBorder }}>
-            {FAQS.map((f) => (
+            {copy.faqs.map((f) => (
               <details key={f.q} style={{ borderBottom: secBorder }}>
                 <summary style={{ display: "flex", cursor: "pointer", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "20px 0" }}>
                   <span style={{ fontSize: 14, color: C.text }}><span style={{ color: C.mint, fontFamily: mono }}>&gt;_</span> {f.q}</span>
@@ -665,21 +650,21 @@ export function LandingV2() {
             <rect x="11" y="14.5" width="10" height="8" rx="1.6" fill={C.bg} />
             <path d="M13 14.5v-1.8a3 3 0 0 1 6 0v1.8" stroke={C.bg} strokeWidth="1.7" strokeLinecap="round" />
           </svg>
-          <h2 style={{ margin: "30px auto 0", maxWidth: "22ch", fontSize: 48, lineHeight: 1.05, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em", textShadow: "0 0 60px rgba(46,227,178,.25)" }}>
-            Raise the wall <span style={{ fontStyle: "italic", color: C.mint }}>tonight.</span>
+          <h2 style={{ margin: "30px auto 0", maxWidth: "22ch", fontSize: "clamp(30px, 4.5vw, 48px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em", textShadow: "0 0 60px rgba(46,227,178,.25)" }}>
+            {copy.ctaA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.ctaB}</span>
           </h2>
           <p style={{ margin: "20px auto 0", maxWidth: "44ch", fontSize: 15, lineHeight: 1.75, color: C.dim }}>
-            Deploy in read-only mode in minutes. Connect your channels. Sleep while the wall watches — and nothing fires without you.
+            {copy.ctaBody}
           </p>
           <div style={{ marginTop: 36, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
-            <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "16px 34px", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", boxShadow: "0 0 40px rgba(46,227,178,.45)", fontFamily: mono }}>Deploy free — 14 days</Link>
-            <Link href="/login" style={{ border: secBorder, color: C.text, padding: "16px 34px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>Log in</Link>
+            <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "16px 34px", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", boxShadow: "0 0 40px rgba(46,227,178,.45)", fontFamily: mono }}>{copy.ctaPrimary}</Link>
+            <Link href="/login" style={{ border: secBorder, color: C.text, padding: "16px 34px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{logIn}</Link>
           </div>
         </div>
       </section>
 
       {/* V1.58D.2 — full global public footer (mission-control styling) replaces the old stub */}
-      <FooterV2 />
+      <FooterV2 footer={footer} locale={locale} startFree={startFree} logIn={logIn} />
     </div>
   );
 }

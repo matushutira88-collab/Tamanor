@@ -15,5 +15,5 @@ export const metadata: Metadata = {
 };
 
 export default function LandingPage() {
-  return <LandingV2 />;
+  return <LandingV2 copy={dict.landingV2} startFree={dict.common.startFree} logIn={dict.common.logIn} footer={dict.footer} locale="en" />;
 }

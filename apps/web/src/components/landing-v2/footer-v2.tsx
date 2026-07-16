@@ -1,14 +1,14 @@
 import Link from "next/link";
+import type { Dictionary, Locale } from "@/i18n";
 
 /**
  * V1.58D.2 — global public footer in the landing-v2 "mission control" visual language.
- * Reusable, no client hooks (pure static markup — negligible hydration), semantic <footer>/<nav>,
- * focus-visible states, AA-contrast colours on the dark surface, motion-reduce safe.
+ * V1.58D.4 — localized: reuses the existing footer.* and common.* dictionary keys (no second footer
+ * translation structure). Reusable, no client hooks (pure static markup — negligible hydration),
+ * semantic <footer>/<nav>, focus-visible states, AA-contrast colours, motion-reduce safe.
  *
- * Content mirrors the shipped global SiteFooter (truthful, production-verified routes): the two
- * live Meta providers are shown as available; the rest are visibly de-emphasised and captioned
- * "In development" — status by caption + reduced emphasis, never colour alone. English copy to
- * match the English v2 homepage; /sk and /de continue to render the localized SiteFooter.
+ * Truthful availability: the two live Meta providers are shown as available; the rest are visibly
+ * de-emphasised and captioned "In development" — status by caption + reduced emphasis, never colour.
  */
 
 const F = {
@@ -21,6 +21,8 @@ const F = {
 };
 const mono = "var(--font-mono-v2), ui-monospace, Menlo, monospace";
 const sans = "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif";
+
+const EU: Record<Locale, string> = { en: "European Union", sk: "Európska únia", de: "Europäische Union" };
 
 type L = { label: string; href: string };
 const linkStyle: React.CSSProperties = { color: F.dim, textDecoration: "none", fontSize: 13, fontFamily: sans };
@@ -40,23 +42,34 @@ function Col({ title, links }: { title: string; links: L[] }) {
   );
 }
 
-export function FooterV2() {
+export function FooterV2({
+  footer,
+  locale,
+  startFree,
+  logIn,
+}: {
+  footer: Dictionary["footer"];
+  locale: Locale;
+  startFree: string;
+  logIn: string;
+}) {
   const year = new Date().getFullYear();
   const product: L[] = [
-    { label: "Inbox", href: "/login" }, { label: "Approvals", href: "/login" },
-    { label: "Insights", href: "/login" }, { label: "Reports", href: "/login" }, { label: "Audit log", href: "/login" },
+    { label: footer.inbox, href: "/login" }, { label: footer.approvals, href: "/login" },
+    { label: footer.insights, href: "/login" }, { label: footer.reports, href: "/login" }, { label: footer.auditLog, href: "/login" },
   ];
+  // "Learn" links mirror the shipped SiteFooter (labels shared with the marketing IA).
   const learn: L[] = [
     { label: "Platform & architecture", href: "/platform" }, { label: "Features", href: "/features" },
     { label: "Integrations", href: "/integrations" }, { label: "Compare", href: "/compare" },
     { label: "Documentation", href: "/docs" }, { label: "AI discoverability", href: "/ai" },
   ];
   const company: L[] = [
-    { label: "About", href: "/about" }, { label: "Example scenarios", href: "/case-studies" }, { label: "Contact", href: "/contact" },
+    { label: footer.about, href: "/about" }, { label: footer.contact, href: "/contact" },
   ];
   const legal: L[] = [
-    { label: "Privacy", href: "/privacy" }, { label: "Cookies", href: "/cookies" },
-    { label: "Terms", href: "/terms" }, { label: "Security", href: "/security" },
+    { label: footer.privacy, href: "/privacy" }, { label: footer.cookies, href: "/cookies" },
+    { label: footer.terms, href: "/terms" }, { label: footer.security, href: "/security" },
   ];
   const available: L[] = [
     { label: "Facebook Pages", href: "/integrations/facebook" }, { label: "Instagram Business", href: "/integrations/instagram" },
@@ -75,41 +88,41 @@ export function FooterV2() {
           <div style={{ minWidth: 200 }}>
             <span style={{ fontSize: 18, fontWeight: 700, color: F.bright, fontFamily: "var(--font-disp-v2), ui-sans-serif, system-ui, sans-serif" }}>Tamanor</span>
             <p style={{ margin: "12px 0 18px", maxWidth: "34ch", fontSize: 13, lineHeight: 1.7, color: F.dim, fontFamily: sans }}>
-              The live reputation firewall for your connected social accounts — spam, scams and threats stopped at the wall, real feedback delivered. Humans approve every action.
+              {footer.tagline}
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              <Link href="/register" className="tmr-foot-link" style={{ background: F.mint, color: "#04140f", padding: "9px 16px", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono, textDecoration: "none" }}>Start for free</Link>
-              <Link href="/login" className="tmr-foot-link" style={{ border: `1px solid ${F.line}`, color: F.text, padding: "9px 16px", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono, textDecoration: "none" }}>Log in</Link>
+              <Link href="/register" className="tmr-foot-link" style={{ background: F.mint, color: "#04140f", padding: "9px 16px", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono, textDecoration: "none" }}>{startFree}</Link>
+              <Link href="/login" className="tmr-foot-link" style={{ border: `1px solid ${F.line}`, color: F.text, padding: "9px 16px", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono, textDecoration: "none" }}>{logIn}</Link>
             </div>
           </div>
 
-          <Col title="Product" links={product} />
+          <Col title={footer.product} links={product} />
 
           {/* Platforms — truthful availability */}
-          <nav aria-label="Platforms">
-            <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.14em", color: F.mint, fontFamily: mono, margin: "0 0 12px" }}>Platforms</p>
-            <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: F.dim, fontFamily: mono, margin: "0 0 8px" }}>Available now</p>
+          <nav aria-label={footer.platforms}>
+            <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.14em", color: F.mint, fontFamily: mono, margin: "0 0 12px" }}>{footer.platforms}</p>
+            <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: F.dim, fontFamily: mono, margin: "0 0 8px" }}>{footer.available}</p>
             <ul style={{ listStyle: "none", margin: "0 0 16px", padding: 0, display: "flex", flexDirection: "column", gap: 9 }}>
               {available.map((l) => <li key={l.label}><Link href={l.href} className="tmr-foot-link" style={linkStyle}>{l.label}</Link></li>)}
             </ul>
-            <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: F.dim, fontFamily: mono, margin: "0 0 8px" }}>In development</p>
+            <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: F.dim, fontFamily: mono, margin: "0 0 8px" }}>{footer.inDevelopment}</p>
             <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 9, opacity: 0.55 }}>
               {inDev.map((l) => <li key={l.label}><Link href={l.href} className="tmr-foot-link" style={linkStyle}>{l.label}</Link></li>)}
             </ul>
           </nav>
 
           <Col title="Learn" links={learn} />
-          <Col title="Company" links={company} />
-          <Col title="Legal" links={legal} />
+          <Col title={footer.company} links={company} />
+          <Col title={footer.legal} links={legal} />
         </div>
 
         {/* Bottom bar */}
         <div style={{ marginTop: 48, borderTop: `1px solid ${F.line}`, padding: "22px 0 30px", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: F.dim, fontFamily: mono }}>
-            <span>© {year} Tamanor — European reputation-security platform</span>
-            <span>Operated by Infotech Solutions, s. r. o., European Union</span>
+            <span>© {year} Tamanor — {footer.rights}</span>
+            <span>Operated by Infotech Solutions, s. r. o., {EU[locale]}</span>
           </div>
-          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: F.dim, fontFamily: mono }}>Read-only by default · Official OAuth only · No scraping</span>
+          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: F.dim, fontFamily: mono }}>{footer.badge}</span>
         </div>
       </div>
     </footer>

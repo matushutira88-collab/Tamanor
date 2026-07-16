@@ -199,7 +199,7 @@ function run() {
   const dashLayoutSrc = src("src/app/dashboard/layout.tsx");
   // Homepage (landing v2) must render the full FooterV2, not the old stub.
   check("39) landing v2 renders the global FooterV2 (not the minimal stub footer)",
-    /FooterV2/.test(landingV2) && /<FooterV2\s*\/>/.test(landingV2) && !/EU reputation-security platform<\/span>/.test(landingV2));
+    /FooterV2/.test(landingV2) && /<FooterV2[\s/>]/.test(landingV2) && !/EU reputation-security platform<\/span>/.test(landingV2));
   // FooterV2 content: uses next/link (no plain <a> internal reloads, no placeholder #), required
   // legal + platform links present, operator identity, truthful "In development" grouping, no Guardora.
   const footerLegalOk = ["/privacy", "/cookies", "/terms", "/security", "/register", "/login", "/contact", "/about", "/integrations/facebook"].every((h) => footerV2.includes(h));
