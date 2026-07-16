@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { FooterV2 } from "./footer-v2";
 import type { Dictionary, Locale } from "@/i18n";
+import { locales, localeShort, localePrefix, LOCALE_COOKIE } from "@/i18n/config";
 
 type L2 = Dictionary["landingV2"];
 export type LandingV2Props = {
@@ -47,6 +48,10 @@ const KEYFRAMES = `
 @media (max-width: 860px) {
   .tmr-v2 .tmr-cols { grid-template-columns: 1fr !important; }
   .tmr-v2 .tmr-kpi { grid-template-columns: repeat(2, 1fr) !important; }
+  .tmr-v2 .tmr-nav, .tmr-v2 .tmr-online { display: none !important; }
+}
+@media (max-width: 420px) {
+  .tmr-v2 .tmr-cta { display: none !important; }
 }
 `;
 
@@ -281,6 +286,29 @@ const BLIPS = [
 // Self-serve monthly prices by plan index (Starter/Growth/Agency); Enterprise (index 3) is contact-sales.
 const PLAN_PRICES = [49, 149, 399, null] as const;
 
+/* ---------- language switcher (existing convention: cookie + locale-prefixed route) ---------- */
+
+function LangSwitchV2({ locale }: { locale: Locale }) {
+  return (
+    <div role="group" aria-label="Language" style={{ display: "inline-flex", gap: 2, border: `1px solid ${C.line}`, padding: 2 }}>
+      {locales.map((l) => {
+        const on = l === locale;
+        return (
+          <Link
+            key={l}
+            href={localePrefix(l) || "/"}
+            onClick={() => { document.cookie = `${LOCALE_COOKIE}=${l}; path=/; max-age=31536000; samesite=lax`; }}
+            aria-current={on ? "true" : undefined}
+            style={{ padding: "4px 9px", fontSize: 10, fontFamily: mono, textTransform: "uppercase", letterSpacing: "0.08em", textDecoration: "none", ...(on ? { background: C.mint, color: C.bg, fontWeight: 600 } : { color: C.dim }) }}
+          >
+            {localeShort[l]}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ---------- page ---------- */
 
 export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2Props) {
@@ -337,11 +365,12 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
             <a href="#diag" style={navA}>{copy.navDiagnostics}</a>
             <a href="#pricing" style={navA}>{copy.navPricing}</a>
           </nav>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span className="tmr-online" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.dim, fontFamily: mono }}>
               <span style={{ height: 6, width: 6, borderRadius: 9999, background: C.mint, boxShadow: `0 0 8px ${C.mint}` }} />{copy.online}
             </span>
-            <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "8px 16px", fontWeight: 600, fontFamily: mono }}>{startFree}</Link>
+            <LangSwitchV2 locale={locale} />
+            <Link href="/register" className="tmr-cta" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "8px 16px", fontWeight: 600, fontFamily: mono }}>{startFree}</Link>
           </div>
         </div>
       </header>

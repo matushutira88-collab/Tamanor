@@ -3,9 +3,8 @@ import { LandingV2 } from "@/components/landing-v2/landing-v2";
 import { getDictionary } from "@/i18n";
 import { marketingAlternates } from "@/lib/seo";
 
-// V1.58D — homepage now renders the "mission control" landing v2. SEO metadata + hreflang
-// alternates are preserved from the existing dictionary (unchanged). The old LandingContent
-// stays in the repo and still serves /sk and /de until v2 i18n lands.
+// V1.58D.4 — the "mission control" Landing V2 is the single landing across all locales
+// (/, /sk, /de). SEO metadata + hreflang alternates preserved from the dictionary.
 const dict = getDictionary("en");
 
 export const metadata: Metadata = {
