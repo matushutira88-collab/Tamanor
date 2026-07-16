@@ -57,6 +57,22 @@ const KEYFRAMES = `
 
 const mono = "var(--font-mono-v2), ui-monospace, Menlo, monospace";
 const disp = "var(--font-disp-v2), ui-sans-serif, system-ui, sans-serif";
+const sans = "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif";
+
+/**
+ * V1.58D.6 — premium illustrated role avatar (inline SVG, one consistent neutral style — no
+ * photos, no AI-generated portraits, no artifacts). Used to give the workflow a human face
+ * ("real people review") without dominating the page.
+ */
+function Avatar() {
+  return (
+    <span aria-hidden style={{ display: "grid", placeItems: "center", height: 34, width: 34, borderRadius: 9999, background: "rgba(46,227,178,.07)", border: `1px solid ${C.line}`, color: C.dim, flexShrink: 0 }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="8.5" r="3.4" /><path d="M5 20a7 7 0 0 1 14 0" />
+      </svg>
+    </span>
+  );
+}
 
 /* ---------- firewall canvas simulation ---------- */
 
@@ -526,6 +542,19 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
             <p style={{ margin: "18px 0 0", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>
               {copy.cmdCursor}<span style={{ animation: "tmr-blink 1.1s step-end infinite" }}>_</span>
             </p>
+            {/* V1.58D.6 — the people behind the workflow (real roles, consistent illustrated avatars) */}
+            <div style={{ marginTop: 30, paddingTop: 24, borderTop: secBorder }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 18 }}>
+                {copy.teamRoles.map((role, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                    <Avatar />
+                    <span style={{ fontSize: 12.5, color: C.text, fontFamily: sans }}>{role}</span>
+                  </span>
+                ))}
+              </div>
+              <p style={{ margin: "16px 0 0", maxWidth: "44ch", fontSize: 14, lineHeight: 1.7, color: C.dim, fontFamily: sans }}>{copy.teamCaption}</p>
+              <p style={{ margin: "12px 0 0", fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", color: C.mint, fontFamily: sans }}>{copy.teamTriad}</p>
+            </div>
           </div>
           <div style={{ border: secBorder, background: C.panel, padding: 22 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>
