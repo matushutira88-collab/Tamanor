@@ -88,6 +88,16 @@ function run() {
   const stale = files.filter(({ s }) => /guardora\.ai/.test(s) && !/@guardora/.test(s.match(/.*guardora\.ai.*/)?.[0] ?? ""));
   check("24) no stale guardora.ai in web src", stale.length === 0, stale.map((x) => x.f).join(", "));
 
+  // ---------------- native dependency packaging (V1.55B.2) ----------------
+  // @node-rs/argon2 is required at runtime through the transpiled @guardora/db and is
+  // externalized by next.config, so it is NOT bundled — Next output-file-tracing must
+  // resolve it from node_modules. The DEPLOYED package (apps/web) must therefore own it
+  // directly; otherwise Vercel's traced function omits the native module and every route
+  // importing @guardora/db throws MODULE_NOT_FOUND at import time (500 on /api/ready, login,
+  // registration). Declaring it on packages/db alone is insufficient for the app's trace.
+  const webPkg = JSON.parse(src("package.json")) as { dependencies?: Record<string, string> };
+  check("25) apps/web declares @node-rs/argon2 as a direct runtime dependency (Vercel native packaging)", Boolean(webPkg.dependencies?.["@node-rs/argon2"]));
+
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — production readiness (V1.39)`);
   process.exit(failures === 0 ? 0 : 1);
 }

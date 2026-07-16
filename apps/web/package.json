@@ -18,6 +18,7 @@
     "@guardora/core": "workspace:*",
     "@guardora/db": "workspace:*",
     "@guardora/sync": "workspace:*",
+    "@node-rs/argon2": "^2.0.2",
     "next": "^15.5.20",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
