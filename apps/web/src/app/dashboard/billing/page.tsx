@@ -9,6 +9,7 @@ import { requireVerifiedSession } from "@/server/auth";
 import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
 import { startCheckout, openBillingPortal } from "./actions";
+import { resolveBillingCta } from "./cta";
 
 export const metadata: Metadata = { title: "Billing — Tamanor", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -44,6 +45,7 @@ type Copy = {
   upgradeTo: (name: string) => string; current: string; contactSales: string; managePortal: string;
   cancelsAt: (d: string) => string; perMonth: string; perYear: string;
   custom: string; ownerOnlyShort: string; mostPopular: string;
+  checkoutUnavailable: string; contactSupport: string;
   ownerOnly: string;
   restricted: { title: string; body: string };
   pastDue: { title: string; body: string };
@@ -71,6 +73,7 @@ const C: Record<Locale, Copy> = {
     upgradeTo: (n) => `Upgrade to ${n}`, current: "Current plan", contactSales: "Contact sales", managePortal: "Manage billing & invoices",
     cancelsAt: (d) => `Cancels on ${d}`, perMonth: "/mo", perYear: "/yr",
     custom: "Custom", ownerOnlyShort: "Owner only", mostPopular: "Most popular",
+    checkoutUnavailable: "Checkout temporarily unavailable", contactSupport: "Contact support",
     ownerOnly: "Only the workspace owner can change the plan.",
     restricted: { title: "Access restricted", body: "Your trial or subscription has ended. Choose a plan to restore full access. Your data is safe and your accounts stay connected." },
     pastDue: { title: "Payment failed", body: "We couldn't process your last payment. Please update your payment method to keep full access." },
@@ -108,6 +111,7 @@ const C: Record<Locale, Copy> = {
     upgradeTo: (n) => `Prejsť na ${n}`, current: "Aktuálny plán", contactSales: "Kontaktovať obchod", managePortal: "Spravovať fakturáciu a faktúry",
     cancelsAt: (d) => `Ruší sa ${d}`, perMonth: "/mes", perYear: "/rok",
     custom: "Na mieru", ownerOnlyShort: "Len vlastník", mostPopular: "Najobľúbenejšie",
+    checkoutUnavailable: "Platba dočasne nedostupná", contactSupport: "Kontaktovať podporu",
     ownerOnly: "Plán môže meniť len vlastník pracovného priestoru.",
     restricted: { title: "Prístup obmedzený", body: "Vaša skúšobná verzia alebo predplatné skončilo. Vyberte plán a obnovte plný prístup. Vaše dáta sú v bezpečí a účty zostávajú pripojené." },
     pastDue: { title: "Platba zlyhala", body: "Poslednú platbu sa nepodarilo spracovať. Aktualizujte platobnú metódu, aby ste si zachovali plný prístup." },
@@ -145,6 +149,7 @@ const C: Record<Locale, Copy> = {
     upgradeTo: (n) => `Wechseln zu ${n}`, current: "Aktueller Tarif", contactSales: "Vertrieb kontaktieren", managePortal: "Abrechnung & Rechnungen verwalten",
     cancelsAt: (d) => `Kündigt am ${d}`, perMonth: "/Mon", perYear: "/Jahr",
     custom: "Individuell", ownerOnlyShort: "Nur Inhaber", mostPopular: "Am beliebtesten",
+    checkoutUnavailable: "Checkout vorübergehend nicht verfügbar", contactSupport: "Support kontaktieren",
     ownerOnly: "Nur der Workspace-Inhaber kann den Tarif ändern.",
     restricted: { title: "Zugriff eingeschränkt", body: "Ihre Testphase oder Ihr Abo ist beendet. Wählen Sie einen Tarif, um den vollen Zugriff wiederherzustellen. Ihre Daten sind sicher und Ihre Konten bleiben verbunden." },
     pastDue: { title: "Zahlung fehlgeschlagen", body: "Ihre letzte Zahlung konnte nicht verarbeitet werden. Bitte aktualisieren Sie Ihre Zahlungsmethode." },
@@ -345,22 +350,35 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 ))}
               </ul>
               <div className="mt-5">
-                {isCurrent ? (
-                  <span className={btnDisabled} aria-disabled="true">{c.current}</span>
-                ) : isEnterprise ? (
-                  <Link href="/contact" className={btnOutline}>{c.contactSales}</Link>
-                ) : isOwner && canBuy ? (
-                  <form action={startCheckout}>
-                    <input type="hidden" name="plan" value={planId} />
-                    <input type="hidden" name="interval" value={interval} />
-                    <button type="submit" className={highlighted ? btnPrimary : btnOutline}>{c.upgradeTo(p.name)}</button>
-                  </form>
-                ) : isOwner ? (
-                  // Checkout not configured yet → keep a real button that opens the contact flow (never plain text).
-                  <Link href="/contact" className={highlighted ? btnPrimary : btnOutline}>{c.upgradeTo(p.name)}</Link>
-                ) : (
-                  <span className={btnDisabled} aria-disabled="true" title={c.ownerOnly}>{c.ownerOnlyShort}</span>
-                )}
+                {(() => {
+                  switch (resolveBillingCta({ isEnterprise, isCurrent, isOwner, canBuy })) {
+                    case "current":
+                      return <span className={btnDisabled} aria-disabled="true">{c.current}</span>;
+                    case "contact_sales":
+                      // Enterprise / Custom only.
+                      return <Link href="/contact" className={btnOutline}>{c.contactSales}</Link>;
+                    case "checkout":
+                      // Starter / Growth / Agency with a configured (plan, interval) price → Stripe Checkout.
+                      return (
+                        <form action={startCheckout}>
+                          <input type="hidden" name="plan" value={planId} />
+                          <input type="hidden" name="interval" value={interval} />
+                          <button type="submit" className={highlighted ? btnPrimary : btnOutline}>{c.upgradeTo(p.name)}</button>
+                        </form>
+                      );
+                    case "checkout_unavailable":
+                      // Paid plan whose Stripe price isn't configured → truthful billing-specific state,
+                      // NEVER a silent redirect to the generic /contact upgrade page. Secondary support link only.
+                      return (
+                        <div className="space-y-1.5">
+                          <span className={btnDisabled} aria-disabled="true">{c.checkoutUnavailable}</span>
+                          <Link href="/contact" className="block text-center text-xs font-medium text-[var(--color-muted)] underline underline-offset-2 transition-colors motion-reduce:transition-none hover:text-[var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]">{c.contactSupport}</Link>
+                        </div>
+                      );
+                    default:
+                      return <span className={btnDisabled} aria-disabled="true" title={c.ownerOnly}>{c.ownerOnlyShort}</span>;
+                  }
+                })()}
               </div>
             </article>
           );

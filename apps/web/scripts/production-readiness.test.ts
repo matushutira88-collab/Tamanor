@@ -13,6 +13,8 @@ import { SAFE_ERRORS, toSafeError, newCorrelationId } from "../src/lib/errors";
 import { redact } from "../src/lib/ops-events";
 import { connectorDisplay } from "../src/lib/connector-display";
 import { PROVIDERS, providerStatusFor } from "../src/lib/provider-status";
+import { resolveStripePriceId, type BillingPlanId, type BillingInterval } from "@guardora/core";
+import { resolveBillingCta } from "../src/app/dashboard/billing/cta";
 
 let failures = 0;
 function check(label: string, cond: boolean, detail = "") {
@@ -156,6 +158,40 @@ function run() {
   check("34) billing: Growth highlighted 'Most popular' + expandable Compare Plans + no dead 'unavailable' CTA text",
     /mostPopular/.test(billing) && /planId === "growth"/.test(billing) && /<details/.test(billing) && /COMPARE_ROWS/.test(billing) && !/notConfigured/.test(billing));
   check("35) billing page stays a server component (no added client-side hydration)", !/^["']use client["']/m.test(billing));
+
+  // ---------------- paid-plan checkout routing (V1.57.1) ----------------
+  // Starter/Growth/Agency must route to Stripe Checkout when configured and to a truthful
+  // "checkout unavailable" state when not — NEVER to the generic /contact page. Only Enterprise
+  // uses Contact Sales.
+  const paidOwnerConfigured = resolveBillingCta({ isEnterprise: false, isCurrent: false, isOwner: true, canBuy: true });
+  const paidOwnerUnconfigured = resolveBillingCta({ isEnterprise: false, isCurrent: false, isOwner: true, canBuy: false });
+  const enterpriseOwner = resolveBillingCta({ isEnterprise: true, isCurrent: false, isOwner: true, canBuy: false });
+  const paidNonOwner = resolveBillingCta({ isEnterprise: false, isCurrent: false, isOwner: false, canBuy: true });
+  const currentPlan = resolveBillingCta({ isEnterprise: false, isCurrent: true, isOwner: true, canBuy: true });
+  // No paid-plan owner/canBuy/current combination may ever resolve to contact_sales.
+  const paidNeverContact = [true, false].every((cur) => [true, false].every((buy) => [true, false].every((own) =>
+    resolveBillingCta({ isEnterprise: false, isCurrent: cur, isOwner: own, canBuy: buy }) !== "contact_sales")));
+  check("36) paid CTA routing: configured→checkout, unconfigured→checkout_unavailable (never /contact); Enterprise→contact_sales",
+    paidOwnerConfigured === "checkout" && paidOwnerUnconfigured === "checkout_unavailable" && enterpriseOwner === "contact_sales" &&
+    paidNonOwner === "owner_only" && currentPlan === "current" && paidNeverContact);
+  // Also: the billing page must not render a /contact upgrade CTA for paid plans (only the secondary
+  // support link + the Enterprise Contact-sales button reference /contact).
+  check("37) billing page has no paid-plan '/contact' upgrade route (only contact_sales + support link)",
+    /resolveBillingCta/.test(billing) && !/upgradeTo\([^)]*\)}<\/Link>/.test(billing));
+  // Price mapping: monthly/yearly pick the correct env var (not swapped); missing→null; enterprise→null.
+  const mockEnv: Record<string, string> = {
+    STRIPE_PRICE_STARTER_MONTHLY: "price_sm", STRIPE_PRICE_STARTER_YEARLY: "price_sy",
+    STRIPE_PRICE_GROWTH_MONTHLY: "price_gm", STRIPE_PRICE_GROWTH_YEARLY: "price_gy",
+    STRIPE_PRICE_AGENCY_MONTHLY: "price_am", STRIPE_PRICE_AGENCY_YEARLY: "price_ay",
+  };
+  const rp = (p: BillingPlanId, i: BillingInterval) => resolveStripePriceId(p, i, mockEnv);
+  const priceMappingOk =
+    rp("starter", "monthly") === "price_sm" && rp("starter", "yearly") === "price_sy" &&
+    rp("growth", "monthly") === "price_gm" && rp("growth", "yearly") === "price_gy" &&
+    rp("agency", "monthly") === "price_am" && rp("agency", "yearly") === "price_ay" &&
+    resolveStripePriceId("starter", "monthly", {}) === null &&        // missing → null (truthful unavailable)
+    resolveStripePriceId("enterprise", "monthly", mockEnv) === null;  // enterprise is never self-serve
+  check("38) resolveStripePriceId maps monthly/yearly to the correct env price (not swapped), null when unset", priceMappingOk);
 
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — production readiness (V1.39)`);
   process.exit(failures === 0 ? 0 : 1);
