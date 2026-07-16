@@ -128,7 +128,11 @@ export function SiteFooter({
           ))}
         </div>
         <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-[var(--color-border)] pt-6 text-xs text-[var(--color-muted)] md:flex-row">
-          <span>© {new Date().getFullYear()} Tamanor — {t.footer.rights}</span>
+          <div className="flex flex-col items-center gap-0.5 md:items-start">
+            <span>© {new Date().getFullYear()} Tamanor — {t.footer.rights}</span>
+            {/* V1.54 — truthful operator identity + European Union framing (no invented geography). */}
+            <span>Operated by Infotech Solutions, s. r. o. · {({ en: "European Union", sk: "Európska únia", de: "Europäische Union" } as const)[locale] ?? "European Union"}</span>
+          </div>
           <span>{t.footer.badge}</span>
         </div>
       </div>

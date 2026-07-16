@@ -3,7 +3,7 @@
 
 export const en = {
   meta: {
-    landingTitle: "Tamanor — Social Account Firewall for modern brands",
+    landingTitle: "Tamanor — European reputation-security platform for social accounts",
     landingDescription:
       "Tamanor monitors comments, reviews and audience feedback across Facebook, Instagram, YouTube, LinkedIn, TikTok and Google — detects risk, prepares safe actions and keeps humans in control.",
     caseStudiesTitle: "Example scenarios — Tamanor",
@@ -94,7 +94,7 @@ export const en = {
         { author: "anon_user_88", meta: "Facebook · 2m ago", text: "This brand is a total scam — don’t waste your money." },
         { author: "deals_bot_xyz", meta: "Instagram · 11m ago", text: "Free crypto giveaway 🎁 click my link now!!" },
         { author: "M. Kováč", meta: "Google · 1h ago", text: "Waited 40 minutes and nobody helped. Disappointed." },
-        { author: "petra.h", meta: "YouTube · 3h ago", text: "Does this ship to Slovakia? Can’t find it anywhere." },
+        { author: "petra.h", meta: "YouTube · 3h ago", text: "Do you ship across the EU? Can’t find it anywhere." },
       ],
     },
     risk: {
@@ -239,7 +239,7 @@ export const en = {
   },
 
   footer: {
-    tagline: "Social Account Firewall. Protect your brand across social media, comments and reviews.",
+    tagline: "Reputation security for connected social accounts — detect risk, protect accounts and coordinate trusted responses across markets and platforms.",
     product: "Product",
     platforms: "Platforms",
     company: "Company",
@@ -257,7 +257,7 @@ export const en = {
     auditLog: "Audit Log",
     available: "Available now",
     inDevelopment: "In development",
-    rights: "Social Account Firewall for modern brands",
+    rights: "European reputation-security platform",
     badge: "Read-only by default · Official OAuth only · No scraping",
   },
 

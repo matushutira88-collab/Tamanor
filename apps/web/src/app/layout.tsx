@@ -15,9 +15,9 @@ const displaySerif = Playfair_Display({
   display: "swap",
 });
 
-const TITLE = "Tamanor — Social Account Firewall";
+const TITLE = "Tamanor — European reputation-security platform for social accounts";
 const DESCRIPTION =
-  "Tamanor protects social accounts from spam, scams, harmful comments and repeated risky behavior with self-service rules, reputation analytics and actor risk.";
+  "Tamanor helps organisations detect reputation risk, protect connected social accounts and coordinate trusted, auditable responses across markets, teams and platforms — with humans in control of automation. Built around European privacy and governance.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://tamanor.com"),

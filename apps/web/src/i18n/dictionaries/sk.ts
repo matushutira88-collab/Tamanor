@@ -2,7 +2,7 @@ import type { Dictionary } from "./en";
 
 export const sk: Dictionary = {
   meta: {
-    landingTitle: "Tamanor — Social Account Firewall pre moderné značky",
+    landingTitle: "Tamanor — európska platforma pre reputačnú bezpečnosť sociálnych účtov",
     landingDescription:
       "Tamanor sleduje komentáre, recenzie a spätnú väzbu na Facebooku, Instagrame, YouTube, LinkedIne, TikToku a Google — vyhodnocuje riziko, pripravuje bezpečné kroky a ponecháva rozhodnutie ľuďom.",
     caseStudiesTitle: "Príkladové scenáre — Tamanor",
@@ -13,8 +13,8 @@ export const sk: Dictionary = {
   common: {
     // V1.33 — verejná značka. Uprednostnite tieto kľúče pred pevným zápisom názvu.
     brand: "Tamanor",
-    brandTagline: "Social Account Firewall",
-    brandFull: "Tamanor — Social Account Firewall",
+    brandTagline: "Reputačná bezpečnosť",
+    brandFull: "Tamanor — reputačná bezpečnosť sociálnych účtov",
     startFree: "Začať zdarma",
     logIn: "Prihlásiť sa",
     reviewSecurity: "Pozrieť bezpečnosť",
@@ -236,7 +236,7 @@ export const sk: Dictionary = {
   },
 
   footer: {
-    tagline: "Social Account Firewall. Chráňte svoju značku naprieč sociálnymi sieťami, komentármi a recenziami.",
+    tagline: "Reputačná bezpečnosť pre pripojené sociálne účty — odhaľte riziko, chráňte účty a koordinujte dôveryhodné reakcie naprieč trhmi a platformami.",
     product: "Produkt",
     platforms: "Platformy",
     company: "Spoločnosť",
@@ -254,7 +254,7 @@ export const sk: Dictionary = {
     auditLog: "Audit",
     available: "Dostupné teraz",
     inDevelopment: "Vo vývoji",
-    rights: "Social Account Firewall pre moderné značky",
+    rights: "Európska platforma pre reputačnú bezpečnosť",
     badge: "Predvolene iba na čítanie · Iba oficiálne OAuth · Žiadny scraping",
   },
 

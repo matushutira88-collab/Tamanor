@@ -58,7 +58,7 @@ const COPY: Record<
       "We believe reputation tooling should be powerful and safe. That means official integrations only, no scraping, no shortcuts around a platform’s rules, and an approval workflow so nothing sensitive happens automatically. Speed from AI, accountability from people.",
     whereTitle: "Where we are",
     whereBody:
-      "Tamanor is an early-stage product being built in the open with its first design partners. If that sounds like your team, we’d love to talk.",
+      "Tamanor is a European reputation-security platform, operated within the EU by Infotech Solutions, s. r. o. We build in close collaboration with the organisations that rely on it — if public-conversation risk matters to your team, we’d like to talk.",
     startFree: "Start free",
     reachUsPre: "or reach us at",
     reachUsPost: ".",
@@ -76,7 +76,7 @@ const COPY: Record<
       "Veríme, že nástroje na správu reputácie majú byť výkonné aj bezpečné. To znamená iba oficiálne integrácie, žiadny scraping, žiadne obchádzanie pravidiel platforiem a schvaľovací proces, aby sa nič citlivé nedialo automaticky. Rýchlosť od AI, zodpovednosť od ľudí.",
     whereTitle: "Kde sa nachádzame",
     whereBody:
-      "Tamanor je produkt v ranej fáze, ktorý vyvíjame otvorene s prvými dizajnovými partnermi. Ak to znie ako váš tím, radi sa s vami porozprávame.",
+      "Tamanor je európska platforma pre reputačnú bezpečnosť, ktorú v rámci EÚ prevádzkuje Infotech Solutions, s. r. o. Vyvíjame ju v úzkej spolupráci s organizáciami, ktoré sa na ňu spoliehajú — ak váš tím berie riziko verejnej komunikácie vážne, radi sa porozprávame.",
     startFree: "Začať zdarma",
     reachUsPre: "alebo nás kontaktujte na",
     reachUsPost: ".",
@@ -94,7 +94,7 @@ const COPY: Record<
       "Wir sind überzeugt, dass Werkzeuge für das Reputationsmanagement leistungsstark und sicher sein sollten. Das bedeutet ausschließlich offizielle Integrationen, kein Scraping, keine Umgehung der Regeln einer Plattform und einen Freigabe-Workflow, damit nichts Sensibles automatisch geschieht. Geschwindigkeit durch KI, Verantwortung durch Menschen.",
     whereTitle: "Wo wir stehen",
     whereBody:
-      "Tamanor ist ein Produkt in einer frühen Phase, das offen mit seinen ersten Design-Partnern entwickelt wird. Wenn das nach Ihrem Team klingt, sprechen wir gerne mit Ihnen.",
+      "Tamanor ist eine europäische Plattform für Reputationssicherheit, betrieben innerhalb der EU von Infotech Solutions, s. r. o. Wir entwickeln sie in enger Zusammenarbeit mit den Organisationen, die sich auf sie verlassen — wenn das Risiko öffentlicher Kommunikation für Ihr Team zählt, sprechen wir gerne mit Ihnen.",
     startFree: "Kostenlos starten",
     reachUsPre: "oder erreichen Sie uns unter",
     reachUsPost: ".",

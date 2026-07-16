@@ -2,7 +2,7 @@ import type { Dictionary } from "./en";
 
 export const de: Dictionary = {
   meta: {
-    landingTitle: "Tamanor — Social Account Firewall für moderne Marken",
+    landingTitle: "Tamanor — europäische Plattform für Reputationssicherheit von Social-Media-Konten",
     landingDescription:
       "Tamanor überwacht Kommentare, Bewertungen und Feedback auf Facebook, Instagram, YouTube, LinkedIn, TikTok und Google — erkennt Risiken, bereitet sichere Maßnahmen vor und behält die Entscheidung bei den Menschen.",
     caseStudiesTitle: "Beispielszenarien — Tamanor",
@@ -13,8 +13,8 @@ export const de: Dictionary = {
   common: {
     // V1.33 — öffentliche Marke. Diese Schlüssel bevorzugen statt den Namen fest zu schreiben.
     brand: "Tamanor",
-    brandTagline: "Social Account Firewall",
-    brandFull: "Tamanor — Social Account Firewall",
+    brandTagline: "Reputationssicherheit",
+    brandFull: "Tamanor — Reputationssicherheit für Social-Media-Konten",
     startFree: "Kostenlos starten",
     logIn: "Anmelden",
     reviewSecurity: "Sicherheit prüfen",
@@ -236,7 +236,7 @@ export const de: Dictionary = {
   },
 
   footer: {
-    tagline: "Social Account Firewall. Schützen Sie Ihre Marke über soziale Medien, Kommentare und Bewertungen hinweg.",
+    tagline: "Reputationssicherheit für verbundene Social-Media-Konten — Risiken erkennen, Konten schützen und vertrauenswürdige Reaktionen über Märkte und Plattformen hinweg koordinieren.",
     product: "Produkt",
     platforms: "Plattformen",
     company: "Unternehmen",
@@ -254,7 +254,7 @@ export const de: Dictionary = {
     auditLog: "Audit-Protokoll",
     available: "Jetzt verfügbar",
     inDevelopment: "In Entwicklung",
-    rights: "Social Account Firewall für moderne Marken",
+    rights: "Europäische Plattform für Reputationssicherheit",
     badge: "Standardmäßig schreibgeschützt · Nur offizielles OAuth · Kein Scraping",
   },
 
