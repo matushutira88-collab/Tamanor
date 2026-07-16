@@ -125,6 +125,17 @@ function run() {
   const dashPage = src("src/app/dashboard/page.tsx");
   check("29) dashboard shell + home load critical data in parallel (Promise.all, no sequential awaits)", /Promise\.all/.test(dashLayout) && /Promise\.all/.test(dashPage));
 
+  // ---------------- dashboard navigation continuity (V1.56A) ----------------
+  // A dashboard-root loading.tsx is used by Next.js as the Suspense fallback for EVERY
+  // section navigation, flashing a full-content skeleton and resetting the content area on
+  // each menu click. The persistent shell (layout) must stay mounted and content is retained
+  // until the destination is ready — so there must be NO dashboard-root full-content fallback.
+  check("30) no dashboard-root loading.tsx (no full-content skeleton flash on section navigation)", !existsSync(join(WEB, "src/app/dashboard/loading.tsx")));
+  // Sidebar navigation must be client-side (next/link), not full-document reloads, so the shell
+  // persists and only the destination content changes.
+  const sidebar = src("src/components/dashboard/sidebar.tsx");
+  check("31) dashboard sidebar navigates client-side via next/link (no full-document reloads)", /from ["']next\/link["']/.test(sidebar) && /<Link/.test(sidebar));
+
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — production readiness (V1.39)`);
   process.exit(failures === 0 ? 0 : 1);
 }
