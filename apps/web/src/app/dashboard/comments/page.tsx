@@ -513,10 +513,10 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
         <>
           {/* Date range */}
           <div className="mb-4 flex flex-wrap gap-1.5">
-            <a href={params({ range: "" })} className={chipCls(range === "all")} data-testid="range-all">{c.allTime}</a>
-            <a href={params({ range: "today" })} className={chipCls(range === "today")}>{t.comments.rangeToday}</a>
-            <a href={params({ range: "7d" })} className={chipCls(range === "7d")}>{t.comments.range7d}</a>
-            <a href={params({ range: "30d" })} className={chipCls(range === "30d")}>{t.comments.range30d}</a>
+            <Link scroll={false} href={params({ range: "" })} className={chipCls(range === "all")} data-testid="range-all">{c.allTime}</Link>
+            <Link scroll={false} href={params({ range: "today" })} className={chipCls(range === "today")}>{t.comments.rangeToday}</Link>
+            <Link scroll={false} href={params({ range: "7d" })} className={chipCls(range === "7d")}>{t.comments.range7d}</Link>
+            <Link scroll={false} href={params({ range: "30d" })} className={chipCls(range === "30d")}>{t.comments.range30d}</Link>
           </div>
 
           {/* Metric cards (server counts) */}
@@ -533,20 +533,20 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
 
           {providersPresent.length > 1 ? (
             <div className="mt-4 flex flex-wrap gap-1.5">
-              <a href={params({ provider: "" })} className={chipCls(providerKey === "all")}>{t.comments.allProviders}</a>
+              <Link scroll={false} href={params({ provider: "" })} className={chipCls(providerKey === "all")}>{t.comments.allProviders}</Link>
               {providersPresent.map((pk) => {
                 const plat = ALL_PLATFORMS.find((p) => platformKeyFor(p) === pk);
                 const n = Object.entries(counts.byPlatform).filter(([pl]) => platformKeyFor(pl as Platform) === pk).reduce((s, [, v]) => s + v, 0);
-                return <a key={pk} href={params({ provider: pk })} className={chipCls(providerKey === pk)}>{(plat ? PLATFORM_META[plat].label : pk) + cnt(n)}</a>;
+                return <Link scroll={false} key={pk} href={params({ provider: pk })} className={chipCls(providerKey === pk)}>{(plat ? PLATFORM_META[plat].label : pk) + cnt(n)}</Link>;
               })}
             </div>
           ) : null}
 
           {hasReviews ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <a href={params({ type: "" })} className={chipCls(typeFilter === "all")}>{t.comments.typeAll}</a>
-              <a href={params({ type: "comment" })} className={chipCls(typeFilter === "comment")}>{t.comments.typeComments}</a>
-              <a href={params({ type: "review" })} className={chipCls(typeFilter === "review")}>{t.comments.typeReviews}</a>
+              <Link scroll={false} href={params({ type: "" })} className={chipCls(typeFilter === "all")}>{t.comments.typeAll}</Link>
+              <Link scroll={false} href={params({ type: "comment" })} className={chipCls(typeFilter === "comment")}>{t.comments.typeComments}</Link>
+              <Link scroll={false} href={params({ type: "review" })} className={chipCls(typeFilter === "review")}>{t.comments.typeReviews}</Link>
             </div>
           ) : null}
 
@@ -554,39 +554,39 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
           <form className="mt-4 flex gap-2" action="/dashboard/comments">
             {Object.entries(current).filter(([k]) => k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
             <input name="q" defaultValue={q} placeholder={t.comments.searchPlaceholder} className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)]" data-testid="inbox-search" />
-            {q ? <Link href={params({ q: "" })} className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-2 text-xs font-medium hover:border-[var(--color-border-strong)]">{t.comments.searchClear}</Link> : null}
+            {q ? <Link scroll={false} href={params({ q: "" })} className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-2 text-xs font-medium hover:border-[var(--color-border-strong)]">{t.comments.searchClear}</Link> : null}
           </form>
 
           {/* Sentiment filter chips (server-side bucket predicate) */}
           <div className="mt-3 mb-3 flex flex-wrap gap-1.5">
-            {SENT_FILTERS.map((f) => (<a key={f} href={params({ filter: f })} className={chipCls(filter === f)}>{FILTER_LABEL[f]}</a>))}
+            {SENT_FILTERS.map((f) => (<Link scroll={false} key={f} href={params({ filter: f })} className={chipCls(filter === f)}>{FILTER_LABEL[f]}</Link>))}
           </div>
 
           {/* Persisted inbox views (reload-safe; full navigation) with server counts. */}
           <div className="mb-2 flex flex-wrap gap-1.5" data-testid="inbox-views">
-            <a href={params({ view: "" })} className={chipCls(view === "default")} data-testid="view-default">{c.viewInbox}{cnt(counts.total)}</a>
-            <a href={params({ view: "unread" })} className={chipCls(view === "unread")} data-testid="view-unread">{c.viewUnread}{cnt(counts.unread)}</a>
-            <a href={params({ view: "archived" })} className={chipCls(view === "archived")} data-testid="view-archived">{c.viewArchived}{cnt(counts.archived)}</a>
-            <a href={params({ view: "assigned_me" })} className={chipCls(view === "assigned_me")} data-testid="view-assigned">{c.viewAssignedMe}</a>
-            <a href={params({ view: "unassigned" })} className={chipCls(view === "unassigned")} data-testid="view-unassigned">{c.viewUnassigned}{cnt(counts.unassigned)}</a>
+            <Link scroll={false} href={params({ view: "" })} className={chipCls(view === "default")} data-testid="view-default">{c.viewInbox}{cnt(counts.total)}</Link>
+            <Link scroll={false} href={params({ view: "unread" })} className={chipCls(view === "unread")} data-testid="view-unread">{c.viewUnread}{cnt(counts.unread)}</Link>
+            <Link scroll={false} href={params({ view: "archived" })} className={chipCls(view === "archived")} data-testid="view-archived">{c.viewArchived}{cnt(counts.archived)}</Link>
+            <Link scroll={false} href={params({ view: "assigned_me" })} className={chipCls(view === "assigned_me")} data-testid="view-assigned">{c.viewAssignedMe}</Link>
+            <Link scroll={false} href={params({ view: "unassigned" })} className={chipCls(view === "unassigned")} data-testid="view-unassigned">{c.viewUnassigned}{cnt(counts.unassigned)}</Link>
           </div>
 
           {/* Priority / workflow / risk filters (reload-safe) with server counts. */}
           <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="inbox-facets">
-            <a href={params({ priority: "" })} className={chipCls(!prio)}>{c.anyPriority}</a>
-            {(["low", "normal", "high", "urgent"] as const).map((p) => <a key={p} href={params({ priority: p })} className={chipCls(prio === p)} data-testid={`prio-${p}`}>{(c.priority[p] ?? p) + cnt(counts.byPriority[p])}</a>)}
+            <Link scroll={false} href={params({ priority: "" })} className={chipCls(!prio)}>{c.anyPriority}</Link>
+            {(["low", "normal", "high", "urgent"] as const).map((p) => <Link scroll={false} key={p} href={params({ priority: p })} className={chipCls(prio === p)} data-testid={`prio-${p}`}>{(c.priority[p] ?? p) + cnt(counts.byPriority[p])}</Link>)}
             <span className="mx-1 h-4 w-px bg-[var(--color-border)]" />
-            <a href={params({ status: "" })} className={chipCls(!wf)}>{c.anyStatus}</a>
-            {(["new", "in_review", "action_required", "resolved"] as const).map((s) => <a key={s} href={params({ status: s })} className={chipCls(wf === s)} data-testid={`wf-${s}`}>{(c.workflow[s] ?? s.replace(/_/g, " ")) + cnt(counts.byWorkflow[s])}</a>)}
+            <Link scroll={false} href={params({ status: "" })} className={chipCls(!wf)}>{c.anyStatus}</Link>
+            {(["new", "in_review", "action_required", "resolved"] as const).map((s) => <Link scroll={false} key={s} href={params({ status: s })} className={chipCls(wf === s)} data-testid={`wf-${s}`}>{(c.workflow[s] ?? s.replace(/_/g, " ")) + cnt(counts.byWorkflow[s])}</Link>)}
           </div>
           <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="risk-filter">
-            <a href={params({ risk: "" })} className={chipCls(!riskLevel)}>{c.anyRisk}</a>
-            {(["low", "medium", "high", "critical"] as const).map((rk) => <a key={rk} href={params({ risk: rk })} className={chipCls(riskLevel === rk)} data-testid={`risk-${rk}`}>{tEnum(t, "risk", rk)}</a>)}
+            <Link scroll={false} href={params({ risk: "" })} className={chipCls(!riskLevel)}>{c.anyRisk}</Link>
+            {(["low", "medium", "high", "critical"] as const).map((rk) => <Link scroll={false} key={rk} href={params({ risk: rk })} className={chipCls(riskLevel === rk)} data-testid={`risk-${rk}`}>{tEnum(t, "risk", rk)}</Link>)}
           </div>
           {allLabels.length ? (
             <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="label-filter">
-              <a href={params({ label: "" })} className={chipCls(!labelFilter)}>{c.allLabels}</a>
-              {allLabels.map((l) => <a key={l.id} href={params({ label: l.id })} className={chipCls(labelFilter === l.id)} data-testid={`label-filter-${l.id}`}><Badge tone={l.colorKey}>{l.name}{cnt(counts.byLabel[l.id])}</Badge></a>)}
+              <Link scroll={false} href={params({ label: "" })} className={chipCls(!labelFilter)}>{c.allLabels}</Link>
+              {allLabels.map((l) => <Link scroll={false} key={l.id} href={params({ label: l.id })} className={chipCls(labelFilter === l.id)} data-testid={`label-filter-${l.id}`}><Badge tone={l.colorKey}>{l.name}{cnt(counts.byLabel[l.id])}</Badge></Link>)}
             </div>
           ) : null}
 
@@ -724,12 +724,12 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
               refresh reloads the SAME page. Changing any filter above drops cursor → back to page 1. */}
           <nav className="mt-4 flex items-center justify-between gap-2" data-testid="inbox-pager">
             <div className="flex gap-1.5">
-              {!onFirstPage ? <a href={params({ cursor: "", dir: "" })} className={chipCls(false)} data-testid="page-newest">{c.pageNewest}</a> : null}
-              {page.hasPrev ? <a href={params({ cursor: page.prevCursor ?? undefined, dir: "prev" })} className={chipCls(false)} data-testid="page-prev">{c.pagePrev}</a> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">{c.pagePrev}</span>}
+              {!onFirstPage ? <Link scroll={false} href={params({ cursor: "", dir: "" })} className={chipCls(false)} data-testid="page-newest">{c.pageNewest}</Link> : null}
+              {page.hasPrev ? <Link scroll={false} href={params({ cursor: page.prevCursor ?? undefined, dir: "prev" })} className={chipCls(false)} data-testid="page-prev">{c.pagePrev}</Link> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">{c.pagePrev}</span>}
             </div>
             <span className="text-xs text-[var(--color-muted)]" data-testid="page-info">{c.showingOf(shown.length, counts.total)}</span>
             <div>
-              {page.hasNext ? <a href={params({ cursor: page.nextCursor ?? undefined, dir: "next" })} className={chipCls(false)} data-testid="page-next">{c.pageNext}</a> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">{c.pageNext}</span>}
+              {page.hasNext ? <Link scroll={false} href={params({ cursor: page.nextCursor ?? undefined, dir: "next" })} className={chipCls(false)} data-testid="page-next">{c.pageNext}</Link> : <span className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium opacity-40">{c.pageNext}</span>}
             </div>
           </nav>
 

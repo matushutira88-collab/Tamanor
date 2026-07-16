@@ -136,6 +136,16 @@ function run() {
   const sidebar = src("src/components/dashboard/sidebar.tsx");
   check("31) dashboard sidebar navigates client-side via next/link (no full-document reloads)", /from ["']next\/link["']/.test(sidebar) && /<Link/.test(sidebar));
 
+  // ---------------- no full-reload internal dashboard navigation (V1.56B) ----------------
+  // Internal filtering/pagination must navigate client-side (next/link), preserving the
+  // persistent shell — never a plain <a> that triggers a full-document reload. External links
+  // (target=_blank), OAuth/API redirects and mailto are exempt (they intentionally leave the app).
+  const commentsPage = src("src/app/dashboard/comments/page.tsx");
+  check("32) comments filters/pagination navigate client-side (no full-reload <a href={params(...)}>)", !/<a\s[^>]*href=\{params\(/.test(commentsPage));
+  const dashFiles = files.filter(({ f }) => f.includes("/app/dashboard/"));
+  const hardNav = dashFiles.filter(({ s }) => /window\.location|location\.href|location\.assign|location\.replace/.test(s));
+  check("33) no dashboard route navigates via window.location / location.href", hardNav.length === 0, hardNav.map((x) => x.f).join(", "));
+
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — production readiness (V1.39)`);
   process.exit(failures === 0 ? 0 : 1);
 }
