@@ -65,7 +65,10 @@ function run() {
   check("14) provider truth: Instagram/GBP not live; YT/LI/TT research", providerStatusFor("instagram")!.live === false && providerStatusFor("google_business")!.live === false && ["youtube", "linkedin", "tiktok"].every((k) => providerStatusFor(k)!.status === "research") && PROVIDERS.length === 6);
 
   // ---------------- error boundaries + loading ----------------
-  check("15) boundaries present: not-found + global-error + dashboard error + dashboard loading", has("src/app/not-found.tsx") && has("src/app/global-error.tsx") && has("src/app/dashboard/error.tsx") && has("src/app/dashboard/loading.tsx"));
+  // V1.56A — dashboard/loading.tsx was intentionally removed (it flashed a full-content skeleton on
+  // every section navigation); continuity now comes from the persistent shell + retained content.
+  // The dashboard error boundary and app-level boundaries remain required (see also check #30).
+  check("15) boundaries present: not-found + global-error + dashboard error", has("src/app/not-found.tsx") && has("src/app/global-error.tsx") && has("src/app/dashboard/error.tsx"));
   check("16) error boundaries never render raw error.message", !/\{error\.message\}/.test(src("src/app/global-error.tsx")) && !/\{error\.message\}/.test(src("src/app/dashboard/error.tsx")) && /correlationId|digest/.test(src("src/app/global-error.tsx")));
 
   // ---------------- health / readiness ----------------
@@ -145,6 +148,14 @@ function run() {
   const dashFiles = files.filter(({ f }) => f.includes("/app/dashboard/"));
   const hardNav = dashFiles.filter(({ s }) => /window\.location|location\.href|location\.assign|location\.replace/.test(s));
   check("33) no dashboard route navigates via window.location / location.href", hardNav.length === 0, hardNav.map((x) => x.f).join(", "));
+
+  // ---------------- billing UX (V1.57) ----------------
+  // Premium pricing: Growth highlighted with a "Most popular" badge, an expandable Compare Plans
+  // table, real Upgrade CTAs (never a plain "checkout unavailable" text), and no added client JS.
+  const billing = src("src/app/dashboard/billing/page.tsx");
+  check("34) billing: Growth highlighted 'Most popular' + expandable Compare Plans + no dead 'unavailable' CTA text",
+    /mostPopular/.test(billing) && /planId === "growth"/.test(billing) && /<details/.test(billing) && /COMPARE_ROWS/.test(billing) && !/notConfigured/.test(billing));
+  check("35) billing page stays a server component (no added client-side hydration)", !/^["']use client["']/m.test(billing));
 
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — production readiness (V1.39)`);
   process.exit(failures === 0 ? 0 : 1);
