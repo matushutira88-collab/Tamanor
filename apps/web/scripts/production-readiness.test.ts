@@ -193,6 +193,25 @@ function run() {
     resolveStripePriceId("enterprise", "monthly", mockEnv) === null;  // enterprise is never self-serve
   check("38) resolveStripePriceId maps monthly/yearly to the correct env price (not swapped), null when unset", priceMappingOk);
 
+  // ---------------- global public footer on landing v2 (V1.58D.2) ----------------
+  const landingV2 = src("src/components/landing-v2/landing-v2.tsx");
+  const footerV2 = src("src/components/landing-v2/footer-v2.tsx");
+  const dashLayoutSrc = src("src/app/dashboard/layout.tsx");
+  // Homepage (landing v2) must render the full FooterV2, not the old stub.
+  check("39) landing v2 renders the global FooterV2 (not the minimal stub footer)",
+    /FooterV2/.test(landingV2) && /<FooterV2\s*\/>/.test(landingV2) && !/EU reputation-security platform<\/span>/.test(landingV2));
+  // FooterV2 content: uses next/link (no plain <a> internal reloads, no placeholder #), required
+  // legal + platform links present, operator identity, truthful "In development" grouping, no Guardora.
+  const footerLegalOk = ["/privacy", "/cookies", "/terms", "/security", "/register", "/login", "/contact", "/about", "/integrations/facebook"].every((h) => footerV2.includes(h));
+  check("40) FooterV2 is truthful & link-clean (next/link, legal+platform routes, operator copy, no Guardora, no placeholder #, no localhost)",
+    /from ["']next\/link["']/.test(footerV2) && footerLegalOk &&
+    /In development/.test(footerV2) && /Infotech Solutions/.test(footerV2) &&
+    !/guardora/i.test(footerV2) && !/href=["']#["']/.test(footerV2) && !/localhost|\.vercel\.app/.test(footerV2) &&
+    !/<a\s+href=["']\//.test(footerV2));
+  // The authenticated dashboard shell must NOT render the marketing footer.
+  check("41) dashboard layout does not render the public marketing footer (FooterV2/SiteFooter)",
+    !/FooterV2|SiteFooter/.test(dashLayoutSrc));
+
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — production readiness (V1.39)`);
   process.exit(failures === 0 ? 0 : 1);
 }

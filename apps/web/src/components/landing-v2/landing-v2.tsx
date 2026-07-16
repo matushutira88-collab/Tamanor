@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { FooterV2 } from "./footer-v2";
 
 /* ---------- palette ---------- */
 const C = {
@@ -672,18 +673,8 @@ export function LandingV2() {
         </div>
       </section>
 
-      {/* footer */}
-      <footer>
-        <div style={{ maxWidth: 1280, margin: "0 auto", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "26px 24px", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>
-          <span>© 2026 Tamanor — EU reputation-security platform</span>
-          <span style={{ display: "flex", gap: 20 }}>
-            <Link href="/privacy" style={{ color: C.faint }}>Privacy</Link>
-            <Link href="/terms" style={{ color: C.faint }}>Terms</Link>
-            <Link href="/security" style={{ color: C.faint }}>Security</Link>
-          </span>
-          <span>Read-only by default · Official OAuth · No scraping</span>
-        </div>
-      </footer>
+      {/* V1.58D.2 — full global public footer (mission-control styling) replaces the old stub */}
+      <FooterV2 />
     </div>
   );
 }
