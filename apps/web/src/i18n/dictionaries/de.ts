@@ -1710,6 +1710,7 @@ export const de: Dictionary = {
     cardComment: "„Diese Marke ist reiner Betrug, verschwendet euer Geld nicht — schlechtester Service überhaupt.“",
     cardScore: "KI-Risikowert", cardHigh: "0.82 · Hoch", cardTag1: "Markenangriff", cardTag2: "Betrugsvorwurf",
     cardReject: "Ablehnen", cardApprove: "Freigeben & ausführen — verbergen",
+    cardReviewer: "Ein Mensch aus deinem Team entscheidet — nie eine anonyme KI.",
     cardFootnote: "→ im Audit-Log · umkehrbar · Autor sieht eigenen Kommentar weiterhin",
     coverageEyebrow: "Abdeckung", covNote: "Ehrlich über heute · keine falschen Logos",
     platforms: [

@@ -1710,6 +1710,7 @@ export const sk: Dictionary = {
     cardComment: "„Táto značka je čistý podvod, nevyhadzujte peniaze — najhorší servis vôbec.“",
     cardScore: "AI skóre rizika", cardHigh: "0.82 · Vysoké", cardTag1: "Útok na značku", cardTag2: "Tvrdenie o podvode",
     cardReject: "Zamietnuť", cardApprove: "Schváliť a vykonať — skryť",
+    cardReviewer: "Rozhoduje človek z tvojho tímu — nikdy anonymná AI.",
     cardFootnote: "→ zapísané do auditu · vratné · autor svoj komentár stále vidí",
     coverageEyebrow: "Pokrytie", covNote: "Úprimne o dnešku · žiadne falošné logá",
     platforms: [

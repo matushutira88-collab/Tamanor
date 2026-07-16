@@ -1762,6 +1762,7 @@ export const en = {
     cardComment: "“This brand is a total scam, don’t waste your money — worst service ever.”",
     cardScore: "AI risk score", cardHigh: "0.82 · High", cardTag1: "Brand attack", cardTag2: "Scam claim",
     cardReject: "Reject", cardApprove: "Approve & execute — hide",
+    cardReviewer: "A person on your team decides — never anonymous AI.",
     cardFootnote: "→ logged to audit trail · reversible · author still sees own comment",
     coverageEyebrow: "Coverage", covNote: "Honest about today · no fake logos",
     platforms: [

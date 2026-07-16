@@ -245,13 +245,16 @@ function FirewallSim({
 
 /* ---------- small shared bits ---------- */
 
+// V1.58D.5 — premium SaaS section eyebrow (sans, not terminal-mono). Mono stays only on genuine
+// technical labels: simulation, diagnostics, timestamps, status, protocol/phase metadata.
 const eyebrow: React.CSSProperties = {
   margin: 0,
-  fontSize: 11,
+  fontSize: 12,
+  fontWeight: 600,
   textTransform: "uppercase",
-  letterSpacing: "0.22em",
+  letterSpacing: "0.12em",
   color: C.mint,
-  fontFamily: mono,
+  fontFamily: "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif",
 };
 
 function Corner({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
@@ -447,10 +450,10 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
 
       {/* phases */}
       <section id="phases" style={{ borderBottom: secBorder }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "84px 24px" }}>
+        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "96px 24px" }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 20, marginBottom: 44 }}>
             <div>
-              <p style={eyebrow}>SYS / 01 — {copy.protocolEyebrow}</p>
+              <p style={eyebrow}>{copy.protocolEyebrow}</p>
               <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
                 {copy.phasesA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.phasesB}</span>
               </h2>
@@ -474,7 +477,7 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
 
       {/* radar */}
       <section id="radar" style={{ borderBottom: secBorder, background: C.panel }}>
-        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "center", padding: "84px 24px" }}>
+        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "center", padding: "96px 24px" }}>
           <div style={{ position: "relative", margin: "0 auto", height: 420, width: 420 }}>
             {[0, 52, 104, 156].map((inset) => (
               <div key={inset} style={{ position: "absolute", inset, borderRadius: "50%", border: secBorder }} />
@@ -491,7 +494,7 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
             ))}
           </div>
           <div>
-            <p style={eyebrow}>SYS / 02 — {copy.actorEyebrow}</p>
+            <p style={eyebrow}>{copy.actorEyebrow}</p>
             <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
               {copy.radarA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.radarB}</span>
             </h2>
@@ -511,9 +514,9 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
 
       {/* approval */}
       <section style={{ borderBottom: secBorder }}>
-        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 48, alignItems: "center", padding: "84px 24px" }}>
+        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 48, alignItems: "center", padding: "96px 24px" }}>
           <div>
-            <p style={eyebrow}>SYS / 03 — {copy.commandEyebrow}</p>
+            <p style={eyebrow}>{copy.commandEyebrow}</p>
             <h2 style={{ margin: "16px 0 0", fontSize: "clamp(30px, 4vw, 44px)", lineHeight: 1.16, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
               {copy.cmdA}<br /><span style={{ fontStyle: "italic", color: C.mint }}>{copy.cmdB}</span>
             </h2>
@@ -544,7 +547,13 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
                 ))}
               </div>
             </div>
-            <div style={{ marginTop: 20, display: "flex", gap: 8 }}>
+            <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 9 }}>
+              <span aria-hidden style={{ display: "grid", placeItems: "center", height: 24, width: 24, borderRadius: 9999, border: `1px solid ${C.mint}`, color: C.mint, flexShrink: 0 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2" /><path d="M5.5 20a6.5 6.5 0 0 1 13 0" /></svg>
+              </span>
+              <span style={{ fontSize: 11.5, lineHeight: 1.45, color: C.dim, fontFamily: "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif" }}>{copy.cardReviewer}</span>
+            </div>
+            <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
               <button style={{ flex: 1, border: secBorder, background: "transparent", color: C.dim, padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono }}>{copy.cardReject}</button>
               <button style={{ flex: 2, border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono, boxShadow: "0 0 22px rgba(46,227,178,.4)" }}>{copy.cardApprove}</button>
             </div>
@@ -557,7 +566,7 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
       <section style={{ borderBottom: secBorder, background: C.panel }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "70px 24px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 34 }}>
-            <p style={eyebrow}>SYS / 04 — {copy.coverageEyebrow}</p>
+            <p style={eyebrow}>{copy.coverageEyebrow}</p>
             <p style={{ margin: 0, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>{copy.covNote}</p>
           </div>
           <div className="tmr-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
@@ -580,9 +589,9 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
 
       {/* diagnostics */}
       <section id="diag" style={{ borderBottom: secBorder }}>
-        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 48, padding: "84px 24px" }}>
+        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 48, padding: "96px 24px" }}>
           <div>
-            <p style={eyebrow}>SYS / 05 — {copy.diagnosticsEyebrow}</p>
+            <p style={eyebrow}>{copy.diagnosticsEyebrow}</p>
             <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
               {copy.diagA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.diagB}</span>
             </h2>
@@ -604,10 +613,10 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
 
       {/* pricing */}
       <section id="pricing" style={{ borderBottom: secBorder, background: C.panel }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "84px 24px" }}>
+        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "96px 24px" }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 20, marginBottom: 40 }}>
             <div>
-              <p style={eyebrow}>SYS / 06 — {copy.pricingEyebrow}</p>
+              <p style={eyebrow}>{copy.pricingEyebrow}</p>
               <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
                 {copy.priceA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.priceB}</span>
               </h2>
