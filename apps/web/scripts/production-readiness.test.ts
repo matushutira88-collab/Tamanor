@@ -108,6 +108,23 @@ function run() {
   check("26) prisma schema declares native + rhel-openssl-3.0.x binary targets (Vercel runtime engine)", /binaryTargets\s*=\s*\[[^\]]*["']rhel-openssl-3\.0\.x["'][^\]]*\]/.test(prismaSchema) && /["']native["']/.test(prismaSchema));
   check("27) apps/web owns @prisma/client + build runs prisma generate (engine generated & traced)", Boolean(webPkg.dependencies?.["@prisma/client"]) && /generate/.test(webPkg.scripts?.build ?? ""));
 
+  // ---------------- dashboard latency guards (V1.56) ----------------
+  // Root cause of the 3–5s dashboard was transatlantic compute↔DB latency: Vercel functions
+  // defaulted to iad1 (US-East) while Supabase runs in eu-central-1 (Frankfurt) — ~180ms per
+  // DB round-trip. Functions MUST be pinned to an EU region co-located with the database.
+  const EU_REGIONS = ["fra1", "arn1", "cdg1"]; // Frankfurt / Stockholm / Paris — near eu-central-1
+  let regionOk = false;
+  try {
+    const vj = JSON.parse(src("vercel.json")) as { regions?: string[] };
+    regionOk = Array.isArray(vj.regions) && vj.regions.length > 0 && vj.regions.every((r) => EU_REGIONS.includes(r));
+  } catch { regionOk = false; }
+  check("28) Vercel functions pinned to an EU region co-located with Supabase eu-central-1 (fra1)", regionOk);
+  // Dashboard critical data must load in parallel, never as sequential awaits, so transatlantic-
+  // or in-region round-trips don't stack. Both the shell (layout) and the home page batch reads.
+  const dashLayout = src("src/app/dashboard/layout.tsx");
+  const dashPage = src("src/app/dashboard/page.tsx");
+  check("29) dashboard shell + home load critical data in parallel (Promise.all, no sequential awaits)", /Promise\.all/.test(dashLayout) && /Promise\.all/.test(dashPage));
+
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — production readiness (V1.39)`);
   process.exit(failures === 0 ? 0 : 1);
 }
