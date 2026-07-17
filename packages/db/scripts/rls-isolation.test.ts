@@ -21,10 +21,30 @@ async function rejects(fn: () => Promise<unknown>): Promise<boolean> {
   try { await fn(); return false; } catch { return true; }
 }
 
-/** Build the tamanor_app (RLS-enforced) connection string from DATABASE_URL. */
+/**
+ * Resolve the tamanor_app (RLS-enforced) connection string.
+ *
+ * Prefer APP_DATABASE_URL — in every real deployment that IS the tamanor_app
+ * runtime role, already carrying the correct pooler host, project-ref and
+ * `pgbouncer=true`. Only fall back to deriving from DATABASE_URL for a plain
+ * local Postgres, and even then preserve any Supabase pooler suffix
+ * ("postgres.<project-ref>" → "tamanor_app.<project-ref>") — Supavisor requires
+ * that suffix as the tenant identifier, or it rejects the connection with
+ * "no tenant identifier provided (external_id or sni_hostname required)".
+ */
 function appUrl(): string {
+  const appDbUrl = process.env.APP_DATABASE_URL;
+  if (appDbUrl && appDbUrl !== process.env.DATABASE_URL) return appDbUrl;
+
   const raw = process.env.DATABASE_URL ?? "";
-  return raw.replace(/\/\/[^:@/]+:[^@]*@/, "//tamanor_app:tamanor_app@");
+  return raw.replace(
+    /\/\/([^:@/]+):[^@]*@/,
+    (_m, user: string) => {
+      const dot = user.indexOf(".");
+      const suffix = dot >= 0 ? user.slice(dot) : ""; // ".<project-ref>" on Supabase pooler
+      return `//tamanor_app${suffix}:tamanor_app@`;
+    },
+  );
 }
 
 async function run() {

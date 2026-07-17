@@ -71,3 +71,5 @@ apps/web/e2e/.auth/
 
 # V1.42B — isolated E2E build dir
 .next-e2e/
+.vercel
+.env*

@@ -13,6 +13,8 @@
     "migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "set-app-role-password": "dotenv -e ../../.env -- tsx scripts/set-app-role-password.ts",
+    "db-check": "dotenv -e ../../.env -- tsx scripts/db-doctor.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "reconnect-check": "dotenv -e ../../.env -- tsx scripts/reconnect-regression.ts",
     "reclassify-demo": "dotenv -e ../../.env -- tsx scripts/reclassify-demo.ts",

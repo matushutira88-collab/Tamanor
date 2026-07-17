@@ -18,6 +18,8 @@
     "db:migrate": "pnpm --filter @guardora/db migrate",
     "db:migrate:deploy": "pnpm --filter @guardora/db migrate:deploy",
     "db:seed": "pnpm --filter @guardora/db seed",
+    "db:set-app-password": "pnpm --filter @guardora/db set-app-role-password",
+    "db:doctor": "pnpm --filter @guardora/db run db-check",
     "db:reconnect-check": "pnpm --filter @guardora/db reconnect-check",
     "i18n-check": "pnpm --filter @guardora/worker exec tsx ../web/scripts/i18n-check.ts",
     "seo:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/seo-discoverability.test.ts",
