@@ -1,7 +1,9 @@
-import { loadEnv } from "@guardora/config";
-import { assertRlsRuntime, validateRuntimeDbConfig, cleanupExpiredAuthTokens, sweepTrialExpirations, purgeStripeWebhookEvents } from "@guardora/db";
+import { loadEnv, getWorkerRuntimeConfig } from "@guardora/config";
+import { assertRlsRuntime, validateRuntimeDbConfig, cleanupExpiredAuthTokens, sweepTrialExpirations, purgeStripeWebhookEvents, closeDbClients } from "@guardora/db";
 import { emitOpsEvent, metrics, initOpsSink } from "@guardora/core";
 import { log } from "./logger";
+import { validateWorkerConfig } from "./config-validator";
+import { createShutdownController } from "./shutdown";
 
 // V1.48P — initialize the vendor-neutral observability sink at worker startup (structured stdout).
 initOpsSink("worker", process.env.NODE_ENV ?? "development");
@@ -155,9 +157,9 @@ async function tick(): Promise<boolean> {
  * AUTO_SYNC_INTERVAL_SECONDS. Reads only — never executes a platform action.
  * Eligible-account selection + backoff live in syncConnectedMetaAccounts.
  */
-async function autoSyncTick(): Promise<void> {
+async function autoSyncTick(signal?: AbortSignal): Promise<void> {
   try {
-    const { created, accounts, skippedBackoff } = await syncConnectedMetaAccounts("automatic");
+    const { created, accounts, skippedBackoff } = await syncConnectedMetaAccounts("automatic", { signal });
     log.info("autosync.done", { eligibleAccounts: accounts, createdItems: created, skippedBackoff });
   } catch (err) {
     log.error("autosync.failed", {
@@ -167,11 +169,26 @@ async function autoSyncTick(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // V1.58.7 — FAIL-CLOSED config validation FIRST, before any DB job, scheduler, or readiness signal.
+  // The worker refuses to start on any missing/unsafe critical config (never boots into a demo/no-op
+  // mode). Errors carry variable NAMES + safe reasons only — never a secret value.
+  emitOpsEvent("worker.starting", {});
+  const validation = validateWorkerConfig(process.env);
+  if (!validation.ok) {
+    for (const e of validation.errors) log.error("worker.config_invalid", { reason: e });
+    emitOpsEvent("worker.config_invalid", { operation: "startup" });
+    throw new Error("worker_config_invalid");
+  }
+  const runtimeCfg = getWorkerRuntimeConfig();
+
   const env = loadEnv();
   const autoSyncMs = env.AUTO_SYNC_INTERVAL_SECONDS * 1000;
   log.info("worker.boot", {
     env: env.NODE_ENV,
     intervalMs: env.WORKER_SYNC_INTERVAL_MS,
+    leaseTtlMs: runtimeCfg.leaseTtlMs,
+    heartbeatMs: runtimeCfg.heartbeatMs,
+    shutdownGraceMs: runtimeCfg.shutdownGraceMs,
     autoSyncEnabled: env.AUTO_SYNC_ENABLED,
     autoSyncIntervalSeconds: env.AUTO_SYNC_INTERVAL_SECONDS,
     aiProvider: env.AI_PROVIDER,
@@ -184,6 +201,7 @@ async function main(): Promise<void> {
   const cfg = validateRuntimeDbConfig();
   if (!cfg.ok) {
     log.error("worker.preflight.config_invalid", { reason: cfg.reason });
+    emitOpsEvent("worker.config_invalid", { operation: "db_runtime" });
     throw new Error("database_runtime_misconfigured");
   }
   try {
@@ -196,22 +214,28 @@ async function main(): Promise<void> {
   }
 
   const state = { running: true };
-  const shutdown = (signal: string) => {
+
+  // V1.58.7 — graceful shutdown controller. `stopScheduler` flips `running` (loops stop starting new
+  // ticks) AND the controller aborts its signal so an IN-FLIGHT sync cancels cooperatively (threaded
+  // into runReadOnlySync → interrupted, never success). `drain` awaits the loop promise; on the hard
+  // deadline the controller resolves a non-zero exit code. DB clients are closed at the end.
+  let loopsDone: Promise<void> = Promise.resolve();
+  const shutdownController = createShutdownController({
+    deadlineMs: runtimeCfg.shutdownGraceMs,
+    stopScheduler: () => { state.running = false; },
+    drain: () => loopsDone,
+    closeResources: () => closeDbClients(),
+    onEvent: (name, meta) => emitOpsEvent(name, meta),
+  });
+  const beginShutdown = (signal: string) => {
     log.info("worker.shutdown", { signal });
-    state.running = false;
-    // V1.51 — bounded drain: the loops only check `state.running` BETWEEN ticks, so a tick blocked
-    // on a slow provider call could delay exit indefinitely. Guarantee the process exits within a
-    // deadline (default 25s) so an orchestrator's SIGTERM→SIGKILL window is respected cleanly.
-    const graceMs = Number(process.env.WORKER_SHUTDOWN_GRACE_MS ?? 25_000);
-    const t = setTimeout(() => {
-      log.error("worker.shutdown.forced", { reason: "drain_deadline_exceeded" });
-      process.exit(0);
-    }, Math.max(1_000, graceMs));
-    // Don't let this timer keep the loop alive once the loops have exited cleanly.
-    if (typeof t.unref === "function") t.unref();
+    void shutdownController.shutdown(signal).then((code) => {
+      log.info("worker.shutdown.done", { code });
+      process.exit(code);
+    });
   };
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => beginShutdown("SIGINT"));
+  process.on("SIGTERM", () => beginShutdown("SIGTERM"));
 
   // V1.51 — defense-in-depth crash safety: surface an otherwise-silent unhandled rejection /
   // uncaught exception as a bounded ops event (normalized name only) and exit non-zero so the
@@ -262,15 +286,24 @@ async function main(): Promise<void> {
       return;
     }
     log.info("autosync.ENABLED", { intervalSeconds: env.AUTO_SYNC_INTERVAL_SECONDS });
-    await autoSyncTick();
+    await autoSyncTick(shutdownController.signal);
     while (state.running) {
       await sleep(autoSyncMs);
       if (!state.running) break;
-      await autoSyncTick();
+      await autoSyncTick(shutdownController.signal);
     }
   })();
 
-  await Promise.all([maintenance, autosync]);
+  // V1.58.7 — the scheduler is now running: readiness is TRUE only AFTER config validation, DB/RLS
+  // connectivity preflight, and scheduler init all succeeded. A config/DB failure throws above and the
+  // worker never reaches this line, so it never reports ready in a broken state.
+  emitOpsEvent("worker.ready", {});
+  metrics.setGauge("worker_ready", 1);
+  log.info("worker.ready", { autoSync: env.AUTO_SYNC_ENABLED });
+
+  // Expose the combined loop promise to the shutdown controller's `drain`, then await it.
+  loopsDone = Promise.all([maintenance, autosync]).then(() => undefined);
+  await loopsDone;
   log.info("worker.stopped");
 }
 

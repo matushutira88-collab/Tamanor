@@ -32,6 +32,14 @@ export type OpsEvent =
   | "sync.failed"
   | "sync.partial"
   | "sync.stale_completion"
+  // V1.58.7 — sync lease heartbeat + fencing lifecycle (never carry token/holder secret/tenant id).
+  | "sync.lease_acquired"
+  | "sync.lease_heartbeat"
+  | "sync.lease_heartbeat_failed"
+  | "sync.lease_lost"
+  | "sync.fencing_rejected"
+  | "sync.interrupted"
+  | "sync.completed"
   // lifecycle deletions
   | "tenant.deletion_failed"
   | "user.erasure_failed"
@@ -39,6 +47,13 @@ export type OpsEvent =
   // platform / infra
   | "worker.maintenance_failed"
   | "worker.fatal"
+  // V1.58.7 — worker fail-closed startup + graceful shutdown lifecycle (no secret values ever).
+  | "worker.config_invalid"
+  | "worker.starting"
+  | "worker.ready"
+  | "worker.shutdown_started"
+  | "worker.shutdown_completed"
+  | "worker.shutdown_timeout"
   // V1.51 — worker liveness: a positive heartbeat so "worker stopped / heartbeat missing" is
   // detectable by staleness (not only by the ABSENCE of logs). Carries no PII/ids.
   | "worker.heartbeat"

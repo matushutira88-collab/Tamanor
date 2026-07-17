@@ -112,6 +112,9 @@ enum SyncRunStatus {
   permission_missing
   rate_limited
   api_unavailable
+  // V1.58.7 — the run did not complete because this worker LOST its lease (a newer worker took over)
+  // or the process is shutting down. NEVER a success; distinct from `failed` (a real provider error).
+  interrupted
 }
 
 enum ContentKind {
@@ -671,6 +674,11 @@ model SyncLease {
   tenantId           String
   connectedAccountId String   @unique
   holderId           String
+  // V1.58.7 — monotonic FENCING token. Issued by the sync_lease_generation_seq DB sequence on every
+  // acquire/takeover (never an app clock). Checked atomically on every critical write so a displaced
+  // (expired) holder can never overwrite the state of the worker that took over. DEFAULT 0 = safe
+  // floor for pre-migration rows and for the old worker (which never sets it) → backward compatible.
+  generation         BigInt   @default(0)
   acquiredAt         DateTime @default(now())
   expiresAt          DateTime
   heartbeatAt        DateTime @default(now())

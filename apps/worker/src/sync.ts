@@ -15,6 +15,7 @@ import { log } from "./logger";
  */
 export async function syncConnectedMetaAccounts(
   trigger: "manual" | "automatic" = "automatic",
+  opts?: { signal?: AbortSignal },
 ): Promise<{ created: number; accounts: number; skippedBackoff: number }> {
   const now = new Date();
   const dataMode = getDataMode();
@@ -47,13 +48,19 @@ export async function syncConnectedMetaAccounts(
 
   let created = 0;
   for (const account of eligible) {
+    // V1.58.7 — cooperative shutdown: stop starting NEW account syncs once the worker is draining.
+    if (opts?.signal?.aborted) {
+      log.info("worker.autosync.drain", { reason: "shutdown", remaining: eligible.length });
+      break;
+    }
     log.info("worker.autosync.account.start", {
       accountId: account.id, platform: account.platform,
       pageName: account.externalName, pageId: account.pageId ?? account.externalId,
       health: account.health, trigger,
     });
-    // Trusted tenantId from system discovery drives the RLS-scoped execution.
-    const r = await runReadOnlySync({ accountId: account.id, tenantId: account.tenantId }, trigger);
+    // Trusted tenantId from system discovery drives the RLS-scoped execution. The shutdown signal is
+    // threaded in so an in-flight run cancels cooperatively and finalizes `interrupted` (never success).
+    const r = await runReadOnlySync({ accountId: account.id, tenantId: account.tenantId, externalSignal: opts?.signal }, trigger);
     created += r.created;
     log.info("worker.autosync.account.done", {
       accountId: account.id,

@@ -31,6 +31,7 @@ import {
   type TenantTx,
   type ConnectedAccount,
 } from "@guardora/db";
+import { createLeaseHeartbeat } from "./lease-heartbeat";
 import { randomUUID } from "node:crypto";
 import { buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, type ClassifierRule } from "@guardora/ai";
 import { classifyWithUsagePolicy } from "./metered-classify";
@@ -52,7 +53,7 @@ import {
   type FetchedContent,
   type MetaContentTransport,
 } from "@guardora/connectors";
-import { getMetaConfig, getTranslationConfig, getAiRiskConfig } from "@guardora/config";
+import { getMetaConfig, getTranslationConfig, getAiRiskConfig, getWorkerRuntimeConfig } from "@guardora/config";
 import { mockMetaFetch } from "./mock-fetch";
 import {
   fetchInstagramContent,
@@ -61,7 +62,9 @@ import {
 } from "./instagram-content";
 
 /** Truthful outcome of a whole sync run. */
-export type SyncVerdict = "success" | "partial_success" | "failed" | "skipped_locked";
+// V1.58.7 — `interrupted`: the run did not complete because this worker LOST its lease (a newer worker
+// took over) or the process is shutting down. It is NEVER a success and NEVER a provider `failed`.
+export type SyncVerdict = "success" | "partial_success" | "failed" | "skipped_locked" | "interrupted";
 
 export interface SyncOutcome {
   ok: boolean;
@@ -148,10 +151,10 @@ type AccountRow = ConnectedAccount;
  *
  * Returns the number of rows written (0 = benign stale completion).
  */
-async function writeAccountIfLeaseHeld(
+export async function writeAccountIfLeaseHeld(
   db: TenantTx,
   accountId: string,
-  lease: { id: string; holderId: string },
+  lease: { id: string; holderId: string; generation: bigint },
   data: Record<string, unknown>,
 ): Promise<number> {
   // Authorization is ATOMIC with the write: lock THIS sync's lease row FOR UPDATE and hold
@@ -161,11 +164,16 @@ async function writeAccountIfLeaseHeld(
   // the check-then-write TOCTOU: a stale completion can never land after disconnect, and after
   // a reconnect (which drops this lease and mints a new one) our lease id no longer exists, so
   // we cannot overwrite the freshly reconnected lifecycle even though its status is "active".
+  //
+  // V1.58.7 — the lock is ALSO pinned to our FENCING generation. If a newer worker took over this
+  // account's lease (TTL expiry → takeover bumps `generation`), the row still exists but at a HIGHER
+  // generation, so this locks zero rows and the stale worker cannot overwrite the new holder's state.
   const held = await db.$queryRaw<Array<{ id: string }>>`
     SELECT "id" FROM "sync_leases"
-    WHERE "id" = ${lease.id} AND "connectedAccountId" = ${accountId} AND "holderId" = ${lease.holderId}
+    WHERE "id" = ${lease.id} AND "connectedAccountId" = ${accountId}
+      AND "holderId" = ${lease.holderId} AND "generation" = ${lease.generation}
     FOR UPDATE`;
-  if (held.length === 0) return 0; // lease gone → benign stale completion
+  if (held.length === 0) return 0; // lease gone or taken over → benign stale / fenced completion
   const res = await db.connectedAccount.updateMany({
     where: { id: accountId, status: { not: ConnectorStatus.disconnected } },
     data: data as never,
@@ -190,6 +198,8 @@ export interface SyncPhaseHooks {
   forceLeaseUnavailable?: boolean;
   /** Test-only: override the lease holder id (concurrency tests). */
   holderId?: string;
+  /** V1.58.7 test-only: simulate loss of the lease just before the terminal write (interrupted proof). */
+  simulateLeaseLost?: boolean;
   /**
    * V1.38.1 — inject the Instagram CONTENT transport. Tests pass a MockMetaContentTransport
    * so the REAL runReadOnlySync (lease/RLS/idempotency/atomic/verdict/dedup) runs against a
@@ -200,11 +210,11 @@ export interface SyncPhaseHooks {
 }
 
 export async function runReadOnlySync(
-  target: { accountId: string; tenantId: string },
+  target: { accountId: string; tenantId: string; externalSignal?: AbortSignal },
   trigger: "manual" | "automatic" = "manual",
   hooks?: SyncPhaseHooks,
 ): Promise<SyncOutcome> {
-  const { accountId, tenantId } = target;
+  const { accountId, tenantId, externalSignal } = target;
   const phase = (p: string) => hooks?.onPhase?.(p);
 
   // V1.45C1 — reject a DELETING tenant before any work (no lease, no SyncRun, no content). Worker
@@ -262,9 +272,22 @@ export async function runReadOnlySync(
     return { ok: true, mock: false, fetched: 0, created: 0, updated: 0, deduped: 0, errors: 0, durationMs: 0, message: "Sync skipped — another sync is already running for this account.", verdict: "skipped_locked" };
   }
   phase("lease-acquired");
+  emitOpsEvent("sync.lease_acquired", { trigger });
 
-  // Everything past lease acquisition runs inside try/finally so the lease is ALWAYS
-  // released (even on crash/throw) — a crashed holder would otherwise rely on TTL.
+  // V1.58.7 — start the lease HEARTBEAT for the whole run: it keeps a long healthy sync's lease alive
+  // (so it is never spuriously taken over) AND detects loss (a newer worker took over) by aborting its
+  // signal, which stops further processing and downgrades the run to `interrupted`. Timer is cleared in
+  // finally (no orphan interval). Fencing at the terminal write is the DB-level backstop regardless.
+  const runtime = getWorkerRuntimeConfig();
+  const heartbeat = createLeaseHeartbeat({
+    tenantId, lease, ttlMs: runtime.leaseTtlMs, intervalMs: runtime.heartbeatMs,
+  });
+  heartbeat.start();
+  // True the moment we can no longer safely write as the lease owner (lost, aborted, or shutting down).
+  const leaseGone = () => heartbeat.leaseLost() || heartbeat.signal.aborted || (externalSignal?.aborted ?? false) || hooks?.simulateLeaseLost === true;
+
+  // Everything past lease acquisition runs inside try/finally so the lease is ALWAYS released (even on
+  // crash/throw) AND the heartbeat timer is stopped — a crashed holder would otherwise rely on TTL.
   try {
     // Mock fetch is ONLY for placeholder (demo) accounts. A real (read_only)
     // account is NEVER injected with mock data — if live sync isn't enabled it is
@@ -308,6 +331,10 @@ export async function runReadOnlySync(
       let failed = 0;
       // --- Per-item isolation: one malformed item never aborts the whole run. ---
       for (const item of fetched) {
+        // V1.58.7 — cooperative cancellation: if the lease was lost or the worker is shutting down,
+        // STOP ingesting immediately. No further items, no further critical writes; the run is
+        // finalized as `interrupted` (never success) below.
+        if (leaseGone()) break;
         try {
           const outcome = await ingestItem(tenantId, account, item, rules, hooks);
           if (outcome === "created") created++;
@@ -324,41 +351,55 @@ export async function runReadOnlySync(
 
       const durationMs = Date.now() - startedAt;
       const verdict: SyncVerdict = failed === 0 ? "success" : (created + updated + deduped > 0 ? "partial_success" : "failed");
-      const status = verdict === "success" ? SyncRunStatus.completed
-        : verdict === "partial_success" ? SyncRunStatus.partial_success
-        : SyncRunStatus.failed;
 
       // --- Phase D: tenant write (short tx) — mark result + refresh account. ---
+      // V1.58.7 — the account AGGREGATE write is FENCED FIRST. If this worker no longer owns the lease
+      // at its generation (a newer worker took over, or the run was told to shut down), the write
+      // touches ZERO rows and the run is finalized as `interrupted` — NEVER a success and NEVER a
+      // clean completion. syncRun.update is keyed by THIS run's own id, so labelling it interrupted can
+      // never overwrite a newer run's record (per-run isolation) — only the aggregate state is fenced.
       phase("tenant-write-start");
+      let fencedOut = leaseGone();
       await withTenantDb(tenantId, async (db) => {
-        await db.syncRun.update({
-          where: { id: run.id },
-          data: {
-            status,
-            fetched: fetched.length,
-            created, updated, deduped, errors: failed,
-            durationMs,
-            cursor: cursor ?? null,
-            finishedAt: new Date(),
-          },
-        });
-        // V1.45B — lease-gated terminal write: a disconnect (which drops the lease) makes
-        // this a zero-row no-op, so a stale success can never restore healthy/connected state.
-        await writeAccountIfLeaseHeld(db, account.id, lease, {
+        const accountRows = fencedOut ? 0 : await writeAccountIfLeaseHeld(db, account.id, lease, {
           lastSyncedAt: new Date(),
           // V1.38.1 — a successful read is the truthful "healthy" permission state.
           ...(permissionState ? { contentPermissionState: permissionState } : {}),
           // Only a fully/partly successful run refreshes success markers.
           ...(verdict !== "failed" ? { lastSuccessfulSyncAt: new Date(), lastCursor: cursor ?? undefined, health: ConnectorHealth.healthy, lastError: null, lastErrorAt: null, syncAttempts: 0, nextRetryAt: null } : {}),
         });
-        await auditTx(db, account, verdict === "partial_success" ? "sync.partial" : "sync.completed", {
-          mock: useMock, fetched: fetched.length, created, updated, deduped, failed, verdict, durationMs, trigger,
-          ...(permissionState ? { permissionState } : {}),
-          ...(truncated ? { truncated: true } : {}),
-        });
+        // A takeover that raced between the last heartbeat and this write also fences us out.
+        if (!fencedOut && accountRows === 0) fencedOut = true;
+        if (fencedOut) {
+          await db.syncRun.update({
+            where: { id: run.id },
+            data: { status: SyncRunStatus.interrupted, fetched: fetched.length, created, updated, deduped, errors: failed, durationMs, finishedAt: new Date() },
+          });
+          await auditTx(db, account, "sync.interrupted", { reason: "lease_lost", fetched: fetched.length, created, updated, deduped, trigger });
+        } else {
+          const status = verdict === "success" ? SyncRunStatus.completed
+            : verdict === "partial_success" ? SyncRunStatus.partial_success
+            : SyncRunStatus.failed;
+          await db.syncRun.update({
+            where: { id: run.id },
+            data: { status, fetched: fetched.length, created, updated, deduped, errors: failed, durationMs, cursor: cursor ?? null, finishedAt: new Date() },
+          });
+          await auditTx(db, account, verdict === "partial_success" ? "sync.partial" : "sync.completed", {
+            mock: useMock, fetched: fetched.length, created, updated, deduped, failed, verdict, durationMs, trigger,
+            ...(permissionState ? { permissionState } : {}),
+            ...(truncated ? { truncated: true } : {}),
+          });
+        }
       });
       phase("tenant-write-end");
 
+      if (fencedOut) {
+        emitOpsEvent("sync.fencing_rejected", { phase: "terminal_write" });
+        emitOpsEvent("sync.interrupted", { trigger });
+        return { ok: false, mock: useMock, fetched: fetched.length, created, updated, deduped, errors: failed, durationMs, message: "Sync interrupted — the account lease was taken over; no success was recorded.", syncRunId: run.id, verdict: "interrupted" };
+      }
+
+      emitOpsEvent("sync.completed", { result: verdict === "partial_success" ? "partial" : "success" });
       return {
         ok: verdict !== "failed",
         mock: useMock,
@@ -377,6 +418,21 @@ export async function runReadOnlySync(
     } catch (err) {
       // Account-level failure (token/permission/rate-limit/fetch) — aborts the run.
       const durationMs = Date.now() - startedAt;
+
+      // V1.58.7 — if we have lost the lease, a provider error is MOOT: we must not write ANY failure
+      // markers to an account we no longer own (writeAccountIfLeaseHeld would fence us out anyway), and
+      // the run is `interrupted`, not `failed`. Mark only THIS run's own record (per-run isolated).
+      if (leaseGone()) {
+        phase("tenant-write-start");
+        await withTenantDb(tenantId, (db) => db.syncRun.update({
+          where: { id: run.id },
+          data: { status: SyncRunStatus.interrupted, errors: 0, durationMs, finishedAt: new Date() },
+        })).catch(() => {});
+        phase("tenant-write-end");
+        emitOpsEvent("sync.interrupted", { trigger });
+        return { ok: false, mock: useMock, fetched: 0, created: 0, updated: 0, deduped: 0, errors: 0, durationMs, message: "Sync interrupted — the account lease was taken over; no failure state was recorded.", syncRunId: run.id, verdict: "interrupted" };
+      }
+
       const msg = err instanceof Error ? err.message : String(err);
       const isTokenExpired = err instanceof ReconnectRequiredError;
       const isPermission = err instanceof PermissionRequiredError;
@@ -415,8 +471,13 @@ export async function runReadOnlySync(
       return { ok: false, mock: useMock, fetched: 0, created: 0, updated: 0, deduped: 0, errors: 1, durationMs, message: msg, syncRunId: run.id, verdict: "failed", needsReconnect, retryLater };
     }
   } finally {
-    // ALWAYS release the lease (release-in-finally). Idempotent.
-    await releaseSyncLease(tenantId, lease).catch(() => {});
+    // V1.58.7 — stop the heartbeat FIRST (no orphan interval, no beat after release), THEN release.
+    heartbeat.stop();
+    // Release is fencing-checked: only the current holder AT ITS GENERATION deletes the row. If we were
+    // taken over, `released` is false — a STALE ownership state; we must NOT log it as a clean release
+    // (and we never delete the new holder's lease). Idempotent + never throws into the caller.
+    const rel = await releaseSyncLease(tenantId, lease).catch(() => ({ released: false }));
+    if (!rel.released && !heartbeat.leaseLost()) emitOpsEvent("sync.stale_completion", { reason: "release_not_owner" });
     phase("lease-released");
   }
 }
@@ -990,6 +1051,7 @@ export {
   type IgPermissionState,
   type IgIngestResult,
 } from "./instagram-content";
+export * from "./lease-heartbeat";
 export * from "./live-actions";
 export * from "./facebook-connector";
 export * from "./instagram-connector";

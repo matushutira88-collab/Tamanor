@@ -78,6 +78,18 @@ export const appDb: PrismaClient = new Proxy({} as PrismaClient, {
   },
 });
 
+/**
+ * V1.58.7 — gracefully disconnect BOTH Prisma clients (owner systemDb + the lazily-created RLS appDb)
+ * during worker shutdown. Best-effort (allSettled) — a disconnect error must never block process exit.
+ * The appDb is disconnected only if it was ever instantiated (the Proxy defers creation to first use).
+ */
+export async function closeDbClients(): Promise<void> {
+  await Promise.allSettled([
+    prisma.$disconnect(),
+    globalForPrisma.appDb ? globalForPrisma.appDb.$disconnect() : Promise.resolve(),
+  ]);
+}
+
 export * from "@prisma/client";
 export * from "./token-crypto";
 export * from "./meta-account";

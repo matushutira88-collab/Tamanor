@@ -29,6 +29,12 @@ const EnvSchema = z.object({
 
   // Worker
   WORKER_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  // V1.58.7 — sync lease fencing runtime. TTL is the window a sync has before its lease can be taken
+  // over; the heartbeat renews it well inside that window (must be safely < TTL — validated by the
+  // worker config validator). Shutdown grace is the hard drain deadline on SIGTERM/SIGINT.
+  SYNC_LEASE_TTL_MS: z.coerce.number().int().positive().default(300_000),
+  SYNC_LEASE_HEARTBEAT_MS: z.coerce.number().int().positive().default(75_000),
+  WORKER_SHUTDOWN_GRACE_MS: z.coerce.number().int().positive().default(25_000),
   /**
    * Automatic read-only sync polling. When true, the worker periodically runs a
    * read-only sync for eligible connected accounts (never any platform action).
@@ -163,6 +169,34 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): GuardoraEnv {
 /** Data mode: `real` (real accounts only) or `demo` (seeded dataset). */
 export function getDataMode(source: NodeJS.ProcessEnv = process.env): "real" | "demo" {
   return loadEnv(source).GUARDORA_DATA_MODE;
+}
+
+/**
+ * V1.58.7 — resolved worker runtime timings (lease TTL, heartbeat, shutdown grace, sync interval).
+ * Read DIRECTLY from `source` (never the globally-cached loadEnv) so the worker config validator and
+ * tests can inject env per-call. Values are already bounded positive integers by the schema; the
+ * INVARIANT `heartbeat safely < TTL` is enforced by validateWorkerConfig, not here.
+ */
+export interface WorkerRuntimeConfig {
+  syncIntervalMs: number;
+  leaseTtlMs: number;
+  heartbeatMs: number;
+  shutdownGraceMs: number;
+}
+const WorkerRuntimeSchema = z.object({
+  WORKER_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  SYNC_LEASE_TTL_MS: z.coerce.number().int().positive().default(300_000),
+  SYNC_LEASE_HEARTBEAT_MS: z.coerce.number().int().positive().default(75_000),
+  WORKER_SHUTDOWN_GRACE_MS: z.coerce.number().int().positive().default(25_000),
+});
+export function getWorkerRuntimeConfig(source: NodeJS.ProcessEnv = process.env): WorkerRuntimeConfig {
+  const env = WorkerRuntimeSchema.parse(source);
+  return {
+    syncIntervalMs: env.WORKER_SYNC_INTERVAL_MS,
+    leaseTtlMs: env.SYNC_LEASE_TTL_MS,
+    heartbeatMs: env.SYNC_LEASE_HEARTBEAT_MS,
+    shutdownGraceMs: env.WORKER_SHUTDOWN_GRACE_MS,
+  };
 }
 
 /** Automatic read-only sync configuration for UI + worker. */
