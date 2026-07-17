@@ -312,6 +312,32 @@ export function accessAllowsOperations(state: AccessState): boolean {
   return state === "full_access" || state === "grace_period";
 }
 
+// ---- V1.58.4: Stripe webhook event ordering (out-of-order protection) --------
+/**
+ * Ordering position of a Stripe billing event: its `created` time plus whether it is TERMINAL
+ * (the subscription ended — customer.subscription.deleted or a resulting `canceled` status).
+ */
+export type StripeEventOrder = { createdAt: Date; terminal: boolean };
+
+/**
+ * Deterministically decide whether an INCOMING Stripe billing event should be applied over the
+ * LAST-APPLIED one for the same subscription aggregate. Rules:
+ *  - no prior event → apply.
+ *  - strictly newer `created` → apply (a genuinely newer event, incl. a legitimate reactivation).
+ *  - strictly older `created` → stale (never let an older event overwrite newer billing state).
+ *  - EQUAL `created` (Stripe timestamps are second-resolution) → a TERMINAL event wins and is never
+ *    overwritten by a non-terminal one; equal terminality keeps the first-applied (stable/idempotent).
+ * This is the single source of the ordering rule; the DB guard expresses the same predicate atomically.
+ */
+export function shouldApplyStripeEvent(stored: StripeEventOrder | null, incoming: StripeEventOrder): boolean {
+  if (!stored) return true;
+  const a = incoming.createdAt.getTime();
+  const b = stored.createdAt.getTime();
+  if (a > b) return true;
+  if (a < b) return false;
+  return incoming.terminal && !stored.terminal;
+}
+
 /**
  * V1.57.3 — Duplicate-subscription guard (PURE, no DB/network). Decides, from a tenant's
  * synchronized subscription row, whether it is safe to START a new Stripe Checkout. Fail-safe: an

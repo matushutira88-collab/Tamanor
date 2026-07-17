@@ -286,7 +286,7 @@ export type StripeSubStateInput = {
   latestInvoiceStatus?: string | null;
 };
 
-export type WebhookOutcome = "processed" | "duplicate" | "ignored" | "failed";
+export type WebhookOutcome = "processed" | "duplicate" | "ignored" | "failed" | "stale";
 
 function isUnique(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
@@ -303,6 +303,7 @@ export async function recordAndApplyStripeEvent(
   stripeEventId: string,
   eventType: string,
   input: StripeSubStateInput | null,
+  eventCreated: number,
   now: Date = new Date(),
 ): Promise<{ outcome: WebhookOutcome; tenantId: string | null; accessState: AccessState | null }> {
   // Fast path: already fully processed → duplicate (no work).
@@ -338,10 +339,25 @@ export async function recordAndApplyStripeEvent(
     now,
   });
 
+  // V1.58.4 — out-of-order guard. This subscription aggregate advances only to a NEWER event; an
+  // older (delayed/retried) event is stale. Terminality = the subscription ended (deleted / canceled).
+  const eventCreatedAt = new Date(eventCreated * 1000);
+  const terminal = eventType === "customer.subscription.deleted" || input.status === "canceled";
+  // Atomic, race-safe predicate — the SAME rule as core `shouldApplyStripeEvent`, expressed as a
+  // conditional UPDATE so concurrent webhooks serialize on the subscription row (no TOCTOU): apply
+  // when no prior event, or strictly newer, or (equal created AND this event is terminal while the
+  // stored one is not — terminal wins the second-resolution tie and is never overwritten).
+  const orderingOr: Prisma.SubscriptionWhereInput[] = [
+    { lastStripeEventAt: null },
+    { lastStripeEventAt: { lt: eventCreatedAt } },
+    ...(terminal ? [{ lastStripeEventAt: eventCreatedAt, lastStripeEventTerminal: false }] : []),
+  ];
+
   try {
+    let applied = false;
     await systemDb.$transaction(async (tx) => {
-      await tx.subscription.update({
-        where: { tenantId },
+      const upd = await tx.subscription.updateMany({
+        where: { tenantId, OR: orderingOr },
         data: {
           stripeSubscriptionId: input.stripeSubscriptionId ?? undefined,
           stripePriceId: input.stripePriceId ?? undefined,
@@ -354,19 +370,29 @@ export async function recordAndApplyStripeEvent(
           canceledAt: input.canceledAt ?? undefined,
           trialEndsAt: input.trialEndsAt ?? undefined,
           latestInvoiceStatus: input.latestInvoiceStatus ?? undefined,
+          lastStripeEventAt: eventCreatedAt,
+          lastStripeEventTerminal: terminal,
         },
       });
-      await tx.tenant.update({
-        where: { id: tenantId },
-        data: { plan: input.plan, billingStatus: String(input.status), accessState },
-      });
+      applied = upd.count > 0;
+      // Only advance tenant access when THIS event actually applied (won the ordering guard).
+      if (applied) {
+        await tx.tenant.update({
+          where: { id: tenantId },
+          data: { plan: input.plan, billingStatus: String(input.status), accessState },
+        });
+      }
+      // Record the event barrier either way (idempotent replay-safe); a stale event is recorded as
+      // "stale" and changes no access state.
       await tx.stripeWebhookEvent.upsert({
         where: { stripeEventId },
-        create: { stripeEventId, eventType, result: "processed", processedAt: now },
-        update: { result: "processed", processedAt: now },
+        create: { stripeEventId, eventType, result: applied ? "processed" : "stale", processedAt: now },
+        update: { result: applied ? "processed" : "stale", processedAt: now },
       });
     });
-    return { outcome: "processed", tenantId, accessState };
+    return applied
+      ? { outcome: "processed", tenantId, accessState }
+      : { outcome: "stale", tenantId, accessState: null };
   } catch {
     // Rolled back — do NOT record a barrier; Stripe will retry.
     return { outcome: "failed", tenantId, accessState: null };

@@ -59,6 +59,7 @@ export type OpsEvent =
   | "billing.portal_failed"
   | "billing.webhook_signature_invalid"
   | "billing.webhook_failed"
+  | "billing.webhook_stale"
   | "billing.subscription_activated"
   | "billing.subscription_canceled"
   | "billing.payment_failed"

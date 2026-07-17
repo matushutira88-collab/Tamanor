@@ -128,7 +128,9 @@
     "db:studio": "pnpm --filter @guardora/db studio",
     "clean": "pnpm -r clean",
     "checkout-concurrency:test": "bash packages/db/scripts/run-checkout-concurrency.sh",
-    "meta-proof:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/meta-appsecret-proof.test.ts"
+    "meta-proof:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/meta-appsecret-proof.test.ts",
+    "billing-mapping:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/billing-mapping.test.ts",
+    "webhook-ordering:test": "bash packages/db/scripts/run-webhook-ordering.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

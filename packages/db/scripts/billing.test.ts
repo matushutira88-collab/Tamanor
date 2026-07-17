@@ -75,15 +75,16 @@ async function run() {
     plan: "starter", billingInterval: "monthly", status: "active",
     currentPeriodEnd: future, cancelAtPeriodEnd: false,
   };
+  const base = Math.floor(now.getTime() / 1000); // V1.58.4: increasing event.created for the sequence
   const e1 = `evt_${sfx}_1`;
-  const r1 = await recordAndApplyStripeEvent(e1, "checkout.session.completed", activeInput, now);
+  const r1 = await recordAndApplyStripeEvent(e1, "checkout.session.completed", activeInput, base, now);
   check("checkout completion activates the CORRECT tenant", r1.outcome === "processed" && r1.tenantId === a.tenantId && r1.accessState === "full_access");
   const billA = await getTenantBilling(a.tenantId);
   check("tenant now on starter/active/full_access", billA?.plan === "starter" && billA?.billingStatus === "active" && billA?.accessState === "full_access");
   check("subscription row stored with safe fields (no raw payload)", billA?.subscription?.status === "active" && billA?.subscription?.billingInterval === "monthly");
 
   // Idempotency: replaying the same event id is a no-op.
-  const r1dup = await recordAndApplyStripeEvent(e1, "checkout.session.completed", activeInput, now);
+  const r1dup = await recordAndApplyStripeEvent(e1, "checkout.session.completed", activeInput, base, now);
   check("duplicate event id is ignored (idempotent)", r1dup.outcome === "duplicate");
 
   // Cross-tenant: an event for customer A never mutates tenant B.
@@ -91,21 +92,21 @@ async function run() {
   check("other tenant untouched by tenant A's event", billB0?.billingStatus === "no_subscription" && billB0?.accessState === "full_access");
 
   // Unknown customer → ignored (cannot grant access to an unknown tenant).
-  const rUnknown = await recordAndApplyStripeEvent(`evt_${sfx}_unknown`, "customer.subscription.updated", { ...activeInput, stripeCustomerId: `cus_nobody_${sfx}` }, now);
+  const rUnknown = await recordAndApplyStripeEvent(`evt_${sfx}_unknown`, "customer.subscription.updated", { ...activeInput, stripeCustomerId: `cus_nobody_${sfx}` }, base + 5, now);
   check("event for an unknown customer is ignored (no cross-tenant grant)", rUnknown.outcome === "ignored" && rUnknown.tenantId === null);
 
   // Payment failure → past_due within grace → grace_period.
   const pastDueInput: StripeSubStateInput = { ...activeInput, status: "past_due", currentPeriodEnd: now };
-  const r2 = await recordAndApplyStripeEvent(`evt_${sfx}_2`, "invoice.payment_failed", pastDueInput, now);
+  const r2 = await recordAndApplyStripeEvent(`evt_${sfx}_2`, "invoice.payment_failed", pastDueInput, base + 10, now);
   check("payment failure → past_due, grace_period", r2.outcome === "processed" && r2.accessState === "grace_period");
 
   // Subscription canceled + period ended → restricted.
   const canceledInput: StripeSubStateInput = { ...activeInput, status: "canceled", currentPeriodEnd: past, canceledAt: now };
-  const r3 = await recordAndApplyStripeEvent(`evt_${sfx}_3`, "customer.subscription.deleted", canceledInput, now);
+  const r3 = await recordAndApplyStripeEvent(`evt_${sfx}_3`, "customer.subscription.deleted", canceledInput, base + 20, now);
   check("cancellation (period ended) → restricted", r3.outcome === "processed" && r3.accessState === "restricted");
 
   // invoice.paid → active restored.
-  const r4 = await recordAndApplyStripeEvent(`evt_${sfx}_4`, "invoice.paid", { ...activeInput, currentPeriodEnd: future }, now);
+  const r4 = await recordAndApplyStripeEvent(`evt_${sfx}_4`, "invoice.paid", { ...activeInput, currentPeriodEnd: future }, base + 30, now);
   check("invoice paid restores active/full_access", r4.outcome === "processed" && r4.accessState === "full_access");
 
   // ---- E. Trial expiry sweep ------------------------------------------------

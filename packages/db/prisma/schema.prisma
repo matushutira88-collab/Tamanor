@@ -412,6 +412,10 @@ model Subscription {
   canceledAt           DateTime?
   trialEndsAt          DateTime?
   latestInvoiceStatus  String?
+  // V1.58.4 — out-of-order webhook guard: `created` time + terminality of the last APPLIED Stripe
+  // billing event for this subscription aggregate. An older event must never overwrite newer state.
+  lastStripeEventAt       DateTime?
+  lastStripeEventTerminal Boolean  @default(false)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

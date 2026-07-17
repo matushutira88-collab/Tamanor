@@ -10,6 +10,10 @@ import {
   type StripeSubStateInput,
 } from "@guardora/db";
 import { getStripe, portalReturnUrl } from "./stripe";
+import { invoiceSubscriptionId, normalizeSubscription } from "./stripe-mapping";
+
+// Re-export the pure mapping (single source in ./stripe-mapping) for existing importers (webhook route).
+export { normalizeSubscription } from "./stripe-mapping";
 
 /**
  * V1.50D — high-level Stripe operations. Checkout/portal are authorized + tenant-scoped by the
@@ -19,10 +23,6 @@ import { getStripe, portalReturnUrl } from "./stripe";
  */
 
 export type OpResult = { ok: true; url: string } | { ok: false; reason: string };
-
-function toDate(n: unknown): Date | null {
-  return typeof n === "number" && n > 0 ? new Date(n * 1000) : null;
-}
 
 export async function createCheckout(args: {
   tenantId: string; ownerEmail: string; plan: BillingPlanId; interval: BillingInterval; origin: string; userId?: string | null;
@@ -115,44 +115,22 @@ export async function createPortal(args: { tenantId: string; origin: string }): 
   return { ok: true, url: session.url };
 }
 
-/**
- * Normalize a Stripe Subscription into our trusted subscription-state input. Fails closed (null) if
- * the price is not in the catalogue or the customer is missing — the webhook then records the event
- * without granting an arbitrary plan. Scalar timestamps are read defensively (Stripe SDK-version safe).
- */
-export function normalizeSubscription(sub: Stripe.Subscription, latestInvoiceStatus?: string | null): StripeSubStateInput | null {
-  const priceId = sub.items?.data?.[0]?.price?.id ?? null;
-  const mapped = priceId ? planForStripePriceId(priceId) : null;
-  if (!mapped) return null; // unrecognised price → do not grant an arbitrary plan
-  const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
-  if (!customerId) return null;
-
-  const raw = sub as unknown as Record<string, unknown>;
-  return {
-    stripeCustomerId: customerId,
-    stripeSubscriptionId: sub.id,
-    stripePriceId: priceId,
-    plan: mapped.plan,
-    billingInterval: mapped.interval,
-    status: sub.status,
-    currentPeriodStart: toDate(raw["current_period_start"]),
-    currentPeriodEnd: toDate(raw["current_period_end"]),
-    cancelAtPeriodEnd: sub.cancel_at_period_end,
-    canceledAt: toDate(raw["canceled_at"]),
-    trialEndsAt: toDate(raw["trial_end"]),
-    latestInvoiceStatus: latestInvoiceStatus ?? null,
-  };
-}
 
 /** Retrieve the subscription referenced by a webhook event (from the object, or by id on invoices). */
 export async function subscriptionFromEvent(stripe: Stripe, event: Stripe.Event): Promise<Stripe.Subscription | null> {
-  const obj = event.data.object as unknown as Record<string, unknown>;
   if (event.type.startsWith("customer.subscription.")) {
-    return obj as unknown as Stripe.Subscription;
+    return event.data.object as unknown as Stripe.Subscription;
   }
-  // checkout.session.completed / invoice.* carry a subscription reference.
-  const subRef = obj["subscription"];
-  const subId = typeof subRef === "string" ? subRef : (subRef as { id?: string } | null)?.id;
-  if (!subId) return null;
+  // Resolve the subscription reference per object type (typed, dahlia-correct):
+  //  - invoice.*                  → invoice.parent.subscription_details.subscription
+  //  - checkout.session.completed → session.subscription (still top-level on the Session)
+  let subId: string | null = null;
+  if (event.type.startsWith("invoice.")) {
+    subId = invoiceSubscriptionId(event.data.object as unknown as Stripe.Invoice);
+  } else if (event.type === "checkout.session.completed") {
+    const ref = (event.data.object as unknown as Stripe.Checkout.Session).subscription;
+    subId = ref ? (typeof ref === "string" ? ref : ref.id) : null;
+  }
+  if (!subId) return null; // genuinely no subscription reference → caller records it as "ignored"
   return stripe.subscriptions.retrieve(subId);
 }

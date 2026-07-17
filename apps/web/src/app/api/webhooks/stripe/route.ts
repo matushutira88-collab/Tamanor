@@ -50,7 +50,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   if (!HANDLED.has(event.type)) {
-    await recordAndApplyStripeEvent(event.id, event.type, null).catch(() => {});
+    await recordAndApplyStripeEvent(event.id, event.type, null, event.created).catch(() => {});
     return NextResponse.json({ received: true }, { status: 200 });
   }
 
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const sid = (event.data.object as { id?: string }).id;
       if (sid) await expireCheckoutAttemptBySession(sid).catch(() => {});
       // No subscription reference on this event → acknowledge as ignored for subscription state.
-      await recordAndApplyStripeEvent(event.id, event.type, null).catch(() => {});
+      await recordAndApplyStripeEvent(event.id, event.type, null, event.created).catch(() => {});
       metrics.inc("billing_webhook_total", { result: "ignored" });
       return NextResponse.json({ received: true }, { status: 200 });
     }
@@ -78,12 +78,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       input = sub ? normalizeSubscription(sub, latestInvoiceStatus) : null;
     }
 
-    const res = await recordAndApplyStripeEvent(event.id, event.type, input);
+    const res = await recordAndApplyStripeEvent(event.id, event.type, input, event.created);
     if (res.outcome === "failed") {
       metrics.inc("billing_webhook_total", { result: "failed" });
       emitOpsEvent("billing.webhook_failed", { operation: event.type });
       // Do NOT acknowledge success on a DB failure → Stripe retries.
       return NextResponse.json({ error: "processing_failed" }, { status: 500 });
+    }
+    // V1.58.4 — an out-of-order (older) event is recorded as "stale" and changes no access state; ACK
+    // 200 so Stripe does not retry. No state-change ops events are emitted for a stale event.
+    if (res.outcome === "stale") {
+      metrics.inc("billing_webhook_total", { result: "stale" });
+      emitOpsEvent("billing.webhook_stale", { operation: event.type });
+      return NextResponse.json({ received: true }, { status: 200 });
     }
 
     if (res.outcome === "processed") {
