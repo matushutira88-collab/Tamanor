@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "dotenv -e ../../.env -- next dev",
     "build": "pnpm --filter @guardora/db generate && NODE_ENV=production next build",
-    "start": "dotenv -e ../../.env -- next start",
+    "start": "next start",
+    "start:local": "dotenv -e ../../.env -- next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .next .next-e2e dist *.tsbuildinfo"
