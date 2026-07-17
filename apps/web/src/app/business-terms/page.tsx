@@ -2,16 +2,16 @@ import type { Metadata } from "next";
 import { MarketingPage, LegalBody } from "@/components/marketing-page";
 import { getTL } from "@/i18n/server";
 import { getLocale } from "@/i18n/locale-server";
-import { termsOfService } from "@/content/legal-compliance";
+import { businessTerms } from "@/content/legal-compliance";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const doc = termsOfService[await getLocale()];
+  const doc = businessTerms[await getLocale()];
   return { title: doc.metaTitle, description: doc.metaDescription };
 }
 
 export default async function Page() {
   const _lp = await getTL();
-  const doc = termsOfService[_lp.locale];
+  const doc = businessTerms[_lp.locale];
   return (
     <MarketingPage
       dict={_lp.t}

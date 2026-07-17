@@ -24,6 +24,52 @@ const sans = "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif";
 
 const EU: Record<Locale, string> = { en: "European Union", sk: "Európska únia", de: "Europäische Union" };
 
+// Tamanor EU Compliance Pack — localized links to the full legal/compliance library.
+const COMPLIANCE_LINKS: Record<Locale, { label: string; href: string }[]> = {
+  en: [
+    { label: "Data Processing Agreement", href: "/dpa" },
+    { label: "Subprocessors", href: "/subprocessors" },
+    { label: "AI transparency", href: "/ai-transparency" },
+    { label: "Your data rights", href: "/data-subject-rights" },
+    { label: "Data retention", href: "/data-retention" },
+    { label: "International transfers", href: "/international-transfers" },
+    { label: "Incident & breach", href: "/incident-policy" },
+    { label: "Information security", href: "/information-security" },
+    { label: "Security policy", href: "/security-policy" },
+    { label: "Business terms (B2B)", href: "/business-terms" },
+    { label: "Consumer terms (B2C)", href: "/consumer-terms" },
+    { label: "Copyright & IP", href: "/copyright" },
+  ],
+  sk: [
+    { label: "Zmluva o spracúvaní údajov (DPA)", href: "/dpa" },
+    { label: "Subdodávatelia", href: "/subprocessors" },
+    { label: "Transparentnosť AI", href: "/ai-transparency" },
+    { label: "Práva dotknutých osôb", href: "/data-subject-rights" },
+    { label: "Uchovávanie údajov", href: "/data-retention" },
+    { label: "Medzinárodné prenosy", href: "/international-transfers" },
+    { label: "Incidenty a porušenia", href: "/incident-policy" },
+    { label: "Informačná bezpečnosť", href: "/information-security" },
+    { label: "Bezpečnostné zásady", href: "/security-policy" },
+    { label: "Podmienky pre firmy (B2B)", href: "/business-terms" },
+    { label: "Spotrebiteľské podmienky (B2C)", href: "/consumer-terms" },
+    { label: "Autorské práva a IP", href: "/copyright" },
+  ],
+  de: [
+    { label: "Auftragsverarbeitung (AVV)", href: "/dpa" },
+    { label: "Unterauftragsverarbeiter", href: "/subprocessors" },
+    { label: "KI-Transparenz", href: "/ai-transparency" },
+    { label: "Betroffenenrechte", href: "/data-subject-rights" },
+    { label: "Datenaufbewahrung", href: "/data-retention" },
+    { label: "Internationale Übermittlungen", href: "/international-transfers" },
+    { label: "Sicherheitsvorfälle", href: "/incident-policy" },
+    { label: "Informationssicherheit", href: "/information-security" },
+    { label: "Sicherheitsrichtlinie", href: "/security-policy" },
+    { label: "Geschäftskunden (B2B)", href: "/business-terms" },
+    { label: "Verbraucher (B2C)", href: "/consumer-terms" },
+    { label: "Urheberrecht & IP", href: "/copyright" },
+  ],
+};
+
 type L = { label: string; href: string };
 const linkStyle: React.CSSProperties = { color: F.dim, textDecoration: "none", fontSize: 13, fontFamily: sans };
 
@@ -70,6 +116,7 @@ export function FooterV2({
   const legal: L[] = [
     { label: footer.privacy, href: "/privacy" }, { label: footer.cookies, href: "/cookies" },
     { label: footer.terms, href: "/terms" }, { label: footer.security, href: "/security" },
+    ...COMPLIANCE_LINKS[locale],
   ];
   const available: L[] = [
     { label: "Facebook Pages", href: "/integrations/facebook" }, { label: "Instagram Business", href: "/integrations/instagram" },
