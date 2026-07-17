@@ -51,4 +51,15 @@ export const authLimiter = new CentralLimiter("auth", { limit: 10, windowMs: 5 *
 /** Outbound-email auth flows (resend verification, forgot-password) — per-IP AND per-email. Fail closed. */
 export const emailSendLimiter = new CentralLimiter("email", { limit: 5, windowMs: 60 * 60_000, failClosed: true });
 
+/**
+ * V1.58.9 — adaptive-challenge trigger for login. Counts recent login ATTEMPTS per (account|ip); once the
+ * count reaches LOGIN_CHALLENGE_AFTER_FAILURES within the window, `check()` returns allowed=false → the
+ * server REQUIRES a Turnstile challenge. Degrade-to-allow if the store is down (the authLimiter above is
+ * the hard fail-closed brute-force gate; this only escalates to a challenge). The number of attempts
+ * before a challenge is env-tunable.
+ */
+export const loginChallengeLimiter = new CentralLimiter("login_challenge", {
+  limit: env.LOGIN_CHALLENGE_AFTER_FAILURES, windowMs: 15 * 60_000, failClosed: false,
+});
+
 export { ipKeyFromHeader };

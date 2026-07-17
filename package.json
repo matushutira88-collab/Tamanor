@@ -141,7 +141,13 @@
     "cron-auth:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/cron-auth.test.ts",
     "job-checkpoint:test": "bash packages/db/scripts/run-job-checkpoint.sh",
     "auth-config:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-config.test.ts",
-    "auth-session-timeout:test": "bash packages/db/scripts/run-auth-session-timeout.sh"
+    "auth-session-timeout:test": "bash packages/db/scripts/run-auth-session-timeout.sh",
+    "auth-strength:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-strength.test.ts",
+    "auth-generator:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-generator.test.ts",
+    "auth-hibp:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-hibp.test.ts",
+    "auth-turnstile:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-turnstile.test.ts",
+    "auth-audit:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-audit.test.ts",
+    "auth-session-mgmt:test": "bash packages/db/scripts/run-auth-session-mgmt.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

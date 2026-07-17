@@ -9,10 +9,10 @@ import { startSession } from "@/server/session";
 import { isSameOrigin } from "@/server/csrf";
 import { issueVerificationEmail } from "@/server/auth-email";
 import { getLocale } from "@/i18n/locale-server";
+import { checkPasswordAcceptable, verifyChallenge, summarizeUserAgent } from "@/server/auth-security";
+import { getTurnstileConfig } from "@guardora/core";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD = 10;
-const MAX_PASSWORD = 200;
 
 /**
  * V1.50A — self-service registration. Validates input, hashes the password with
@@ -38,9 +38,26 @@ export async function registerAction(formData: FormData): Promise<void> {
   const company = String(formData.get("company") ?? "").trim();
   const country = String(formData.get("country") ?? "").trim();
 
+  // V1.58.9 — bot protection: when Turnstile is enabled, registration ALWAYS requires a verified
+  // challenge (server-side siteverify; fail-closed if the secret is missing in production).
+  if (getTurnstileConfig().enabled) {
+    const remoteip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim();
+    const challenge = await verifyChallenge(String(formData.get("cf-turnstile-response") ?? ""), true, remoteip);
+    if (!challenge.ok) {
+      emitOpsEvent("auth.turnstile_failed", { operation: "register", reason: challenge.reason ?? "invalid" });
+      emitOpsEvent("auth.registration_blocked", { operation: "register", reason: "bot_challenge" });
+      fail("challenge_failed");
+    }
+  }
+
   if (!EMAIL_RE.test(email) || email.length > 254) fail("invalid_email");
-  if (password.length < MIN_PASSWORD || password.length > MAX_PASSWORD) fail("weak_password");
   if (password !== confirm) fail("password_mismatch");
+  // V1.58.9 — server-authoritative policy (min 12 / max 128) + breached-password rejection (HIBP).
+  const pw = await checkPasswordAcceptable(password);
+  if (!pw.ok) {
+    if (pw.reason === "breached") { emitOpsEvent("auth.breached_password_blocked", { operation: "register" }); fail("breached_password"); }
+    fail("weak_password");
+  }
   if (workspaceName.length < 2 || workspaceName.length > 60) fail("missing_workspace");
   if (!country) fail("missing_country");
 
@@ -72,8 +89,10 @@ export async function registerAction(formData: FormData): Promise<void> {
   // verification-required screen + resend), issue a one-time verification email, then land
   // on /verify-email. Onboarding/dashboard are gated until the email is verified. All OUTSIDE
   // the try/catch so the redirect throw (NEXT_REDIRECT) is never swallowed.
-  await startSession(userId);
+  const uaSummary = summarizeUserAgent((await headers()).get("user-agent")) ?? undefined;
+  await startSession(userId, undefined, false, uaSummary);
   await issueVerificationEmail(userId, normalizeEmail(email), await getLocale());
   metrics.inc("auth_register_total", { operation: "register", result: "ok" });
+  emitOpsEvent("auth.registration_completed", { operation: "register" });
   redirect("/verify-email?ae=registration_completed");
 }

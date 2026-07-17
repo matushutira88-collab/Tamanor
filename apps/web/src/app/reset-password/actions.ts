@@ -2,13 +2,13 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { hashPassword, resetPasswordWithToken } from "@guardora/db";
+import { hashPassword, resetPasswordWithToken, systemDb } from "@guardora/db";
 import { emitOpsEvent, metrics } from "@guardora/core";
 import { authLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 import { isSameOrigin } from "@/server/csrf";
-
-const MIN_PASSWORD = 10;
-const MAX_PASSWORD = 200;
+import { checkPasswordAcceptable } from "@/server/auth-security";
+import { sendSecurityEmail } from "@/server/security-email";
+import { getLocale } from "@/i18n/locale-server";
 
 /**
  * V1.50C — complete a password reset. Validates the same production policy as registration,
@@ -32,7 +32,12 @@ export async function resetPasswordAction(formData: FormData): Promise<void> {
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirmPassword") ?? "");
   if (!token) fail("invalid");
-  if (password.length < MIN_PASSWORD || password.length > MAX_PASSWORD) fail("weak_password");
+  // V1.58.9 — same server-authoritative policy (min 12 / max 128) + breached-password rejection as register.
+  const pw = await checkPasswordAcceptable(password);
+  if (!pw.ok) {
+    if (pw.reason === "breached") { emitOpsEvent("auth.breached_password_blocked", { operation: "reset" }); fail("breached_password"); }
+    fail("weak_password");
+  }
   if (password !== confirm) fail("password_mismatch");
 
   // Hash BEFORE the guarded consume so a slow hash can't widen the token's live window.
@@ -53,6 +58,12 @@ export async function resetPasswordAction(formData: FormData): Promise<void> {
   }
 
   metrics.inc("auth_password_reset_total", { result: "ok" });
+  emitOpsEvent("auth.password_reset_completed", { operation: "reset" });
+  // V1.58.9 — security notification (best-effort; no token). resetPasswordWithToken already revoked all sessions.
+  try {
+    const u = await systemDb.user.findUnique({ where: { id: result.userId }, select: { email: true } });
+    if (u?.email) await sendSecurityEmail(u.email, await getLocale(), "password_reset_completed", { when: new Date().toISOString().replace("T", " ").slice(0, 16) + " UTC" });
+  } catch { /* email failure must not break the reset */ }
   // All prior sessions are revoked; no session is created — the user logs in fresh.
   redirect("/login?reset=1&ae=password_reset_completed");
 }

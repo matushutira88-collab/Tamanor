@@ -5,6 +5,8 @@ import { Logo } from "@/components/logo";
 import { listDevLoginUsers } from "@guardora/db";
 import { getSession } from "@/server/auth";
 import { readSessionReason } from "@/server/session";
+import { turnstileForRegistration } from "@/server/auth-security";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { signInAs } from "@/server/session-actions";
 import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
@@ -43,6 +45,7 @@ const COPY: Record<Locale, Copy> = {
     errors: {
       ...OAUTH_ERRORS.en,
       invalid_credentials: "Incorrect email or password.",
+      challenge_required: "Please complete the verification and try again.",
       rate_limited: "Too many attempts. Please try again in a few minutes.",
       csrf: "Your session expired. Please reload the page and try again.",
       server_error: "Something went wrong. Please try again.",
@@ -60,6 +63,7 @@ const COPY: Record<Locale, Copy> = {
     errors: {
       ...OAUTH_ERRORS.sk,
       invalid_credentials: "Nesprávny e-mail alebo heslo.",
+      challenge_required: "Dokončite overenie a skúste znova.",
       rate_limited: "Priveľa pokusov. Skúste to o niekoľko minút.",
       csrf: "Vaša relácia vypršala. Obnovte stránku a skúste znova.",
       server_error: "Niečo sa pokazilo. Skúste znova.",
@@ -77,6 +81,7 @@ const COPY: Record<Locale, Copy> = {
     errors: {
       ...OAUTH_ERRORS.de,
       invalid_credentials: "Falsche E-Mail oder falsches Passwort.",
+      challenge_required: "Bitte schließen Sie die Verifizierung ab und versuchen Sie es erneut.",
       rate_limited: "Zu viele Versuche. Bitte versuchen Sie es in einigen Minuten erneut.",
       csrf: "Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite neu und versuchen Sie es erneut.",
       server_error: "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
@@ -99,6 +104,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     : reason === "session_expired_absolute" || reason === "session_expired" ? c.notices.expired
     : null;
   const noticeMsg = sp.reset ? c.notices.reset : sp.verified ? c.notices.verified : timeoutMsg;
+  const turnstile = turnstileForRegistration();
 
   // The dev sign-in picker is fail-closed OFF in production; it lists real users and
   // the signInAs action itself is disabled in production. Real credential login (above)
@@ -141,6 +147,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               <input type="checkbox" name="rememberMe" value="on" className="h-4 w-4 rounded border-[var(--color-border)] accent-[var(--color-brand)]" />
               {c.rememberMe}
             </label>
+            {turnstile.enabled && turnstile.siteKey ? <TurnstileWidget siteKey={turnstile.siteKey} /> : null}
             <button type="submit" className="w-full rounded-xl bg-[var(--color-brand)] px-4 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
               {c.submit}
             </button>

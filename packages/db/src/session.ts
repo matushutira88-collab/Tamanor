@@ -132,6 +132,7 @@ export async function createUserSession(input: {
   rememberMe?: boolean;
   timeouts?: SessionTimeouts;
   absoluteExpiresAt?: Date;
+  userAgentSummary?: string;
   now?: Date;
 }): Promise<{ token: string; sessionId: string; session: ResolvedSession }> {
   const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { id: true } });
@@ -149,7 +150,7 @@ export async function createUserSession(input: {
   const token = randomBytes(32).toString("base64url");
   const tokenHash = hashSessionToken(token);
   const created = await prisma.userSession.create({
-    data: { tokenHash, userId: input.userId, activeTenantId: tenantId, expiresAt, absoluteExpiresAt, rememberMe, lastSeenAt: now },
+    data: { tokenHash, userId: input.userId, activeTenantId: tenantId, expiresAt, absoluteExpiresAt, rememberMe, userAgentSummary: input.userAgentSummary ?? null, lastSeenAt: now },
   });
   const session = await hydrate(created.id, input.userId, tenantId, expiresAt, absoluteExpiresAt, rememberMe, created.createdAt);
   if (!session.ok) throw new Error(`createUserSession: could not hydrate (${session.reason})`);

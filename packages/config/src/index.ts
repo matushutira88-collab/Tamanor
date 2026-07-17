@@ -162,6 +162,15 @@ const EnvSchema = z.object({
   SESSION_ABSOLUTE_TIMEOUT_HOURS: z.coerce.number().int().positive().default(24),
   SESSION_REMEMBER_ME_DAYS: z.coerce.number().int().positive().default(30),
   SESSION_ACTIVITY_TOUCH_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
+
+  // V1.58.9 phase 2 — password policy + bot/breach protection.
+  PASSWORD_MIN_LENGTH: z.coerce.number().int().positive().default(12),
+  PASSWORD_MAX_LENGTH: z.coerce.number().int().positive().default(128),
+  HIBP_ENABLED: boolFromEnv,
+  LOGIN_CHALLENGE_AFTER_FAILURES: z.coerce.number().int().positive().default(3),
+  TURNSTILE_ENABLED: boolFromEnv,
+  TURNSTILE_SITE_KEY: z.string().optional(),
+  TURNSTILE_SECRET_KEY: z.string().optional(),
 });
 
 export type GuardoraEnv = z.infer<typeof EnvSchema>;

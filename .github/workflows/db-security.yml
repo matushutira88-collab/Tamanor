@@ -51,6 +51,14 @@ jobs:
       - name: Session lifetime config validation (fail-closed, pure)
         run: pnpm auth-config:test
 
+      - name: Auth security core (strength/generator/HIBP/Turnstile/audit-privacy, pure)
+        run: |
+          pnpm auth-strength:test
+          pnpm auth-generator:test
+          pnpm auth-hibp:test
+          pnpm auth-turnstile:test
+          pnpm auth-audit:test
+
       # Real-Postgres integration gates (each provisions its own throwaway container).
       - name: RLS & DB security (grant audit, NULL-context, cross-tenant, context leakage, role attrs)
         run: pnpm rls-security:test
@@ -63,6 +71,9 @@ jobs:
 
       - name: Server-enforced session lifetime — idle/absolute/remember/rotation (real Postgres)
         run: pnpm auth-session-timeout:test
+
+      - name: Active sessions + revoke + password change/reset (real Postgres)
+        run: pnpm auth-session-mgmt:test
 
       - name: Webhook out-of-order ordering guard
         run: pnpm webhook-ordering:test

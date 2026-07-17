@@ -323,6 +323,8 @@ model UserSession {
   absoluteExpiresAt DateTime?
   // V1.58.9 — persistent ("remember me") login → the longer absolute ceiling (SESSION_REMEMBER_ME_DAYS).
   rememberMe     Boolean   @default(false)
+  // V1.58.9 — coarse device label for the "Active sessions" UI (never a token / raw IP / fingerprint).
+  userAgentSummary String?
   lastSeenAt     DateTime  @default(now())
   revokedAt      DateTime?
   rotatedFromId  String?

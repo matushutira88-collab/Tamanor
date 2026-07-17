@@ -34,8 +34,8 @@ async function jar(): Promise<CookieJar> {
 
 /** Create a session for a user (bootstrap/login) and set the cookie. Mutation-safe entry point.
  *  V1.58.9 — `rememberMe` selects the longer persistent absolute ceiling + cookie Max-Age. */
-export async function startSession(userId: string, activeTenantId?: string, rememberMe = false): Promise<ResolvedSession> {
-  return startSessionInJar(await jar(), userId, activeTenantId, rememberMe);
+export async function startSession(userId: string, activeTenantId?: string, rememberMe = false, userAgentSummary?: string): Promise<ResolvedSession> {
+  return startSessionInJar(await jar(), userId, activeTenantId, rememberMe, userAgentSummary);
 }
 
 /**

@@ -81,6 +81,19 @@ export type OpsEvent =
   | "auth.session_expired_absolute"
   | "auth.session_rotated"
   | "auth.session_revoked"
+  // V1.58.9 phase 2 — full auth audit (no secret/token/Turnstile-token/cookie ever).
+  | "auth.login_blocked"
+  | "auth.registration_completed"
+  | "auth.registration_blocked"
+  | "auth.email_verified"
+  | "auth.password_changed"
+  | "auth.password_reset_requested"
+  | "auth.password_reset_completed"
+  | "auth.logout_all"
+  | "auth.bot_challenge"
+  | "auth.turnstile_failed"
+  | "auth.breached_password_blocked"
+  | "auth.security_email_sent"
   // V1.51B — Google Workspace transactional email transport (never carry recipient, credential,
   // access/refresh token, body, action URL, raw Gmail response, or Google project/client id).
   | "email.send_succeeded"

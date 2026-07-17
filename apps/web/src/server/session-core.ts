@@ -87,8 +87,8 @@ export async function readSessionResultFromJar(jar: CookieJar): Promise<{ sessio
 }
 
 /** Create a session (bootstrap/login) and set the cookie; clears the legacy cookie. */
-export async function startSessionInJar(jar: CookieJar, userId: string, activeTenantId?: string, rememberMe = false): Promise<ResolvedSession> {
-  const { token, session } = await createUserSession({ userId, activeTenantId, rememberMe });
+export async function startSessionInJar(jar: CookieJar, userId: string, activeTenantId?: string, rememberMe = false, userAgentSummary?: string): Promise<ResolvedSession> {
+  const { token, session } = await createUserSession({ userId, activeTenantId, rememberMe, userAgentSummary });
   jar.set(SESSION_COOKIE, token, cookieOptions(rememberMe));
   clearLegacyInJar(jar);
   return session;

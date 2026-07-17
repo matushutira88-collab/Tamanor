@@ -7,6 +7,9 @@ import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
 import { SocialAuthButtons } from "@/components/auth/social-buttons";
 import { OAUTH_ERRORS } from "@/components/auth/oauth-errors";
+import { PasswordField } from "@/components/auth/password-field";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
+import { turnstileForRegistration } from "@/server/auth-security";
 import { registerAction } from "./actions";
 
 // Auth pages must never be indexed (thin, gated, user-specific).
@@ -33,7 +36,7 @@ const COPY: Record<Locale, Copy> = {
     title: "Create your workspace",
     subtitle: "Start for free — a 14-day trial, no credit card.",
     or: "or sign up with email", google: "Continue with Google", facebook: "Continue with Facebook",
-    email: "Work email", password: "Password", passwordHint: "At least 10 characters.",
+    email: "Work email", password: "Password", passwordHint: "At least 12 characters.",
     confirm: "Confirm password", workspace: "Workspace name", workspaceHint: "Your brand, company or team.",
     company: "Company", optional: "optional", country: "Country", countryPlaceholder: "Select a country",
     submit: "Start for free", haveAccount: "Already have an account?", logIn: "Log in",
@@ -41,7 +44,9 @@ const COPY: Record<Locale, Copy> = {
     errors: {
       ...OAUTH_ERRORS.en,
       invalid_email: "Please enter a valid work email address.",
-      weak_password: "Password must be at least 10 characters.",
+      weak_password: "Password must be at least 12 characters.",
+      breached_password: "That password has appeared in a data breach — please choose another.",
+      challenge_failed: "Bot verification failed. Please try again.",
       password_mismatch: "The two passwords do not match.",
       missing_workspace: "Please enter a workspace name.",
       missing_country: "Please select your country.",
@@ -55,7 +60,7 @@ const COPY: Record<Locale, Copy> = {
     title: "Vytvorte si pracovný priestor",
     subtitle: "Začnite zdarma — 14-dňová skúšobná verzia, bez platobnej karty.",
     or: "alebo sa zaregistrujte e-mailom", google: "Pokračovať cez Google", facebook: "Pokračovať cez Facebook",
-    email: "Pracovný e-mail", password: "Heslo", passwordHint: "Aspoň 10 znakov.",
+    email: "Pracovný e-mail", password: "Heslo", passwordHint: "Aspoň 12 znakov.",
     confirm: "Potvrďte heslo", workspace: "Názov pracovného priestoru", workspaceHint: "Vaša značka, firma alebo tím.",
     company: "Firma", optional: "voliteľné", country: "Krajina", countryPlaceholder: "Vyberte krajinu",
     submit: "Začať zdarma", haveAccount: "Už máte účet?", logIn: "Prihlásiť sa",
@@ -63,7 +68,9 @@ const COPY: Record<Locale, Copy> = {
     errors: {
       ...OAUTH_ERRORS.sk,
       invalid_email: "Zadajte platnú pracovnú e-mailovú adresu.",
-      weak_password: "Heslo musí mať aspoň 10 znakov.",
+      weak_password: "Heslo musí mať aspoň 12 znakov.",
+      breached_password: "Toto heslo sa objavilo v úniku dát — zvoľte iné.",
+      challenge_failed: "Overenie proti botom zlyhalo. Skúste znova.",
       password_mismatch: "Heslá sa nezhodujú.",
       missing_workspace: "Zadajte názov pracovného priestoru.",
       missing_country: "Vyberte svoju krajinu.",
@@ -77,7 +84,7 @@ const COPY: Record<Locale, Copy> = {
     title: "Erstellen Sie Ihren Arbeitsbereich",
     subtitle: "Kostenlos starten — 14 Tage Testphase, ohne Kreditkarte.",
     or: "oder per E-Mail registrieren", google: "Mit Google fortfahren", facebook: "Mit Facebook fortfahren",
-    email: "Geschäftliche E-Mail", password: "Passwort", passwordHint: "Mindestens 10 Zeichen.",
+    email: "Geschäftliche E-Mail", password: "Passwort", passwordHint: "Mindestens 12 Zeichen.",
     confirm: "Passwort bestätigen", workspace: "Name des Arbeitsbereichs", workspaceHint: "Ihre Marke, Firma oder Ihr Team.",
     company: "Unternehmen", optional: "optional", country: "Land", countryPlaceholder: "Land auswählen",
     submit: "Kostenlos starten", haveAccount: "Sie haben bereits ein Konto?", logIn: "Anmelden",
@@ -85,7 +92,9 @@ const COPY: Record<Locale, Copy> = {
     errors: {
       ...OAUTH_ERRORS.de,
       invalid_email: "Bitte geben Sie eine gültige geschäftliche E-Mail-Adresse ein.",
-      weak_password: "Das Passwort muss mindestens 10 Zeichen haben.",
+      weak_password: "Das Passwort muss mindestens 12 Zeichen haben.",
+      breached_password: "Dieses Passwort erschien in einem Datenleck — bitte wählen Sie ein anderes.",
+      challenge_failed: "Bot-Verifizierung fehlgeschlagen. Bitte erneut versuchen.",
       password_mismatch: "Die beiden Passwörter stimmen nicht überein.",
       missing_workspace: "Bitte geben Sie einen Namen für den Arbeitsbereich ein.",
       missing_country: "Bitte wählen Sie Ihr Land.",
@@ -105,6 +114,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const c = COPY[await getLocale()];
   const errorCode = (await searchParams).error;
   const errorMsg = errorCode ? c.errors[errorCode] ?? c.errors.server_error : null;
+  const turnstile = turnstileForRegistration();
 
   return (
     <main className="gu-grid flex min-h-dvh items-center justify-center px-6 py-12">
@@ -133,14 +143,10 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
               <input id="email" name="email" type="email" required autoComplete="email" inputMode="email" className={field} />
             </div>
             <div>
-              <label htmlFor="password" className={label}>{c.password}</label>
-              <input id="password" name="password" type="password" required minLength={10} autoComplete="new-password" aria-describedby="pw-hint" className={field} />
+              <PasswordField name="password" label={c.password} autoComplete="new-password" required minLength={12} showStrength withGenerator />
               <p id="pw-hint" className="mt-1 text-xs text-[var(--color-muted)]">{c.passwordHint}</p>
             </div>
-            <div>
-              <label htmlFor="confirmPassword" className={label}>{c.confirm}</label>
-              <input id="confirmPassword" name="confirmPassword" type="password" required minLength={10} autoComplete="new-password" className={field} />
-            </div>
+            <PasswordField name="confirmPassword" label={c.confirm} autoComplete="new-password" required minLength={12} />
             <div>
               <label htmlFor="workspaceName" className={label}>{c.workspace}</label>
               <input id="workspaceName" name="workspaceName" type="text" required minLength={2} maxLength={60} aria-describedby="ws-hint" className={field} />
@@ -157,6 +163,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
                 {COUNTRIES.map((country) => <option key={country} value={country}>{country}</option>)}
               </select>
             </div>
+            {turnstile.enabled && turnstile.siteKey ? <TurnstileWidget siteKey={turnstile.siteKey} /> : null}
             <button type="submit" className="w-full rounded-xl bg-[var(--color-brand)] px-4 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
               {c.submit}
             </button>

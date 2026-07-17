@@ -15,6 +15,8 @@ import { readSession } from "./session";
 export { SESSION_COOKIE } from "./session";
 
 export interface AppSession {
+  /** V1.58.9 — the session's own id (safe internal identifier; used to mark "This device"). */
+  sessionId: string;
   userId: string;
   userName: string;
   userEmail: string;
@@ -30,6 +32,7 @@ export async function getSession(): Promise<AppSession | null> {
   const s = await readSession();
   if (!s) return null;
   return {
+    sessionId: s.sessionId,
     userId: s.userId,
     userName: s.userName,
     userEmail: s.userEmail,
