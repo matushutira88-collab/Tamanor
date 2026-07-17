@@ -11,8 +11,7 @@
  * and runs strictly BETWEEN short tenant transactions: read → provider HTTP → write.
  * A provider failure is classified as transient and never corrupts local state.
  */
-import { withTenantDb, decryptToken, encryptToken, metaConnectedAccountFields, ActorKind, acquireTenantResourceLock, countCommercialConnections } from "@guardora/db";
-import { EntitlementError, isWithinLimit } from "@guardora/core";
+import { withTenantDb, decryptToken, encryptToken, metaConnectedAccountFields, ActorKind } from "@guardora/db";
 import {
   GraphMetaConnectorTransport,
   type MetaConnectorTransport,
@@ -63,8 +62,9 @@ export interface MetaLinkInput {
   encryptedToken: string;
   tokenType: string | null;
   tokenExpiresAt: Date | null;
-  /** V1.50F — when set, enforce the connection limit ATOMICALLY (advisory-locked) as a NEW Page is
-   *  connected. A Page + its linked IG count as ONE bundle. Throws EntitlementError over the limit. */
+  /** DEPRECATED (V1.59): the legacy bundle connection-limit. IGNORED — the monitored-account limit is
+   *  now enforced per-account at monitoring activation (enableAccountMonitoringWithinLimit). Kept only
+   *  for source compatibility with existing callers; passing it has no effect. */
   enforceLimit?: { max: number | null };
 }
 
@@ -94,20 +94,18 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
   });
 
   return withTenantDb(tenantId, async (db) => {
-    // V1.50F — serialize connection creation against the plan limit inside THIS transaction (advisory
-    // lock). A NEW Page over the limit throws → the whole tx rolls back → no partial Page/IG cluster.
-    await acquireTenantResourceLock(db, tenantId, "connections");
+    // V1.59 — CONNECT ≠ MONITOR. Connecting an account no longer enforces (or bundles) the plan limit.
+    // Accounts are persisted as connected-but-NOT-monitored (`monitoringEnabled: false` on CREATE); the
+    // monitored-account limit (FB=1, IG=1) is enforced ATOMICALLY when monitoring is activated, via
+    // enableAccountMonitoringWithinLimit. Reconnect (upsert UPDATE) NEVER changes an existing account's
+    // monitoring state. `input.enforceLimit` is deliberately ignored here (legacy bundle removed).
     const existingPage = await db.connectedAccount.findFirst({
       where: { brandId, platform: "facebook_page" as never, externalId: page.pageId },
       select: { id: true },
     });
-    if (!existingPage && input.enforceLimit) {
-      const count = await countCommercialConnections(db, tenantId);
-      if (!isWithinLimit(count, input.enforceLimit.max)) throw new EntitlementError("account_limit_reached");
-    }
     const pageAcc = await db.connectedAccount.upsert({
       where: { brandId_platform_externalId: { brandId, platform: "facebook_page" as never, externalId: page.pageId } },
-      create: { tenantId, brandId, platform: "facebook_page" as never, externalId: page.pageId, ...fields },
+      create: { tenantId, brandId, platform: "facebook_page" as never, externalId: page.pageId, monitoringEnabled: false, ...fields },
       update: fields,
     });
     await db.auditLog.create({
@@ -130,7 +128,7 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
         where: { brandId_platform_externalId: { brandId, platform: "instagram_business" as never, externalId: page.igBusinessId } },
         create: {
           tenantId, brandId, platform: "instagram_business" as never, externalId: page.igBusinessId, parentAccountId: pageAcc.id,
-          ...fields, externalName: page.igUsername ? `@${page.igUsername}` : page.name,
+          monitoringEnabled: false, ...fields, externalName: page.igUsername ? `@${page.igUsername}` : page.name,
         },
         // Re-establish the canonical Page link on every reconnect.
         update: { ...fields, externalName: page.igUsername ? `@${page.igUsername}` : page.name, parentAccountId: pageAcc.id },

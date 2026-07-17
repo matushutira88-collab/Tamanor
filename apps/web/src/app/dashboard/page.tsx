@@ -20,6 +20,7 @@ import {
 import { TrendChart, BarList } from "@/components/dashboard/trend-chart";
 import { PlatformIcon } from "@/components/dashboard/platform-icon";
 import { RiskActivitySection } from "@/components/dashboard/risk-activity-section";
+import { SyncOverview } from "@/components/dashboard/sync-overview";
 import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -150,6 +151,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
       {/* V1.59 — Risk distribution (by category) + Recent activity, both from real data. */}
       <RiskActivitySection tenantId={session.tenantId} locale={locale} />
+
+      {/* V1.59 — Automatic synchronization overview (Vercel Cron; no worker concept), real data only. */}
+      <SyncOverview tenantId={session.tenantId} locale={locale} />
 
       {realMode.isRealMode && received === 0 ? (
         <EmptyState

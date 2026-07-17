@@ -1562,7 +1562,7 @@ export const de: Dictionary = {
     autoSyncStatusTitle: "Auto-Sync-Status",
     autoSyncEnabled: "Auto-Sync aktiviert",
     autoSyncDisabled: "Auto-Sync deaktiviert",
-    workerRequired: "Erfordert einen laufenden Worker (pnpm dev:worker)",
+    workerRequired: "Läuft über automatische Synchronisierung",
     lastAutomaticSync: "Letzte automatische Synchronisierung",
     lastManualSync: "Letzte manuelle Synchronisierung",
     noAutomaticSyncYet: "Noch keine automatische Synchronisierung",

@@ -86,6 +86,9 @@ jobs:
       - name: Dashboard + watched-account metrics (real counts, tenant isolation, FB/IG separation)
         run: pnpm dashboard-metrics:test
 
+      - name: Meta finalize — no bundle, per-account monitoring limit, reconnect no-dup (real Postgres)
+        run: pnpm meta-finalize:test
+
       - name: Webhook out-of-order ordering guard
         run: pnpm webhook-ordering:test
 

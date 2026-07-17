@@ -1562,7 +1562,7 @@ export const sk: Dictionary = {
     autoSyncStatusTitle: "Stav automatickej synchronizácie",
     autoSyncEnabled: "Automatická synchronizácia zapnutá",
     autoSyncDisabled: "Automatická synchronizácia vypnutá",
-    workerRequired: "Vyžaduje spustený worker (pnpm dev:worker)",
+    workerRequired: "Beží cez automatickú synchronizáciu",
     lastAutomaticSync: "Posledná automatická synchronizácia",
     lastManualSync: "Posledná ručná synchronizácia",
     noAutomaticSyncYet: "Zatiaľ žiadna automatická synchronizácia",

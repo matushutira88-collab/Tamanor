@@ -5,6 +5,14 @@ import { Permission } from "@guardora/core";
 import { loadOnboardingForUi } from "@/server/meta-onboarding";
 import { confirmMetaSelection, cancelMetaSelection } from "../actions";
 import { getLocale } from "@/i18n/locale-server";
+
+// V1.59 — per-account monitoring choices (separate from connecting). Each enable is atomically
+// limit-checked (FB=1, IG=1); an account past the plan limit stays connected but unmonitored.
+const MON = {
+  en: { heading: "Monitor these accounts", fb: "Monitor Facebook Page", ig: "Monitor Instagram account", note: "Facebook Page and Instagram count as separate monitored accounts. Ones over your plan limit stay connected but unmonitored." },
+  sk: { heading: "Monitorovať tieto účty", fb: "Monitorovať Facebook Page", ig: "Monitorovať Instagram účet", note: "Facebook Page a Instagram sa počítajú ako samostatné monitorované účty. Účty nad limit plánu ostanú pripojené, ale nemonitorované." },
+  de: { heading: "Diese Konten überwachen", fb: "Facebook-Seite überwachen", ig: "Instagram-Konto überwachen", note: "Facebook-Seite und Instagram zählen als separate überwachte Konten. Konten über dem Planlimit bleiben verbunden, aber nicht überwacht." },
+} as const;
 import type { Locale } from "@/i18n";
 
 export const dynamic = "force-dynamic";
@@ -201,6 +209,20 @@ export default async function MetaSelectPage({
             {c.alsoConnectIg}
           </span>
         </label>
+
+        {/* V1.59 — CONNECT and MONITOR are separate, per-account choices (FB and IG counted separately). */}
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2.5">
+          <p className="mb-2 text-xs font-medium text-[var(--color-muted)]">{MON[locale].heading}</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="monitorFb" defaultChecked />
+            <span>{MON[locale].fb}</span>
+          </label>
+          <label className="mt-1.5 flex items-center gap-2 text-sm">
+            <input type="checkbox" name="monitorIg" defaultChecked />
+            <span>{MON[locale].ig}</span>
+          </label>
+          <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">{MON[locale].note}</p>
+        </div>
 
         <div className="flex items-center gap-2 pt-2">
           <PrimaryButton type="submit">{c.connectSelected}</PrimaryButton>

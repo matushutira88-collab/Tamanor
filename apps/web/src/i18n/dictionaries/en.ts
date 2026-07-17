@@ -1608,7 +1608,7 @@ export const en = {
     autoSyncStatusTitle: "Auto-sync status",
     autoSyncEnabled: "Auto-sync enabled",
     autoSyncDisabled: "Auto-sync disabled",
-    workerRequired: "Requires the worker running (pnpm dev:worker)",
+    workerRequired: "Runs on automatic synchronization",
     lastAutomaticSync: "Last automatic sync",
     lastManualSync: "Last manual sync",
     noAutomaticSyncYet: "No automatic sync yet",

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Permission, assertCan, EntitlementError, emitOpsEvent } from "@guardora/core";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
 import { checkAccountToken, linkMetaAssets } from "@guardora/sync";
-import { encryptToken, withTenant, assertTenantActive, getTenantEntitlements } from "@guardora/db";
+import { encryptToken, withTenant, assertTenantActive, enableAccountMonitoringWithinLimit } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
 
@@ -23,7 +23,12 @@ export async function confirmMetaSelection(
   await assertTenantActive(session.tenantId);
 
   const pageId = String(formData.get("pageId") ?? "");
+  // V1.59 — CONNECT and MONITOR are separate, per-account choices. `connectIg` still controls whether the
+  // IG account is persisted; `monitorFb`/`monitorIg` (default on) control whether monitoring is ACTIVATED
+  // for each — enforced atomically, FB and IG counted separately.
   const connectIg = formData.get("connectIg") === "on";
+  const monitorFb = formData.get("monitorFb") !== "off";
+  const monitorIg = formData.get("monitorIg") !== "off";
 
   const row = await loadOnboardingRaw(session, onboardingId);
   if (!row) {
@@ -50,46 +55,40 @@ export async function confirmMetaSelection(
   // Page tokens (from a long-lived user token) are long-lived. Encrypt at rest.
   const encryptedToken = encryptToken(page.pageAccessToken);
 
-  // V1.50F — ATOMIC connection limit on the real OAuth-finalize path. `linkMetaAssets` acquires a
-  // tenant advisory lock and rejects a NEW Page over the plan limit INSIDE its own transaction, so a
-  // failed finalize leaves no partial Page/IG cluster and concurrent finalizes cannot over-allocate.
-  // CLUSTER RULE: a Page + its linked IG = ONE bundle. Restricted tenants have max 0 → denied.
-  const ent = await getTenantEntitlements(session.tenantId);
-  let link;
-  try {
-    link = await linkMetaAssets({
-      tenantId: session.tenantId,
-      brandId: row.brandId,
-      page,
-      connectIg,
-      scopes,
-      grantedPermissions: granted,
-      encryptedToken,
-      tokenType: row.tokenType,
-      tokenExpiresAt: row.tokenExpiresAt,
-      enforceLimit: { max: ent.maxConnectedAccounts },
-    });
-  } catch (e) {
-    if (e instanceof EntitlementError) {
-      emitOpsEvent("entitlement.limit_reached", { operation: "connect_account", reason: e.reason });
-      redirect(`/dashboard/accounts?error=${encodeURIComponent(e.reason)}`);
-    }
-    throw e;
-  }
+  // V1.59 — CONNECT the Page (+ optionally IG) WITHOUT a bundle limit. Accounts are persisted as
+  // connected-but-not-monitored; the plan limit is enforced per-account when monitoring is activated.
+  const link = await linkMetaAssets({
+    tenantId: session.tenantId,
+    brandId: row.brandId,
+    page,
+    connectIg,
+    scopes,
+    grantedPermissions: granted,
+    encryptedToken,
+    tokenType: row.tokenType,
+    tokenExpiresAt: row.tokenExpiresAt,
+  });
   const fbId = link.pageAccountId;
 
   await clearOnboarding(session, onboardingId);
 
-  // V1.27C — verify the stored PAGE token against Graph (GET /{pageId}) right away,
-  // so the account only shows fully healthy when the token actually works.
+  // V1.59 — ACTIVATE monitoring per selected account, ATOMICALLY (FB=1, IG=1). Each enable goes through
+  // enableAccountMonitoringWithinLimit (advisory-locked); an account that would exceed the plan limit is
+  // left connected-but-unmonitored and reported — never a silent partial result, never a bypass.
+  let monitored = 0, limited = 0;
+  const activate = async (id: string) => {
+    try { await enableAccountMonitoringWithinLimit(session.tenantId, id); emitOpsEvent("account.monitoring_enabled", { operation: "connect" }); monitored++; }
+    catch (e) { if (e instanceof EntitlementError) { emitOpsEvent("subscription.account_limit_reached", { operation: "connect" }); limited++; } else throw e; }
+  };
+  if (monitorFb) await activate(fbId);
+  if (connectIg && monitorIg && link.igAccountId) await activate(link.igAccountId);
+
+  // V1.27C — verify the stored PAGE token against Graph right away (best-effort).
   let verify = "ok";
-  try {
-    const res = await checkAccountToken(session.tenantId, fbId);
-    verify = res.result;
-  } catch { /* verification is best-effort; account is still connected */ }
+  try { verify = (await checkAccountToken(session.tenantId, fbId)).result; } catch { /* best-effort */ }
 
   revalidatePath("/dashboard/accounts");
-  redirect(`/dashboard/accounts/${fbId}?connected=1&verify=${encodeURIComponent(verify)}`);
+  redirect(`/dashboard/accounts?connected=1&mon=${monitored}&lim=${limited}&verify=${encodeURIComponent(verify)}`);
 }
 
 /** Abandon the onboarding flow without connecting anything. */
