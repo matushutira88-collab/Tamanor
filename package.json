@@ -147,7 +147,10 @@
     "auth-hibp:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-hibp.test.ts",
     "auth-turnstile:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-turnstile.test.ts",
     "auth-audit:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-audit.test.ts",
-    "auth-session-mgmt:test": "bash packages/db/scripts/run-auth-session-mgmt.sh"
+    "auth-session-mgmt:test": "bash packages/db/scripts/run-auth-session-mgmt.sh",
+    "protection-score:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/protection-score.test.ts",
+    "auto-hide-decision:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auto-hide-decision.test.ts",
+    "account-protection:test": "bash packages/db/scripts/run-account-protection.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

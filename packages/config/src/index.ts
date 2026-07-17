@@ -137,6 +137,11 @@ const EnvSchema = z.object({
   META_REDIRECT_URI: z.string().optional(),
   META_OAUTH_REDIRECT_URI: z.string().optional(), // legacy fallback
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  // V1.59 — GLOBAL kill switch for the automatic comment-hide FEATURE. This is ONLY a platform-level
+  // availability flag ("the feature is technically available"); the real per-tenant/per-account config
+  // lives in the DB. When false: no automatic Meta hide runs anywhere, the UI shows it as temporarily
+  // unavailable, and NO user configuration is lost.
+  META_COMMENT_HIDE_FEATURE_ENABLED: boolFromEnv,
   /** Feature flag: only when true does the Meta connector make live API calls. */
   META_LIVE_SYNC: boolFromEnv,
   /** Feature flag: webhook-driven targeted sync (V1.4 stub, default off). */
@@ -355,6 +360,15 @@ export function getGoogleBusinessConfig(source: NodeJS.ProcessEnv = process.env)
   const status = !configured ? "not_configured" : !apiEnabled ? "api_disabled" : "oauth_ready";
   // clientId + redirectUri are public OAuth params; the secret is intentionally omitted.
   return { configured, apiEnabled, clientId, redirectUri, hasSecret: !!clientSecret, scope: GOOGLE_BUSINESS_SCOPE, status };
+}
+
+/**
+ * V1.59 — is the automatic comment-hide FEATURE globally available? This is the platform kill switch
+ * (META_COMMENT_HIDE_FEATURE_ENABLED). When false, NO automatic Meta hide may execute regardless of any
+ * per-tenant/account configuration, which is preserved untouched. Read directly from `source`.
+ */
+export function metaCommentHideFeatureEnabled(source: NodeJS.ProcessEnv = process.env): boolean {
+  return source.META_COMMENT_HIDE_FEATURE_ENABLED === "true" || source.META_COMMENT_HIDE_FEATURE_ENABLED === "1";
 }
 
 /** V1.27 Production Safe Mode + global kill switch (env-level). */

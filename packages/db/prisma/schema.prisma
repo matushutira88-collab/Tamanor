@@ -357,6 +357,15 @@ model Tenant {
   // application access decision. Defaults keep a trial-only tenant on full access.
   billingStatus String @default("no_subscription")
   accessState   String @default("full_access")
+
+  // V1.59 — tenant-level DEFAULT protection policy applied to accounts that do not override it.
+  // Auto-hide defaults OFF (matches current production: no automatic Meta action unless enabled).
+  defaultAutoHideEnabled       Boolean  @default(false)
+  defaultAutoHideMode          String   @default("recommend") // recommend | manual_approval | automatic
+  defaultAutoHideRiskThreshold String   @default("high")      // medium | high | critical
+  defaultAutoHideCategories    String[] @default([])
+  defaultRequireManualApproval Boolean  @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -576,6 +585,20 @@ model ConnectedAccount {
   grantedPermissions String[]
   // V1.27 Production Safe Mode — per-account kill switch. When true, NO live action.
   killSwitch         Boolean         @default(false)
+
+  // V1.59 — per-account MONITORING + PROTECTION product model. Each Facebook Page and each Instagram
+  // Professional account is an independent monitored account. `monitoringEnabled` (default true, matching
+  // today's behaviour) gates whether Guardora watches it. Protection is resolved as: tenant defaults
+  // UNLESS `protectionOverridden` is set, in which case the per-account fields below win. Auto-hide
+  // defaults OFF; the global feature flag META_COMMENT_HIDE_FEATURE_ENABLED must also be on to ever act.
+  monitoringEnabled     Boolean  @default(true)
+  protectionOverridden  Boolean  @default(false)
+  autoHideEnabled       Boolean  @default(false)
+  autoHideMode          String   @default("recommend") // recommend | manual_approval | automatic
+  autoHideRiskThreshold String   @default("high")      // medium | high | critical
+  autoHideCategories    String[] @default([])
+  requireManualApproval Boolean  @default(false)
+  protectionConfiguredAt DateTime?
 
   // V1.27C Persistent Connection Manager — token/connection health, separate from
   // sync health. A hide never runs on an unverified token.

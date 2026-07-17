@@ -59,6 +59,11 @@ jobs:
           pnpm auth-turnstile:test
           pnpm auth-audit:test
 
+      - name: Protection product model (score + auto-hide decision gate, pure)
+        run: |
+          pnpm protection-score:test
+          pnpm auto-hide-decision:test
+
       # Real-Postgres integration gates (each provisions its own throwaway container).
       - name: RLS & DB security (grant audit, NULL-context, cross-tenant, context leakage, role attrs)
         run: pnpm rls-security:test
@@ -74,6 +79,9 @@ jobs:
 
       - name: Active sessions + revoke + password change/reset (real Postgres)
         run: pnpm auth-session-mgmt:test
+
+      - name: Account protection resolution + monitored-account limit + cross-tenant RLS (real Postgres)
+        run: pnpm account-protection:test
 
       - name: Webhook out-of-order ordering guard
         run: pnpm webhook-ordering:test

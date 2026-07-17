@@ -21,6 +21,8 @@ export * from "./password-policy";
 export * from "./password-generator";
 export * from "./hibp";
 export * from "./turnstile";
+export * from "./protection-score";
+export * from "./auto-hide-decision";
 export * from "./billing";
 export * from "./entitlements";
 export * from "./pricing-projection";

@@ -28,6 +28,7 @@ import {
   getTenantOperationGate,
   acquireSyncLease,
   releaseSyncLease,
+  resolveAccountProtection,
   type TenantTx,
   type ConnectedAccount,
 } from "@guardora/db";
@@ -53,7 +54,7 @@ import {
   type FetchedContent,
   type MetaContentTransport,
 } from "@guardora/connectors";
-import { getMetaConfig, getTranslationConfig, getAiRiskConfig, getWorkerRuntimeConfig } from "@guardora/config";
+import { getMetaConfig, getTranslationConfig, getAiRiskConfig, getWorkerRuntimeConfig, metaCommentHideFeatureEnabled } from "@guardora/config";
 import { mockMetaFetch } from "./mock-fetch";
 import {
   fetchInstagramContent,
@@ -684,17 +685,37 @@ async function persistNewItem(
   hooks?: SyncPhaseHooks,
 ): Promise<IngestOutcome> {
   // Phase P1 — tenant reads (short tx): plan + brand locale + brand memory rules.
-  const { plan, accessState, brand, memoryRules } = await withTenantDb(tenantId, async (db) => {
+  const { plan, accessState, brand, memoryRules, tenantDefaults } = await withTenantDb(tenantId, async (db) => {
     // V1.50D — read the billing access state alongside the plan so paid AI is refused for a
     // restricted (trial-expired / lapsed) tenant, regardless of the stored plan.
-    const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, accessState: true } });
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: {
+      plan: true, accessState: true,
+      // V1.59 — tenant protection defaults, for resolving the effective per-account auto-hide config.
+      defaultAutoHideEnabled: true, defaultAutoHideMode: true, defaultAutoHideRiskThreshold: true,
+      defaultAutoHideCategories: true, defaultRequireManualApproval: true,
+    } });
     const brand = await db.brand.findFirst({ where: { id: account.brandId }, select: { defaultLocale: true } });
     const memoryRules = await db.brandRiskMemoryRule.findMany({
       where: { brandId: account.brandId, tenantId: account.tenantId, isActive: true },
       select: { type: true, normalizedPhrase: true, language: true, severity: true, isActive: true },
     });
-    return { plan: tenant?.plan ?? "free", accessState: tenant?.accessState ?? "full_access", brand, memoryRules };
+    return {
+      plan: tenant?.plan ?? "free", accessState: tenant?.accessState ?? "full_access", brand, memoryRules,
+      tenantDefaults: {
+        defaultAutoHideEnabled: tenant?.defaultAutoHideEnabled ?? false,
+        defaultAutoHideMode: tenant?.defaultAutoHideMode ?? "recommend",
+        defaultAutoHideRiskThreshold: tenant?.defaultAutoHideRiskThreshold ?? "high",
+        defaultAutoHideCategories: tenant?.defaultAutoHideCategories ?? [],
+        defaultRequireManualApproval: tenant?.defaultRequireManualApproval ?? false,
+      },
+    };
   });
+
+  // V1.59 — resolve the EFFECTIVE per-account protection (tenant default unless the account overrides).
+  // The automatic-hide execution below is additionally gated by this + the global feature kill switch,
+  // so auto-hide is opt-in per account and centrally disableable without losing any configuration.
+  const effectiveProtection = resolveAccountProtection(account as never, tenantDefaults);
+  const hideFeatureEnabled = metaCommentHideFeatureEnabled();
 
   // Classification via the METERED policy service (cache → rules → paid, cost-protected) — OUTSIDE
   // any transaction. A paid provider is NEVER reached without a prior atomic reservation.
@@ -841,7 +862,10 @@ async function persistNewItem(
     const matchedPolicy = controlPolicies.find((p) => p.category === decision.matchedCategory);
     // V1.50E — a restricted/suspended tenant must NOT run autonomous (background) provider execution.
     // The item stays queued for human review once billing is restored; nothing is executed or lost.
-    if (matchedPolicy?.mode === "autonomous" && decision.wouldExecute && accessAllowsOperations(accessState as never)) {
+    // V1.59 — defense-in-depth: autonomous execution ALSO requires the global feature kill switch AND
+    // the effective per-account auto-hide config (enabled + automatic mode). Default OFF → opt-in.
+    if (matchedPolicy?.mode === "autonomous" && decision.wouldExecute && accessAllowsOperations(accessState as never)
+        && hideFeatureEnabled && effectiveProtection.autoHideEnabled && effectiveProtection.autoHideMode === "automatic") {
       const safety = await loadProductionSafetyContext({
         tenantId: account.tenantId, brandId: account.brandId, connectedAccountId: account.id, category: decision.matchedCategory,
       });

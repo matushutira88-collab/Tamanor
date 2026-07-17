@@ -120,6 +120,22 @@ export type OpsEvent =
   | "route.capability_denied"
   | "sync.restricted_skipped"
   | "webhook.sync_skipped"
+  // V1.59 — watched-account + protection product model (low-cardinality labels; never a token/secret).
+  | "account.monitoring_enabled"
+  | "account.monitoring_disabled"
+  | "account.connected"
+  | "account.disconnected"
+  | "account.sync_requested"
+  | "account.sync_completed"
+  | "account.sync_failed"
+  | "account.permissions_expired"
+  | "protection.rules_updated"
+  | "protection.auto_hide_enabled"
+  | "protection.auto_hide_disabled"
+  | "protection.action_executed"
+  | "protection.action_failed"
+  | "protection.simulation_run"
+  | "subscription.account_limit_reached"
   | "limit.concurrent_contention"
   | "limit.over_limit_detected";
 
