@@ -5,7 +5,11 @@ import {
   exchangeMetaCode,
   exchangeForLongLivedToken,
   discoverMetaAccounts,
+  fetchMetaPermissions,
+  MetaGraphError,
+  type MetaPermissionsResult,
 } from "@guardora/connectors";
+import { emitOpsEvent } from "@guardora/core";
 import { encryptToken } from "@guardora/db";
 import { getSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
@@ -23,6 +27,34 @@ function fail(req: NextRequest, reason: string) {
     new URL(`/dashboard/accounts?meta=${reason}`, req.url),
   );
 }
+
+/**
+ * V1.58.1 — safe, structured server-side diagnostics for the Meta OAuth callback.
+ * NEVER contains an access token, authorization code, app secret, or a full request
+ * URL — only failure classification + Meta's own (token-free) error metadata, so a
+ * 307-that-fails is debuggable from the logs. Emitted at warn level.
+ */
+function logDiag(fields: Record<string, unknown>): void {
+  // eslint-disable-next-line no-console
+  console.warn("[meta-oauth]", JSON.stringify({ scope: "connectors/meta/callback", ...fields }));
+}
+
+/** Extract safe (token-free) fields from a Meta Graph error for logging + classification. */
+function metaErrFields(err: unknown): {
+  httpStatus?: number; metaCode?: number; metaSubcode?: number; metaType?: string;
+  kind: string; fbtraceId?: string; metaMessage?: string;
+} {
+  if (err instanceof MetaGraphError) {
+    const d = err.detail;
+    return {
+      httpStatus: d.status, metaCode: d.code, metaSubcode: d.subcode, metaType: d.type,
+      kind: d.kind, fbtraceId: d.fbtraceId, metaMessage: d.metaMessage,
+    };
+  }
+  return { kind: "generic" };
+}
+
+const safeErr = (err: unknown): string => (err instanceof Error ? err.message : "unknown_error");
 
 /**
  * OAuth callback. Validates CSRF state, exchanges the code, discovers Pages/IG
@@ -90,23 +122,55 @@ export async function GET(req: NextRequest) {
   try {
     const shortLived = await exchangeMetaCode(cfg, code);
     token = await exchangeForLongLivedToken(cfg, shortLived.accessToken);
-  } catch {
+    logDiag({ step: "token_exchange", ok: true });
+  } catch (err) {
     // Safe-fail the whole onboarding — no account is created.
+    logDiag({ step: "token_exchange", ok: false, message: safeErr(err) });
     await auditFail("token_exchange_failed");
     return fail(req, "token_exchange_failed");
   }
+
+  // 1b) Permissions diagnostic (best-effort, non-fatal). `/me/permissions` is the
+  //     authoritative record of what the user actually granted — Facebook Login for
+  //     Business lets users decline individual permissions, and a declined/absent
+  //     `pages_show_list` makes `/me/accounts` return an error or an empty list. This
+  //     lets us distinguish a permission gap from a generic API error.
+  let perms: MetaPermissionsResult = { granted: [], declined: [] };
+  try {
+    perms = await fetchMetaPermissions(token.accessToken);
+    logDiag({ step: "me/permissions", ok: true, granted: perms.granted, declined: perms.declined });
+  } catch (err) {
+    logDiag({ step: "me/permissions", ok: false, ...metaErrFields(err) });
+  }
+  const hasPagesShowList = perms.granted.includes("pages_show_list");
 
   // 2) Account discovery (uses the long-lived user token).
   let pages;
   try {
     pages = await discoverMetaAccounts(token.accessToken);
-  } catch {
-    await auditFail("discovery_failed");
-    return fail(req, "discovery_failed");
+    logDiag({ step: "me/accounts", ok: true, accountsCount: pages.length });
+  } catch (err) {
+    // Distinguish a Meta API error (esp. a permission error) from a generic failure —
+    // NEVER report "no pages" for what is actually an API/permission error.
+    const f = metaErrFields(err);
+    logDiag({ step: "me/accounts", ok: false, ...f });
+    emitOpsEvent("oauth.discovery_failed", {
+      platform: "meta", httpStatus: f.httpStatus, kind: f.kind, metaCode: f.metaCode, metaSubcode: f.metaSubcode,
+    });
+    const reason =
+      f.kind === "permission" || !hasPagesShowList ? "missing_permission" :
+      f.kind === "token_expired" ? "token_exchange_failed" :
+      "meta_api_error";
+    await auditFail(reason);
+    return fail(req, reason);
   }
   if (pages.length === 0) {
-    await auditFail("no_pages");
-    return fail(req, "no_pages");
+    // Empty (HTTP 200) list: a genuine "no Pages" only when pages_show_list was granted;
+    // otherwise it is a missing/declined permission (the real cause), reported truthfully.
+    const reason = hasPagesShowList ? "no_pages" : "missing_permission";
+    logDiag({ step: "me/accounts", ok: true, accountsCount: 0, reason, hasPagesShowList });
+    await auditFail(reason);
+    return fail(req, reason);
   }
 
   await writeAudit({
@@ -136,28 +200,34 @@ export async function GET(req: NextRequest) {
     : null;
 
   // Tenant write AFTER all provider HTTP has completed (read → fetch → write).
-  const onboardingId = (await withTenant(session.tenantId, async (db) => {
-  const onboarding = await db.metaOnboardingSession.create({
-    data: {
-      tenantId: session.tenantId,
-      brandId,
-      userId: session.userId,
-      // Encrypted at the storage seam (dev: tagged plaintext; prod: KMS).
-      userAccessToken: encryptToken(token.accessToken),
-      tokenType: token.tokenType,
-      tokenExpiresAt: expiresAt,
-      // The scopes actually requested for this flow (env-driven, safe default).
-      grantedScopes: meta.scopes,
-      pages: pages as never,
-      expiresAt: new Date(Date.now() + ONBOARDING_TTL_MS),
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  return onboarding.id;
-})) as string;
+  // Token encryption + tenant isolation preserved exactly (encryptToken + withTenant).
+  let onboardingId: string;
+  try {
+    onboardingId = (await withTenant(session.tenantId, async (db) => {
+      const onboarding = await db.metaOnboardingSession.create({
+        data: {
+          tenantId: session.tenantId,
+          brandId,
+          userId: session.userId,
+          // Encrypted at the storage seam (dev: tagged plaintext; prod: KMS).
+          userAccessToken: encryptToken(token.accessToken),
+          tokenType: token.tokenType,
+          tokenExpiresAt: expiresAt,
+          // The scopes actually requested for this flow (env-driven, safe default).
+          grantedScopes: meta.scopes,
+          pages: pages as never,
+          expiresAt: new Date(Date.now() + ONBOARDING_TTL_MS),
+        },
+        select: { id: true },
+      });
+      return onboarding.id;
+    })) as string;
+    logDiag({ step: "save", ok: true, accountsCount: pages.length });
+  } catch (err) {
+    logDiag({ step: "save", ok: false, message: safeErr(err) });
+    await auditFail("save_failed");
+    return fail(req, "save_failed");
+  }
 
 jar.set(ONBOARDING_COOKIE, onboardingId, {
     httpOnly: true,

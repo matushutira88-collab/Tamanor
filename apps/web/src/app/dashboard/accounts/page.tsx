@@ -53,7 +53,10 @@ const META_NOTICES: Record<string, { tone: string; text: string }> = {
   invalid_state: { tone: "danger", text: "Meta OAuth failed: invalid state (possible CSRF). Try again." },
   token_exchange_failed: { tone: "danger", text: "Meta token exchange failed. No account was connected." },
   discovery_failed: { tone: "danger", text: "Could not read your Facebook Pages from Meta. No account was connected." },
-  no_pages: { tone: "warn", text: "No Facebook Pages were available on that Meta account." },
+  no_pages: { tone: "warn", text: "No Facebook Pages were available on that Meta account. Make sure you are an admin of at least one Page." },
+  missing_permission: { tone: "warn", text: "Tamanor didn't get permission to read your Facebook Pages. Reconnect and keep the Pages permission enabled (don't uncheck it)." },
+  meta_api_error: { tone: "danger", text: "Meta returned an error while reading your Pages. Please try again; if it keeps happening, contact support." },
+  save_failed: { tone: "danger", text: "We couldn't save your connection. Please try connecting again." },
 };
 
 export default async function AccountsPage({

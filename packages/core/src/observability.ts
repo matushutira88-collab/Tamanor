@@ -21,6 +21,8 @@ export type OpsEvent =
   | "webhook.processing_failed"
   | "webhook.retention_failed"
   | "webhook.replay"
+  // oauth / account discovery
+  | "oauth.discovery_failed"
   // sync
   | "sync.failed"
   | "sync.partial"

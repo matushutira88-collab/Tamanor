@@ -17,6 +17,10 @@ export class MetaGraphError extends Error {
       subcode?: number;
       type?: string;
       kind: MetaErrorKind;
+      /** Meta's human-readable error message (safe: never contains the token). */
+      metaMessage?: string;
+      /** Meta support trace id — the key diagnostic to hand to Meta / read in logs. */
+      fbtraceId?: string;
     },
   ) {
     super(message);
@@ -57,20 +61,25 @@ export class MetaGraphClient {
       let code: number | undefined;
       let subcode: number | undefined;
       let type: string | undefined;
+      let metaMessage: string | undefined;
+      let fbtraceId: string | undefined;
       try {
         const body = (await res.json()) as {
-          error?: { code?: number; error_subcode?: number; type?: string };
+          error?: { code?: number; error_subcode?: number; type?: string; message?: string; fbtrace_id?: string };
         };
         code = body.error?.code;
         subcode = body.error?.error_subcode;
         type = body.error?.type;
+        // Meta's message never contains the token; safe to retain for diagnostics.
+        metaMessage = body.error?.message;
+        fbtraceId = body.error?.fbtrace_id;
       } catch {
         /* non-JSON error body — ignore */
       }
       const kind = classify(res.status, code, subcode);
       throw new MetaGraphError(
         `Meta Graph GET /${path} failed (HTTP ${res.status}, ${kind}).`,
-        { status: res.status, code, subcode, type, kind },
+        { status: res.status, code, subcode, type, kind, metaMessage, fbtraceId },
       );
     }
     return (await res.json()) as T;
