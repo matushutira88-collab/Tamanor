@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  BILLING_PLANS, resolveStripePriceId, Permission, can,
+  BILLING_PLANS, Permission, can,
+  stripePriceAvailability, stripePriceKeyFor,
   type BillingInterval,
 } from "@guardora/core";
 import { getTenantBilling } from "@guardora/db";
@@ -10,6 +11,7 @@ import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
 import { startCheckout, openBillingPortal } from "./actions";
 import { resolveBillingCta } from "./cta";
+import { CheckoutButton } from "./checkout-button";
 
 export const metadata: Metadata = { title: "Billing — Tamanor", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -46,6 +48,7 @@ type Copy = {
   cancelsAt: (d: string) => string; perMonth: string; perYear: string;
   custom: string; ownerOnlyShort: string; mostPopular: string;
   checkoutUnavailable: string; contactSupport: string;
+  continueToPayment: string; checkoutPending: string; comingSoon: string;
   ownerOnly: string;
   restricted: { title: string; body: string };
   pastDue: { title: string; body: string };
@@ -74,6 +77,7 @@ const C: Record<Locale, Copy> = {
     cancelsAt: (d) => `Cancels on ${d}`, perMonth: "/mo", perYear: "/yr",
     custom: "Custom", ownerOnlyShort: "Owner only", mostPopular: "Most popular",
     checkoutUnavailable: "Checkout temporarily unavailable", contactSupport: "Contact support",
+    continueToPayment: "Continue to payment", checkoutPending: "Redirecting…", comingSoon: "This option will be available soon.",
     ownerOnly: "Only the workspace owner can change the plan.",
     restricted: { title: "Access restricted", body: "Your trial or subscription has ended. Choose a plan to restore full access. Your data is safe and your accounts stay connected." },
     pastDue: { title: "Payment failed", body: "We couldn't process your last payment. Please update your payment method to keep full access." },
@@ -117,6 +121,7 @@ const C: Record<Locale, Copy> = {
     cancelsAt: (d) => `Ruší sa ${d}`, perMonth: "/mes", perYear: "/rok",
     custom: "Na mieru", ownerOnlyShort: "Len vlastník", mostPopular: "Najobľúbenejšie",
     checkoutUnavailable: "Platba dočasne nedostupná", contactSupport: "Kontaktovať podporu",
+    continueToPayment: "Pokračovať na platbu", checkoutPending: "Presmerovanie…", comingSoon: "Táto možnosť bude čoskoro dostupná.",
     ownerOnly: "Plán môže meniť len vlastník pracovného priestoru.",
     restricted: { title: "Prístup obmedzený", body: "Vaša skúšobná verzia alebo predplatné skončilo. Vyberte plán a obnovte plný prístup. Vaše dáta sú v bezpečí a účty zostávajú pripojené." },
     pastDue: { title: "Platba zlyhala", body: "Poslednú platbu sa nepodarilo spracovať. Aktualizujte platobnú metódu, aby ste si zachovali plný prístup." },
@@ -160,6 +165,7 @@ const C: Record<Locale, Copy> = {
     cancelsAt: (d) => `Kündigt am ${d}`, perMonth: "/Mon", perYear: "/Jahr",
     custom: "Individuell", ownerOnlyShort: "Nur Inhaber", mostPopular: "Am beliebtesten",
     checkoutUnavailable: "Checkout vorübergehend nicht verfügbar", contactSupport: "Support kontaktieren",
+    continueToPayment: "Weiter zur Zahlung", checkoutPending: "Weiterleiten…", comingSoon: "Diese Option ist bald verfügbar.",
     ownerOnly: "Nur der Workspace-Inhaber kann den Tarif ändern.",
     restricted: { title: "Zugriff eingeschränkt", body: "Ihre Testphase oder Ihr Abo ist beendet. Wählen Sie einen Tarif, um den vollen Zugriff wiederherzustellen. Ihre Daten sind sicher und Ihre Konten bleiben verbunden." },
     pastDue: { title: "Zahlung fehlgeschlagen", body: "Ihre letzte Zahlung konnte nicht verarbeitet werden. Bitte aktualisieren Sie Ihre Zahlungsmethode." },
@@ -246,6 +252,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
   const errorMsg = sp.error ? c.errors[sp.error] ?? c.errors.not_configured : null;
   const noticeMsg = sp.checkout === "success" ? c.notices.success : sp.checkout === "cancel" ? c.notices.cancel : null;
+
+  // V1.57.4A — per-plan/interval checkout availability, resolved SERVER-SIDE. Only booleans are used
+  // in render; no Stripe Price ID reaches the browser. One configured Price activates just that plan.
+  const priceAvailability = stripePriceAvailability(process.env, { requireLive: process.env.NODE_ENV === "production" });
 
   const priceFor = (planId: keyof typeof BILLING_PLANS) => (interval === "yearly" ? BILLING_PLANS[planId].priceYearly : BILLING_PLANS[planId].priceMonthly);
   const isTrialActive = billingStatus === "no_subscription" && !!trialEndsAt && trialDaysLeft > 0 && accessState !== "restricted";
@@ -340,7 +350,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           const isEnterprise = planId === "enterprise";
           const price = priceFor(planId);
           const isCurrent = currentPlanId === planId && (billingStatus === "active" || billingStatus === "trialing");
-          const canBuy = !isEnterprise && resolveStripePriceId(planId, interval) !== null;
+          // Per-plan/interval availability (never the global billing.configured): this exact plan's
+          // Price is validly configured AND the safe checkout chain (secret+webhook+portal) is ready.
+          const priceKey = isEnterprise ? null : stripePriceKeyFor(planId, interval);
+          const canBuy = !!priceKey && priceAvailability[priceKey];
           return (
             <article
               key={planId}
@@ -373,20 +386,22 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                       // Enterprise / Custom only.
                       return <Link href="/contact" className={btnOutline}>{c.contactSales}</Link>;
                     case "checkout":
-                      // Starter / Growth / Agency with a configured (plan, interval) price → Stripe Checkout.
+                      // This exact (plan, interval) has a configured Price + ready chain → real Stripe
+                      // Checkout. The form sends ONLY the controlled plan + interval — never a Price ID.
                       return (
                         <form action={startCheckout}>
                           <input type="hidden" name="plan" value={planId} />
                           <input type="hidden" name="interval" value={interval} />
-                          <button type="submit" className={highlighted ? btnPrimary : btnOutline}>{c.upgradeTo(p.name)}</button>
+                          <CheckoutButton className={highlighted ? btnPrimary : btnOutline} label={c.continueToPayment} pendingLabel={c.checkoutPending} />
                         </form>
                       );
                     case "checkout_unavailable":
-                      // Paid plan whose Stripe price isn't configured → truthful billing-specific state,
-                      // NEVER a silent redirect to the generic /contact upgrade page. Secondary support link only.
+                      // This exact (plan, interval) isn't purchasable yet → a SMALL, truthful state
+                      // (not a big fake disabled checkout button, and never a /contact redirect). A
+                      // missing Growth Price never disables Starter or Agency.
                       return (
                         <div className="space-y-1.5">
-                          <span className={btnDisabled} aria-disabled="true">{c.checkoutUnavailable}</span>
+                          <p className="text-center text-sm text-[var(--color-muted)]">{c.comingSoon}</p>
                           <Link href="/contact" className="block text-center text-xs font-medium text-[var(--color-muted)] underline underline-offset-2 transition-colors motion-reduce:transition-none hover:text-[var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]">{c.contactSupport}</Link>
                         </div>
                       );

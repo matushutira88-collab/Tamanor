@@ -13,7 +13,7 @@ import { SAFE_ERRORS, toSafeError, newCorrelationId } from "../src/lib/errors";
 import { redact } from "../src/lib/ops-events";
 import { connectorDisplay } from "../src/lib/connector-display";
 import { PROVIDERS, providerStatusFor } from "../src/lib/provider-status";
-import { resolveStripePriceId, planForStripePriceId, stripeBillingReadiness, evaluateCheckoutGuard, type BillingPlanId, type BillingInterval } from "@guardora/core";
+import { resolveStripePriceId, planForStripePriceId, stripeBillingReadiness, evaluateCheckoutGuard, stripePriceAvailability, stripePriceKeyFor, type BillingPlanId, type BillingInterval } from "@guardora/core";
 import { resolveBillingCta } from "../src/app/dashboard/billing/cta";
 
 let failures = 0;
@@ -260,6 +260,37 @@ function run() {
     (() => { const w = src("src/app/api/webhooks/stripe/route.ts"); return /completeCheckoutAttemptBySession/.test(w) && /expireCheckoutAttemptBySession/.test(w) && /checkout\.session\.expired/.test(w); })());
   check("65) reservation/guard block reasons are localized EN/SK/DE on the billing page (no generic unknown error)",
     ["subscription_active", "payment_update_needed", "complete_payment", "checkout_in_progress", "checkout_failed"].every((k) => (billing.match(new RegExp(k + ":", "g"))?.length ?? 0) >= 3));
+
+  // ---------------- Per-plan checkout availability (V1.57.4A) ----------------
+  // Full "safe checkout chain" (secret + webhook + portal) so per-PRICE availability is the variable.
+  const chain: Record<string, string> = { STRIPE_SECRET_KEY: "sk_live_x", STRIPE_WEBHOOK_SECRET: "whsec_x", STRIPE_BILLING_PORTAL_RETURN_URL: "https://tamanor.com/dashboard/billing" };
+  const avail = (extra: Record<string, string>) => stripePriceAvailability({ ...chain, ...extra }, { requireLive: true });
+  const a1 = avail({ STRIPE_PRICE_STARTER_MONTHLY: "price_sm" });
+  check("66) only Starter Monthly configured → Starter Monthly available, Growth/Agency NOT (one missing price never disables others)",
+    a1.STARTER_MONTHLY === true && a1.GROWTH_MONTHLY === false && a1.AGENCY_MONTHLY === false);
+  const a2 = avail({ STRIPE_PRICE_STARTER_MONTHLY: "price_sm", STRIPE_PRICE_AGENCY_MONTHLY: "price_am" });
+  check("67) Starter + Agency Monthly configured → both available, Growth unavailable",
+    a2.STARTER_MONTHLY === true && a2.AGENCY_MONTHLY === true && a2.GROWTH_MONTHLY === false);
+  check("68) Monthly configured but Yearly missing → Monthly available, Yearly unavailable (per-interval)",
+    a1.STARTER_MONTHLY === true && a1.STARTER_YEARLY === false);
+  check("69) invalid 'prod_' value → unavailable (fails closed)", avail({ STRIPE_PRICE_STARTER_MONTHLY: "prod_sm" }).STARTER_MONTHLY === false);
+  check("70) stray text ('price_x was created') → unavailable (strict price_ shape)", avail({ STRIPE_PRICE_STARTER_MONTHLY: "price_x was created" }).STARTER_MONTHLY === false);
+  const dupAvail = avail({ STRIPE_PRICE_STARTER_MONTHLY: "price_dup", STRIPE_PRICE_GROWTH_MONTHLY: "price_dup" });
+  check("71) duplicate Price ID across plans → BOTH sharers fail closed", dupAvail.STARTER_MONTHLY === false && dupAvail.GROWTH_MONTHLY === false);
+  check("72) safe checkout chain required: valid price but NO webhook/portal → unavailable (Phase 7)",
+    stripePriceAvailability({ STRIPE_SECRET_KEY: "sk_live_x", STRIPE_PRICE_STARTER_MONTHLY: "price_sm" }, { requireLive: true }).STARTER_MONTHLY === false);
+  check("73) availability leaks NO Price IDs (booleans only)", !/price_/.test(JSON.stringify(a2)) && Object.values(a2).every((v) => typeof v === "boolean"));
+  check("74) stripePriceKeyFor: self-serve → key, Enterprise → null (never self-serve checkout)",
+    stripePriceKeyFor("starter", "monthly") === "STARTER_MONTHLY" && stripePriceKeyFor("agency", "yearly") === "AGENCY_YEARLY" && stripePriceKeyFor("enterprise" as BillingPlanId, "monthly") === null);
+  // Billing page: client sends ONLY plan+interval (no price_ ID), uses the real checkout button + copy,
+  // renders the small truthful "coming soon" state (not a big fake disabled checkout button), and never
+  // calls resolveStripePriceId in the page (server helper resolves availability).
+  const checkoutBtn = src("src/app/dashboard/billing/checkout-button.tsx");
+  check("75) checkout form sends only controlled plan+interval (no browser price ID / price env) + real button/loading state",
+    /name="plan"/.test(billing) && /name="interval"/.test(billing) && !/name="price"/.test(billing) && !/STRIPE_PRICE_/.test(billing) &&
+    /continueToPayment/.test(billing) && /useFormStatus/.test(checkoutBtn) && /disabled=\{pending\}/.test(checkoutBtn));
+  check("76) unavailable plan → small truthful 'coming soon' (no big fake disabled checkout button); resolveStripePriceId not used in the page",
+    /comingSoon/.test(billing) && !/resolveStripePriceId/.test(billing) && stripePriceAvailability({}, { requireLive: true }).STARTER_MONTHLY === false);
 
   // ---------------- global public footer on landing v2 (V1.58D.2) ----------------
   const landingV2 = src("src/components/landing-v2/landing-v2.tsx");

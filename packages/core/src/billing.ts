@@ -181,6 +181,74 @@ export function stripeBillingReadiness(
   return { apiConfig, prices, webhookConfig, portalConfig, duplicatePriceIds, configured };
 }
 
+// ---- V1.57.4A: PER-PLAN checkout availability ------------------------------
+// The Billing UI must enable each configured plan/interval INDEPENDENTLY, so the operator can add
+// Stripe Prices gradually. This is the per-key counterpart of the aggregate `stripeBillingReadiness`
+// — it returns ONLY booleans (never a Price ID or secret), safe to compute in a server component and
+// pass to the client. A key is available only when the minimum-safe checkout chain is ready AND that
+// specific Price is validly configured.
+
+export type StripePriceKey =
+  | "STARTER_MONTHLY" | "STARTER_YEARLY"
+  | "GROWTH_MONTHLY" | "GROWTH_YEARLY"
+  | "AGENCY_MONTHLY" | "AGENCY_YEARLY";
+export type StripePriceAvailability = Record<StripePriceKey, boolean>;
+
+const PRICE_KEY_MAP: { key: StripePriceKey; plan: BillingPlanId; interval: BillingInterval }[] = [
+  { key: "STARTER_MONTHLY", plan: "starter", interval: "monthly" },
+  { key: "STARTER_YEARLY", plan: "starter", interval: "yearly" },
+  { key: "GROWTH_MONTHLY", plan: "growth", interval: "monthly" },
+  { key: "GROWTH_YEARLY", plan: "growth", interval: "yearly" },
+  { key: "AGENCY_MONTHLY", plan: "agency", interval: "monthly" },
+  { key: "AGENCY_YEARLY", plan: "agency", interval: "yearly" },
+];
+
+/** Map a self-serve (plan, interval) to its availability key. Null for Enterprise / non-self-serve. */
+export function stripePriceKeyFor(plan: BillingPlanId, interval: BillingInterval): StripePriceKey | null {
+  if (!isSelfServePlan(plan)) return null;
+  return PRICE_KEY_MAP.find((e) => e.plan === plan && e.interval === interval)?.key ?? null;
+}
+
+/**
+ * Per-plan/interval checkout availability. A key is `true` ONLY when:
+ *   • the minimum-safe checkout chain is ready — Stripe secret valid (live when requireLive), webhook
+ *     secret configured, portal return URL configured (Phase 7); AND
+ *   • that specific Price is validly configured — env present, begins with `price_`, and NOT shared
+ *     with another plan/interval (a duplicate fails BOTH sharers closed).
+ * A single configured Price + the chain activates that one plan — it never requires the other five.
+ * Returns booleans only; no Price ID or secret is exposed.
+ */
+export function stripePriceAvailability(
+  env: Record<string, string | undefined> = process.env,
+  opts: { requireLive?: boolean } = {},
+): StripePriceAvailability {
+  const secret = env.STRIPE_SECRET_KEY?.trim();
+  const apiOk = !!secret && secret.startsWith("sk_") && (!opts.requireLive || secret.startsWith("sk_live_"));
+  const wh = env.STRIPE_WEBHOOK_SECRET?.trim();
+  const webhookOk = !!wh && wh.startsWith("whsec_");
+  const ret = env.STRIPE_BILLING_PORTAL_RETURN_URL?.trim();
+  const portalOk = !!ret && /^https:\/\/[^\s]+$/.test(ret);
+  const chainReady = apiOk && webhookOk && portalOk;
+
+  // Resolve each key's id, then count occurrences so a duplicated id fails ALL sharers closed.
+  const idByKey = new Map<StripePriceKey, string | null>();
+  const counts = new Map<string, number>();
+  for (const e of PRICE_KEY_MAP) {
+    const id = resolveStripePriceId(e.plan, e.interval, env);
+    idByKey.set(e.key, id);
+    if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+
+  const out = {} as StripePriceAvailability;
+  for (const e of PRICE_KEY_MAP) {
+    const id = idByKey.get(e.key) ?? null;
+    // Strict Stripe Price ID shape (rejects `prod_…`, stray text like "price_x was created", spaces).
+    const priceValid = !!id && /^price_[A-Za-z0-9]+$/.test(id) && (counts.get(id) ?? 0) === 1;
+    out[e.key] = chainReady && priceValid;
+  }
+  return out;
+}
+
 // ---- access-state mapping (the single central function) --------------------
 
 export type AccessInput = {
