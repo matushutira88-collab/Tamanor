@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { META_GRAPH_BASE } from "./oauth";
+import { metaFetch, MetaHttpError } from "./http";
 
 /**
  * V1.58.3 — `appsecret_proof` for server-side Graph calls. Meta's "Require App Secret"
@@ -13,7 +14,14 @@ export function appsecretProof(accessToken: string, appSecret: string): string {
 }
 
 /** A classified reason a Graph call failed. */
-export type MetaErrorKind = "token_expired" | "permission" | "rate_limit" | "generic";
+export type MetaErrorKind =
+  | "token_expired" | "permission" | "rate_limit" | "generic"
+  | "timeout" | "network" | "server_error" | "invalid_response";
+
+/** Whether a given failure kind is SAFE to retry (transport/transient only, never auth/permission). */
+export function isRetryableMetaKind(kind: MetaErrorKind): boolean {
+  return kind === "rate_limit" || kind === "timeout" || kind === "network" || kind === "server_error";
+}
 
 /**
  * Typed Graph API error. Carries the platform error code/type/status so callers
@@ -29,6 +37,8 @@ export class MetaGraphError extends Error {
       subcode?: number;
       type?: string;
       kind: MetaErrorKind;
+      /** Whether this failure is safe to retry (transport/transient). */
+      retryable: boolean;
       /** Meta's human-readable error message (safe: never contains the token). */
       metaMessage?: string;
       /** Meta support trace id — the key diagnostic to hand to Meta / read in logs. */
@@ -82,34 +92,41 @@ export class MetaGraphClient {
     // Required by Meta "Require App Secret" for any server call with a user/page token.
     if (this.proof) params.set("appsecret_proof", this.proof);
     const url = `${META_GRAPH_BASE}/${path.replace(/^\//, "")}?${params.toString()}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      // Parse the Graph error object (code/type) — it does not contain the
-      // token. We never surface the request URL or raw body verbatim.
-      let code: number | undefined;
-      let subcode: number | undefined;
-      let type: string | undefined;
-      let metaMessage: string | undefined;
-      let fbtraceId: string | undefined;
-      try {
-        const body = (await res.json()) as {
-          error?: { code?: number; error_subcode?: number; type?: string; message?: string; fbtrace_id?: string };
-        };
-        code = body.error?.code;
-        subcode = body.error?.error_subcode;
-        type = body.error?.type;
-        // Meta's message never contains the token; safe to retain for diagnostics.
-        metaMessage = body.error?.message;
-        fbtraceId = body.error?.fbtrace_id;
-      } catch {
-        /* non-JSON error body — ignore */
+
+    // Central resilient transport: explicit timeout + bounded retry/backoff for transient failures.
+    let res: Response;
+    try {
+      res = await metaFetch(url, { category: "graph_read", retryable: true });
+    } catch (err) {
+      if (err instanceof MetaHttpError) {
+        const kind: MetaErrorKind = err.kind === "rate_limit" ? "rate_limit"
+          : err.kind === "server_error" ? "server_error" : err.kind === "timeout" ? "timeout" : "network";
+        throw new MetaGraphError(`Meta Graph GET /${path} failed (${kind}).`, { status: err.status ?? 0, kind, retryable: true });
       }
-      const kind = classify(res.status, code, subcode);
+      throw err;
+    }
+
+    if (!res.ok) {
+      // Parse the Graph error object (code/type) — it does not contain the token. We never surface
+      // the request URL or raw body verbatim. A non-JSON/HTML error body is tolerated.
+      let code: number | undefined, subcode: number | undefined, type: string | undefined;
+      let metaMessage: string | undefined, fbtraceId: string | undefined;
+      try {
+        const body = (await res.json()) as { error?: { code?: number; error_subcode?: number; type?: string; message?: string; fbtrace_id?: string } };
+        code = body.error?.code; subcode = body.error?.error_subcode; type = body.error?.type;
+        metaMessage = body.error?.message; fbtraceId = body.error?.fbtrace_id;
+      } catch { /* non-JSON error body — ignore */ }
+      const kind = res.status >= 500 ? "server_error" : classify(res.status, code, subcode);
       throw new MetaGraphError(
         `Meta Graph GET /${path} failed (HTTP ${res.status}, ${kind}).`,
-        { status: res.status, code, subcode, type, kind, metaMessage, fbtraceId },
+        { status: res.status, code, subcode, type, kind, retryable: isRetryableMetaKind(kind), metaMessage, fbtraceId },
       );
     }
-    return (await res.json()) as T;
+    try {
+      return (await res.json()) as T;
+    } catch {
+      // Empty / invalid / HTML success body — classify safely instead of leaking a parser error.
+      throw new MetaGraphError(`Meta Graph GET /${path} returned an invalid response.`, { status: res.status, kind: "invalid_response", retryable: false });
+    }
   }
 }

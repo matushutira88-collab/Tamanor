@@ -5,6 +5,7 @@
  * anytime). `exchangeMetaCode` performs a real network call and is only usable
  * when full credentials are present; callers must guard on configuration.
  */
+import { metaFetch } from "./http";
 
 const GRAPH_VERSION = "v21.0";
 const DIALOG_BASE = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`;
@@ -71,7 +72,7 @@ export async function exchangeMetaCode(
     redirect_uri: config.redirectUri,
     code,
   });
-  const res = await fetch(`${GRAPH_BASE}/oauth/access_token?${params.toString()}`);
+  const res = await metaFetch(`${GRAPH_BASE}/oauth/access_token?${params.toString()}`, { category: "oauth_token", retryable: false });
   if (!res.ok) {
     // Do not surface the response body verbatim (may echo params). Keep generic.
     throw new Error(`Meta token exchange failed (HTTP ${res.status}).`);
@@ -105,7 +106,7 @@ export async function exchangeForLongLivedToken(
     client_secret: config.appSecret,
     fb_exchange_token: shortLivedToken,
   });
-  const res = await fetch(`${GRAPH_BASE}/oauth/access_token?${params.toString()}`);
+  const res = await metaFetch(`${GRAPH_BASE}/oauth/access_token?${params.toString()}`, { category: "oauth_token", retryable: true });
   if (!res.ok) {
     throw new Error(`Meta long-lived token exchange failed (HTTP ${res.status}).`);
   }

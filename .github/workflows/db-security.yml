@@ -35,6 +35,11 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
+      - name: Meta HTTP resilience (timeout/retry/backoff) + appsecret_proof classification
+        run: |
+          pnpm meta-http:test
+          pnpm billing-webhook:test
+
       # Real-Postgres integration gates (each provisions its own throwaway container).
       - name: RLS & DB security (grant audit, NULL-context, cross-tenant, context leakage, role attrs)
         run: pnpm rls-security:test

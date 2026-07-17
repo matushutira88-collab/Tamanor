@@ -23,6 +23,11 @@ export type OpsEvent =
   | "webhook.replay"
   // oauth / account discovery
   | "oauth.discovery_failed"
+  // V1.58.6 — Meta Graph HTTP resilience (never carries token/secret/proof/URL/payload)
+  | "meta.request_timeout"
+  | "meta.request_retry"
+  | "meta.rate_limited"
+  | "meta.auth_error"
   // sync
   | "sync.failed"
   | "sync.partial"

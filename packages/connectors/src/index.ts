@@ -18,6 +18,7 @@ export { GoogleBusinessConnector } from "./adapters/google-business-connector";
 // Meta OAuth + discovery (official API only)
 export * from "./meta/oauth";
 export * from "./meta/graph-client";
+export * from "./meta/http";
 export * from "./meta/discovery";
 export * from "./meta/connector-transport";
 export * from "./meta/content-transport";

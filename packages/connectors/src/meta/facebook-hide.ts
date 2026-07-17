@@ -1,5 +1,6 @@
 import { META_GRAPH_BASE } from "./oauth";
 import { appsecretProof } from "./graph-client";
+import { metaFetch } from "./http";
 
 /**
  * V1.58.3 — `&appsecret_proof=…` suffix for server Graph calls made with a PAGE access token
@@ -126,7 +127,7 @@ export class GraphFacebookHideTransport implements FacebookHideTransport {
     const secret = process.env.META_APP_SECRET?.trim();
     if (secret) body.set("appsecret_proof", appsecretProof(accessToken, secret));
     try {
-      const res = await fetch(url, { method: "POST", body });
+      const res = await metaFetch(url, { method: "POST", body, category: "side_effect", retryable: true });
       if (res.ok) return { ok: true, responseCode: String(res.status) };
       let code: number | undefined;
       try {
@@ -166,7 +167,7 @@ export class GraphFacebookHideTransport implements FacebookHideTransport {
   async getCommentState(commentId: string, accessToken: string): Promise<CommentState> {
     const url = `${META_GRAPH_BASE}/${encodeURIComponent(commentId)}?fields=can_hide,is_hidden`;
     try {
-      const res = await fetch(`${url}&access_token=${encodeURIComponent(accessToken)}${proofSuffix(accessToken)}`);
+      const res = await metaFetch(`${url}&access_token=${encodeURIComponent(accessToken)}${proofSuffix(accessToken)}`, { category: "graph_read", retryable: true });
       if (res.ok) {
         const j = (await res.json()) as { can_hide?: boolean; is_hidden?: boolean };
         return { ok: true, canHide: j.can_hide === true, isHidden: j.is_hidden === true };
@@ -181,7 +182,7 @@ export class GraphFacebookHideTransport implements FacebookHideTransport {
   async getPageTokenState(pageId: string, accessToken: string): Promise<PageTokenState> {
     const url = `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?fields=id,name`;
     try {
-      const res = await fetch(`${url}&access_token=${encodeURIComponent(accessToken)}${proofSuffix(accessToken)}`);
+      const res = await metaFetch(`${url}&access_token=${encodeURIComponent(accessToken)}${proofSuffix(accessToken)}`, { category: "graph_read", retryable: true });
       if (res.ok) {
         const j = (await res.json()) as { id?: string; name?: string };
         return { ok: true, pageId: j.id ?? pageId, pageName: j.name };
