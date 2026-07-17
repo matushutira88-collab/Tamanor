@@ -1,0 +1,46 @@
+name: db-security
+
+# Mandatory RLS & database-security gate. Runs the integration suites that need a REAL Postgres with
+# the restricted tamanor_app role — a regression here (a missing policy, an over-grant, a bypassrls
+# role, a leaked tenant context) fails the build. No production secrets are used: every suite spins up
+# its own throwaway Postgres via Docker (available on GitHub-hosted runners) and refuses any non-local
+# DATABASE_URL.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  db-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @guardora/db exec prisma generate
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      # Real-Postgres integration gates (each provisions its own throwaway container).
+      - name: RLS & DB security (grant audit, NULL-context, cross-tenant, context leakage, role attrs)
+        run: pnpm rls-security:test
+
+      - name: Webhook out-of-order ordering guard
+        run: pnpm webhook-ordering:test
+
+      - name: Checkout concurrency + tenant RLS isolation
+        run: pnpm checkout-concurrency:test
