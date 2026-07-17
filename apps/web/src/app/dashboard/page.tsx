@@ -19,6 +19,7 @@ import {
 } from "@/components/dashboard/ui";
 import { TrendChart, BarList } from "@/components/dashboard/trend-chart";
 import { PlatformIcon } from "@/components/dashboard/platform-icon";
+import { RiskActivitySection } from "@/components/dashboard/risk-activity-section";
 import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
@@ -146,6 +147,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <Link href="/dashboard/accounts" className="block"><StatCard label={kc.problem} value={String(kpi.accountsWithProblem)} tone={kpi.accountsWithProblem > 0 ? "danger" : "ok"} /></Link>
         </div>
       </section>
+
+      {/* V1.59 — Risk distribution (by category) + Recent activity, both from real data. */}
+      <RiskActivitySection tenantId={session.tenantId} locale={locale} />
 
       {realMode.isRealMode && received === 0 ? (
         <EmptyState
