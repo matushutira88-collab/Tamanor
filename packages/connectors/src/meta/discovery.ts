@@ -33,8 +33,9 @@ interface RawPage {
 /** List Pages (and their linked IG Business accounts) for a user token. */
 export async function discoverMetaAccounts(
   userAccessToken: string,
+  appSecret?: string,
 ): Promise<MetaDiscoveredPage[]> {
-  const client = new MetaGraphClient(userAccessToken);
+  const client = new MetaGraphClient(userAccessToken, appSecret);
   const data = await client.get<{ data: RawPage[] }>("me/accounts", {
     fields:
       "id,name,access_token,category,tasks,instagram_business_account{id,username}",
@@ -67,8 +68,9 @@ export interface MetaPermissionsResult {
  */
 export async function fetchMetaPermissions(
   userAccessToken: string,
+  appSecret?: string,
 ): Promise<MetaPermissionsResult> {
-  const client = new MetaGraphClient(userAccessToken);
+  const client = new MetaGraphClient(userAccessToken, appSecret);
   const data = await client.get<{ data: { permission: string; status: string }[] }>(
     "me/permissions",
   );

@@ -127,7 +127,8 @@
     "risk:reclassify-demo": "pnpm --filter @guardora/db reclassify-demo",
     "db:studio": "pnpm --filter @guardora/db studio",
     "clean": "pnpm -r clean",
-    "checkout-concurrency:test": "bash packages/db/scripts/run-checkout-concurrency.sh"
+    "checkout-concurrency:test": "bash packages/db/scripts/run-checkout-concurrency.sh",
+    "meta-proof:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/meta-appsecret-proof.test.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

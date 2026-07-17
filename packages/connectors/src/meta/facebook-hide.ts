@@ -1,4 +1,15 @@
 import { META_GRAPH_BASE } from "./oauth";
+import { appsecretProof } from "./graph-client";
+
+/**
+ * V1.58.3 — `&appsecret_proof=…` suffix for server Graph calls made with a PAGE access token
+ * (Meta "Require App Secret"). Empty when no app secret is configured. The proof is a secret —
+ * it is only ever placed in the request URL, never logged or surfaced.
+ */
+function proofSuffix(accessToken: string): string {
+  const secret = process.env.META_APP_SECRET?.trim();
+  return secret ? `&appsecret_proof=${encodeURIComponent(appsecretProof(accessToken, secret))}` : "";
+}
 
 /**
  * Controlled Facebook Page **comment hide** capability. This is the ONLY live
@@ -112,6 +123,8 @@ export class GraphFacebookHideTransport implements FacebookHideTransport {
   private async post(commentId: string, accessToken: string, isHidden: boolean): Promise<HideTransportResult> {
     const url = `${META_GRAPH_BASE}/${encodeURIComponent(commentId)}`;
     const body = new URLSearchParams({ is_hidden: String(isHidden), access_token: accessToken });
+    const secret = process.env.META_APP_SECRET?.trim();
+    if (secret) body.set("appsecret_proof", appsecretProof(accessToken, secret));
     try {
       const res = await fetch(url, { method: "POST", body });
       if (res.ok) return { ok: true, responseCode: String(res.status) };
@@ -153,7 +166,7 @@ export class GraphFacebookHideTransport implements FacebookHideTransport {
   async getCommentState(commentId: string, accessToken: string): Promise<CommentState> {
     const url = `${META_GRAPH_BASE}/${encodeURIComponent(commentId)}?fields=can_hide,is_hidden`;
     try {
-      const res = await fetch(`${url}&access_token=${encodeURIComponent(accessToken)}`);
+      const res = await fetch(`${url}&access_token=${encodeURIComponent(accessToken)}${proofSuffix(accessToken)}`);
       if (res.ok) {
         const j = (await res.json()) as { can_hide?: boolean; is_hidden?: boolean };
         return { ok: true, canHide: j.can_hide === true, isHidden: j.is_hidden === true };
@@ -168,7 +181,7 @@ export class GraphFacebookHideTransport implements FacebookHideTransport {
   async getPageTokenState(pageId: string, accessToken: string): Promise<PageTokenState> {
     const url = `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?fields=id,name`;
     try {
-      const res = await fetch(`${url}&access_token=${encodeURIComponent(accessToken)}`);
+      const res = await fetch(`${url}&access_token=${encodeURIComponent(accessToken)}${proofSuffix(accessToken)}`);
       if (res.ok) {
         const j = (await res.json()) as { id?: string; name?: string };
         return { ok: true, pageId: j.id ?? pageId, pageName: j.name };

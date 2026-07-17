@@ -10,6 +10,7 @@ import {
   type MetaPermissionsResult,
 } from "@guardora/connectors";
 import { emitOpsEvent } from "@guardora/core";
+import { classifyMetaDiscoveryError, classifyMetaEmptyPages } from "@/server/oauth/meta-callback-classify";
 import { encryptToken } from "@guardora/db";
 import { getSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
@@ -136,39 +137,39 @@ export async function GET(req: NextRequest) {
   //     `pages_show_list` makes `/me/accounts` return an error or an empty list. This
   //     lets us distinguish a permission gap from a generic API error.
   let perms: MetaPermissionsResult = { granted: [], declined: [] };
+  let permsOk = false;
   try {
-    perms = await fetchMetaPermissions(token.accessToken);
+    // Pass the app secret so the request carries appsecret_proof (Meta "Require App Secret").
+    perms = await fetchMetaPermissions(token.accessToken, cfg.appSecret);
+    permsOk = true;
     logDiag({ step: "me/permissions", ok: true, granted: perms.granted, declined: perms.declined });
   } catch (err) {
     logDiag({ step: "me/permissions", ok: false, ...metaErrFields(err) });
   }
   const hasPagesShowList = perms.granted.includes("pages_show_list");
 
-  // 2) Account discovery (uses the long-lived user token).
+  // 2) Account discovery (uses the long-lived user token + appsecret_proof).
   let pages;
   try {
-    pages = await discoverMetaAccounts(token.accessToken);
+    pages = await discoverMetaAccounts(token.accessToken, cfg.appSecret);
     logDiag({ step: "me/accounts", ok: true, accountsCount: pages.length });
   } catch (err) {
     // Distinguish a Meta API error (esp. a permission error) from a generic failure —
-    // NEVER report "no pages" for what is actually an API/permission error.
+    // NEVER report "no pages"/"missing permission" for what is actually a generic API error.
     const f = metaErrFields(err);
     logDiag({ step: "me/accounts", ok: false, ...f });
     emitOpsEvent("oauth.discovery_failed", {
       platform: "meta", httpStatus: f.httpStatus, kind: f.kind, metaCode: f.metaCode, metaSubcode: f.metaSubcode,
     });
-    const reason =
-      f.kind === "permission" || !hasPagesShowList ? "missing_permission" :
-      f.kind === "token_expired" ? "token_exchange_failed" :
-      "meta_api_error";
+    const reason = classifyMetaDiscoveryError(f.kind, permsOk, hasPagesShowList);
     await auditFail(reason);
     return fail(req, reason);
   }
   if (pages.length === 0) {
-    // Empty (HTTP 200) list: a genuine "no Pages" only when pages_show_list was granted;
-    // otherwise it is a missing/declined permission (the real cause), reported truthfully.
-    const reason = hasPagesShowList ? "no_pages" : "missing_permission";
-    logDiag({ step: "me/accounts", ok: true, accountsCount: 0, reason, hasPagesShowList });
+    // Empty (HTTP 200) list: a genuine "no Pages" unless /me/permissions CONFIRMS pages_show_list
+    // was declined/absent — never a false "missing permission" when we couldn't read permissions.
+    const reason = classifyMetaEmptyPages(permsOk, hasPagesShowList);
+    logDiag({ step: "me/accounts", ok: true, accountsCount: 0, reason, hasPagesShowList, permsOk });
     await auditFail(reason);
     return fail(req, reason);
   }

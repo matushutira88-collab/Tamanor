@@ -1,4 +1,16 @@
+import { createHmac } from "node:crypto";
 import { META_GRAPH_BASE } from "./oauth";
+
+/**
+ * V1.58.3 — `appsecret_proof` for server-side Graph calls. Meta's "Require App Secret"
+ * setting rejects any server API call made with a user/page access token unless it also
+ * carries `appsecret_proof = HMAC-SHA256(access_token) keyed by the app secret` (hex).
+ * Pure and single-sourced. The RESULT is a secret and must NEVER be logged, stored,
+ * returned to the browser, or placed in an error message.
+ */
+export function appsecretProof(accessToken: string, appSecret: string): string {
+  return createHmac("sha256", appSecret).update(accessToken).digest("hex");
+}
 
 /** A classified reason a Graph call failed. */
 export type MetaErrorKind = "token_expired" | "permission" | "rate_limit" | "generic";
@@ -46,13 +58,29 @@ function classify(status: number, code?: number, subcode?: number): MetaErrorKin
  * to the Graph API and is NEVER logged.
  */
 export class MetaGraphClient {
-  constructor(private readonly accessToken: string) {}
+  /** Precomputed appsecret_proof (secret) — never logged/returned. Undefined only if no secret. */
+  private readonly proof?: string;
+
+  /**
+   * @param accessToken user or page access token.
+   * @param appSecret   the Meta app secret; defaults to META_APP_SECRET (server-only). Callers may
+   *   pass it explicitly (e.g. the OAuth callback) for clarity/testability. When present, every GET
+   *   automatically carries `appsecret_proof` — no per-call duplication.
+   */
+  constructor(
+    private readonly accessToken: string,
+    appSecret: string | undefined = process.env.META_APP_SECRET?.trim() || undefined,
+  ) {
+    this.proof = appSecret ? appsecretProof(accessToken, appSecret) : undefined;
+  }
 
   async get<T>(path: string, query: Record<string, string> = {}): Promise<T> {
     const params = new URLSearchParams({
       ...query,
       access_token: this.accessToken,
     });
+    // Required by Meta "Require App Secret" for any server call with a user/page token.
+    if (this.proof) params.set("appsecret_proof", this.proof);
     const url = `${META_GRAPH_BASE}/${path.replace(/^\//, "")}?${params.toString()}`;
     const res = await fetch(url);
     if (!res.ok) {
