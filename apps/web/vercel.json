@@ -1,4 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["fra1"]
+  "regions": ["fra1"],
+  "crons": [
+    { "path": "/api/internal/jobs/meta-dispatch", "schedule": "*/5 * * * *" },
+    { "path": "/api/internal/jobs/webhook-retry", "schedule": "*/10 * * * *" },
+    { "path": "/api/internal/jobs/maintenance", "schedule": "*/15 * * * *" }
+  ]
 }

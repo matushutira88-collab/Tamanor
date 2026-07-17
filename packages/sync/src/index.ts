@@ -201,6 +201,12 @@ export interface SyncPhaseHooks {
   /** V1.58.7 test-only: simulate loss of the lease just before the terminal write (interrupted proof). */
   simulateLeaseLost?: boolean;
   /**
+   * V1.58.8 — skip the lease heartbeat entirely. In the Vercel-native model every batch is a SHORT
+   * serverless invocation (budget ≪ lease TTL) that acquires + releases its own lease, so a heartbeat
+   * can never fire and is not needed; fencing at the terminal write remains the safety backstop.
+   */
+  disableHeartbeat?: boolean;
+  /**
    * V1.38.1 — inject the Instagram CONTENT transport. Tests pass a MockMetaContentTransport
    * so the REAL runReadOnlySync (lease/RLS/idempotency/atomic/verdict/dedup) runs against a
    * real DB with no network. Live default (when omitted) is the Graph transport, gated by
@@ -282,7 +288,9 @@ export async function runReadOnlySync(
   const heartbeat = createLeaseHeartbeat({
     tenantId, lease, ttlMs: runtime.leaseTtlMs, intervalMs: runtime.heartbeatMs,
   });
-  heartbeat.start();
+  // V1.58.8 — the serverless job path disables the heartbeat (short batch ≪ TTL). The persistent-worker
+  // path (if ever used) keeps it. Either way the terminal write is fencing-checked by generation.
+  if (!hooks?.disableHeartbeat) heartbeat.start();
   // True the moment we can no longer safely write as the lease owner (lost, aborted, or shutting down).
   const leaseGone = () => heartbeat.leaseLost() || heartbeat.signal.aborted || (externalSignal?.aborted ?? false) || hooks?.simulateLeaseLost === true;
 
@@ -1052,6 +1060,9 @@ export {
   type IgIngestResult,
 } from "./instagram-content";
 export * from "./lease-heartbeat";
+export * from "./tenant-job";
+export * from "./jobs";
+export * from "./maintenance";
 export * from "./live-actions";
 export * from "./facebook-connector";
 export * from "./instagram-connector";

@@ -40,6 +40,13 @@ export type OpsEvent =
   | "sync.fencing_rejected"
   | "sync.interrupted"
   | "sync.completed"
+  // V1.58.8 — Vercel-native Cron job runtime (no secrets; only operation/result/trigger labels).
+  | "cron.dispatch.started"
+  | "cron.dispatch.completed"
+  | "cron.job.started"
+  | "cron.job.completed"
+  | "cron.deadline_checkpoint"
+  | "cron.unauthorized"
   // lifecycle deletions
   | "tenant.deletion_failed"
   | "user.erasure_failed"
