@@ -15,6 +15,7 @@ import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsCon
 import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
 import { ConnectorStatusBadge } from "@/components/dashboard/connector-status-badge";
 import { BrandIcon } from "@/components/dashboard/platform-icon";
+import { WatchedAccountsSection } from "@/components/dashboard/watched-accounts-section";
 import { requireSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
@@ -125,6 +126,10 @@ export default async function AccountsPage({
           <span className="text-sm text-[var(--color-muted)]">{metaNotice.text}</span>
         </div>
       ) : null}
+
+      {/* V1.59 — Watched Accounts overview on the new monitored-account model (each FB Page + each IG is
+          its own card), driven by real getWatchedAccountsView data + the server-computed protection score. */}
+      <WatchedAccountsSection tenantId={session.tenantId} />
 
       {/* V1.45B — truthful post-disconnect notice: local credential removal is done; for Meta
           we clearly state provider-side revocation was NOT performed and link the official

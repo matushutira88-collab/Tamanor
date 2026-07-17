@@ -150,7 +150,8 @@
     "auth-session-mgmt:test": "bash packages/db/scripts/run-auth-session-mgmt.sh",
     "protection-score:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/protection-score.test.ts",
     "auto-hide-decision:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auto-hide-decision.test.ts",
-    "account-protection:test": "bash packages/db/scripts/run-account-protection.sh"
+    "account-protection:test": "bash packages/db/scripts/run-account-protection.sh",
+    "dashboard-metrics:test": "bash packages/db/scripts/run-dashboard-metrics.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
