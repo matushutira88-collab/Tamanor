@@ -97,6 +97,9 @@ const C: Record<Locale, Copy> = {
       csrf: "Your session expired. Please reload and try again.",
       invalid_plan: "That plan can't be purchased.",
       invalid_interval: "Invalid billing interval.",
+      subscription_active: "You already have an active subscription. Use “Manage billing” below to change or cancel it.",
+      payment_update_needed: "Your subscription needs a payment update. Use “Manage billing” below to update your payment method.",
+      complete_payment: "You have a payment in progress. Use “Manage billing” below to complete it.",
     },
     statusLabels: {
       trialing: "Trial", active: "Active", past_due: "Past due", unpaid: "Unpaid", canceled: "Canceled",
@@ -135,6 +138,9 @@ const C: Record<Locale, Copy> = {
       csrf: "Vaša relácia vypršala. Obnovte stránku a skúste znova.",
       invalid_plan: "Tento plán sa nedá kúpiť.",
       invalid_interval: "Neplatný interval fakturácie.",
+      subscription_active: "Už máte aktívne predplatné. Použite „Spravovať fakturáciu“ nižšie na jeho zmenu alebo zrušenie.",
+      payment_update_needed: "Vaše predplatné vyžaduje aktualizáciu platby. Použite „Spravovať fakturáciu“ nižšie na aktualizáciu platobnej metódy.",
+      complete_payment: "Máte prebiehajúcu platbu. Použite „Spravovať fakturáciu“ nižšie na jej dokončenie.",
     },
     statusLabels: {
       trialing: "Skúšobná", active: "Aktívne", past_due: "Po splatnosti", unpaid: "Neuhradené", canceled: "Zrušené",
@@ -173,6 +179,9 @@ const C: Record<Locale, Copy> = {
       csrf: "Ihre Sitzung ist abgelaufen. Bitte neu laden.",
       invalid_plan: "Dieser Tarif kann nicht gekauft werden.",
       invalid_interval: "Ungültiges Abrechnungsintervall.",
+      subscription_active: "Sie haben bereits ein aktives Abonnement. Verwenden Sie unten „Abrechnung verwalten“, um es zu ändern oder zu kündigen.",
+      payment_update_needed: "Ihr Abonnement erfordert eine Zahlungsaktualisierung. Verwenden Sie unten „Abrechnung verwalten“, um Ihre Zahlungsmethode zu aktualisieren.",
+      complete_payment: "Sie haben eine laufende Zahlung. Verwenden Sie unten „Abrechnung verwalten“, um sie abzuschließen.",
     },
     statusLabels: {
       trialing: "Test", active: "Aktiv", past_due: "Überfällig", unpaid: "Unbezahlt", canceled: "Gekündigt",

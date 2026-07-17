@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import {
-  resolveAccessState, resolveEntitlements, accessAllowsOperations,
-  type AccessState, type BillingStatus, type PlanEntitlements,
+  resolveAccessState, resolveEntitlements, accessAllowsOperations, evaluateCheckoutGuard,
+  type AccessState, type BillingStatus, type PlanEntitlements, type CheckoutGuardReason,
 } from "@guardora/core";
 import { systemDb } from "./index";
 
@@ -97,6 +97,43 @@ export async function getTenantOperationGate(tenantId: string): Promise<{ allowe
 export async function getStripeCustomerId(tenantId: string): Promise<string | null> {
   const s = await systemDb.subscription.findUnique({ where: { tenantId }, select: { stripeCustomerId: true } });
   return s?.stripeCustomerId ?? null;
+}
+
+/**
+ * V1.57.3 — Duplicate-subscription guard (server-authoritative, race-safe). Decides whether a tenant
+ * may START a new Stripe Checkout, and returns a Stripe idempotency-key lifecycle tag for allowed
+ * purchases. The decision itself is the pure {@link evaluateCheckoutGuard}; this wrapper adds:
+ *
+ *  • Concurrency safety — a Postgres *transaction-scoped* advisory lock keyed by the tenant id
+ *    serializes concurrent checkout attempts for the SAME tenant while leaving DIFFERENT tenants
+ *    fully parallel. It auto-releases on COMMIT or ROLLBACK (so it can never deadlock or leak on a
+ *    Stripe/DB failure), needs no in-memory mutex, and is correct across independent Vercel
+ *    serverless invocations because they all serialize on the one shared Postgres. A transaction
+ *    (xact) advisory lock — not a session lock — is required so it works under the pgbouncer
+ *    transaction pooler. The lock is held only across a single indexed read, never the Stripe call.
+ *
+ *  • lifecycleTag — folded into the Stripe idempotency key by the caller so retries of ONE purchase
+ *    attempt dedupe to the same Checkout Session, while a genuinely new purchase after a full
+ *    cancellation gets a fresh key (Stripe never returns a stale completed session).
+ */
+export type CheckoutStartDecision =
+  | { allowed: true; lifecycleTag: string }
+  | { allowed: false; reason: CheckoutGuardReason };
+
+export async function assertTenantCanStartCheckout(tenantId: string): Promise<CheckoutStartDecision> {
+  return systemDb.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`checkout:${tenantId}`}, 0))`;
+    const sub = await tx.subscription.findUnique({
+      where: { tenantId },
+      select: { status: true, currentPeriodEnd: true, canceledAt: true, updatedAt: true },
+    });
+    const decision = evaluateCheckoutGuard(sub ? { status: sub.status, currentPeriodEnd: sub.currentPeriodEnd } : null);
+    if (!decision.allowed) return decision;
+    // Stable within one attempt (retries dedupe), distinct across purchase lifecycles: a re-subscribe
+    // after full cancellation carries the prior cancellation timestamp, so the derived key differs.
+    const lifecycleTag = !sub ? "new" : String(Math.floor((sub.canceledAt ?? sub.updatedAt).getTime() / 1000));
+    return { allowed: true, lifecycleTag };
+  });
 }
 
 /** Derive the tenant from a Stripe customer id (webhook path — never from the browser). */

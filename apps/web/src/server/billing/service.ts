@@ -4,7 +4,7 @@ import {
   resolveStripePriceId, planForStripePriceId, isSelfServePlan,
   type BillingPlanId, type BillingInterval,
 } from "@guardora/core";
-import { getStripeCustomerId, ensureStripeCustomer, type StripeSubStateInput } from "@guardora/db";
+import { getStripeCustomerId, ensureStripeCustomer, assertTenantCanStartCheckout, type StripeSubStateInput } from "@guardora/db";
 import { getStripe, portalReturnUrl } from "./stripe";
 
 /**
@@ -29,6 +29,13 @@ export async function createCheckout(args: {
   const priceId = resolveStripePriceId(args.plan, args.interval);
   if (!priceId) return { ok: false, reason: "price_not_configured" };
 
+  // V1.57.3 — duplicate-subscription guard. Authoritative, server-side, race-safe: a tenant that
+  // already has a usable/recoverable subscription must MANAGE it (Customer Portal), never open a
+  // second one. Never trusts client UI state; the advisory lock inside serializes concurrent
+  // attempts for the same tenant. Runs BEFORE any Stripe customer/session creation.
+  const guard = await assertTenantCanStartCheckout(args.tenantId);
+  if (!guard.allowed) return { ok: false, reason: guard.reason };
+
   // Reuse the tenant's Stripe customer if one exists; otherwise create + persist the mapping so a
   // later webhook can derive the tenant from the customer.
   let customerId = await getStripeCustomerId(args.tenantId);
@@ -50,7 +57,9 @@ export async function createCheckout(args: {
       client_reference_id: args.tenantId,
       allow_promotion_codes: true,
     },
-    { idempotencyKey: `checkout:${args.tenantId}:${priceId}` },
+    // Tenant + plan/interval (priceId) + lifecycle tag: stable for retries of ONE purchase attempt
+    // (Stripe returns the same Session), distinct for a genuinely new purchase after full cancellation.
+    { idempotencyKey: `checkout:${args.tenantId}:${priceId}:${guard.lifecycleTag}` },
   );
   return session.url ? { ok: true, url: session.url } : { ok: false, reason: "no_url" };
 }

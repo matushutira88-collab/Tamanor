@@ -13,7 +13,7 @@ import { SAFE_ERRORS, toSafeError, newCorrelationId } from "../src/lib/errors";
 import { redact } from "../src/lib/ops-events";
 import { connectorDisplay } from "../src/lib/connector-display";
 import { PROVIDERS, providerStatusFor } from "../src/lib/provider-status";
-import { resolveStripePriceId, planForStripePriceId, stripeBillingReadiness, type BillingPlanId, type BillingInterval } from "@guardora/core";
+import { resolveStripePriceId, planForStripePriceId, stripeBillingReadiness, evaluateCheckoutGuard, type BillingPlanId, type BillingInterval } from "@guardora/core";
 import { resolveBillingCta } from "../src/app/dashboard/billing/cta";
 
 let failures = 0;
@@ -214,6 +214,45 @@ function run() {
   check("46) stripe test key in production is rejected (requireLive), and readiness leaks no secrets",
     stripeBillingReadiness({ ...goodEnv, STRIPE_SECRET_KEY: "sk_test_x" }, { requireLive: true }).apiConfig === "misconfigured" &&
     !/sk_live_|sk_test_|whsec_|price_/.test(JSON.stringify(good)));
+
+  // ---------------- Duplicate-subscription guard & checkout concurrency (V1.57.3) ----------------
+  // Pure decision matrix (never trusts the browser; the exact logic createCheckout enforces server-side).
+  const reason = (status: string | null, periodEndMs: number | null): string | null => {
+    const d = evaluateCheckoutGuard(status === null ? null : { status, currentPeriodEnd: periodEndMs === null ? null : new Date(periodEndMs) });
+    return d.allowed ? null : d.reason;
+  };
+  const allowed = (status: string | null, periodEndMs: number | null): boolean =>
+    evaluateCheckoutGuard(status === null ? null : { status, currentPeriodEnd: periodEndMs === null ? null : new Date(periodEndMs) }).allowed;
+  const future = new Date().getTime() + 30 * 24 * 3600 * 1000; // paid period still active
+  const past = new Date().getTime() - 24 * 3600 * 1000;        // paid period already ended
+  check("47) guard: no subscription → Checkout allowed", allowed(null, null));
+  check("48) guard: customer-only 'no_subscription' sentinel → allowed (customer exists, no sub)", allowed("no_subscription", null));
+  check("49) guard: active → blocked (subscription_active)", reason("active", future) === "subscription_active");
+  check("50) guard: trialing → blocked (subscription_active)", reason("trialing", future) === "subscription_active");
+  check("51) guard: past_due → blocked + Portal (payment_update_needed)", reason("past_due", past) === "payment_update_needed");
+  check("52) guard: unpaid → blocked (payment_update_needed)", reason("unpaid", null) === "payment_update_needed");
+  check("53) guard: paused → blocked (subscription_active)", reason("paused", future) === "subscription_active");
+  check("54) guard: cancel-at-period-end still active (status active) → blocked", reason("active", future) === "subscription_active");
+  check("55) guard: recoverable incomplete → blocked (complete_payment)", reason("incomplete", null) === "complete_payment");
+  check("56) guard: incomplete_expired → allowed (dead first attempt, no recoverable sub)", allowed("incomplete_expired", null));
+  check("57) guard: canceled but currentPeriodEnd in the future → blocked (access remains)", reason("canceled", future) === "subscription_active");
+  check("58) guard: fully canceled + period ended → allowed (later legitimate re-purchase)", allowed("canceled", past));
+  check("59) guard: unknown/future Stripe status → fail-safe blocked (never a silent duplicate)", !allowed("weird_new_status", future));
+
+  // Structural guarantees the pure test can't observe: concurrency lock, call-ordering, idempotency, i18n.
+  const REPO = resolve(WEB, "../../");
+  const billingRepoSrc = readFileSync(join(REPO, "packages/db/src/billing-repo.ts"), "utf8");
+  const serviceSrc = src("src/server/billing/service.ts");
+  check("60) concurrency: guard serializes per-tenant via a transaction-scoped advisory lock (pgbouncer-safe, auto-release; different tenants never block)",
+    /pg_advisory_xact_lock/.test(billingRepoSrc) && /hashtextextended/.test(billingRepoSrc) && /checkout:\$\{tenantId\}/.test(billingRepoSrc) && /\$transaction/.test(billingRepoSrc));
+  check("61) createCheckout runs the server guard BEFORE any Stripe customer/session creation (direct-API / repeated-click / stale-UI safe)",
+    serviceSrc.includes("assertTenantCanStartCheckout(args.tenantId)") &&
+    serviceSrc.indexOf("assertTenantCanStartCheckout(args.tenantId)") < serviceSrc.indexOf("customers.create") &&
+    serviceSrc.indexOf("assertTenantCanStartCheckout(args.tenantId)") < serviceSrc.indexOf("checkout.sessions.create"));
+  check("62) Stripe idempotency key is tenant + price + lifecycle-tag scoped (stable retries, fresh per purchase lifecycle — not a random request id)",
+    /idempotencyKey:\s*`checkout:\$\{args\.tenantId\}:\$\{priceId\}:\$\{guard\.lifecycleTag\}`/.test(serviceSrc));
+  check("63) guard block reasons are localized EN/SK/DE on the billing page (no generic unknown error)",
+    ["subscription_active", "payment_update_needed", "complete_payment"].every((k) => (billing.match(new RegExp(k + ":", "g"))?.length ?? 0) >= 3));
 
   // ---------------- global public footer on landing v2 (V1.58D.2) ----------------
   const landingV2 = src("src/components/landing-v2/landing-v2.tsx");

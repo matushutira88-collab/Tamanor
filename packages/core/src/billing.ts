@@ -243,3 +243,56 @@ export function accessAllowsPaidWork(state: AccessState): boolean {
 export function accessAllowsOperations(state: AccessState): boolean {
   return state === "full_access" || state === "grace_period";
 }
+
+/**
+ * V1.57.3 — Duplicate-subscription guard (PURE, no DB/network). Decides, from a tenant's
+ * synchronized subscription row, whether it is safe to START a new Stripe Checkout. Fail-safe: an
+ * unknown/unexpected status BLOCKS (a tenant is never allowed to open a second subscription on a
+ * doubtful state). The decision is Stripe-status-driven only — never trusts client input.
+ *
+ * blockReason maps 1:1 to a localized billing UI state:
+ *   subscription_active   → "Subscription already active" → Manage (Customer Portal)
+ *   payment_update_needed → past_due/unpaid → "Update payment method" → Customer Portal
+ *   complete_payment      → recoverable incomplete → "Complete your payment" → Customer Portal
+ */
+export type CheckoutGuardReason = "subscription_active" | "payment_update_needed" | "complete_payment";
+export type CheckoutGuardDecision =
+  | { allowed: true }
+  | { allowed: false; reason: CheckoutGuardReason };
+
+/** Minimal, DB-agnostic view of the tenant's current subscription (null = none exists). */
+export type CheckoutGuardSubscription = { status: string | null; currentPeriodEnd: Date | null } | null;
+
+export function evaluateCheckoutGuard(sub: CheckoutGuardSubscription, now: Date = new Date()): CheckoutGuardDecision {
+  if (!sub || !sub.status) return { allowed: true }; // no subscription → free to purchase
+  const periodStillActive = sub.currentPeriodEnd ? sub.currentPeriodEnd.getTime() > now.getTime() : false;
+  switch (sub.status) {
+    // A Stripe customer row exists (created at checkout start) but no real subscription has ever
+    // formed → purchasing is safe. NB: this is our own sentinel, never a Stripe status.
+    case "no_subscription":
+      return { allowed: true };
+    // Live, billable, or paused-but-recoverable → a second subscription would double-bill. Block.
+    // (cancel-at-period-end keeps Stripe status "active"/"trialing" until the period ends → covered here.)
+    case "active":
+    case "trialing":
+    case "paused":
+      return { allowed: false, reason: "subscription_active" };
+    // Payment problem on an existing subscription → fix it in the Portal, never open a new one.
+    case "past_due":
+    case "unpaid":
+      return { allowed: false, reason: "payment_update_needed" };
+    // First payment not yet settled but the SAME subscription can still be completed. Block a duplicate.
+    case "incomplete":
+      return { allowed: false, reason: "complete_payment" };
+    // Dead first attempt → no recoverable subscription remains → a fresh purchase is safe.
+    case "incomplete_expired":
+      return { allowed: true };
+    // Canceled: block only while paid access still remains (cancel-at-period-end); once the period has
+    // ended (or is absent) the tenant has no usable subscription → allow a new purchase.
+    case "canceled":
+      return periodStillActive ? { allowed: false, reason: "subscription_active" } : { allowed: true };
+    // Unknown/future Stripe status → fail safe: block and route to Manage rather than risk a duplicate.
+    default:
+      return { allowed: false, reason: "subscription_active" };
+  }
+}
