@@ -23,20 +23,34 @@ import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { withEmoji, ICON } from "@/lib/enum-emoji";
-import { withTenant } from "@guardora/db";
+import { withTenant, getDashboardKpis } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
+import { getLocale } from "@/i18n/locale-server";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { bucketByDay } from "@/lib/trend";
 import { RISK_TONE } from "@/lib/ui-maps";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+const KPI_COPY = {
+  en: { heading: "Protection overview", tf: "Timeframe", days: "d", analyzed: "Analyzed comments", risk: "Risk comments", autoHidden: "Auto-hidden", pending: "Pending review", problem: "Accounts with problem" },
+  sk: { heading: "Prehľad ochrany", tf: "Obdobie", days: "d", analyzed: "Analyzované komentáre", risk: "Rizikové komentáre", autoHidden: "Automaticky skryté", pending: "Čakajúce na rozhodnutie", problem: "Účty s problémom" },
+  de: { heading: "Schutzübersicht", tf: "Zeitraum", days: "T", analyzed: "Analysierte Kommentare", risk: "Risiko-Kommentare", autoHidden: "Automatisch verborgen", pending: "Zur Prüfung", problem: "Konten mit Problem" },
+} as const;
+
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ tf?: string }> }) {
   const session = await requireSession();
   const t = await getT();
+  const locale = await getLocale();
   const realMode = await getRealModeFilter(session.tenantId);
   const where = { tenantId: session.tenantId, ...realMode.brandWhere };
   const since30 = new Date(Date.now() - 30 * 86_400_000);
+
+  // V1.59 — product KPI strip: real, timeframe-aware, clickable. Uses the tested getDashboardKpis.
+  const tf = [7, 30, 90].includes(Number((await searchParams).tf)) ? Number((await searchParams).tf) : 30;
+  const kpiSince = new Date(Date.now() - tf * 86_400_000);
+  const kpi = await getDashboardKpis(session.tenantId, kpiSince);
+  const kc = KPI_COPY[locale];
 
   const [
     received, highRisk, pending, connected, lastRun, risky, trendRows,
@@ -110,6 +124,28 @@ export default async function DashboardPage() {
           🧪 <span className="font-medium">{t.dash.realTestMode}</span> · <span className="text-[var(--color-muted)]">{t.dash.realTestModeHint}</span>
         </div>
       ) : null}
+
+      {/* V1.59 — real product KPIs (timeframe-aware, each card links to its filtered list — never a dead card). */}
+      <section aria-label={kc.heading} className="mb-6">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">{kc.heading}</h2>
+          <div className="flex gap-1" role="group" aria-label={kc.tf}>
+            {[7, 30, 90].map((d) => (
+              <Link key={d} href={`/dashboard?tf=${d}`} aria-current={tf === d ? "true" : undefined}
+                className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${tf === d ? "border-[var(--color-brand)] bg-[var(--color-brand-soft)] text-[var(--color-brand)]" : "border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-brand)]"}`}>
+                {d}{kc.days}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <Link href="/dashboard/comments" className="block"><StatCard label={kc.analyzed} value={String(kpi.analyzedComments)} tone="brand" /></Link>
+          <Link href="/dashboard/comments?risk=high" className="block"><StatCard label={kc.risk} value={String(kpi.riskComments)} tone="danger" /></Link>
+          <Link href="/dashboard/action-queue?state=executed" className="block"><StatCard label={kc.autoHidden} value={String(kpi.autoHidden)} tone="warn" /></Link>
+          <Link href="/dashboard/action-queue" className="block"><StatCard label={kc.pending} value={String(kpi.pending)} tone="warn" /></Link>
+          <Link href="/dashboard/accounts" className="block"><StatCard label={kc.problem} value={String(kpi.accountsWithProblem)} tone={kpi.accountsWithProblem > 0 ? "danger" : "ok"} /></Link>
+        </div>
+      </section>
 
       {realMode.isRealMode && received === 0 ? (
         <EmptyState
