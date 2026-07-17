@@ -128,6 +128,59 @@ export function planForStripePriceId(
   return null;
 }
 
+// ---- Stripe billing configuration readiness (V1.57.2) ----------------------
+
+/** Safe status of one Stripe config component. Never carries a secret value. */
+export type StripeConfigStatus = "healthy" | "misconfigured" | "billing_unavailable";
+
+export type StripeBillingReadiness = {
+  apiConfig: StripeConfigStatus;      // STRIPE_SECRET_KEY present (sk_ shape; sk_live_ when requireLive)
+  prices: StripeConfigStatus;         // all 6 self-serve prices present, price_ shape, no duplicates
+  webhookConfig: StripeConfigStatus;  // STRIPE_WEBHOOK_SECRET present (whsec_ shape)
+  portalConfig: StripeConfigStatus;   // STRIPE_BILLING_PORTAL_RETURN_URL is https (optional)
+  duplicatePriceIds: boolean;         // Phase 2: two plans sharing a Stripe Price ID is a config error
+  configured: boolean;                // billing is usable (api + prices + webhook all healthy)
+};
+
+/**
+ * Pure, secret-free readiness of the Stripe billing configuration. Returns only statuses/booleans —
+ * never a key or a raw value — so it is safe to surface in /api/ready. Fails closed: any missing or
+ * malformed value degrades billing (not the whole app), and duplicate Price IDs across plans (which
+ * would misroute planForStripePriceId) are reported as misconfigured.
+ */
+export function stripeBillingReadiness(
+  env: Record<string, string | undefined> = process.env,
+  opts: { requireLive?: boolean } = {},
+): StripeBillingReadiness {
+  const secret = env.STRIPE_SECRET_KEY?.trim();
+  const secretOk = !!secret && secret.startsWith("sk_") && (!opts.requireLive || secret.startsWith("sk_live_"));
+  const apiConfig: StripeConfigStatus = secretOk ? "healthy" : secret ? "misconfigured" : "billing_unavailable";
+
+  const ids: string[] = [];
+  let allPresent = true;
+  let allFormatOk = true;
+  for (const plan of SELF_SERVE_PLANS) {
+    for (const interval of ["monthly", "yearly"] as const) {
+      const id = resolveStripePriceId(plan, interval, env);
+      if (!id) { allPresent = false; continue; }
+      if (!id.startsWith("price_")) allFormatOk = false;
+      ids.push(id);
+    }
+  }
+  const duplicatePriceIds = new Set(ids).size !== ids.length;
+  const prices: StripeConfigStatus =
+    ids.length === 0 ? "billing_unavailable" : (!allPresent || !allFormatOk || duplicatePriceIds) ? "misconfigured" : "healthy";
+
+  const wh = env.STRIPE_WEBHOOK_SECRET?.trim();
+  const webhookConfig: StripeConfigStatus = wh ? (wh.startsWith("whsec_") ? "healthy" : "misconfigured") : "billing_unavailable";
+
+  const ret = env.STRIPE_BILLING_PORTAL_RETURN_URL?.trim();
+  const portalConfig: StripeConfigStatus = !ret ? "billing_unavailable" : /^https:\/\/[^\s]+$/.test(ret) ? "healthy" : "misconfigured";
+
+  const configured = apiConfig === "healthy" && prices === "healthy" && webhookConfig === "healthy";
+  return { apiConfig, prices, webhookConfig, portalConfig, duplicatePriceIds, configured };
+}
+
 // ---- access-state mapping (the single central function) --------------------
 
 export type AccessInput = {

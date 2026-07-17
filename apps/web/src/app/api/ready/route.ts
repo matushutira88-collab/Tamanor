@@ -5,7 +5,7 @@
  * a DB URL, role credential, token or secret. 200 when ready, 503 otherwise.
  */
 import { checkRlsRuntime, validateRuntimeDbConfig, tokenStorageStatus } from "@guardora/db";
-import { emitOpsEvent } from "@guardora/core";
+import { emitOpsEvent, stripeBillingReadiness } from "@guardora/core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,5 +74,18 @@ export async function GET() {
     emitOpsEvent("service.readiness_failed", { reason: failing?.name ?? "unknown", severity: "critical" });
   }
 
-  return Response.json({ status: overall, ready, checks }, { status: ready ? 200 : 503 });
+  // V1.57.2 — Stripe billing configuration status (secret-free). Reported for observability but
+  // intentionally NON-BLOCKING: missing/incomplete billing config makes BILLING unavailable, not the
+  // whole app unready, so /api/ready stays 200 while billing is being configured. No secret values.
+  const stripe = stripeBillingReadiness(process.env, { requireLive: isProd });
+  const billing = {
+    stripe_api_config: stripe.apiConfig,
+    stripe_prices: stripe.prices,
+    stripe_webhook_config: stripe.webhookConfig,
+    stripe_portal_config: stripe.portalConfig,
+    duplicate_price_ids: stripe.duplicatePriceIds,
+    configured: stripe.configured,
+  };
+
+  return Response.json({ status: overall, ready, checks, billing }, { status: ready ? 200 : 503 });
 }

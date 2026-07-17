@@ -13,7 +13,7 @@ import { SAFE_ERRORS, toSafeError, newCorrelationId } from "../src/lib/errors";
 import { redact } from "../src/lib/ops-events";
 import { connectorDisplay } from "../src/lib/connector-display";
 import { PROVIDERS, providerStatusFor } from "../src/lib/provider-status";
-import { resolveStripePriceId, type BillingPlanId, type BillingInterval } from "@guardora/core";
+import { resolveStripePriceId, planForStripePriceId, stripeBillingReadiness, type BillingPlanId, type BillingInterval } from "@guardora/core";
 import { resolveBillingCta } from "../src/app/dashboard/billing/cta";
 
 let failures = 0;
@@ -192,6 +192,28 @@ function run() {
     resolveStripePriceId("starter", "monthly", {}) === null &&        // missing → null (truthful unavailable)
     resolveStripePriceId("enterprise", "monthly", mockEnv) === null;  // enterprise is never self-serve
   check("38) resolveStripePriceId maps monthly/yearly to the correct env price (not swapped), null when unset", priceMappingOk);
+
+  // ---------------- Stripe billing config readiness (V1.57.2) ----------------
+  const goodEnv: Record<string, string> = {
+    STRIPE_SECRET_KEY: "sk_live_abc", STRIPE_WEBHOOK_SECRET: "whsec_abc", STRIPE_BILLING_PORTAL_RETURN_URL: "https://tamanor.com/dashboard/billing",
+    STRIPE_PRICE_STARTER_MONTHLY: "price_sm", STRIPE_PRICE_STARTER_YEARLY: "price_sy",
+    STRIPE_PRICE_GROWTH_MONTHLY: "price_gm", STRIPE_PRICE_GROWTH_YEARLY: "price_gy",
+    STRIPE_PRICE_AGENCY_MONTHLY: "price_am", STRIPE_PRICE_AGENCY_YEARLY: "price_ay",
+  };
+  const good = stripeBillingReadiness(goodEnv, { requireLive: true });
+  check("42) stripe readiness: complete live config → configured, all components healthy, no duplicate prices",
+    good.configured && good.apiConfig === "healthy" && good.prices === "healthy" && good.webhookConfig === "healthy" && good.portalConfig === "healthy" && good.duplicatePriceIds === false);
+  const missing = stripeBillingReadiness({ STRIPE_SECRET_KEY: "sk_live_x" }, { requireLive: true });
+  check("43) stripe readiness: missing prices/webhook → not configured, fails closed (no invented plan)",
+    !missing.configured && missing.prices === "billing_unavailable" && missing.webhookConfig === "billing_unavailable");
+  const dup = stripeBillingReadiness({ ...goodEnv, STRIPE_PRICE_GROWTH_MONTHLY: "price_sm" }, { requireLive: true });
+  check("44) stripe readiness: duplicate Stripe Price ID across plans is detected + misconfigured",
+    dup.duplicatePriceIds === true && dup.prices === "misconfigured" && !dup.configured);
+  check("45) unknown Stripe Price ID does not map to any plan (webhook fails closed)",
+    planForStripePriceId("price_unknown_xyz", goodEnv) === null && planForStripePriceId("price_sm", goodEnv)?.plan === "starter");
+  check("46) stripe test key in production is rejected (requireLive), and readiness leaks no secrets",
+    stripeBillingReadiness({ ...goodEnv, STRIPE_SECRET_KEY: "sk_test_x" }, { requireLive: true }).apiConfig === "misconfigured" &&
+    !/sk_live_|sk_test_|whsec_|price_/.test(JSON.stringify(good)));
 
   // ---------------- global public footer on landing v2 (V1.58D.2) ----------------
   const landingV2 = src("src/components/landing-v2/landing-v2.tsx");
