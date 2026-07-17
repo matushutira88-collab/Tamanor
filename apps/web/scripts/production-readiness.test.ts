@@ -239,20 +239,27 @@ function run() {
   check("58) guard: fully canceled + period ended → allowed (later legitimate re-purchase)", allowed("canceled", past));
   check("59) guard: unknown/future Stripe status → fail-safe blocked (never a silent duplicate)", !allowed("weird_new_status", future));
 
-  // Structural guarantees the pure test can't observe: concurrency lock, call-ordering, idempotency, i18n.
+  // V1.57.3A — STRUCTURAL PRESENCE ONLY. The concurrency GUARANTEE is proven by the executable
+  // database-backed suite (packages/db/scripts/checkout-concurrency.test.ts), never by these patterns.
   const REPO = resolve(WEB, "../../");
   const billingRepoSrc = readFileSync(join(REPO, "packages/db/src/billing-repo.ts"), "utf8");
   const serviceSrc = src("src/server/billing/service.ts");
-  check("60) concurrency: guard serializes per-tenant via a transaction-scoped advisory lock (pgbouncer-safe, auto-release; different tenants never block)",
-    /pg_advisory_xact_lock/.test(billingRepoSrc) && /hashtextextended/.test(billingRepoSrc) && /checkout:\$\{tenantId\}/.test(billingRepoSrc) && /\$transaction/.test(billingRepoSrc));
-  check("61) createCheckout runs the server guard BEFORE any Stripe customer/session creation (direct-API / repeated-click / stale-UI safe)",
-    serviceSrc.includes("assertTenantCanStartCheckout(args.tenantId)") &&
-    serviceSrc.indexOf("assertTenantCanStartCheckout(args.tenantId)") < serviceSrc.indexOf("customers.create") &&
-    serviceSrc.indexOf("assertTenantCanStartCheckout(args.tenantId)") < serviceSrc.indexOf("checkout.sessions.create"));
-  check("62) Stripe idempotency key is tenant + price + lifecycle-tag scoped (stable retries, fresh per purchase lifecycle — not a random request id)",
-    /idempotencyKey:\s*`checkout:\$\{args\.tenantId\}:\$\{priceId\}:\$\{guard\.lifecycleTag\}`/.test(serviceSrc));
-  check("63) guard block reasons are localized EN/SK/DE on the billing page (no generic unknown error)",
-    ["subscription_active", "payment_update_needed", "complete_payment"].every((k) => (billing.match(new RegExp(k + ":", "g"))?.length ?? 0) >= 3));
+  const migrationSrc = readFileSync(join(REPO, "packages/db/prisma/migrations/20260717100000_v1_57_3a_checkout_attempts/migration.sql"), "utf8");
+  check("60) durable reservation: a persistent CREATING attempt is inserted inside the reservation transaction (holds the tenant past the lock, before Stripe)",
+    /reserveCheckoutAttempt/.test(billingRepoSrc) && /status:\s*"CREATING"/.test(billingRepoSrc) && /stripeCheckoutAttempt\.create/.test(billingRepoSrc) && /pg_advisory_xact_lock/.test(billingRepoSrc));
+  check("61) DB-enforced single live attempt: migration adds a partial unique index on tenantId WHERE status IN (CREATING,OPEN) + RLS FORCE",
+    /stripe_checkout_attempts_one_live_per_tenant/.test(migrationSrc) && /WHERE "status" IN \('CREATING', 'OPEN'\)/.test(migrationSrc) && /FORCE ROW LEVEL SECURITY/.test(migrationSrc));
+  check("62) createCheckout reserves BEFORE any Stripe customer/session creation (direct-API / repeated-click / different-plan safe)",
+    serviceSrc.includes("reserveCheckoutAttempt(") &&
+    serviceSrc.indexOf("reserveCheckoutAttempt(") < serviceSrc.indexOf("customers.create") &&
+    serviceSrc.indexOf("reserveCheckoutAttempt(") < serviceSrc.indexOf("checkout.sessions.create"));
+  check("63) Stripe idempotency key is the per-attempt reserved key — NOT price-derived (stable per attempt, fresh per new attempt)",
+    /reservation\.idempotencyKey/.test(serviceSrc) && /\{ idempotencyKey \}/.test(serviceSrc) &&
+    /checkout_attempt:\$\{randomUUID\(\)\}/.test(billingRepoSrc) && !/`checkout:\$\{args\.tenantId\}:\$\{priceId\}/.test(serviceSrc));
+  check("64) webhook connects the attempt lifecycle (completed/expired by session id) without granting entitlement from the attempt row",
+    (() => { const w = src("src/app/api/webhooks/stripe/route.ts"); return /completeCheckoutAttemptBySession/.test(w) && /expireCheckoutAttemptBySession/.test(w) && /checkout\.session\.expired/.test(w); })());
+  check("65) reservation/guard block reasons are localized EN/SK/DE on the billing page (no generic unknown error)",
+    ["subscription_active", "payment_update_needed", "complete_payment", "checkout_in_progress", "checkout_failed"].every((k) => (billing.match(new RegExp(k + ":", "g"))?.length ?? 0) >= 3));
 
   // ---------------- global public footer on landing v2 (V1.58D.2) ----------------
   const landingV2 = src("src/components/landing-v2/landing-v2.tsx");

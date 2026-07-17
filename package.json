@@ -126,7 +126,8 @@
     "workflow:test": "pnpm --filter @guardora/db exec tsx scripts/workflow.test.ts",
     "risk:reclassify-demo": "pnpm --filter @guardora/db reclassify-demo",
     "db:studio": "pnpm --filter @guardora/db studio",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "checkout-concurrency:test": "bash packages/db/scripts/run-checkout-concurrency.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import {
   resolveAccessState, resolveEntitlements, accessAllowsOperations, evaluateCheckoutGuard,
@@ -100,39 +101,154 @@ export async function getStripeCustomerId(tenantId: string): Promise<string | nu
 }
 
 /**
- * V1.57.3 — Duplicate-subscription guard (server-authoritative, race-safe). Decides whether a tenant
- * may START a new Stripe Checkout, and returns a Stripe idempotency-key lifecycle tag for allowed
- * purchases. The decision itself is the pure {@link evaluateCheckoutGuard}; this wrapper adds:
- *
- *  • Concurrency safety — a Postgres *transaction-scoped* advisory lock keyed by the tenant id
- *    serializes concurrent checkout attempts for the SAME tenant while leaving DIFFERENT tenants
- *    fully parallel. It auto-releases on COMMIT or ROLLBACK (so it can never deadlock or leak on a
- *    Stripe/DB failure), needs no in-memory mutex, and is correct across independent Vercel
- *    serverless invocations because they all serialize on the one shared Postgres. A transaction
- *    (xact) advisory lock — not a session lock — is required so it works under the pgbouncer
- *    transaction pooler. The lock is held only across a single indexed read, never the Stripe call.
- *
- *  • lifecycleTag — folded into the Stripe idempotency key by the caller so retries of ONE purchase
- *    attempt dedupe to the same Checkout Session, while a genuinely new purchase after a full
- *    cancellation gets a fresh key (Stripe never returns a stale completed session).
+ * V1.57.3A — durable, tenant-scoped Checkout reservation. Replaces the V1.57.3 advisory-lock-only
+ * guard, whose lock released before the Stripe network call and so could not prevent two concurrent
+ * DIFFERENT-plan requests from each creating a Session. The reservation now persists a CREATING row
+ * BEFORE the Stripe call; a DB-enforced partial unique index guarantees AT MOST ONE live attempt
+ * (CREATING|OPEN) per tenant, so the guarantee survives the gap between the transaction ending and
+ * the Stripe response. The Subscription row remains the entitlement source; this is workflow state.
  */
-export type CheckoutStartDecision =
-  | { allowed: true; lifecycleTag: string }
-  | { allowed: false; reason: CheckoutGuardReason };
+export type ReserveCheckoutInput = {
+  tenantId: string;
+  userId: string | null;
+  plan: string;
+  interval: string;
+  priceId: string;
+  /** Short crash-recovery TTL for the CREATING row (until the Stripe Session is created). */
+  creatingTtlMs?: number;
+  now?: Date;
+};
+export type ReserveCheckoutResult =
+  // Guard blocked — no attempt row created, no Stripe call.
+  | { kind: "blocked"; reason: CheckoutGuardReason }
+  // A live attempt already exists (concurrent request, repeated click, or another tab). Carries the
+  // stored per-attempt key so a same-plan resume re-drives Stripe with the SAME key (no duplicate).
+  | { kind: "existing"; attemptId: string; samePlan: boolean; url: string | null; idempotencyKey: string }
+  // Reserved a fresh CREATING attempt — the caller MUST now create the Stripe Session with this key.
+  | { kind: "reserved"; attemptId: string; idempotencyKey: string; priceId: string };
 
-export async function assertTenantCanStartCheckout(tenantId: string): Promise<CheckoutStartDecision> {
+const DEFAULT_CREATING_TTL_MS = 3 * 60 * 1000; // 3 min — a crashed invocation frees the tenant fast
+
+/**
+ * Atomic reservation (Phase 3). One short transaction: advisory lock (per tenant) → subscription
+ * guard → expire stale live attempts → reuse an existing live attempt OR insert exactly one new
+ * CREATING attempt with a stable per-attempt idempotency key. The transaction ENDS before Stripe is
+ * called; the persisted CREATING row (backed by the partial unique index) is what holds the tenant.
+ */
+export async function reserveCheckoutAttempt(input: ReserveCheckoutInput): Promise<ReserveCheckoutResult> {
+  const now = input.now ?? new Date();
+  const creatingTtlMs = input.creatingTtlMs ?? DEFAULT_CREATING_TTL_MS;
   return systemDb.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`checkout:${tenantId}`}, 0))`;
+    // Serialize same-tenant reservations (different tenants never block). Belt to the unique-index
+    // suspenders below: with the lock, the loser reads the winner's committed row instead of racing.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`checkout:${input.tenantId}`}, 0))`;
+
+    // 1) Subscription guard — an active/recoverable subscription blocks any new checkout entirely.
     const sub = await tx.subscription.findUnique({
-      where: { tenantId },
-      select: { status: true, currentPeriodEnd: true, canceledAt: true, updatedAt: true },
+      where: { tenantId: input.tenantId },
+      select: { status: true, currentPeriodEnd: true },
     });
     const decision = evaluateCheckoutGuard(sub ? { status: sub.status, currentPeriodEnd: sub.currentPeriodEnd } : null);
-    if (!decision.allowed) return decision;
-    // Stable within one attempt (retries dedupe), distinct across purchase lifecycles: a re-subscribe
-    // after full cancellation carries the prior cancellation timestamp, so the derived key differs.
-    const lifecycleTag = !sub ? "new" : String(Math.floor((sub.canceledAt ?? sub.updatedAt).getTime() / 1000));
-    return { allowed: true, lifecycleTag };
+    if (!decision.allowed) return { kind: "blocked", reason: decision.reason };
+
+    // 2) Expire stale live attempts (crashed CREATING or lapsed OPEN) so a tenant is never locked out.
+    await tx.stripeCheckoutAttempt.updateMany({
+      where: { tenantId: input.tenantId, status: { in: ["CREATING", "OPEN"] }, expiresAt: { lt: now } },
+      data: { status: "EXPIRED", failedAt: null },
+    });
+
+    // 3) A still-live attempt? Reuse it — never open a parallel session (Phase 6).
+    const live = await tx.stripeCheckoutAttempt.findFirst({
+      where: { tenantId: input.tenantId, status: { in: ["CREATING", "OPEN"] } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true, requestedPlan: true, requestedInterval: true, status: true, idempotencyKey: true,
+        stripeCheckoutUrl: true, stripeCheckoutUrlExpiresAt: true,
+      },
+    });
+    if (live) {
+      const samePlan = live.requestedPlan === input.plan && live.requestedInterval === input.interval;
+      const urlUsable =
+        live.status === "OPEN" && !!live.stripeCheckoutUrl &&
+        (!live.stripeCheckoutUrlExpiresAt || live.stripeCheckoutUrlExpiresAt.getTime() > now.getTime());
+      return { kind: "existing", attemptId: live.id, samePlan, url: urlUsable ? live.stripeCheckoutUrl : null, idempotencyKey: live.idempotencyKey };
+    }
+
+    // 4) Reserve exactly one new CREATING attempt. The per-attempt idempotency key is generated once
+    //    here and stored, so every retry of THIS attempt reuses it (Stripe dedupes), while a later
+    //    genuinely-new attempt gets a fresh key. Not derived from priceId. The partial unique index
+    //    guarantees this INSERT fails if any concurrent live attempt slipped past the lock.
+    const idempotencyKey = `checkout_attempt:${randomUUID()}`;
+    const attempt = await tx.stripeCheckoutAttempt.create({
+      data: {
+        tenantId: input.tenantId,
+        status: "CREATING",
+        requestedPlan: input.plan,
+        requestedInterval: input.interval,
+        stripePriceId: input.priceId,
+        idempotencyKey,
+        createdByUserId: input.userId,
+        expiresAt: new Date(now.getTime() + creatingTtlMs),
+      },
+      select: { id: true },
+    });
+    return { kind: "reserved", attemptId: attempt.id, idempotencyKey, priceId: input.priceId };
+  });
+}
+
+/**
+ * Transition a reserved CREATING attempt to OPEN after Stripe returns a Session (Phase 4). Guarded:
+ * updates ONLY while the row is still CREATING for the same tenant (never resurrects a completed/
+ * failed/expired attempt, never touches another tenant). Extends expiry to the Stripe Session expiry.
+ */
+export async function markCheckoutAttemptOpen(args: {
+  attemptId: string; tenantId: string; sessionId: string; url: string | null; sessionExpiresAt: Date | null;
+}): Promise<void> {
+  await systemDb.stripeCheckoutAttempt.updateMany({
+    where: { id: args.attemptId, tenantId: args.tenantId, status: "CREATING" },
+    data: {
+      status: "OPEN",
+      stripeCheckoutSessionId: args.sessionId,
+      stripeCheckoutUrl: args.url,
+      stripeCheckoutUrlExpiresAt: args.sessionExpiresAt,
+      expiresAt: args.sessionExpiresAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
+    },
+  });
+}
+
+/** Mark a reserved attempt FAILED after a Stripe error (Phase 4). Stores only a safe failure code. */
+export async function markCheckoutAttemptFailed(args: { attemptId: string; tenantId: string; failureCode: string }): Promise<void> {
+  await systemDb.stripeCheckoutAttempt.updateMany({
+    where: { id: args.attemptId, tenantId: args.tenantId, status: "CREATING" },
+    data: { status: "FAILED", failedAt: new Date(), failureCode: args.failureCode.slice(0, 64) },
+  });
+}
+
+/** Webhook: mark the attempt COMPLETED by trusted Stripe Session id (Phase 7). Never grants access. */
+export async function completeCheckoutAttemptBySession(sessionId: string): Promise<void> {
+  await systemDb.stripeCheckoutAttempt.updateMany({
+    where: { stripeCheckoutSessionId: sessionId, status: { in: ["CREATING", "OPEN"] } },
+    data: { status: "COMPLETED", completedAt: new Date() },
+  });
+}
+
+/** Webhook: mark the attempt EXPIRED by trusted Stripe Session id (checkout.session.expired). */
+export async function expireCheckoutAttemptBySession(sessionId: string): Promise<void> {
+  await systemDb.stripeCheckoutAttempt.updateMany({
+    where: { stripeCheckoutSessionId: sessionId, status: { in: ["CREATING", "OPEN"] } },
+    data: { status: "EXPIRED" },
+  });
+}
+
+/**
+ * Belt: when a subscription becomes active for a tenant (subscription webhook may precede
+ * checkout.session.completed), retire any lingering live attempt so state stays truthful. Safe —
+ * the subscription guard already blocks new checkouts once a subscription is active.
+ */
+export async function completeLiveCheckoutAttemptsForTenant(tenantId: string): Promise<void> {
+  await systemDb.stripeCheckoutAttempt.updateMany({
+    where: { tenantId, status: { in: ["CREATING", "OPEN"] } },
+    data: { status: "COMPLETED", completedAt: new Date() },
   });
 }
 

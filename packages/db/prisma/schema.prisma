@@ -374,6 +374,7 @@ model Tenant {
   usageEvents       UsageEvent[]
   aiResultCache     AiResultCache[]
   subscription      Subscription?
+  checkoutAttempts  StripeCheckoutAttempt[]
 
   // V1.45C1 — tenant-scoped tables that previously carried only a `tenantId` string (RLS-isolated
   // but NOT FK-linked). These now cascade on tenant deletion so the DB cascade graph is COMPLETE
@@ -418,6 +419,40 @@ model Subscription {
 
   @@index([stripeCustomerId])
   @@map("subscriptions")
+}
+
+/**
+ * V1.57.3A — durable, tenant-scoped Checkout reservation. Exists BEFORE the Stripe network call and
+ * stays authoritative until the attempt completes/expires/fails, closing the concurrency gap the
+ * advisory-lock-only guard left open. A DB-enforced partial unique index (added in the SQL migration)
+ * allows AT MOST ONE live attempt (status CREATING|OPEN) per tenant — independent of plan/interval.
+ * This is concurrency + workflow state ONLY; the Subscription row remains the entitlement source.
+ */
+model StripeCheckoutAttempt {
+  id                         String    @id @default(cuid())
+  tenantId                   String
+  // CREATING | OPEN | COMPLETED | EXPIRED | FAILED | ABANDONED
+  status                     String
+  requestedPlan              String
+  requestedInterval          String
+  stripePriceId              String
+  stripeCheckoutSessionId    String?   @unique
+  stripeCheckoutUrl          String?
+  stripeCheckoutUrlExpiresAt DateTime?
+  idempotencyKey             String    @unique
+  createdByUserId            String?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  expiresAt                  DateTime
+  completedAt                DateTime?
+  failedAt                   DateTime?
+  failureCode                String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([expiresAt])
+  @@map("stripe_checkout_attempts")
 }
 
 // V1.50D — Stripe webhook idempotency + bounded audit. The Stripe event ID is UNIQUE, so a retried

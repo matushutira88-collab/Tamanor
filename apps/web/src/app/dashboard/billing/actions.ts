@@ -48,6 +48,7 @@ export async function startCheckout(formData: FormData): Promise<void> {
     plan: plan as BillingPlanId,
     interval: interval as BillingInterval,
     origin: await requestOrigin(),
+    userId: session.userId,
   });
   if (!res.ok) {
     metrics.inc("billing_checkout_total", { result: "error" });

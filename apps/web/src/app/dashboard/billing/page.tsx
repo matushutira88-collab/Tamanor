@@ -100,6 +100,8 @@ const C: Record<Locale, Copy> = {
       subscription_active: "You already have an active subscription. Use “Manage billing” below to change or cancel it.",
       payment_update_needed: "Your subscription needs a payment update. Use “Manage billing” below to update your payment method.",
       complete_payment: "You have a payment in progress. Use “Manage billing” below to complete it.",
+      checkout_in_progress: "A checkout is already in progress. Finish it in the open tab, or wait a few minutes for it to expire before starting a new one.",
+      checkout_failed: "We couldn’t start checkout just now. Please try again in a moment.",
     },
     statusLabels: {
       trialing: "Trial", active: "Active", past_due: "Past due", unpaid: "Unpaid", canceled: "Canceled",
@@ -141,6 +143,8 @@ const C: Record<Locale, Copy> = {
       subscription_active: "Už máte aktívne predplatné. Použite „Spravovať fakturáciu“ nižšie na jeho zmenu alebo zrušenie.",
       payment_update_needed: "Vaše predplatné vyžaduje aktualizáciu platby. Použite „Spravovať fakturáciu“ nižšie na aktualizáciu platobnej metódy.",
       complete_payment: "Máte prebiehajúcu platbu. Použite „Spravovať fakturáciu“ nižšie na jej dokončenie.",
+      checkout_in_progress: "Platba už prebieha. Dokončite ju v otvorenej karte alebo počkajte pár minút, kým vyprší, než začnete novú.",
+      checkout_failed: "Platbu sa teraz nepodarilo spustiť. Skúste to o chvíľu znova.",
     },
     statusLabels: {
       trialing: "Skúšobná", active: "Aktívne", past_due: "Po splatnosti", unpaid: "Neuhradené", canceled: "Zrušené",
@@ -182,6 +186,8 @@ const C: Record<Locale, Copy> = {
       subscription_active: "Sie haben bereits ein aktives Abonnement. Verwenden Sie unten „Abrechnung verwalten“, um es zu ändern oder zu kündigen.",
       payment_update_needed: "Ihr Abonnement erfordert eine Zahlungsaktualisierung. Verwenden Sie unten „Abrechnung verwalten“, um Ihre Zahlungsmethode zu aktualisieren.",
       complete_payment: "Sie haben eine laufende Zahlung. Verwenden Sie unten „Abrechnung verwalten“, um sie abzuschließen.",
+      checkout_in_progress: "Ein Checkout läuft bereits. Schließen Sie ihn im offenen Tab ab oder warten Sie einige Minuten, bis er abläuft, bevor Sie einen neuen starten.",
+      checkout_failed: "Der Checkout konnte gerade nicht gestartet werden. Bitte versuchen Sie es gleich noch einmal.",
     },
     statusLabels: {
       trialing: "Test", active: "Aktiv", past_due: "Überfällig", unpaid: "Unbezahlt", canceled: "Gekündigt",

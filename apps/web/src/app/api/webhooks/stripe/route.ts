@@ -2,7 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { getStripe, webhookSecret } from "@/server/billing/stripe";
 import { normalizeSubscription, subscriptionFromEvent } from "@/server/billing/service";
-import { recordAndApplyStripeEvent, type StripeSubStateInput } from "@guardora/db";
+import {
+  recordAndApplyStripeEvent,
+  completeCheckoutAttemptBySession, expireCheckoutAttemptBySession, completeLiveCheckoutAttemptsForTenant,
+  type StripeSubStateInput,
+} from "@guardora/db";
 import { emitOpsEvent, metrics } from "@guardora/core";
 
 export const runtime = "nodejs";
@@ -11,6 +15,7 @@ export const dynamic = "force-dynamic";
 /** Events that mutate billing state. Everything else is acknowledged + recorded as ignored. */
 const HANDLED = new Set([
   "checkout.session.completed",
+  "checkout.session.expired",
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
@@ -50,6 +55,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    // V1.57.3A — Checkout attempt lifecycle. Best-effort: the Subscription row is the entitlement
+    // source of truth, so a bookkeeping update must never fail the webhook (which would cause Stripe
+    // retries). The reservation guard/expiry already prevent duplicates even if a row lingers.
+    if (event.type === "checkout.session.completed") {
+      const sid = (event.data.object as { id?: string }).id;
+      if (sid) await completeCheckoutAttemptBySession(sid).catch(() => {});
+    } else if (event.type === "checkout.session.expired") {
+      const sid = (event.data.object as { id?: string }).id;
+      if (sid) await expireCheckoutAttemptBySession(sid).catch(() => {});
+      // No subscription reference on this event → acknowledge as ignored for subscription state.
+      await recordAndApplyStripeEvent(event.id, event.type, null).catch(() => {});
+      metrics.inc("billing_webhook_total", { result: "ignored" });
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
     let input: StripeSubStateInput | null = null;
     if (event.type !== "payment_intent.payment_failed") {
       const obj = event.data.object as unknown as Record<string, unknown>;
@@ -67,6 +87,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     if (res.outcome === "processed") {
+      // Belt: a subscription webhook can arrive before checkout.session.completed — retire any live
+      // attempt for the now-subscribed tenant so workflow state stays truthful (best-effort).
+      if (res.tenantId && (event.type === "customer.subscription.created" || event.type === "invoice.paid")) {
+        await completeLiveCheckoutAttemptsForTenant(res.tenantId).catch(() => {});
+      }
       if (event.type === "customer.subscription.deleted") emitOpsEvent("billing.subscription_canceled", {});
       else if (event.type === "invoice.payment_failed" || event.type === "invoice.finalization_failed") emitOpsEvent("billing.payment_failed", {});
       else if (event.type === "checkout.session.completed" || event.type === "invoice.paid") emitOpsEvent("billing.subscription_activated", {});
