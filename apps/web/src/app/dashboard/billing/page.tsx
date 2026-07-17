@@ -77,7 +77,7 @@ const C: Record<Locale, Copy> = {
     cancelsAt: (d) => `Cancels on ${d}`, perMonth: "/mo", perYear: "/yr",
     custom: "Custom", ownerOnlyShort: "Owner only", mostPopular: "Most popular",
     checkoutUnavailable: "Checkout temporarily unavailable", contactSupport: "Contact support",
-    continueToPayment: "Continue to payment", checkoutPending: "Redirecting…", comingSoon: "This option will be available soon.",
+    continueToPayment: "Choose plan", checkoutPending: "Redirecting…", comingSoon: "Coming soon",
     ownerOnly: "Only the workspace owner can change the plan.",
     restricted: { title: "Access restricted", body: "Your trial or subscription has ended. Choose a plan to restore full access. Your data is safe and your accounts stay connected." },
     pastDue: { title: "Payment failed", body: "We couldn't process your last payment. Please update your payment method to keep full access." },
@@ -121,7 +121,7 @@ const C: Record<Locale, Copy> = {
     cancelsAt: (d) => `Ruší sa ${d}`, perMonth: "/mes", perYear: "/rok",
     custom: "Na mieru", ownerOnlyShort: "Len vlastník", mostPopular: "Najobľúbenejšie",
     checkoutUnavailable: "Platba dočasne nedostupná", contactSupport: "Kontaktovať podporu",
-    continueToPayment: "Pokračovať na platbu", checkoutPending: "Presmerovanie…", comingSoon: "Táto možnosť bude čoskoro dostupná.",
+    continueToPayment: "Vybrať plán", checkoutPending: "Presmerovanie…", comingSoon: "Čoskoro dostupné",
     ownerOnly: "Plán môže meniť len vlastník pracovného priestoru.",
     restricted: { title: "Prístup obmedzený", body: "Vaša skúšobná verzia alebo predplatné skončilo. Vyberte plán a obnovte plný prístup. Vaše dáta sú v bezpečí a účty zostávajú pripojené." },
     pastDue: { title: "Platba zlyhala", body: "Poslednú platbu sa nepodarilo spracovať. Aktualizujte platobnú metódu, aby ste si zachovali plný prístup." },
@@ -165,7 +165,7 @@ const C: Record<Locale, Copy> = {
     cancelsAt: (d) => `Kündigt am ${d}`, perMonth: "/Mon", perYear: "/Jahr",
     custom: "Individuell", ownerOnlyShort: "Nur Inhaber", mostPopular: "Am beliebtesten",
     checkoutUnavailable: "Checkout vorübergehend nicht verfügbar", contactSupport: "Support kontaktieren",
-    continueToPayment: "Weiter zur Zahlung", checkoutPending: "Weiterleiten…", comingSoon: "Diese Option ist bald verfügbar.",
+    continueToPayment: "Tarif wählen", checkoutPending: "Weiterleiten…", comingSoon: "Bald verfügbar",
     ownerOnly: "Nur der Workspace-Inhaber kann den Tarif ändern.",
     restricted: { title: "Zugriff eingeschränkt", body: "Ihre Testphase oder Ihr Abo ist beendet. Wählen Sie einen Tarif, um den vollen Zugriff wiederherzustellen. Ihre Daten sind sicher und Ihre Konten bleiben verbunden." },
     pastDue: { title: "Zahlung fehlgeschlagen", body: "Ihre letzte Zahlung konnte nicht verarbeitet werden. Bitte aktualisieren Sie Ihre Zahlungsmethode." },
@@ -262,7 +262,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const invoiceLabel = sub?.latestInvoiceStatus ? (c.invoiceLabels[sub.latestInvoiceStatus] ?? sub.latestInvoiceStatus) : null;
 
   const btnBase = "block w-full rounded-xl px-4 py-2.5 text-center text-sm font-semibold transition motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)]";
-  const btnPrimary = `${btnBase} bg-[var(--color-brand)] text-[var(--color-brand-fg)] shadow-sm hover:bg-[var(--color-brand-strong)] hover:shadow-md`;
+  // V1.57.4B — primary conversion CTA (the eye-catching action). Full Tamanor green, white text,
+  // medium shadow, rounded-xl, weight 600, hover-darken + lift, pressed state, smooth transition,
+  // cursor-pointer, disabled state, keyboard focus ring. inline-flex to seat the icon + label.
+  const btnCheckout = "inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] bg-[var(--color-brand)] shadow-md transition-all duration-200 motion-reduce:transition-none hover:bg-[var(--color-brand-strong)] hover:shadow-lg active:translate-y-px active:shadow-md disabled:cursor-not-allowed disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)]";
   const btnOutline = `${btnBase} border border-[var(--color-border-strong)] hover:bg-[var(--color-surface-2)]`;
   const btnDisabled = `${btnBase} cursor-not-allowed border border-[var(--color-border)] text-[var(--color-muted)]`;
 
@@ -392,19 +395,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                         <form action={startCheckout}>
                           <input type="hidden" name="plan" value={planId} />
                           <input type="hidden" name="interval" value={interval} />
-                          <CheckoutButton className={highlighted ? btnPrimary : btnOutline} label={c.continueToPayment} pendingLabel={c.checkoutPending} />
+                          <CheckoutButton className={btnCheckout} label={c.continueToPayment} pendingLabel={c.checkoutPending} />
                         </form>
                       );
                     case "checkout_unavailable":
-                      // This exact (plan, interval) isn't purchasable yet → a SMALL, truthful state
-                      // (not a big fake disabled checkout button, and never a /contact redirect). A
-                      // missing Growth Price never disables Starter or Agency.
-                      return (
-                        <div className="space-y-1.5">
-                          <p className="text-center text-sm text-[var(--color-muted)]">{c.comingSoon}</p>
-                          <Link href="/contact" className="block text-center text-xs font-medium text-[var(--color-muted)] underline underline-offset-2 transition-colors motion-reduce:transition-none hover:text-[var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]">{c.contactSupport}</Link>
-                        </div>
-                      );
+                      // This exact (plan, interval) isn't purchasable yet → a SMALL, truthful helper
+                      // line (not a big fake disabled button, no grey rectangle, no /contact redirect).
+                      // A missing Growth Price never disables Starter or Agency.
+                      return <p className="text-center text-xs font-medium text-[var(--color-muted)]">{c.comingSoon}</p>;
                     default:
                       return <span className={btnDisabled} aria-disabled="true" title={c.ownerOnly}>{c.ownerOnlyShort}</span>;
                   }
