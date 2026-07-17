@@ -6,6 +6,7 @@
  */
 import { checkRlsRuntime, validateRuntimeDbConfig, tokenStorageStatus } from "@guardora/db";
 import { emitOpsEvent, stripeBillingReadiness } from "@guardora/core";
+import { validateSessionConfig } from "@guardora/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,11 @@ export async function GET() {
   // 5) Session config present.
   const sessionOk = Boolean((process.env.AUTH_SECRET ?? "").trim()) || !isProd;
   checks.push({ name: "session_config", status: sessionOk ? "healthy" : "misconfigured" });
+
+  // 5b) V1.58.9 — session lifetime policy must be valid & consistent (idle<absolute≤remember, positive).
+  //     Fail-closed: an invalid timeout config makes readiness misconfigured (no secret value revealed).
+  const sessionLifetime = validateSessionConfig();
+  checks.push({ name: "session_lifetime", status: sessionLifetime.ok ? "healthy" : "misconfigured" });
 
   // 6) V1.51 — email link base URL. Transactional emails (verify/reset) embed one-time links built
   //    from APP_BASE_URL; in production it MUST be an absolute https origin (never a preview URL or a

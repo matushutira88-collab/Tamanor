@@ -153,6 +153,15 @@ const EnvSchema = z.object({
     .enum(["plaintext", "aes-gcm", "kms"])
     .default("plaintext"),
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
+
+  // V1.58.9 — session lifetime policy. Idle = server-enforced inactivity logout; absolute = hard
+  // ceiling a session can live regardless of activity; remember-me = the longer absolute ceiling for
+  // a persistent login; touch interval = how often the activity marker is written (throttled). The
+  // INVARIANT idle < absolute ≤ remember is enforced by validateSessionConfig (fail-closed).
+  SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(30),
+  SESSION_ABSOLUTE_TIMEOUT_HOURS: z.coerce.number().int().positive().default(24),
+  SESSION_REMEMBER_ME_DAYS: z.coerce.number().int().positive().default(30),
+  SESSION_ACTIVITY_TOUCH_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
 });
 
 export type GuardoraEnv = z.infer<typeof EnvSchema>;
@@ -197,6 +206,56 @@ export function getWorkerRuntimeConfig(source: NodeJS.ProcessEnv = process.env):
     heartbeatMs: env.SYNC_LEASE_HEARTBEAT_MS,
     shutdownGraceMs: env.WORKER_SHUTDOWN_GRACE_MS,
   };
+}
+
+/**
+ * V1.58.9 — resolved session lifetime policy (ms). Read DIRECTLY from `source` (never the globally
+ * cached loadEnv) so the config validator + tests can inject env per-call. The invariant idle < absolute
+ * ≤ remember is enforced by {@link validateSessionConfig}, not here.
+ */
+export interface SessionConfig {
+  idleMs: number;
+  absoluteMs: number;
+  rememberMs: number;
+  touchMs: number;
+}
+const SessionSchema = z.object({
+  SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(30),
+  SESSION_ABSOLUTE_TIMEOUT_HOURS: z.coerce.number().int().positive().default(24),
+  SESSION_REMEMBER_ME_DAYS: z.coerce.number().int().positive().default(30),
+  SESSION_ACTIVITY_TOUCH_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
+});
+export function getSessionConfig(source: NodeJS.ProcessEnv = process.env): SessionConfig {
+  const env = SessionSchema.parse(source);
+  return {
+    idleMs: env.SESSION_IDLE_TIMEOUT_MINUTES * 60_000,
+    absoluteMs: env.SESSION_ABSOLUTE_TIMEOUT_HOURS * 3_600_000,
+    rememberMs: env.SESSION_REMEMBER_ME_DAYS * 86_400_000,
+    touchMs: env.SESSION_ACTIVITY_TOUCH_INTERVAL_SECONDS * 1_000,
+  };
+}
+
+/**
+ * FAIL-CLOSED validation of the session lifetime policy. Errors carry only the variable NAME + reason
+ * (never a value). Raw env is parsed directly so a non-positive/garbage value is caught, not silently
+ * defaulted. Used by readiness + the auth config test.
+ */
+export function validateSessionConfig(source: NodeJS.ProcessEnv = process.env): { ok: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const posInt = (key: string) => {
+    const raw = source[key];
+    if (raw === undefined || raw === "") return; // unset ⇒ valid default
+    const n = Number(raw);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) errors.push(`${key} must be a positive integer.`);
+  };
+  for (const k of ["SESSION_IDLE_TIMEOUT_MINUTES", "SESSION_ABSOLUTE_TIMEOUT_HOURS", "SESSION_REMEMBER_ME_DAYS", "SESSION_ACTIVITY_TOUCH_INTERVAL_SECONDS"]) posInt(k);
+  if (errors.length === 0) {
+    const c = getSessionConfig(source);
+    if (c.idleMs >= c.absoluteMs) errors.push("SESSION_IDLE_TIMEOUT_MINUTES must be less than SESSION_ABSOLUTE_TIMEOUT_HOURS.");
+    if (c.absoluteMs > c.rememberMs) errors.push("SESSION_ABSOLUTE_TIMEOUT_HOURS must be at most SESSION_REMEMBER_ME_DAYS.");
+    if (c.touchMs >= c.idleMs) errors.push("SESSION_ACTIVITY_TOUCH_INTERVAL_SECONDS must be less than the idle timeout.");
+  }
+  return { ok: errors.length === 0, errors };
 }
 
 /** Automatic read-only sync configuration for UI + worker. */

@@ -73,6 +73,14 @@ export type OpsEvent =
   | "auth.verification_failed"
   | "auth.password_reset_failed"
   | "auth.token_cleanup_failed"
+  // V1.58.9 — session lifecycle audit (never carry password, session/reset/verification token, or cookie).
+  | "auth.login_succeeded"
+  | "auth.login_failed"
+  | "auth.logout"
+  | "auth.session_expired_idle"
+  | "auth.session_expired_absolute"
+  | "auth.session_rotated"
+  | "auth.session_revoked"
   // V1.51B — Google Workspace transactional email transport (never carry recipient, credential,
   // access/refresh token, body, action URL, raw Gmail response, or Google project/client id).
   | "email.send_succeeded"

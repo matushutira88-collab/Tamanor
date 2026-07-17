@@ -137,7 +137,9 @@
     "worker-shutdown:test": "pnpm --filter @guardora/worker exec tsx scripts/worker-shutdown.test.ts",
     "sync-fencing:test": "bash packages/db/scripts/run-sync-fencing.sh",
     "cron-auth:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/cron-auth.test.ts",
-    "job-checkpoint:test": "bash packages/db/scripts/run-job-checkpoint.sh"
+    "job-checkpoint:test": "bash packages/db/scripts/run-job-checkpoint.sh",
+    "auth-config:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auth-config.test.ts",
+    "auth-session-timeout:test": "bash packages/db/scripts/run-auth-session-timeout.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

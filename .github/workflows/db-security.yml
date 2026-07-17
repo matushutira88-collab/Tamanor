@@ -48,6 +48,9 @@ jobs:
       - name: Internal Cron endpoint auth (fail-closed, pure)
         run: pnpm cron-auth:test
 
+      - name: Session lifetime config validation (fail-closed, pure)
+        run: pnpm auth-config:test
+
       # Real-Postgres integration gates (each provisions its own throwaway container).
       - name: RLS & DB security (grant audit, NULL-context, cross-tenant, context leakage, role attrs)
         run: pnpm rls-security:test
@@ -57,6 +60,9 @@ jobs:
 
       - name: Vercel-native dispatcher + budgeted sync job checkpoint/resume (real Postgres)
         run: pnpm job-checkpoint:test
+
+      - name: Server-enforced session lifetime — idle/absolute/remember/rotation (real Postgres)
+        run: pnpm auth-session-timeout:test
 
       - name: Webhook out-of-order ordering guard
         run: pnpm webhook-ordering:test

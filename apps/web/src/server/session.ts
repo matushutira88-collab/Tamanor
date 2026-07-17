@@ -3,9 +3,11 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { metrics } from "@guardora/core";
 import type { ResolvedSession } from "@guardora/db";
+import type { SessionRejectReason } from "@guardora/db";
 import {
   SESSION_COOKIE,
   readSessionFromJar,
+  readSessionResultFromJar,
   startSessionInJar,
   endSessionInJar,
   switchActiveTenantInJar,
@@ -30,9 +32,10 @@ async function jar(): Promise<CookieJar> {
   return (await cookies()) as unknown as CookieJar;
 }
 
-/** Create a session for a user (bootstrap/login) and set the cookie. Mutation-safe entry point. */
-export async function startSession(userId: string, activeTenantId?: string): Promise<ResolvedSession> {
-  return startSessionInJar(await jar(), userId, activeTenantId);
+/** Create a session for a user (bootstrap/login) and set the cookie. Mutation-safe entry point.
+ *  V1.58.9 — `rememberMe` selects the longer persistent absolute ceiling + cookie Max-Age. */
+export async function startSession(userId: string, activeTenantId?: string, rememberMe = false): Promise<ResolvedSession> {
+  return startSessionInJar(await jar(), userId, activeTenantId, rememberMe);
 }
 
 /**
@@ -56,6 +59,16 @@ export function readSession(): Promise<ResolvedSession | null> {
   metrics.inc("session_cache_miss");
   holder.promise = (async () => readSessionFromJar(await jar()))();
   return holder.promise;
+}
+
+/**
+ * V1.58.9 — the reason the current cookie failed to resolve (READ-ONLY). Used by /login to show a
+ * truthful "logged out due to inactivity / session expired" message. Returns null when a valid session
+ * exists or no token is present.
+ */
+export async function readSessionReason(): Promise<SessionRejectReason | null> {
+  const { reason } = await readSessionResultFromJar(await jar());
+  return reason;
 }
 
 /** Server-side logout: revoke the DB session AND clear both cookies. Mutation-safe entry point. */

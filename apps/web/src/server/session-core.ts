@@ -1,7 +1,9 @@
 import {
   createUserSession, readUserSession, revokeUserSession, rotateUserSession,
-  SESSION_TTL_MS, type ResolvedSession,
+  type ResolvedSession, type SessionRejectReason,
 } from "@guardora/db";
+import { getSessionConfig } from "@guardora/config";
+import { emitOpsEvent } from "@guardora/core";
 
 /**
  * V1.37.1/V1.37.3D — cookie-jar logic for the DB-backed session, decoupled from
@@ -26,13 +28,20 @@ export interface CookieJar {
   delete(name: string): void;
 }
 
-export function cookieOptions() {
+/**
+ * V1.58.9 — the cookie Max-Age tracks the session's ABSOLUTE ceiling: the longer remember-me ceiling
+ * for a persistent login, the shorter absolute ceiling otherwise. The server still enforces the idle
+ * timeout independently — the cookie lifetime is only the outer bound the browser will retain it.
+ */
+export function cookieOptions(rememberMe = false) {
+  const cfg = getSessionConfig();
+  const ceilingMs = rememberMe ? cfg.rememberMs : cfg.absoluteMs;
   return {
     httpOnly: true,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    maxAge: Math.floor(ceilingMs / 1000),
   };
 }
 
@@ -58,10 +67,29 @@ export async function readSessionFromJar(jar: CookieJar): Promise<ResolvedSessio
   return result.session;
 }
 
+/**
+ * V1.58.9 — like {@link readSessionFromJar} but surfaces the REJECT REASON (READ-ONLY, no mutation).
+ * Used to show a truthful "logged out due to inactivity / session expired" message on redirect to
+ * /login. `null` reason means no token was present (never authenticated).
+ */
+export async function readSessionResultFromJar(jar: CookieJar): Promise<{ session: ResolvedSession | null; reason: SessionRejectReason | null }> {
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) return { session: null, reason: null };
+  const result = await readUserSession(token);
+  if (!result.ok || !result.session) {
+    const reason = result.reason ?? "unauthenticated";
+    // Audit ONLY the security-relevant lifetime rejections (not an ordinary "no token" render).
+    if (reason === "session_expired_idle") emitOpsEvent("auth.session_expired_idle", { reason });
+    else if (reason === "session_expired_absolute") emitOpsEvent("auth.session_expired_absolute", { reason });
+    return { session: null, reason };
+  }
+  return { session: result.session, reason: null };
+}
+
 /** Create a session (bootstrap/login) and set the cookie; clears the legacy cookie. */
-export async function startSessionInJar(jar: CookieJar, userId: string, activeTenantId?: string): Promise<ResolvedSession> {
-  const { token, session } = await createUserSession({ userId, activeTenantId });
-  jar.set(SESSION_COOKIE, token, cookieOptions());
+export async function startSessionInJar(jar: CookieJar, userId: string, activeTenantId?: string, rememberMe = false): Promise<ResolvedSession> {
+  const { token, session } = await createUserSession({ userId, activeTenantId, rememberMe });
+  jar.set(SESSION_COOKIE, token, cookieOptions(rememberMe));
   clearLegacyInJar(jar);
   return session;
 }
@@ -72,6 +100,7 @@ export async function endSessionInJar(jar: CookieJar): Promise<void> {
   await revokeUserSession(token);
   jar.delete(SESSION_COOKIE);
   clearLegacyInJar(jar);
+  emitOpsEvent("auth.logout", {});
 }
 
 /** Switch the active tenant (membership re-checked server-side), rotate the token, clear legacy. */
@@ -79,7 +108,8 @@ export async function switchActiveTenantInJar(jar: CookieJar, tenantId: string):
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) throw new Error("switchActiveTenant: no session");
   const { token: next, session } = await rotateUserSession(token, { activeTenantId: tenantId });
-  jar.set(SESSION_COOKIE, next, cookieOptions());
+  jar.set(SESSION_COOKIE, next, cookieOptions(session.rememberMe));
   clearLegacyInJar(jar);
+  emitOpsEvent("auth.session_rotated", { operation: "tenant_switch" });
   return session;
 }

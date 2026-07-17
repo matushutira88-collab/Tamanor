@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Logo } from "@/components/logo";
 import { listDevLoginUsers } from "@guardora/db";
 import { getSession } from "@/server/auth";
+import { readSessionReason } from "@/server/session";
 import { signInAs } from "@/server/session-actions";
 import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 type Copy = {
   title: string; subtitle: string;
-  email: string; password: string; forgot: string; submit: string;
+  email: string; password: string; forgot: string; submit: string; rememberMe: string;
   or: string; google: string; facebook: string;
   noAccount: string; startFree: string;
   devTitle: string; devIntro: string; noUsers: (cmd: string) => string; mockNote: string;
@@ -25,16 +26,16 @@ type Copy = {
 };
 
 const NOTICES = {
-  en: { verified: "Email verified — please log in.", reset: "Password updated — please log in with your new password." },
-  sk: { verified: "E-mail overený — prihláste sa.", reset: "Heslo zmenené — prihláste sa novým heslom." },
-  de: { verified: "E-Mail bestätigt — bitte anmelden.", reset: "Passwort aktualisiert — bitte mit dem neuen Passwort anmelden." },
+  en: { verified: "Email verified — please log in.", reset: "Password updated — please log in with your new password.", idle: "You were logged out due to inactivity.", expired: "Your session expired — please log in again." },
+  sk: { verified: "E-mail overený — prihláste sa.", reset: "Heslo zmenené — prihláste sa novým heslom.", idle: "Boli ste odhlásený z dôvodu nečinnosti.", expired: "Vaša relácia vypršala — prihláste sa znova." },
+  de: { verified: "E-Mail bestätigt — bitte anmelden.", reset: "Passwort aktualisiert — bitte mit dem neuen Passwort anmelden.", idle: "Sie wurden wegen Inaktivität abgemeldet.", expired: "Ihre Sitzung ist abgelaufen — bitte erneut anmelden." },
 } as const;
 
 const COPY: Record<Locale, Copy> = {
   en: {
     title: "Log in", subtitle: "Welcome back to Tamanor.",
     email: "Work email", password: "Password", forgot: "Forgot password?",
-    submit: "Log in", or: "or", google: "Continue with Google", facebook: "Continue with Facebook",
+    submit: "Log in", rememberMe: "Keep me signed in", or: "or", google: "Continue with Google", facebook: "Continue with Facebook",
     noAccount: "New to Tamanor?", startFree: "Start for free",
     devTitle: "Developer sign-in", devIntro: "Local development only — choose a workspace user to continue.",
     noUsers: (cmd) => `No users yet. Run ${cmd} to create the dev workspace.`,
@@ -51,7 +52,7 @@ const COPY: Record<Locale, Copy> = {
   sk: {
     title: "Prihlásenie", subtitle: "Vitajte späť v Tamanore.",
     email: "Pracovný e-mail", password: "Heslo", forgot: "Zabudli ste heslo?",
-    submit: "Prihlásiť sa", or: "alebo", google: "Pokračovať cez Google", facebook: "Pokračovať cez Facebook",
+    submit: "Prihlásiť sa", rememberMe: "Zapamätať si ma", or: "alebo", google: "Pokračovať cez Google", facebook: "Pokračovať cez Facebook",
     noAccount: "Ste v Tamanore noví?", startFree: "Začať zdarma",
     devTitle: "Vývojové prihlásenie", devIntro: "Iba pre lokálny vývoj — pokračujte výberom používateľa.",
     noUsers: (cmd) => `Zatiaľ žiadni používatelia. Spustite ${cmd} na vytvorenie vývojového workspace.`,
@@ -68,7 +69,7 @@ const COPY: Record<Locale, Copy> = {
   de: {
     title: "Anmelden", subtitle: "Willkommen zurück bei Tamanor.",
     email: "Geschäftliche E-Mail", password: "Passwort", forgot: "Passwort vergessen?",
-    submit: "Anmelden", or: "oder", google: "Mit Google fortfahren", facebook: "Mit Facebook fortfahren",
+    submit: "Anmelden", rememberMe: "Angemeldet bleiben", or: "oder", google: "Mit Google fortfahren", facebook: "Mit Facebook fortfahren",
     noAccount: "Neu bei Tamanor?", startFree: "Kostenlos starten",
     devTitle: "Entwickler-Anmeldung", devIntro: "Nur lokale Entwicklung — wählen Sie einen Benutzer, um fortzufahren.",
     noUsers: (cmd) => `Noch keine Benutzer. Führen Sie ${cmd} aus, um den Entwicklungs-Workspace zu erstellen.`,
@@ -92,7 +93,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const c = COPY[await getLocale()];
   const sp = await searchParams;
   const errorMsg = sp.error ? c.errors[sp.error] ?? c.errors.server_error : null;
-  const noticeMsg = sp.reset ? c.notices.reset : sp.verified ? c.notices.verified : null;
+  // V1.58.9 — surface a truthful reason when a session was just ended by idle/absolute timeout.
+  const reason = errorMsg ? null : await readSessionReason();
+  const timeoutMsg = reason === "session_expired_idle" ? c.notices.idle
+    : reason === "session_expired_absolute" || reason === "session_expired" ? c.notices.expired
+    : null;
+  const noticeMsg = sp.reset ? c.notices.reset : sp.verified ? c.notices.verified : timeoutMsg;
 
   // The dev sign-in picker is fail-closed OFF in production; it lists real users and
   // the signInAs action itself is disabled in production. Real credential login (above)
@@ -131,6 +137,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               </div>
               <input id="password" name="password" type="password" required autoComplete="current-password" className={field} />
             </div>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
+              <input type="checkbox" name="rememberMe" value="on" className="h-4 w-4 rounded border-[var(--color-border)] accent-[var(--color-brand)]" />
+              {c.rememberMe}
+            </label>
             <button type="submit" className="w-full rounded-xl bg-[var(--color-brand)] px-4 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
               {c.submit}
             </button>

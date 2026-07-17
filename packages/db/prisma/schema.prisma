@@ -318,6 +318,11 @@ model UserSession {
   activeTenantId String
   createdAt      DateTime  @default(now())
   expiresAt      DateTime
+  // V1.58.9 — hard ceiling a session can live regardless of activity (idle sliding never passes it).
+  // NULLABLE for backward compatibility: pre-migration sessions have NULL and keep their `expiresAt`.
+  absoluteExpiresAt DateTime?
+  // V1.58.9 — persistent ("remember me") login → the longer absolute ceiling (SESSION_REMEMBER_ME_DAYS).
+  rememberMe     Boolean   @default(false)
   lastSeenAt     DateTime  @default(now())
   revokedAt      DateTime?
   rotatedFromId  String?

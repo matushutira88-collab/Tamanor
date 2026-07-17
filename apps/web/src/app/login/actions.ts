@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { findUserForLogin, verifyPassword, normalizeEmail, DUMMY_PASSWORD_HASH } from "@guardora/db";
-import { metrics } from "@guardora/core";
+import { metrics, emitOpsEvent } from "@guardora/core";
 import { authLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 import { startSession } from "@/server/session";
 import { isSameOrigin } from "@/server/csrf";
@@ -30,6 +30,8 @@ export async function loginAction(formData: FormData): Promise<void> {
 
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  // V1.58.9 — "remember me": a persistent login gets the longer absolute ceiling (server-enforced).
+  const rememberMe = ["on", "true", "1"].includes(String(formData.get("rememberMe") ?? "").toLowerCase());
 
   if (!EMAIL_RE.test(email) || !password) fail("invalid_credentials");
   if (!(await authLimiter.check(`email:${normalizeEmail(email)}`)).allowed) {
@@ -45,18 +47,23 @@ export async function loginAction(formData: FormData): Promise<void> {
   if (!user || !user.passwordHash) {
     await verifyPassword(DUMMY_PASSWORD_HASH, password);
     metrics.inc("auth_login_total", { operation: "login", result: "denied" });
+    emitOpsEvent("auth.login_failed", { operation: "login", reason: "invalid_credentials" });
     fail("invalid_credentials");
     return;
   }
 
   if (!(await verifyPassword(user.passwordHash, password))) {
     metrics.inc("auth_login_total", { operation: "login", result: "denied" });
+    emitOpsEvent("auth.login_failed", { operation: "login", reason: "invalid_credentials" });
     fail("invalid_credentials");
     return;
   }
 
-  const session = await startSession(user.id); // opaque DB session; fail-closed on missing membership
+  // V1.58.9 — a fresh server-minted token per login (never accepts a client token pre-auth) is the
+  // session-fixation defense; rememberMe selects the persistent ceiling.
+  const session = await startSession(user.id, undefined, rememberMe);
   metrics.inc("auth_login_total", { operation: "login", result: "ok" });
+  emitOpsEvent("auth.login_succeeded", { operation: "login", result: rememberMe ? "remember" : "session" });
   // V1.50C — an unverified email/password user goes to the verification-required screen.
   redirect(session.emailVerified ? "/dashboard" : "/verify-email");
 }
