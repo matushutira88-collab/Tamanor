@@ -1,9 +1,10 @@
-import { type NextRequest } from "next/server";
+import { type NextRequest, after } from "next/server";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import { getMetaConfig, isPreviewDeployment } from "@guardora/config";
 import { emitOpsEvent, metrics, Platform } from "@guardora/core";
 import { recordWebhookEvent } from "@guardora/db";
+import { processPendingWebhookEvents } from "@guardora/sync";
 
 import { webhookLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 
@@ -19,6 +20,8 @@ function platformForObject(object: string | null): Platform {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// V1.63 — give the post-ACK `after()` drain a real budget (still returns 200 immediately).
+export const maxDuration = 60;
 
 /**
  * Meta webhook verification (GET). Echoes hub.challenge only when hub.mode is
@@ -123,6 +126,22 @@ export async function POST(req: NextRequest) {
     processed: false,
     dedupeKey,
   });
+
+  // V1.63 — NEAR-REAL-TIME: drain the just-recorded event now via `after()` (runs after this 200 ACK,
+  // so Meta still gets an instant response) instead of waiting up to a full webhook-retry cron tick.
+  // Only for signature-valid events. `processPendingWebhookEvents` is internally gated by
+  // META_WEBHOOK_SYNC (no-op when off) and every per-account sync is lease-guarded + idempotent, so a
+  // burst of webhooks (and the cron backstop) can never double-sync. Any transient failure just falls
+  // back to the next webhook-retry cron.
+  if (signatureValid) {
+    after(async () => {
+      try {
+        await processPendingWebhookEvents();
+      } catch {
+        /* transient — the webhook-retry Cron drains it on the next tick */
+      }
+    });
+  }
 
   return new Response("EVENT_RECEIVED", { status: 200 });
 }
