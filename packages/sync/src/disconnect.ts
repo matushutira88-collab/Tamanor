@@ -181,6 +181,10 @@ export async function disconnectAccount(
     tokenExpiresAt: null,
     status: "disconnected" as never,
     connectionStatus: "disconnected",
+    // V1.60 — disconnect frees the monitored slot AND clears the monitoring flag, so a later reconnect
+    // never silently re-arms monitoring past a (possibly shrunk) plan limit. The user re-enables through
+    // the atomic gate on reconnect. Protection config (mode/threshold/categories) is preserved.
+    monitoringEnabled: false,
     // Clear any stale health so the row can never read "disconnected" + "healthy".
     health: "unknown" as never,
     tokenHealth: revoke === "revoked" ? "revoked" : "invalid",

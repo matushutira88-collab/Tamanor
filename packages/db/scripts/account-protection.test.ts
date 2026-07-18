@@ -9,6 +9,7 @@ import {
   resolveAccountProtection, getAccountProtection, updateAccountProtection, resetAccountProtectionToDefault,
   setAccountMonitoring, updateTenantProtectionDefaults, countMonitoredAccounts, previewMonitoredAccountLimit,
   enableAccountMonitoringWithinLimit, clampAutoHideMinConfidence, canAccountUseAutomatic,
+  reconcileMonitoredAccountsToPlan,
 } from "@guardora/db";
 
 let failures = 0;
@@ -30,7 +31,7 @@ async function run() {
       externalId: `AP_${tag}_${sfx}`, pageId: platform === "facebook_page" ? `AP_${tag}_${sfx}` : null,
       parentAccountId: parentId ?? null, monitoringEnabled: monitoring, health: "healthy",
     } });
-  const A = await mkTenant("a"); const B = await mkTenant("b");
+  const A = await mkTenant("a"); const B = await mkTenant("b"); const C = await mkTenant("c");
 
   try {
     // -------------------------------------------------------------------------
@@ -122,12 +123,53 @@ async function run() {
       after3?.overridden === false && after3?.effective.autoHideMode === before3?.effective.autoHideMode);
 
     // -------------------------------------------------------------------------
+    console.log("V1.60 (3) — downgrade reconciliation (deterministic: keep the oldest)");
+    // New tenant defaults to free_trial (schema default fix; not the phantom "free").
+    const fresh = await systemDb.tenant.create({ data: { name: "Fresh", slug: `fresh-${sfx}` } });
+    check("new tenant defaults to free_trial", fresh.plan === "free_trial");
+    await systemDb.tenant.delete({ where: { id: fresh.id } });
+
+    await systemDb.tenant.update({ where: { id: C.t.id }, data: { plan: "growth" } }); // limit 3
+    const t0 = new Date("2026-01-01T00:00:00Z");
+    const cAccs: { id: string }[] = [];
+    for (let i = 0; i < 3; i++) {
+      cAccs.push(await systemDb.connectedAccount.create({ data: {
+        tenantId: C.t.id, brandId: C.b.id, platform: "facebook_page" as never, status: "active", mode: "read_only",
+        externalId: `RC_${i}_${sfx}`, pageId: `RC_${i}_${sfx}`, monitoringEnabled: true, health: "healthy",
+        createdAt: new Date(t0.getTime() + i * 60_000), protectionOverridden: true, autoHideEnabled: true, autoHideMode: "automatic",
+      } }));
+    }
+    const cMon = () => withTenant(C.t.id, (tx) => countMonitoredAccounts(tx, C.t.id));
+    const r0 = await reconcileMonitoredAccountsToPlan(C.t.id);
+    check("growth (limit 3) with 3 monitored → no change", r0.disabledCount === 0 && (await cMon()) === 3);
+
+    await systemDb.tenant.update({ where: { id: C.t.id }, data: { plan: "starter" } }); // limit 1
+    const r1 = await reconcileMonitoredAccountsToPlan(C.t.id);
+    check("downgrade 3 → 1 keeps exactly ONE monitored", r1.disabledCount === 2 && (await cMon()) === 1);
+    const keptId = (await systemDb.connectedAccount.findMany({ where: { tenantId: C.t.id, monitoringEnabled: true }, select: { id: true } }));
+    check("the KEPT account is the OLDEST (deterministic createdAt, id tiebreak)", keptId.length === 1 && keptId[0]!.id === cAccs[0]!.id);
+
+    const r2 = await reconcileMonitoredAccountsToPlan(C.t.id);
+    check("repeat reconciliation is a no-op (idempotent / late-webhook safe)", r2.disabledCount === 0 && (await cMon()) === 1);
+
+    const allC = await systemDb.connectedAccount.findMany({ where: { tenantId: C.t.id }, select: { status: true, monitoringEnabled: true, autoHideMode: true } });
+    check("no account disconnected or deleted (all 3 present + active)", allC.length === 3 && allC.every((a) => a.status === "active"));
+    check("protection settings preserved on the disabled accounts", allC.filter((a) => !a.monitoringEnabled).every((a) => a.autoHideMode === "automatic"));
+
+    // Unknown plan → fail-closed (MINIMAL limit 0) → all monitoring reconciled off.
+    await systemDb.tenant.update({ where: { id: C.t.id }, data: { plan: "free" } });
+    await reconcileMonitoredAccountsToPlan(C.t.id);
+    check("unknown plan (fail-closed limit 0) → all monitoring disabled", (await cMon()) === 0);
+    check("even at limit 0 nothing is disconnected/deleted", (await systemDb.connectedAccount.count({ where: { tenantId: C.t.id, status: "active" } })) === 3);
+
+    // -------------------------------------------------------------------------
     console.log("Cross-tenant denial (RLS)");
     check("tenant B cannot read tenant A's account protection", (await getAccountProtection(B.t.id, fb.id)) === null);
     check("tenant B cannot update tenant A's account protection", (await updateAccountProtection(B.t.id, fb.id, { autoHideEnabled: true })) === 0);
     check("tenant B cannot toggle tenant A's monitoring", (await setAccountMonitoring(B.t.id, fb.id, false)) === 0);
   } finally {
-    for (const X of [A, B]) {
+    for (const X of [A, B, C]) {
+      await systemDb.auditLog.deleteMany({ where: { tenantId: X.t.id } });
       await systemDb.connectedAccount.deleteMany({ where: { tenantId: X.t.id } });
       await systemDb.brand.deleteMany({ where: { tenantId: X.t.id } });
       await systemDb.tenant.deleteMany({ where: { id: X.t.id } });

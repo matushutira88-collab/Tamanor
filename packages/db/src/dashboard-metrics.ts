@@ -177,6 +177,8 @@ export type ConnectionStatusView = "connected" | "reconnect_required" | "permiss
 
 export interface DashboardAccountRow {
   id: string;
+  /** Owning brand — needed for the reconnect deep-link (/api/connectors/meta/start?brandId=&accountId=). */
+  brandId: string;
   platform: string;
   name: string | null;
   username: string | null;
@@ -246,7 +248,7 @@ export async function getDashboardAccountsOverview(tenantId: string, now: Date =
       db.connectedAccount.findMany({
         where: { tenantId, status: { not: "disconnected" } },
         select: {
-          id: true, platform: true, externalName: true, externalId: true, status: true, health: true, mode: true, grantedPermissions: true,
+          id: true, brandId: true, platform: true, externalName: true, externalId: true, status: true, health: true, mode: true, grantedPermissions: true,
           connectionStatus: true, tokenHealth: true, monitoringEnabled: true, lastSuccessfulSyncAt: true, lastSyncedAt: true, parentAccountId: true,
         },
       }),
@@ -262,7 +264,7 @@ export async function getDashboardAccountsOverview(tenantId: string, now: Date =
       const cs = connectionStatusOf({ status: a.status as unknown as string, health: a.health as unknown as string, connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth, lastAttemptAt: a.lastSyncedAt });
       const kind = accountKindOf({ status: a.status as unknown as string, mode: a.mode as unknown as string, grantedPermissions: a.grantedPermissions });
       return {
-        id: a.id, platform: a.platform as unknown as string, name: a.externalName, username: a.platform as unknown as string === "instagram_business" ? a.externalName : null,
+        id: a.id, brandId: a.brandId, platform: a.platform as unknown as string, name: a.externalName, username: a.platform as unknown as string === "instagram_business" ? a.externalName : null,
         avatarUrl: null, followersCount: null, monitoringEnabled: a.monitoringEnabled,
         monitoringCanBeEnabled: a.monitoringEnabled || remaining > 0,
         connectionStatus: cs, reconnectRequired: cs === "reconnect_required" || cs === "permissions_expired",

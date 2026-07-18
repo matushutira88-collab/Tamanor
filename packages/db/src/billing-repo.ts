@@ -2,9 +2,14 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import {
   resolveAccessState, resolveEntitlements, accessAllowsOperations, evaluateCheckoutGuard,
+  isBillingPlanId, emitOpsEvent,
   type AccessState, type BillingStatus, type PlanEntitlements, type CheckoutGuardReason,
 } from "@guardora/core";
 import { systemDb } from "./index";
+import { reconcileMonitoredAccountsToPlan } from "./account-protection";
+
+/** Legacy/internal plan strings that are recognised (not billed, never arrive via checkout/webhook). */
+const KNOWN_NON_BILLING_PLANS = new Set(["pro", "dev"]);
 
 /**
  * V1.50D — billing persistence. All writes are SYSTEM-scoped and driven ONLY by trusted Stripe
@@ -70,6 +75,11 @@ export async function getTenantEntitlements(tenantId: string): Promise<PlanEntit
     where: { id: tenantId },
     select: { plan: true, accessState: true, deletionState: true },
   });
+  // Fail-closed visibility: an unrecognised plan string still resolves to MINIMAL (0 accounts), but we
+  // surface it so a bad/legacy value doesn't silently lock a tenant out. pro/dev are known internal values.
+  if (t?.plan && !isBillingPlanId(t.plan) && !KNOWN_NON_BILLING_PLANS.has(t.plan)) {
+    emitOpsEvent("subscription.unknown_plan", { operation: "resolve_entitlements" });
+  }
   return resolveEntitlements(t?.plan, t?.accessState, { deletingTenant: !!t && t.deletionState !== "active" });
 }
 
@@ -390,6 +400,12 @@ export async function recordAndApplyStripeEvent(
         update: { result: applied ? "processed" : "stale", processedAt: now },
       });
     });
+    if (applied) {
+      // V1.60 — the plan is committed; right-size monitored accounts to the (possibly lower) plan.
+      // Idempotent + advisory-locked; non-fatal if it throws (a later event or the trial sweep reconciles),
+      // so we never make Stripe retry a plan change that already succeeded.
+      await reconcileMonitoredAccountsToPlan(tenantId).catch(() => emitOpsEvent("subscription.reconcile_failed", { operation: "webhook_apply" }));
+    }
     return applied
       ? { outcome: "processed", tenantId, accessState }
       : { outcome: "stale", tenantId, accessState: null };
@@ -442,6 +458,11 @@ export async function sweepTrialExpirations(now: Date = new Date(), batchSize = 
       data: { accessState: "restricted" },
     });
     restricted += r.count;
+    // V1.60 — a trial-expired tenant is now `restricted` → maxConnectedAccounts 0, so it is over-limit.
+    // Reconcile so monitoring is turned OFF (never disconnect/delete). Idempotent; non-fatal.
+    if (r.count > 0) {
+      await reconcileMonitoredAccountsToPlan(c.id).catch(() => emitOpsEvent("subscription.reconcile_failed", { operation: "trial_sweep" }));
+    }
   }
   return restricted;
 }

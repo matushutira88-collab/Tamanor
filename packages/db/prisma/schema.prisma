@@ -342,7 +342,10 @@ model Tenant {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
-  plan      String   @default("free")
+  // V1.60 — default is the real entry plan free_trial (was the phantom "free", which is not a
+  // BillingPlanId and resolved to MINIMAL). Registration already sets free_trial explicitly; this makes
+  // a tenant created without an explicit plan safe-by-default instead of an unknown-plan lockout.
+  plan      String   @default("free_trial")
   // V1.50A — self-service Free Trial. On registration: plan="free_trial" with a
   // 14-day window. Billing is out of scope (V1.50B+); these are informational only.
   trialStartsAt DateTime?

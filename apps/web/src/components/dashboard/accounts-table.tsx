@@ -97,7 +97,7 @@ function Actions({ row, c }: { row: DashboardAccountRow; c: (typeof T)[Locale] }
     <div className="flex flex-wrap items-center justify-end gap-1.5">
       <Link href={`/dashboard/comments?account=${row.id}`} className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-[11px] font-medium hover:border-[var(--color-brand)]">{c.view}</Link>
       <form action={runSyncAction.bind(null, row.id)}><button type="submit" className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-[11px] font-medium hover:border-[var(--color-brand)]">{c.sync}</button></form>
-      {row.reconnectRequired ? <a href="/api/connectors/meta/start" className="rounded-lg border border-[var(--color-warn)] px-2 py-1 text-[11px] font-medium text-[var(--color-warn)]">{c.reconnect}</a> : null}
+      {row.reconnectRequired ? <a href={`/api/connectors/meta/start?brandId=${row.brandId}&accountId=${row.id}`} className="rounded-lg border border-[var(--color-warn)] px-2 py-1 text-[11px] font-medium text-[var(--color-warn)]">{c.reconnect}</a> : null}
       <form action={disconnect.bind(null, row.id)}><button type="submit" className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-[11px] font-medium text-[var(--color-muted)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]">{c.disconnect}</button></form>
     </div>
   );

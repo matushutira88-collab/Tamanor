@@ -212,3 +212,47 @@ export async function enableAccountMonitoringWithinLimit(tenantId: string, accou
     await tx.connectedAccount.updateMany({ where: { id: accountId }, data: { monitoringEnabled: true } });
   });
 }
+
+export interface MonitoringReconcileResult {
+  limit: number;        // -1 = unlimited
+  monitoredBefore: number;
+  disabledCount: number;
+  disabledAccountIds: string[];
+}
+
+/**
+ * IDEMPOTENT downgrade reconciliation. After a plan change / trial expiry / entitlement loss, keep only
+ * the plan's allowed number of MONITORED accounts and turn monitoring OFF on the rest. Deterministic
+ * rule: keep the OLDEST monitored accounts (createdAt ASC, id ASC as a stable tiebreak); the NEWEST are
+ * disabled first. It NEVER disconnects, deletes, or touches tokens/history/protection config — only the
+ * monitoringEnabled flag. Safe to run repeatedly and on a late/duplicate webhook (a no-op once already
+ * within limit). Uses the SAME advisory lock as enable, so it can never race a concurrent enable past the
+ * limit. Unknown plans resolve to maxConnectedAccounts 0 (fail-closed) → all monitoring disabled.
+ * Blocking live execution for a plan without moderationExecution is handled by the autonomous gate
+ * (plan_denied); this only right-sizes the monitored set. Returns what changed (for audit + a future
+ * notification once that infrastructure exists).
+ */
+export async function reconcileMonitoredAccountsToPlan(tenantId: string): Promise<MonitoringReconcileResult> {
+  const ent = await getTenantEntitlements(tenantId);
+  const max = ent.maxConnectedAccounts; // null = unlimited
+  return withTenant(tenantId, async (tx) => {
+    await acquireTenantResourceLock(tx, tenantId, "connections");
+    const monitored = await tx.connectedAccount.findMany({
+      where: { tenantId, monitoringEnabled: true, status: { not: "disconnected" } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true },
+    });
+    const before = monitored.length;
+    if (max === null || before <= max) {
+      return { limit: max ?? -1, monitoredBefore: before, disabledCount: 0, disabledAccountIds: [] };
+    }
+    const disabledAccountIds = monitored.slice(max).map((a) => a.id); // keep the oldest `max`; disable the newest
+    await tx.connectedAccount.updateMany({ where: { id: { in: disabledAccountIds } }, data: { monitoringEnabled: false } });
+    await tx.auditLog.create({ data: {
+      tenantId, event: "subscription.monitoring_reconciled", actorKind: "system",
+      targetType: "tenant", targetId: tenantId,
+      metadata: { limit: max, monitoredBefore: before, disabled: disabledAccountIds.length, disabledAccountIds },
+    } });
+    return { limit: max, monitoredBefore: before, disabledCount: disabledAccountIds.length, disabledAccountIds };
+  });
+}
