@@ -121,14 +121,18 @@ function gate(ctx: HideContext, cfg: ReturnType<typeof getLiveActionsConfig>): {
   if (ctx.account.tokenExpiresAt && new Date(ctx.account.tokenExpiresAt).getTime() <= Date.now()) return { blockedReason: "token_expired" };
   if (ctx.account.health !== "healthy") return { blockedReason: "unhealthy_account" };
   if (!ctx.account.grantedPermissions.includes(FACEBOOK_HIDE_PERMISSION)) return { blockedReason: "missing_permission" };
-  // Hard safety floor: customer-voice categories are never auto-hidden.
-  if (NEVER_AUTONOMOUS.has(ctx.matchedCategory as never)) return { blockedReason: "safety_never_autonomous" };
-  if (!AUTONOMOUS_ELIGIBLE.has(ctx.matchedCategory as never)) return { blockedReason: "category_not_eligible" };
-  // Autonomous execution requires the ControlPolicy to be in autonomous mode.
-  if (ctx.trigger === "autonomous" && ctx.mode !== "autonomous") return { blockedReason: "policy_not_autonomous" };
-  if (ctx.confidence < MIN_CONFIDENCE) return { blockedReason: "low_confidence" };
-  // Threats are only hide-eligible at high or critical risk.
-  if (ctx.matchedCategory === "threat" && ctx.riskLevel !== "critical" && ctx.riskLevel !== "high") return { blockedReason: "threat_requires_critical" };
+  // V1.60 — the AUTONOMOUS decision (category eligibility, confidence, risk threshold, per-account
+  // automatic mode) is owned entirely by the pure evaluateAutoHideDecision gate upstream; live-actions
+  // no longer re-decides it for the autonomous trigger. The MANUAL approval path does NOT pass through
+  // that gate, so it keeps these decision-safety checks here (fail-closed).
+  if (ctx.trigger !== "autonomous") {
+    // Hard safety floor: customer-voice categories are never hidden, even on approval.
+    if (NEVER_AUTONOMOUS.has(ctx.matchedCategory as never)) return { blockedReason: "safety_never_autonomous" };
+    if (!AUTONOMOUS_ELIGIBLE.has(ctx.matchedCategory as never)) return { blockedReason: "category_not_eligible" };
+    if (ctx.confidence < MIN_CONFIDENCE) return { blockedReason: "low_confidence" };
+    // Threats are only hide-eligible at high or critical risk.
+    if (ctx.matchedCategory === "threat" && ctx.riskLevel !== "critical" && ctx.riskLevel !== "high") return { blockedReason: "threat_requires_critical" };
+  }
   if (!ctx.externalCommentId) return { blockedReason: "missing_comment_id" };
   return { blockedReason: null };
 }

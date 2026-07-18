@@ -150,6 +150,7 @@
     "auth-session-mgmt:test": "bash packages/db/scripts/run-auth-session-mgmt.sh",
     "protection-score:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/protection-score.test.ts",
     "auto-hide-decision:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auto-hide-decision.test.ts",
+    "autonomous-hide-gate:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/autonomous-hide-gate.test.ts",
     "account-protection:test": "bash packages/db/scripts/run-account-protection.sh",
     "dashboard-metrics:test": "bash packages/db/scripts/run-dashboard-metrics.sh",
     "meta-finalize:test": "bash packages/db/scripts/run-meta-finalize.sh",

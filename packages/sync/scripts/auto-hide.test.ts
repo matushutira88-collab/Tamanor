@@ -107,6 +107,18 @@ async function run() {
     check("1c) queue item resolved to executed (not active approval)", q1row?.queueState === "executed", q1row?.queueState);
     check("1d) executed autonomous hide excluded from default Active queue", !queueTabStates("active")!.includes("executed" as never));
 
+    // 1e) Idempotency (V1.60) — a duplicate autonomous event never executes a second live hide.
+    const q1b = await mkQueue("AH_Q1B");
+    const t1b = new MockFacebookHideTransport({ ok: true, responseCode: "200" });
+    const dupCtx = ctx(q1b.id);
+    const rDup1 = await submit(dupCtx, { config: CFG, transport: t1b, safety: mkSafety() });
+    const rDup2 = await submit(dupCtx, { config: CFG, transport: t1b, safety: mkSafety() });
+    const dupExecutedRows = await prisma.platformActionExecution.count({ where: { queueItemId: q1b.id, status: "executed" } });
+    check("1e) duplicate autonomous event → 2nd idempotent already_executed, exactly ONE hide + ONE executed row",
+      rDup1.status === "executed" && rDup2.status === "executed" && rDup2.reason === "already_executed"
+      && t1b.calls.filter((c) => c.op === "hide").length === 1 && dupExecutedRows === 1,
+      `${rDup2.reason}/hides=${t1b.calls.filter((c) => c.op === "hide").length}/rows=${dupExecutedRows}`);
+
     // 2) Graph receives the DECRYPTED raw token — never a plain:/encrypted tag.
     const q2 = await mkQueue("AH_Q2");
     const t2 = new TokenCapture({ ok: true, responseCode: "200" });

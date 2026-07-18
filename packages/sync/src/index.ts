@@ -43,10 +43,10 @@ import {
   Platform as CorePlatform,
   isRealConnection,
   modeAllowsSync,
-  accessAllowsOperations,
   emitOpsEvent,
   metrics,
 } from "@guardora/core";
+import { evaluateAutonomousHide } from "./autonomous-hide-gate";
 import {
   createConnectorRuntime,
   MetaGraphError,
@@ -860,12 +860,25 @@ async function persistNewItem(
     // loadProductionSafetyContext + attemptFacebookHide manage their OWN short tenant
     // transactions and provider HTTP; they are called OUTSIDE any open transaction here.
     const matchedPolicy = controlPolicies.find((p) => p.category === decision.matchedCategory);
-    // V1.50E — a restricted/suspended tenant must NOT run autonomous (background) provider execution.
-    // The item stays queued for human review once billing is restored; nothing is executed or lost.
-    // V1.59 — defense-in-depth: autonomous execution ALSO requires the global feature kill switch AND
-    // the effective per-account auto-hide config (enabled + automatic mode). Default OFF → opt-in.
-    if (matchedPolicy?.mode === "autonomous" && decision.wouldExecute && accessAllowsOperations(accessState as never)
-        && hideFeatureEnabled && effectiveProtection.autoHideEnabled && effectiveProtection.autoHideMode === "automatic") {
+    // V1.60 — THE single autonomous decision gate. The runtime→gate mapping lives in ONE tested pure
+    // function (evaluateAutonomousHide) which calls the core evaluateAutoHideDecision. NO parallel inline
+    // decisioning here; unknown/incomplete inputs fail closed inside the gate.
+    const autoHideGate = evaluateAutonomousHide({
+      plan, accessState, featureEnabled: hideFeatureEnabled,
+      account: {
+        status: account.status as unknown as string, mode: account.mode as unknown as string,
+        grantedPermissions: account.grantedPermissions, connectionStatus: account.connectionStatus,
+        tokenHealth: account.tokenHealth,
+      },
+      effectiveProtection,
+      controlPolicies,
+      matchedCategory: decision.matchedCategory,
+      riskLevel: hybrid.level as "low" | "medium" | "high" | "critical",
+      confidence: hybrid.confidence,
+    });
+    // `allow` implies the matched category is one of the autonomous ControlPolicy categories, so
+    // matchedPolicy is present; the explicit guard keeps this fail-closed and satisfies the types.
+    if (autoHideGate.allow && matchedPolicy) {
       const safety = await loadProductionSafetyContext({
         tenantId: account.tenantId, brandId: account.brandId, connectedAccountId: account.id, category: decision.matchedCategory,
       });

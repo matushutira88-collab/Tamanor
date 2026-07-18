@@ -31,6 +31,10 @@ export function isAutoHideEligibleCategory(category: string | null | undefined):
   return !!category && AUTO_HIDE_ELIGIBLE_CATEGORIES.includes(category);
 }
 
+/** Hard server-side confidence floor for ANY autonomous hide. A per-category Control-Center
+ *  minConfidence may raise it, never lower it. Single source for the decision + execution layers. */
+export const AUTO_HIDE_MIN_CONFIDENCE = 0.8;
+
 export interface AutoHideDecisionInput {
   /** Global kill switch: META_COMMENT_HIDE_FEATURE_ENABLED. Off ⇒ NO automatic action anywhere. */
   featureEnabled: boolean;
