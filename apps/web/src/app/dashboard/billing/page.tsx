@@ -26,10 +26,15 @@ const DISPLAY_PLANS = ["starter", "growth", "agency", "enterprise"] as const;
 // logic, no invented capabilities. Rows without any backing plan data are intentionally omitted.
 type Cell = boolean | string;
 const COMPARE_ROWS: { key: keyof Copy["compareRows"]; cells: [Cell, Cell, Cell, Cell] }[] = [
-  { key: "connectedAccounts", cells: ["1", "3", "10", "custom"] },   // BILLING_PLANS[*].limits.connectedAccounts
+  // V1.64 — the sold unit is the PROTECTED BRAND; cells mirror @guardora/core (maxBrands / comment
+  // limit / maxConnectedAccounts = brands×4). Each brand holds 1 FB + 1 IG + 1 Google Business.
+  { key: "protectedBrands", cells: ["1", "3", "10", "custom"] },     // planEntitlements[*].maxBrands
+  { key: "monthlyComments", cells: ["4,000", "13,000", "25,000", "custom"] }, // usage-policy basicUnitsPerPeriod
+  { key: "connectedAccounts", cells: ["4", "12", "40", "custom"] },  // planEntitlements[*].maxConnectedAccounts (brands×4)
   { key: "teamMembers", cells: ["3", "8", "25", "custom"] },         // BILLING_PLANS[*].limits.teamMembers
-  { key: "facebookPages", cells: [true, true, true, true] },         // Starter "1 Facebook Page" → all tiers
-  { key: "instagram", cells: [false, true, true, true] },            // Growth "Facebook + Instagram"
+  { key: "facebookPages", cells: [true, true, true, true] },         // 1 Facebook Page per brand → all tiers
+  { key: "instagram", cells: [true, true, true, true] },             // 1 Instagram per brand → all tiers
+  { key: "googleBusiness", cells: [true, true, true, true] },        // 1 Google Business Profile per brand
   { key: "commentsReviews", cells: [true, true, true, true] },       // Starter "Comments & reviews"
   { key: "actionQueue", cells: [true, true, true, true] },           // Starter "Action queue"
   { key: "reputationAnalytics", cells: [false, true, true, true] },  // Growth "Reputation analytics"
@@ -58,6 +63,7 @@ type Copy = {
   invoices: { title: string; body: string };
   compare: { title: string; hint: string; plan: string };
   compareRows: {
+    protectedBrands: string; monthlyComments: string; googleBusiness: string;
     connectedAccounts: string; teamMembers: string; facebookPages: string; instagram: string;
     commentsReviews: string; actionQueue: string; reputationAnalytics: string; actorRisk: string;
     controlCenter: string; prioritySupport: string; dedicatedContact: string; advancedControls: string;
@@ -87,6 +93,7 @@ const C: Record<Locale, Copy> = {
     invoices: { title: "No invoices yet", body: "Your first invoice will appear after your first successful subscription payment." },
     compare: { title: "Compare plans", hint: "See what's included in each plan", plan: "Feature" },
     compareRows: {
+      protectedBrands: "Protected brands", monthlyComments: "Comments / month", googleBusiness: "Google Business Profile",
       connectedAccounts: "Connected accounts", teamMembers: "Team members", facebookPages: "Facebook Pages", instagram: "Instagram",
       commentsReviews: "Comments & reviews", actionQueue: "Action queue", reputationAnalytics: "Reputation analytics", actorRisk: "Actor risk",
       controlCenter: "Control Center rules", prioritySupport: "Priority support", dedicatedContact: "Dedicated contact", advancedControls: "Advanced controls & roles",
@@ -131,6 +138,7 @@ const C: Record<Locale, Copy> = {
     invoices: { title: "Zatiaľ žiadne faktúry", body: "Prvá faktúra sa zobrazí po prvej úspešnej platbe predplatného." },
     compare: { title: "Porovnať plány", hint: "Pozrite si, čo obsahuje každý plán", plan: "Funkcia" },
     compareRows: {
+      protectedBrands: "Chránené značky", monthlyComments: "Komentáre / mesiac", googleBusiness: "Google Business profil",
       connectedAccounts: "Pripojené účty", teamMembers: "Členovia tímu", facebookPages: "Facebook stránky", instagram: "Instagram",
       commentsReviews: "Komentáre a recenzie", actionQueue: "Fronta akcií", reputationAnalytics: "Analytika reputácie", actorRisk: "Riziko aktéra",
       controlCenter: "Pravidlá Control Center", prioritySupport: "Prioritná podpora", dedicatedContact: "Vyhradený kontakt", advancedControls: "Pokročilé ovládanie a role",
@@ -175,6 +183,7 @@ const C: Record<Locale, Copy> = {
     invoices: { title: "Noch keine Rechnungen", body: "Ihre erste Rechnung erscheint nach Ihrer ersten erfolgreichen Abo-Zahlung." },
     compare: { title: "Tarife vergleichen", hint: "Sehen Sie, was jeder Tarif enthält", plan: "Funktion" },
     compareRows: {
+      protectedBrands: "Geschützte Marken", monthlyComments: "Kommentare / Monat", googleBusiness: "Google-Business-Profil",
       connectedAccounts: "Verbundene Konten", teamMembers: "Teammitglieder", facebookPages: "Facebook-Seiten", instagram: "Instagram",
       commentsReviews: "Kommentare & Bewertungen", actionQueue: "Aktionswarteschlange", reputationAnalytics: "Reputationsanalyse", actorRisk: "Akteur-Risiko",
       controlCenter: "Control-Center-Regeln", prioritySupport: "Priorisierter Support", dedicatedContact: "Fester Ansprechpartner", advancedControls: "Erweiterte Steuerung & Rollen",

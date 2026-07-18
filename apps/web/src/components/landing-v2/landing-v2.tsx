@@ -333,8 +333,10 @@ const ORBIT = [
   { top: "29%", left: "10%", photo: "/humans/feed1.png" },
 ];
 
-// Self-serve monthly prices by plan index (Starter/Growth/Agency); Enterprise (index 3) is contact-sales.
-const PLAN_PRICES = [49, 149, 399, null] as const;
+// V1.64 — self-serve monthly prices by plan index (Starter/Growth/Business); Enterprise (index 3) is
+// contact-sales. These MIRROR the commercial catalogue BILLING_PLANS (starter 59 / growth 189 /
+// agency-"Business" 499); keep them in sync. Yearly = monthly × 10 (two months free), same as the catalogue.
+const PLAN_PRICES = [59, 189, 499, null] as const;
 
 // V1.62 — real portrait photos for the generic team roles (public/humans/). Order matches
 // copy.teamRoles (Marketing manager, Support agent, Brand owner). Extra roles fall back to

@@ -49,35 +49,39 @@ export const BILLING_PLANS: Record<BillingPlanId, PlanCatalogueEntry> = {
     id: "free_trial", name: "Free Trial", tagline: "14 days, no card required.",
     priceMonthly: 0, priceYearly: 0, currency: "EUR", aiPlan: "free_trial",
     limits: { connectedAccounts: 1, teamMembers: 2 },
-    features: ["1 connected account", "Full trial access", "AI-assisted risk scoring", "Human approval workflow"],
+    features: ["1 protected brand", "Connect one channel to try it", "AI-assisted risk scoring", "Human approval workflow"],
     selfServeCheckout: false, env: null,
   },
+  // V1.64 — packages are sold by PROTECTED BRAND. One brand = 1 Facebook Page + 1 Instagram account +
+  // 1 Google Business Profile + 1 YouTube channel (YouTube ships later; not presented as live).
   starter: {
     id: "starter", name: "Starter", tagline: "For a small brand, creator or local business.",
-    priceMonthly: 49, priceYearly: 490, currency: "EUR", aiPlan: "starter",
-    limits: { connectedAccounts: 1, teamMembers: 3 },
-    features: ["1 Facebook Page", "Comments & reviews", "Action queue", "Basic reputation", "Manual review"],
+    priceMonthly: 59, priceYearly: 590, currency: "EUR", aiPlan: "starter",
+    limits: { connectedAccounts: 4, teamMembers: 3 },
+    features: ["1 protected brand", "4,000 comments / month", "1 Facebook Page + 1 Instagram", "1 Google Business Profile", "Comments, reviews & action queue"],
     selfServeCheckout: true, env: { monthly: "STRIPE_PRICE_STARTER_MONTHLY", yearly: "STRIPE_PRICE_STARTER_YEARLY" },
   },
   growth: {
     id: "growth", name: "Growth", tagline: "For an active e-shop, brand or agency client.",
-    priceMonthly: 149, priceYearly: 1490, currency: "EUR", aiPlan: "growth",
-    limits: { connectedAccounts: 3, teamMembers: 8 },
-    features: ["Up to 3 connected accounts", "Facebook + Instagram", "Reputation analytics", "Actor risk", "Control Center rules"],
+    priceMonthly: 189, priceYearly: 1890, currency: "EUR", aiPlan: "growth",
+    limits: { connectedAccounts: 12, teamMembers: 8 },
+    features: ["3 protected brands", "13,000 comments / month", "Facebook, Instagram & Google Business per brand", "Reputation analytics & actor risk", "Control Center rules"],
     selfServeCheckout: true, env: { monthly: "STRIPE_PRICE_GROWTH_MONTHLY", yearly: "STRIPE_PRICE_GROWTH_YEARLY" },
   },
+  // The internal id stays `agency` (stable key for existing subscribers, env vars and Stripe mapping);
+  // the plan is MARKETED as "Business". See entitlements.ts BASE.agency for the matching note.
   agency: {
-    id: "agency", name: "Agency", tagline: "For agencies managing multiple clients.",
-    priceMonthly: 399, priceYearly: 3990, currency: "EUR", aiPlan: "agency",
-    limits: { connectedAccounts: 10, teamMembers: 25 },
-    features: ["Multiple brands/clients", "Multi-account monitoring", "Reputation + Actor Risk", "Priority support", "Dedicated contact"],
+    id: "agency", name: "Business", tagline: "For brands and agencies protecting many channels.",
+    priceMonthly: 499, priceYearly: 4990, currency: "EUR", aiPlan: "agency",
+    limits: { connectedAccounts: 40, teamMembers: 25 },
+    features: ["10 protected brands", "25,000 comments / month", "Facebook, Instagram & Google Business per brand", "Reputation + actor risk", "Priority support"],
     selfServeCheckout: true, env: { monthly: "STRIPE_PRICE_AGENCY_MONTHLY", yearly: "STRIPE_PRICE_AGENCY_YEARLY" },
   },
   enterprise: {
     id: "enterprise", name: "Enterprise / Custom", tagline: "For media, public figures and larger brands.",
     priceMonthly: null, priceYearly: null, currency: "EUR", aiPlan: "enterprise",
     limits: { connectedAccounts: null, teamMembers: null },
-    features: ["Custom volume & scale", "Multiple brands by agreement", "Advanced controls & roles", "Onboarding & support"],
+    features: ["Custom brand & comment volume", "Multiple brands by agreement", "Advanced controls & roles", "Onboarding & dedicated support"],
     selfServeCheckout: false, env: null,
   },
 };

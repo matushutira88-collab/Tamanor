@@ -1732,10 +1732,10 @@ export const sk: Dictionary = {
     priceSub: "14-dňová skúšobná verzia pri každom pláne — bez karty. Ceny sú orientačné.",
     monthly: "Mesačne", yearly: "Ročne", popular: "Obľúbený", perMo: "/mes.", perYr: "/rok", entPrice: "Napíš", entPer: "nám",
     plans: [
-      { name: "Starter", tagline: "Malá značka, tvorca alebo lokálny biznis.", cta: "Začni zadarmo", features: ["1 značka", "1 Facebook stránka", "Komentáre & fronta", "Základná reputácia", "Manuálna kontrola"] },
-      { name: "Growth", tagline: "Aktívny e-shop, značka alebo klient agentúry.", cta: "Začni zadarmo", features: ["Až 3 účty", "Ochrana Facebooku", "Instagram monitoring", "Reputačná analytika", "Riziko aktérov & pravidlá"] },
-      { name: "Agency", tagline: "Agentúry spravujúce viacerých klientov.", cta: "Začni zadarmo", features: ["Viacero značiek", "Pomoc s onboardingom", "Multi-účet monitoring", "Reputácia + riziko aktérov", "Prioritná podpora"] },
-      { name: "Enterprise", tagline: "Médiá, verejné osoby, väčšie značky.", cta: "Kontaktuj predaj", features: ["Vlastný rozsah", "Pokročilé role", "Dedikovaný kontakt", "Onboarding & SLA"] },
+      { name: "Starter", tagline: "Malá značka, tvorca alebo lokálny biznis.", cta: "Začni zadarmo", features: ["1 chránená značka", "4 000 komentárov / mesiac", "1 Facebook stránka + 1 Instagram", "1 Google Business profil", "Komentáre, recenzie & fronta"] },
+      { name: "Growth", tagline: "Aktívny e-shop, značka alebo klient agentúry.", cta: "Začni zadarmo", features: ["3 chránené značky", "13 000 komentárov / mesiac", "Facebook, Instagram & Google Business", "Reputačná analytika & riziko aktérov", "Pravidlá Control Center"] },
+      { name: "Business", tagline: "Značky a agentúry chrániace viac kanálov.", cta: "Začni zadarmo", features: ["10 chránených značiek", "25 000 komentárov / mesiac", "Facebook, Instagram & Google Business", "Reputácia + riziko aktérov", "Prioritná podpora"] },
+      { name: "Enterprise", tagline: "Médiá, verejné osoby, väčšie značky.", cta: "Kontaktuj predaj", features: ["Vlastný objem značiek & komentárov", "Pokročilé role & kontroly", "Dedikovaný kontakt", "Onboarding & SLA"] },
     ],
     faqEyebrow: "Otázky a odpovede", faqTitle: "Priame odpovede.",
     faqs: [

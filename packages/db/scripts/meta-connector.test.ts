@@ -21,9 +21,11 @@ function check(label: string, cond: boolean, detail = "") {
 
 async function run() {
   const sfx = Date.now().toString(36);
-  const tA = await systemDb.tenant.create({ data: { name: "Meta A", slug: `meta-a-${sfx}` } });
-  const tB = await systemDb.tenant.create({ data: { name: "Meta B", slug: `meta-b-${sfx}` } });
+  // V1.64 — a connecting tenant has a real plan (per-brand caps = 1). `growth` allows several brands.
+  const tA = await systemDb.tenant.create({ data: { name: "Meta A", slug: `meta-a-${sfx}`, plan: "growth" } });
+  const tB = await systemDb.tenant.create({ data: { name: "Meta B", slug: `meta-b-${sfx}`, plan: "growth" } });
   const brA = await systemDb.brand.create({ data: { tenantId: tA.id, name: "MA" } });
+  const brA2 = await systemDb.brand.create({ data: { tenantId: tA.id, name: "MA2" } });
   const brB = await systemDb.brand.create({ data: { tenantId: tB.id, name: "MB" } });
 
   const page = (tag: string, ig?: { id: string; username?: string }): MetaDiscoveredPage => ({
@@ -115,8 +117,10 @@ async function run() {
     check("17) missing stored token → token_expired (fail-closed), no HTTP needed", noTok.status === "token_expired" && noTok.connectionStatus === "needs_reconnect");
 
     // ===== Page without IG: newly-available business asset detection =====
+    // V1.64 — brA already holds a Facebook page (pIg); a distinct page goes in a SEPARATE brand
+    // (one active FB per brand). This also exercises the per-brand model across two brands.
     const pNoIg = page("NOIG");
-    const r3 = await link(tA.id, brA.id, pNoIg, false);
+    const r3 = await link(tA.id, brA2.id, pNoIg, false);
     check("18) page without IG → no IG account created", r3.igAccountId === null);
     const sAvail = await syncMetaAccountState(tA.id, r3.pageAccountId, { transport: new MockMetaConnectorTransport({ page: { ok: true, pageId: pNoIg.pageId, pageName: "Page NOIG", canManage: true, igBusinessId: `NEWIG_${sfx}` } }) });
     const availRow = await withTenant(tA.id, (db) => db.connectedAccount.findFirst({ where: { id: r3.pageAccountId }, select: { igBusinessId: true } }));

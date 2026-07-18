@@ -59,9 +59,9 @@ async function run() {
   })());
   check("suspended behaves like restricted (operations off)", resolveEntitlements("growth", "suspended").providerSync === false);
   check("deleting tenant → operations off regardless of plan/access", resolveEntitlements("agency", "full_access", { deletingTenant: true }).moderationExecution === false);
-  check("full_access agency honors the plan (operations on, limit 10)", (() => {
+  check("full_access agency (Business) honors the plan (operations on, limit 40)", (() => {
     const e = resolveEntitlements("agency", "full_access");
-    return e.providerSync && e.moderationExecution && e.paidAi && e.maxConnectedAccounts === 10;
+    return e.providerSync && e.moderationExecution && e.paidAi && e.maxConnectedAccounts === 40;
   })());
   check("grace_period keeps plan operations", resolveEntitlements("growth", "grace_period").providerSync === true);
   check("unknown plan + full access → still MINIMAL (fail safe)", resolveEntitlements("banana", "full_access").maxConnectedAccounts === 0);
@@ -95,7 +95,7 @@ async function run() {
   // A paid tenant → plan entitlements.
   await systemDb.tenant.update({ where: { id: t.tenantId }, data: { plan: "growth", accessState: "full_access", billingStatus: "active" } });
   const entG = await getTenantEntitlements(t.tenantId);
-  check("active growth tenant → growth limits + analytics", entG.plan === "growth" && entG.maxConnectedAccounts === 3 && entG.reputationAnalytics === true);
+  check("active growth tenant → growth limits + analytics", entG.plan === "growth" && entG.maxConnectedAccounts === 12 && entG.reputationAnalytics === true);
   check("active growth tenant allows operations", (await tenantAllowsOperations(t.tenantId)) === true);
 
   // Cleanup.

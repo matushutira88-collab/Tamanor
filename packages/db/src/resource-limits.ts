@@ -41,6 +41,49 @@ export async function countPlanBrands(tx: TenantTx, tenantId: string): Promise<n
   return tx.brand.count({ where: { tenantId } });
 }
 
+// ---------------------------------------------------------------------------------------------------
+// V1.64 — PER-BRAND per-platform capacity. The sold model gives each brand at most one ACTIVE account
+// of each platform (FB/IG/Google Business/YouTube). This is enforced server-side at every connect/
+// import/reconnect path (advisory-locked count-under-lock, below) AND backed by a DB partial-unique
+// index (migration v1_64) so a direct DB write can never bypass it either. A DISCONNECTED account
+// frees the slot; a RECONNECT of the same external account (same externalId) never counts against
+// itself. Enterprise (maxPerBrand = null) is unbounded per contract.
+// ---------------------------------------------------------------------------------------------------
+
+/** Advisory lock for the (brand, platform) slot — serializes concurrent connects of the same type. */
+export async function acquireBrandPlatformLock(tx: TenantTx, brandId: string, platform: string): Promise<void> {
+  const key = `tamanor:brandslot:${brandId}:${platform}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key})::bigint)`;
+}
+
+/** Count ACTIVE (non-disconnected) accounts of `platform` in a brand, excluding one externalId (the
+ *  incoming account, so a reconnect never counts against itself). */
+export async function countActiveBrandPlatformAccounts(
+  tx: TenantTx, brandId: string, platform: string, excludeExternalId?: string,
+): Promise<number> {
+  return tx.connectedAccount.count({
+    where: {
+      brandId, platform: platform as never, status: { not: "disconnected" },
+      ...(excludeExternalId ? { externalId: { not: excludeExternalId } } : {}),
+    },
+  });
+}
+
+/**
+ * Assert (inside the caller's tenant transaction) that connecting `incomingExternalId` of `platform`
+ * to `brandId` stays within the per-brand cap. Call {@link acquireBrandPlatformLock} first so parallel
+ * connects can't both pass. `maxPerBrand` null → unbounded (no-op). Throws
+ * `brand_platform_limit_reached` when a DIFFERENT active account of the same type already occupies the
+ * brand's slot.
+ */
+export async function assertBrandPlatformCapacity(
+  tx: TenantTx, brandId: string, platform: string, incomingExternalId: string, maxPerBrand: number | null,
+): Promise<void> {
+  if (maxPerBrand === null) return;
+  const current = await countActiveBrandPlatformAccounts(tx, brandId, platform, incomingExternalId);
+  if (!isWithinLimit(current, maxPerBrand)) throw new EntitlementError("brand_platform_limit_reached");
+}
+
 /** Canonical resource usage for the dashboard (same helpers as enforcement). */
 export async function getTenantResourceUsage(tenantId: string): Promise<{ connections: number; brands: number }> {
   return withTenant(tenantId, async (tx) => ({

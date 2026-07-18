@@ -1784,10 +1784,10 @@ export const en = {
     priceSub: "14-day trial on every plan — no credit card. Prices indicative.",
     monthly: "Monthly", yearly: "Yearly", popular: "Popular", perMo: "/mo", perYr: "/yr", entPrice: "Talk", entPer: "to us",
     plans: [
-      { name: "Starter", tagline: "Small brand, creator or local business.", cta: "Start free", features: ["1 brand", "1 Facebook Page", "Comments & queue", "Basic reputation", "Manual review"] },
-      { name: "Growth", tagline: "Active e-shop, brand or agency client.", cta: "Start free", features: ["Up to 3 accounts", "Facebook protection", "Instagram monitoring", "Reputation analytics", "Actor risk & rules"] },
-      { name: "Agency", tagline: "Agencies managing multiple clients.", cta: "Start free", features: ["Multiple brands", "Onboarding support", "Multi-account monitoring", "Reputation + actor risk", "Priority support"] },
-      { name: "Enterprise", tagline: "Media, public figures, larger brands.", cta: "Contact sales", features: ["Custom scale", "Advanced roles", "Dedicated contact", "Onboarding & SLA"] },
+      { name: "Starter", tagline: "Small brand, creator or local business.", cta: "Start free", features: ["1 protected brand", "4,000 comments / month", "1 Facebook Page + 1 Instagram", "1 Google Business Profile", "Comments, reviews & queue"] },
+      { name: "Growth", tagline: "Active e-shop, brand or agency client.", cta: "Start free", features: ["3 protected brands", "13,000 comments / month", "Facebook, Instagram & Google Business", "Reputation analytics & actor risk", "Control Center rules"] },
+      { name: "Business", tagline: "Brands and agencies protecting many channels.", cta: "Start free", features: ["10 protected brands", "25,000 comments / month", "Facebook, Instagram & Google Business", "Reputation + actor risk", "Priority support"] },
+      { name: "Enterprise", tagline: "Media, public figures, larger brands.", cta: "Contact sales", features: ["Custom brand & comment volume", "Advanced roles & controls", "Dedicated contact", "Onboarding & SLA"] },
     ],
     faqEyebrow: "Questions, answered", faqTitle: "Straight answers.",
     faqs: [

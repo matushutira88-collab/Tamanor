@@ -11,7 +11,11 @@
  * and runs strictly BETWEEN short tenant transactions: read → provider HTTP → write.
  * A provider failure is classified as transient and never corrupts local state.
  */
-import { withTenantDb, decryptToken, encryptToken, metaConnectedAccountFields, ActorKind } from "@guardora/db";
+import {
+  withTenantDb, decryptToken, encryptToken, metaConnectedAccountFields, ActorKind,
+  getTenantEntitlements, acquireBrandPlatformLock, assertBrandPlatformCapacity,
+} from "@guardora/db";
+import { maxPerBrandForPlatform } from "@guardora/core";
 import {
   GraphMetaConnectorTransport,
   type MetaConnectorTransport,
@@ -93,12 +97,22 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
     tokenExpiresAt: input.tokenExpiresAt,
   });
 
+  // V1.64 — resolve the per-brand platform caps ONCE (outside the tx) so the connect can enforce that
+  // this brand holds at most one ACTIVE account of each type. Reconnecting the SAME external asset
+  // (same externalId) is always allowed (it never counts against its own slot).
+  const ent = await getTenantEntitlements(tenantId);
+  const fbPerBrand = maxPerBrandForPlatform(ent, "facebook_page");
+  const igPerBrand = maxPerBrandForPlatform(ent, "instagram_business");
+
   return withTenantDb(tenantId, async (db) => {
-    // V1.59 — CONNECT ≠ MONITOR. Connecting an account no longer enforces (or bundles) the plan limit.
-    // Accounts are persisted as connected-but-NOT-monitored (`monitoringEnabled: false` on CREATE); the
-    // monitored-account limit (FB=1, IG=1) is enforced ATOMICALLY when monitoring is activated, via
-    // enableAccountMonitoringWithinLimit. Reconnect (upsert UPDATE) NEVER changes an existing account's
-    // monitoring state. `input.enforceLimit` is deliberately ignored here (legacy bundle removed).
+    // V1.59 — CONNECT ≠ MONITOR. Connecting an account no longer enforces (or bundles) the tenant-total
+    // monitored limit; that is enforced ATOMICALLY when monitoring is activated
+    // (enableAccountMonitoringWithinLimit). Reconnect (upsert UPDATE) NEVER changes monitoring state.
+    // V1.64 — but the STRUCTURAL per-brand rule (max 1 active FB + 1 active IG per brand) IS enforced
+    // here at connect: advisory-locked per (brand, platform) so two parallel connects can't both pass,
+    // with the DB partial-unique index as the ultimate backstop. `input.enforceLimit` stays ignored.
+    await acquireBrandPlatformLock(db, brandId, "facebook_page");
+    await assertBrandPlatformCapacity(db, brandId, "facebook_page", page.pageId, fbPerBrand);
     const existingPage = await db.connectedAccount.findFirst({
       where: { brandId, platform: "facebook_page" as never, externalId: page.pageId },
       select: { id: true },
@@ -119,6 +133,8 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
     let igAccountId: string | null = null;
     let igReconnected = false;
     if (input.connectIg && page.igBusinessId) {
+      await acquireBrandPlatformLock(db, brandId, "instagram_business");
+      await assertBrandPlatformCapacity(db, brandId, "instagram_business", page.igBusinessId, igPerBrand);
       const existingIg = await db.connectedAccount.findFirst({
         where: { brandId, platform: "instagram_business" as never, externalId: page.igBusinessId },
         select: { id: true },

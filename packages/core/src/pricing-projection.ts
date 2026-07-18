@@ -16,7 +16,11 @@ export type PricingCard = {
   priceYearly: number | null;
   currency: string;
   /** Canonical, truthful limits pulled from the entitlement catalogue (not marketing copy). */
-  limits: { connectedAccounts: number | null; brands: number | null; monthlyProcessedItems: number | null };
+  limits: {
+    connectedAccounts: number | null; brands: number | null; monthlyProcessedItems: number | null;
+    /** V1.64 — per-brand platform caps (accounts of each type allowed within ONE brand). */
+    perBrand: { facebook: number | null; instagram: number | null; googleBusiness: number | null; youtube: number | null };
+  };
   /** Capability flags (from entitlements) — the UI derives feature bullets from these + the catalogue. */
   capabilities: {
     reputationAnalytics: boolean; riskProfiles: boolean; incidents: boolean; controlCenter: boolean;
@@ -33,7 +37,10 @@ function cardFor(id: BillingPlanId): PricingCard {
   const e = planEntitlements(id);
   return {
     id, name: p.name, tagline: p.tagline, priceMonthly: p.priceMonthly, priceYearly: p.priceYearly, currency: p.currency,
-    limits: { connectedAccounts: e.maxConnectedAccounts, brands: e.maxBrands, monthlyProcessedItems: e.monthlyProcessedItems },
+    limits: {
+      connectedAccounts: e.maxConnectedAccounts, brands: e.maxBrands, monthlyProcessedItems: e.monthlyProcessedItems,
+      perBrand: { facebook: e.maxFacebookPerBrand, instagram: e.maxInstagramPerBrand, googleBusiness: e.maxGoogleBusinessPerBrand, youtube: e.maxYouTubePerBrand },
+    },
     capabilities: {
       reputationAnalytics: e.reputationAnalytics, riskProfiles: e.riskProfiles, incidents: e.incidents,
       controlCenter: e.controlCenter, advancedRules: e.advancedRules, auditLog: e.auditLog, prioritySupport: e.prioritySupport,

@@ -9,7 +9,7 @@ import {
   PrimaryButton,
 } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { withTenant } from "@guardora/db";
+import { withTenant, getTenantEntitlements } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
@@ -25,10 +25,24 @@ const STATUS_TONE: Record<string, string> = {
   archived: "neutral",
 };
 
-export default async function BrandsPage() {
+export default async function BrandsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const session = await requireSession();
   const hdrT = await getT();
   const manage = can(session.role, Permission.BrandManage);
+  const sp = await searchParams;
+
+  // V1.64 — surface a truthful, plan-aware notice when brand creation was denied server-side.
+  const ent = await getTenantEntitlements(session.tenantId);
+  const brandNotice: string | null =
+    sp.error === "brand_limit_reached"
+      ? `Brand limit reached. Your current plan supports up to ${ent.maxBrands ?? "—"} protected ${ent.maxBrands === 1 ? "brand" : "brands"}. Upgrade your plan to add another brand.`
+      : sp.error === "billing_restricted"
+        ? "Your workspace is currently restricted. Resolve billing to add brands."
+        : null;
   const toneOptions = Object.values(BrandTone).map((v) => ({ value: v, label: tEnum(hdrT, "tone", v) }));
   const statusOptions = Object.values(BrandStatus).map((v) => ({ value: v, label: tEnum(hdrT, "brandStatus", v) }));
 
@@ -44,6 +58,12 @@ export default async function BrandsPage() {
   return (
     <>
       <PageHeader title={hdrT.dashHeaders[nav.icon].title} description={hdrT.dashHeaders[nav.icon].desc} />
+
+      {brandNotice ? (
+        <div className="mb-6 rounded-lg border border-[var(--color-warn-border,#f5c451)] bg-[var(--color-warn-bg,#fff8e6)] p-4 text-sm text-[var(--color-warn-fg,#7a5900)]" role="status">
+          {brandNotice}
+        </div>
+      ) : null}
 
       <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
         {/* List */}

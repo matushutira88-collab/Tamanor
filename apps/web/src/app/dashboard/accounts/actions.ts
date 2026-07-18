@@ -11,9 +11,10 @@ import {
   EntitlementError,
   isWithinLimit,
   emitOpsEvent,
+  maxPerBrandForPlatform,
 } from "@guardora/core";
 import { runReadOnlySync, disconnectAccount } from "@guardora/sync";
-import { withTenant, assertTenantActive, getTenantEntitlements, acquireTenantResourceLock, countCommercialConnections } from "@guardora/db";
+import { withTenant, assertTenantActive, getTenantEntitlements, acquireTenantResourceLock, countCommercialConnections, assertBrandPlatformCapacity } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 
@@ -56,11 +57,15 @@ export async function connectMock(
       } else {
         const count = await countCommercialConnections(db, session.tenantId);
         if (!isWithinLimit(count, ent.maxConnectedAccounts)) throw new EntitlementError("account_limit_reached");
+        // V1.64 — a brand holds at most one active account of each platform. The tenant "connections"
+        // advisory lock above already serializes concurrent connects, so a plain count-check is race-safe.
+        const mockExternalId = `mock_${platform}_${brandId.slice(-6)}`;
+        await assertBrandPlatformCapacity(db, brandId, platform, mockExternalId, maxPerBrandForPlatform(ent, platform));
         await db.connectedAccount.create({
           data: {
             tenantId: session.tenantId, brandId, platform,
             status: ConnectorStatus.MockConnected, mode: ConnectorMode.Placeholder,
-            externalId: `mock_${platform}_${brandId.slice(-6)}`, externalName: `${brand.name} (mock)`, scopes: [],
+            externalId: mockExternalId, externalName: `${brand.name} (mock)`, scopes: [],
           },
         });
       }

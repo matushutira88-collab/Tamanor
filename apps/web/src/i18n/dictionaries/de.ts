@@ -1732,10 +1732,10 @@ export const de: Dictionary = {
     priceSub: "14 Tage Testphase bei jedem Plan — ohne Kreditkarte. Preise unverbindlich.",
     monthly: "Monatlich", yearly: "Jährlich", popular: "Beliebt", perMo: "/Mon.", perYr: "/Jahr", entPrice: "Sprich", entPer: "mit uns",
     plans: [
-      { name: "Starter", tagline: "Kleine Marke, Creator oder lokales Geschäft.", cta: "Kostenlos starten", features: ["1 Marke", "1 Facebook-Seite", "Kommentare & Queue", "Basis-Reputation", "Manuelle Prüfung"] },
-      { name: "Growth", tagline: "Aktiver E-Shop, Marke oder Agenturkunde.", cta: "Kostenlos starten", features: ["Bis zu 3 Konten", "Facebook-Schutz", "Instagram-Monitoring", "Reputationsanalysen", "Akteur-Risiko & Regeln"] },
-      { name: "Agency", tagline: "Agenturen mit mehreren Kunden.", cta: "Kostenlos starten", features: ["Mehrere Marken", "Onboarding-Support", "Multi-Konto-Monitoring", "Reputation + Akteur-Risiko", "Prioritäts-Support"] },
-      { name: "Enterprise", tagline: "Medien, Personen des öffentlichen Lebens, größere Marken.", cta: "Vertrieb kontaktieren", features: ["Individuelle Skalierung", "Erweiterte Rollen", "Fester Ansprechpartner", "Onboarding & SLA"] },
+      { name: "Starter", tagline: "Kleine Marke, Creator oder lokales Geschäft.", cta: "Kostenlos starten", features: ["1 geschützte Marke", "4.000 Kommentare / Monat", "1 Facebook-Seite + 1 Instagram", "1 Google-Business-Profil", "Kommentare, Rezensionen & Queue"] },
+      { name: "Growth", tagline: "Aktiver E-Shop, Marke oder Agenturkunde.", cta: "Kostenlos starten", features: ["3 geschützte Marken", "13.000 Kommentare / Monat", "Facebook, Instagram & Google Business", "Reputationsanalysen & Akteur-Risiko", "Control-Center-Regeln"] },
+      { name: "Business", tagline: "Marken und Agenturen mit vielen Kanälen.", cta: "Kostenlos starten", features: ["10 geschützte Marken", "25.000 Kommentare / Monat", "Facebook, Instagram & Google Business", "Reputation + Akteur-Risiko", "Prioritäts-Support"] },
+      { name: "Enterprise", tagline: "Medien, Personen des öffentlichen Lebens, größere Marken.", cta: "Vertrieb kontaktieren", features: ["Individuelles Marken- & Kommentarvolumen", "Erweiterte Rollen & Kontrollen", "Fester Ansprechpartner", "Onboarding & SLA"] },
     ],
     faqEyebrow: "Fragen & Antworten", faqTitle: "Klare Antworten.",
     faqs: [

@@ -43,7 +43,7 @@ export async function confirmMetaSelection(
     redirect("/dashboard/accounts/meta/select?flow=none_selected");
   }
 
-  let connected = 0, monitored = 0, limited = 0;
+  let connected = 0, monitored = 0, limited = 0, slotTaken = 0;
   const activate = async (id: string) => {
     try { await enableAccountMonitoringWithinLimit(session.tenantId, id); emitOpsEvent("account.monitoring_enabled", { operation: "connect" }); monitored++; }
     catch (e) { if (e instanceof EntitlementError) { emitOpsEvent("subscription.account_limit_reached", { operation: "connect" }); limited++; } else throw e; }
@@ -53,12 +53,25 @@ export async function confirmMetaSelection(
     const fbChosen = fbSel.has(page.pageId);
     const igChosen = page.igBusinessId ? igSel.has(page.igBusinessId) : false;
     if (!fbChosen && !igChosen) continue;
-    // CONNECT (no bundle limit). The Page is persisted whenever anything on it is chosen (IG needs it).
-    const link = await linkMetaAssets({
-      tenantId: session.tenantId, brandId: row.brandId, page, connectIg: igChosen,
-      scopes: row.grantedScopes, grantedPermissions: row.grantedScopes,
-      encryptedToken: encryptToken(page.pageAccessToken), tokenType: row.tokenType, tokenExpiresAt: row.tokenExpiresAt,
-    });
+    // CONNECT. The Page is persisted whenever anything on it is chosen (IG needs it). V1.64 — a brand
+    // holds at most one active FB + one active IG; if the slot is already taken by a DIFFERENT account,
+    // linkMetaAssets throws brand_platform_limit_reached. Skip that page (don't 500) and surface a
+    // friendly notice; other selected pages still connect.
+    let link;
+    try {
+      link = await linkMetaAssets({
+        tenantId: session.tenantId, brandId: row.brandId, page, connectIg: igChosen,
+        scopes: row.grantedScopes, grantedPermissions: row.grantedScopes,
+        encryptedToken: encryptToken(page.pageAccessToken), tokenType: row.tokenType, tokenExpiresAt: row.tokenExpiresAt,
+      });
+    } catch (e) {
+      if (e instanceof EntitlementError && e.reason === "brand_platform_limit_reached") {
+        emitOpsEvent("subscription.account_limit_reached", { operation: "connect_brand_slot" });
+        slotTaken++;
+        continue;
+      }
+      throw e;
+    }
     connected += 1 + (igChosen && link.igAccountId ? 1 : 0);
     // ACTIVATE monitoring only for the items the user actually selected (atomic, FB=1, IG=1).
     if (fbChosen) await activate(link.pageAccountId);
@@ -69,7 +82,7 @@ export async function confirmMetaSelection(
 
   await clearOnboarding(session, onboardingId);
   revalidatePath("/dashboard/accounts");
-  redirect(`/dashboard/accounts?connected=${connected}&mon=${monitored}&lim=${limited}`);
+  redirect(`/dashboard/accounts?connected=${connected}&mon=${monitored}&lim=${limited}${slotTaken ? `&slot=${slotTaken}` : ""}`);
 }
 
 /** Abandon the onboarding flow without connecting anything. */

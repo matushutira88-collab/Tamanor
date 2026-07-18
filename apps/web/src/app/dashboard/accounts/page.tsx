@@ -61,6 +61,15 @@ const META_NOTICES: Record<string, { tone: string; text: string }> = {
   save_failed: { tone: "danger", text: "We couldn't save your connection. Please try connecting again." },
 };
 
+// V1.64 — connect/limit errors surfaced via `?error=` (mock connect, monitoring) and `?slot=` (the Meta
+// select flow, when a brand's per-platform slot was already taken). Truthful, plan-agnostic copy.
+const ERROR_NOTICES: Record<string, { tone: string; text: string }> = {
+  account_limit_reached: { tone: "warn", text: "You've reached the monitored-account limit for your plan. Upgrade to connect more, or disconnect an existing account first." },
+  brand_platform_limit_reached: { tone: "warn", text: "This brand already has a connected account of that type. Create another brand or disconnect the existing account first." },
+  billing_restricted: { tone: "warn", text: "Your workspace is currently restricted. Resolve billing to connect accounts." },
+  csrf: { tone: "danger", text: "Your request could not be verified. Please try again." },
+};
+
 export default async function AccountsPage({
   searchParams,
 }: {
@@ -74,6 +83,12 @@ export default async function AccountsPage({
   const setup = getMetaSetupStatus();
   const sp = await searchParams;
   const metaNotice = sp.meta ? META_NOTICES[sp.meta] : undefined;
+  // V1.64 — a taken per-brand platform slot in the Meta select flow is reported as `?slot=N`.
+  const errorNotice = sp.error
+    ? ERROR_NOTICES[sp.error]
+    : sp.slot
+      ? ERROR_NOTICES.brand_platform_limit_reached
+      : undefined;
 
   const brands = await withTenant(session.tenantId, (db) => db.brand.findMany({
     where: { tenantId: session.tenantId },
@@ -125,6 +140,13 @@ export default async function AccountsPage({
         <div className="mb-5" role="status">
           <Badge tone={metaNotice.tone}>Meta</Badge>{" "}
           <span className="text-sm text-[var(--color-muted)]">{metaNotice.text}</span>
+        </div>
+      ) : null}
+
+      {errorNotice ? (
+        <div className="mb-5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2" role="status">
+          <Badge tone={errorNotice.tone}>Plan</Badge>{" "}
+          <span className="text-sm text-[var(--color-muted)]">{errorNotice.text}</span>
         </div>
       ) : null}
 

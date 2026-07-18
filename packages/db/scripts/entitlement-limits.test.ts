@@ -7,9 +7,11 @@ import { prisma, systemDb, registerUser, hashPassword } from "@guardora/db";
 import {
   createWithinResourceLimit, countCommercialConnections, getTenantResourceUsage,
   getTenantOperationGate, withTenant,
+  acquireBrandPlatformLock, assertBrandPlatformCapacity, countActiveBrandPlatformAccounts,
 } from "@guardora/db";
 import {
   EntitlementError, publicPricingProjection, billingProjection, BILLING_PLANS, planEntitlements,
+  maxPerBrandForPlatform, resolveUsagePolicy,
 } from "@guardora/core";
 
 let failures = 0;
@@ -33,6 +35,13 @@ async function run() {
   check("projection limits come from the entitlement catalogue", pub.plans.every((c) => c.limits.connectedAccounts === planEntitlements(c.id).maxConnectedAccounts && c.limits.brands === planEntitlements(c.id).maxBrands));
   check("unimplemented features absent (export/multiWorkspace/agency-client = false)", pub.plans.every((c) => !c.capabilities.export && !c.capabilities.multiWorkspace && !c.capabilities.agencyClientManagement));
   check("Starter projection does NOT advertise analytics", pub.plans.find((c) => c.id === "starter")?.capabilities.reputationAnalytics === false);
+  // V1.64 — per-brand model: prices, brand counts, comment limits, and per-brand platform caps.
+  check("projection prices: starter 59 / growth 189 / business(agency) 499", pub.plans.find((c) => c.id === "starter")?.priceMonthly === 59 && pub.plans.find((c) => c.id === "growth")?.priceMonthly === 189 && pub.plans.find((c) => c.id === "agency")?.priceMonthly === 499);
+  check("projection brands: starter 1 / growth 3 / business 10", pub.plans.find((c) => c.id === "starter")?.limits.brands === 1 && pub.plans.find((c) => c.id === "growth")?.limits.brands === 3 && pub.plans.find((c) => c.id === "agency")?.limits.brands === 10);
+  check("projection comment limits: 4k / 13k / 25k", pub.plans.find((c) => c.id === "starter")?.limits.monthlyProcessedItems === 4000 && pub.plans.find((c) => c.id === "growth")?.limits.monthlyProcessedItems === 13000 && pub.plans.find((c) => c.id === "agency")?.limits.monthlyProcessedItems === 25000);
+  check("projection per-brand caps = 1 FB + 1 IG + 1 Google Business on every paid plan", pub.plans.every((c) => c.limits.perBrand.facebook === 1 && c.limits.perBrand.instagram === 1 && c.limits.perBrand.googleBusiness === 1));
+  check("Business plan is marketed name (internal id stays 'agency')", BILLING_PLANS.agency.name === "Business");
+  check("metering cap == displayed comment limit (usage-policy basicUnitsPerPeriod)", resolveUsagePolicy("starter").basicUnitsPerPeriod === planEntitlements("starter").monthlyProcessedItems && resolveUsagePolicy("agency").basicUnitsPerPeriod === planEntitlements("agency").monthlyProcessedItems);
   const bpUnconfigured = billingProjection("monthly", {});
   check("billing projection: unconfigured Stripe price → not purchasable (fail closed)", bpUnconfigured.plans.every((c) => c.purchasable === false));
   const bpConfigured = billingProjection("monthly", { STRIPE_PRICE_STARTER_MONTHLY: "price_x" });
@@ -83,6 +92,52 @@ async function run() {
   ]);
   const brandFulfilled = brandWins.filter((r) => r.status === "fulfilled").length;
   check("concurrent brand creation cannot exceed maxBrands", brandFulfilled === 0, `fulfilled=${brandFulfilled}`); // already at limit 1
+
+  // ---- V1.64: PER-BRAND per-platform capacity (1 FB + 1 IG + 1 Google Business per brand) ----
+  // A growth tenant (maxBrands 3, maxConnectedAccounts 12, per-brand caps all 1) proves: different
+  // platforms coexist in ONE brand; a second account of the SAME platform in that brand is denied; a
+  // disconnected account frees the slot; and concurrent same-type connects to a brand can't both pass.
+  const d = await registerUser({ email: `lim-d-${sfx}@ex.com`, passwordHash: await hashPassword("password d 1"), workspaceName: "Lim D", country: "SK" });
+  tenantIds.push(d.tenantId); userIds.push(d.userId);
+  await systemDb.tenant.update({ where: { id: d.tenantId }, data: { plan: "growth", accessState: "full_access" } });
+  const brandD = await withTenant(d.tenantId, (db) => db.brand.findFirst({ where: { tenantId: d.tenantId }, select: { id: true } }));
+  const entD = planEntitlements("growth");
+
+  // Race-safe single-account connect (mirrors the production path: lock → assert per-brand cap → create).
+  const connectOne = (platform: string, ext: string, extra: Record<string, unknown> = {}) =>
+    withTenant(d.tenantId, async (db) => {
+      await acquireBrandPlatformLock(db, brandD!.id, platform);
+      await assertBrandPlatformCapacity(db, brandD!.id, platform, ext, maxPerBrandForPlatform(entD, platform));
+      return db.connectedAccount.create({ data: { tenantId: d.tenantId, brandId: brandD!.id, platform: platform as never, status: "active", mode: "read_only", externalId: ext, ...extra } });
+    });
+
+  const fbAcc = await connectOne("facebook_page", `d_fb_${sfx}`).then(() => true).catch(() => false);
+  const igOk = await connectOne("instagram_business", `d_ig_${sfx}`).then(() => true).catch(() => false);
+  const gbOk = await connectOne("google_business", `d_gb_${sfx}`).then(() => true).catch(() => false);
+  check("one brand holds FB + IG + Google Business (different platforms coexist)", fbAcc && igOk && gbOk);
+
+  const secondFbDenied = await connectOne("facebook_page", `d_fb2_${sfx}`).then(() => false).catch((e) => e instanceof EntitlementError && e.reason === "brand_platform_limit_reached");
+  check("a SECOND Facebook in the same brand → brand_platform_limit_reached", secondFbDenied);
+  const secondIgDenied = await connectOne("instagram_business", `d_ig2_${sfx}`).then(() => false).catch((e) => e instanceof EntitlementError && e.reason === "brand_platform_limit_reached");
+  check("a SECOND Instagram in the same brand → brand_platform_limit_reached", secondIgDenied);
+
+  // Disconnect the FB → slot frees → a new FB (different externalId) may connect.
+  await withTenant(d.tenantId, (db) => db.connectedAccount.updateMany({ where: { brandId: brandD!.id, platform: "facebook_page" as never, externalId: `d_fb_${sfx}` }, data: { status: "disconnected" } }));
+  const freedCount = await withTenant(d.tenantId, (db) => countActiveBrandPlatformAccounts(db, brandD!.id, "facebook_page"));
+  const reconnectFb = await connectOne("facebook_page", `d_fb3_${sfx}`).then(() => true).catch(() => false);
+  check("disconnected account frees the per-brand slot (not counted)", freedCount === 0 && reconnectFb);
+
+  // Concurrency: a FRESH brand, two parallel FB connects → exactly ONE wins (advisory lock serializes).
+  const brandD2 = await createWithinResourceLimit(d.tenantId, "brands", (db) => db.brand.create({ data: { tenantId: d.tenantId, name: `D2_${sfx}` } }));
+  const raceConnect = (ext: string) => withTenant(d.tenantId, async (db) => {
+    await acquireBrandPlatformLock(db, brandD2.id, "facebook_page");
+    await assertBrandPlatformCapacity(db, brandD2.id, "facebook_page", ext, maxPerBrandForPlatform(entD, "facebook_page"));
+    return db.connectedAccount.create({ data: { tenantId: d.tenantId, brandId: brandD2.id, platform: "facebook_page" as never, status: "active", mode: "read_only", externalId: ext } });
+  });
+  const raceRes = await Promise.allSettled([raceConnect(`d2_fbA_${sfx}`), raceConnect(`d2_fbB_${sfx}`)]);
+  const raceWins = raceRes.filter((r) => r.status === "fulfilled").length;
+  const raceCount = await withTenant(d.tenantId, (db) => countActiveBrandPlatformAccounts(db, brandD2.id, "facebook_page"));
+  check("two concurrent same-type connects to one brand → exactly ONE wins", raceWins === 1 && raceCount === 1, `wins=${raceWins} count=${raceCount}`);
 
   // ---- Restricted tenant → limit 0 (denied) + billing/deletion preserved ----
   await systemDb.tenant.update({ where: { id: b.tenantId }, data: { accessState: "restricted", billingStatus: "canceled" } });

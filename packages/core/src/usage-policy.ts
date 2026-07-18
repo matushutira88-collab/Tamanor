@@ -46,9 +46,12 @@ const FREE: UsagePolicy = {
 // trial is a time window (Tenant.trialStartsAt/EndsAt), not a paid entitlement.
 const FREE_TRIAL: UsagePolicy = { ...FREE, plan: "free_trial" };
 
+// V1.64 — basicUnitsPerPeriod IS the monthly processed-comment allowance shown on pricing. It MUST
+// stay equal to entitlements.ts monthlyProcessedItems for the same plan (Starter 4k / Growth 13k /
+// Business(agency) 25k). One unique processed comment = one unit (deduped by content version).
 const STARTER: UsagePolicy = {
   plan: "starter",
-  basicUnitsPerPeriod: 5_000, premiumCallsPerPeriod: 200, premiumCostLimitMicros: 5_000_000n,
+  basicUnitsPerPeriod: 4_000, premiumCallsPerPeriod: 200, premiumCostLimitMicros: 5_000_000n,
   maxInputTokensPerCall: 4_000, maxOutputTokensPerCall: 1_024,
   allowRules: true, allowLocalModel: true, allowPaidFallback: true, allowGeneratedReplies: false,
 };
@@ -64,14 +67,15 @@ const PRO: UsagePolicy = {
 // between Starter and the legacy Pro; Agency mirrors Pro-level headroom with generated replies.
 const GROWTH: UsagePolicy = {
   plan: "growth",
-  basicUnitsPerPeriod: 20_000, premiumCallsPerPeriod: 1_000, premiumCostLimitMicros: 25_000_000n,
+  basicUnitsPerPeriod: 13_000, premiumCallsPerPeriod: 1_000, premiumCostLimitMicros: 25_000_000n,
   maxInputTokensPerCall: 6_000, maxOutputTokensPerCall: 1_536,
   allowRules: true, allowLocalModel: true, allowPaidFallback: true, allowGeneratedReplies: false,
 };
 
+// Marketed as "Business" (internal id stays `agency`).
 const AGENCY: UsagePolicy = {
   plan: "agency",
-  basicUnitsPerPeriod: 50_000, premiumCallsPerPeriod: 5_000, premiumCostLimitMicros: 100_000_000n,
+  basicUnitsPerPeriod: 25_000, premiumCallsPerPeriod: 5_000, premiumCostLimitMicros: 100_000_000n,
   maxInputTokensPerCall: 8_000, maxOutputTokensPerCall: 2_048,
   allowRules: true, allowLocalModel: true, allowPaidFallback: true, allowGeneratedReplies: true,
 };
