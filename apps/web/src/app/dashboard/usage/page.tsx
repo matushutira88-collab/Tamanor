@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/server/auth";
-import { withTenant, getUsageSummary, getUsageDiagnostic, getTenantResourceUsage, getTenantBilling, type UsageStatus } from "@guardora/db";
+import { withTenant, getUsageSummary, getUsageDiagnostic, getTenantResourceUsage, type UsageStatus } from "@guardora/db";
+import { getTenantBilling } from "@/server/billing";
 import { planEntitlements } from "@guardora/core";
 import { getPaidAiFuseConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";

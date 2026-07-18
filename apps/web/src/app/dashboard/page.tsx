@@ -4,6 +4,7 @@ import { accountProtectionScore, type WatchedAccountView } from "@guardora/db";
 import type { CheckState } from "@/components/dashboard/protection-score";
 import { PageHeader, Card, SectionHeader, EmptyState, PrimaryButton } from "@/components/dashboard/ui";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import { TimeframeSelector } from "@/components/dashboard/timeframe-selector";
 import { AccountCard } from "@/components/dashboard/account-card";
 import { ProtectionScore } from "@/components/dashboard/protection-score";
 import { AreaTrend } from "@/components/dashboard/trend-chart";
@@ -161,7 +162,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const protection = aggregateProtection(watched, c);
 
-  const tfHref = (d: Tf) => (`/dashboard?tf=${d}` as const);
 
   return (
     <>
@@ -172,14 +172,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         description={c.subtitle}
         action={
           <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-0.5">
-              {TIMEFRAMES.map((d) => (
-                <Link key={d} href={tfHref(d)} aria-current={tf === d ? "true" : undefined}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${d === tf ? "bg-[var(--color-brand)] text-[var(--color-brand-fg)]" : "text-[var(--color-muted)] hover:text-[var(--color-fg)]"}`}>
-                  {d}d
-                </Link>
-              ))}
-            </div>
+            <TimeframeSelector current={tf} options={TIMEFRAMES} />
             <Link href="/dashboard/accounts"><PrimaryButton type="button">{c.connect}</PrimaryButton></Link>
           </div>
         }

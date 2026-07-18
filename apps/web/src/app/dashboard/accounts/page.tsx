@@ -75,13 +75,24 @@ export default async function AccountsPage({
   const sp = await searchParams;
   const metaNotice = sp.meta ? META_NOTICES[sp.meta] : undefined;
 
-  const brands = await withTenant(session.tenantId, (db) => db.brand.findMany({
-    where: { tenantId: session.tenantId },
-    orderBy: { createdAt: "asc" },
-    include: { connectedAccounts: true },
-  }));
+  const autoSync = getAutoSyncConfig();
+  const live = getLiveActionsConfig();
 
-  const realMode = await getRealModeFilter(session.tenantId);
+  // V1.60 — these three reads are INDEPENDENT; run them as parallel (separate) tenant transactions
+  // instead of a serial waterfall. Separate parallel transactions are faster here than one consolidated
+  // transaction (Prisma serializes queries inside a single tx) — the measured finding from the audit.
+  const [brands, realMode, [lastAutoRow, lastManualRow]] = await Promise.all([
+    withTenant(session.tenantId, (db) => db.brand.findMany({
+      where: { tenantId: session.tenantId },
+      orderBy: { createdAt: "asc" },
+      include: { connectedAccounts: true },
+    })),
+    getRealModeFilter(session.tenantId),
+    withTenant(session.tenantId, (db) => Promise.all([
+      db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "automatic" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+      db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "manual" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    ])),
+  ]);
 
   // Connected accounts summary — real (live) accounts first, demo/mock after.
   // In real mode, demo/mock accounts are hidden entirely.
@@ -94,18 +105,12 @@ export default async function AccountsPage({
       return live(a) - live(b) || (b.lastSuccessfulSyncAt?.getTime() ?? 0) - (a.lastSuccessfulSyncAt?.getTime() ?? 0);
     });
 
-  const autoSync = getAutoSyncConfig();
-  const live = getLiveActionsConfig();
   const hideCapability = (grantedPermissions: string[]): { key: string; tone: string } =>
     !live.facebookHideEnabled || !live.liveEnabled
       ? { key: "capDisabledEnv", tone: "neutral" }
       : grantedPermissions.includes("pages_manage_engagement")
         ? { key: "capAvailable", tone: "ok" }
         : { key: "capMissingPerms", tone: "warn" };
-  const [lastAutoRow, lastManualRow] = await withTenant(session.tenantId, (db) => Promise.all([
-    db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "automatic" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "manual" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-  ]));
   const lastErrorAccount = connectedAccounts.find((a) => a.lastError);
   const nextSyncEstimate = autoSync.enabled && lastAutoRow ? new Date(lastAutoRow.createdAt.getTime() + autoSync.intervalSeconds * 1000) : null;
 

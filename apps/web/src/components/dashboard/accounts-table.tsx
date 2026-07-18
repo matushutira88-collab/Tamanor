@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getDashboardAccountsOverview, type DashboardAccountRow } from "@guardora/db";
 import { PlatformIcon } from "./platform-icon";
 import { MonitoringSwitch } from "./monitoring-switch";
+import { PendingActionButton } from "./pending-action-button";
 import { runSyncAction, disconnect } from "@/app/dashboard/accounts/actions";
 import type { Locale } from "@/i18n";
 
@@ -14,17 +15,17 @@ import type { Locale } from "@/i18n";
 const T = {
   en: { platform: "Platform", account: "Account", monitoring: "Monitoring", connection: "Connection status", commentsToday: "Comments today", riskToday: "Risk today", lastSync: "Last sync",
     actions: "Actions", never: "Never synchronized", kindTest: "Test connection", kindReadOnly: "Read-only", syncWaiting: "Waiting for first synchronization", syncNotActive: "Automatic sync not active", syncFailed: "Last sync failed", on: "Monitoring active", off: "Monitoring inactive", limitReached: "You have reached the monitored account limit.",
-    view: "View comments", sync: "Sync now", reconnect: "Reconnect", disconnect: "Disconnect", unavailable: "Unavailable via current permissions",
+    view: "View comments", sync: "Sync now", syncing: "Syncing…", reconnect: "Reconnect", disconnect: "Disconnect", disconnecting: "Disconnecting…", unavailable: "Unavailable via current permissions",
     facebook: "Facebook", instagram: "Instagram", emptyTitle: "No connected accounts", emptyBody: "Connect Facebook Pages or Instagram Business accounts to start monitoring.", connect: "Connect Meta accounts",
     cs: { connected: "Connected", reconnect_required: "Reconnect required", permissions_expired: "Permissions expired", disconnected: "Disconnected", sync_error: "Sync error" } },
   sk: { platform: "Platforma", account: "Účet", monitoring: "Monitorovanie", connection: "Stav pripojenia", commentsToday: "Komentáre dnes", riskToday: "Rizikové dnes", lastSync: "Posledná synchronizácia",
     actions: "Akcie", never: "Nikdy nesynchronizované", kindTest: "Testovacie pripojenie", kindReadOnly: "Iba na čítanie", syncWaiting: "Čaká na prvú synchronizáciu", syncNotActive: "Automatická synchronizácia nie je aktívna", syncFailed: "Posledná synchronizácia zlyhala", on: "Monitorovanie aktívne", off: "Monitorovanie neaktívne", limitReached: "Dosiahli ste limit monitorovaných účtov.",
-    view: "Zobraziť komentáre", sync: "Synchronizovať", reconnect: "Znovu pripojiť", disconnect: "Odpojiť", unavailable: "Nedostupné cez aktuálne oprávnenia",
+    view: "Zobraziť komentáre", sync: "Synchronizovať", syncing: "Synchronizácia prebieha…", reconnect: "Znovu pripojiť", disconnect: "Odpojiť", disconnecting: "Odpája sa…", unavailable: "Nedostupné cez aktuálne oprávnenia",
     facebook: "Facebook", instagram: "Instagram", emptyTitle: "Žiadne pripojené účty", emptyBody: "Pripojte Facebook Pages alebo Instagram Business účty a spustite monitoring.", connect: "Pripojiť Meta účty",
     cs: { connected: "Pripojené", reconnect_required: "Vyžaduje opätovné pripojenie", permissions_expired: "Oprávnenia expirovali", disconnected: "Odpojené", sync_error: "Chyba synchronizácie" } },
   de: { platform: "Plattform", account: "Konto", monitoring: "Überwachung", connection: "Verbindungsstatus", commentsToday: "Kommentare heute", riskToday: "Risiko heute", lastSync: "Letzte Synchronisierung",
     actions: "Aktionen", never: "Nie synchronisiert", kindTest: "Testverbindung", kindReadOnly: "Nur-Lesen", syncWaiting: "Warten auf erste Synchronisierung", syncNotActive: "Automatische Synchronisierung nicht aktiv", syncFailed: "Letzte Synchronisierung fehlgeschlagen", on: "Überwachung aktiv", off: "Überwachung inaktiv", limitReached: "Sie haben das Limit überwachter Konten erreicht.",
-    view: "Kommentare ansehen", sync: "Synchronisieren", reconnect: "Neu verbinden", disconnect: "Trennen", unavailable: "Über aktuelle Berechtigungen nicht verfügbar",
+    view: "Kommentare ansehen", sync: "Synchronisieren", syncing: "Synchronisierung läuft…", reconnect: "Neu verbinden", disconnect: "Trennen", disconnecting: "Wird getrennt…", unavailable: "Über aktuelle Berechtigungen nicht verfügbar",
     facebook: "Facebook", instagram: "Instagram", emptyTitle: "Keine verbundenen Konten", emptyBody: "Verbinden Sie Facebook-Seiten oder Instagram-Business-Konten, um die Überwachung zu starten.", connect: "Meta-Konten verbinden",
     cs: { connected: "Verbunden", reconnect_required: "Neu verbinden erforderlich", permissions_expired: "Berechtigungen abgelaufen", disconnected: "Getrennt", sync_error: "Synchronisierungsfehler" } },
 } as const;
@@ -96,9 +97,9 @@ function Actions({ row, c }: { row: DashboardAccountRow; c: (typeof T)[Locale] }
   return (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
       <Link href={`/dashboard/comments?account=${row.id}`} className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-[11px] font-medium hover:border-[var(--color-brand)]">{c.view}</Link>
-      <form action={runSyncAction.bind(null, row.id)}><button type="submit" className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-[11px] font-medium hover:border-[var(--color-brand)]">{c.sync}</button></form>
+      <form action={runSyncAction.bind(null, row.id)}><PendingActionButton pendingLabel={c.syncing} className="border-[var(--color-border)] hover:border-[var(--color-brand)]">{c.sync}</PendingActionButton></form>
       {row.reconnectRequired ? <a href={`/api/connectors/meta/start?brandId=${row.brandId}&accountId=${row.id}`} className="rounded-lg border border-[var(--color-warn)] px-2 py-1 text-[11px] font-medium text-[var(--color-warn)]">{c.reconnect}</a> : null}
-      <form action={disconnect.bind(null, row.id)}><button type="submit" className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-[11px] font-medium text-[var(--color-muted)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]">{c.disconnect}</button></form>
+      <form action={disconnect.bind(null, row.id)}><PendingActionButton pendingLabel={c.disconnecting} className="border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]">{c.disconnect}</PendingActionButton></form>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { requireVerifiedSession } from "@/server/auth";
-import { withTenant, getTenantBilling, getTenantEntitlements } from "@guardora/db";
+import { withTenant } from "@guardora/db";
+import { getTenantBilling, getTenantEntitlements } from "@/server/billing";
 import { getLocale } from "@/i18n/locale-server";
 import { getDictionary, type Locale } from "@/i18n";
 

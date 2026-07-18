@@ -5,7 +5,7 @@ import {
   stripePriceAvailability, stripePriceKeyFor,
   type BillingInterval,
 } from "@guardora/core";
-import { getTenantBilling } from "@guardora/db";
+import { getTenantBilling } from "@/server/billing";
 import { requireVerifiedSession } from "@/server/auth";
 import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
