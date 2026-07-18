@@ -26,10 +26,11 @@ const DISPLAY_PLANS = ["starter", "growth", "agency", "enterprise"] as const;
 // logic, no invented capabilities. Rows without any backing plan data are intentionally omitted.
 type Cell = boolean | string;
 const COMPARE_ROWS: { key: keyof Copy["compareRows"]; cells: [Cell, Cell, Cell, Cell] }[] = [
-  { key: "connectedAccounts", cells: ["1", "3", "10", "custom"] },   // BILLING_PLANS[*].limits.connectedAccounts
-  { key: "teamMembers", cells: ["3", "8", "25", "custom"] },         // BILLING_PLANS[*].limits.teamMembers
-  { key: "facebookPages", cells: [true, true, true, true] },         // Starter "1 Facebook Page" → all tiers
-  { key: "instagram", cells: [false, true, true, true] },            // Growth "Facebook + Instagram"
+  // The enforced cap is on MONITORED profiles (entitlements.maxConnectedAccounts). A Facebook Page and an
+  // Instagram profile each count as ONE monitored profile; connecting more is allowed but stays unmonitored.
+  { key: "connectedAccounts", cells: ["1", "3", "10", "custom"] },   // monitored profiles — enforced (entitlements.maxConnectedAccounts)
+  { key: "facebookPages", cells: [true, true, true, true] },         // Facebook supported on every plan
+  { key: "instagram", cells: [true, true, true, true] },             // Instagram supported on every plan (agnostic monitored cap)
   { key: "commentsReviews", cells: [true, true, true, true] },       // Starter "Comments & reviews"
   { key: "actionQueue", cells: [true, true, true, true] },           // Starter "Action queue"
   { key: "reputationAnalytics", cells: [false, true, true, true] },  // Growth "Reputation analytics"
@@ -57,8 +58,9 @@ type Copy = {
   summary: { title: string; billingCycle: string; nextBilling: string; invoiceStatus: string; workspaceId: string; trialRemaining: string };
   invoices: { title: string; body: string };
   compare: { title: string; hint: string; plan: string };
+  monitorNote: string;
   compareRows: {
-    connectedAccounts: string; teamMembers: string; facebookPages: string; instagram: string;
+    connectedAccounts: string; facebookPages: string; instagram: string;
     commentsReviews: string; actionQueue: string; reputationAnalytics: string; actorRisk: string;
     controlCenter: string; prioritySupport: string; dedicatedContact: string; advancedControls: string;
   };
@@ -86,8 +88,9 @@ const C: Record<Locale, Copy> = {
     summary: { title: "Subscription", billingCycle: "Billing cycle", nextBilling: "Next billing date", invoiceStatus: "Invoice status", workspaceId: "Workspace ID", trialRemaining: "Trial remaining" },
     invoices: { title: "No invoices yet", body: "Your first invoice will appear after your first successful subscription payment." },
     compare: { title: "Compare plans", hint: "See what's included in each plan", plan: "Feature" },
+    monitorNote: "“Monitored profiles” is the number you can actively protect. A Facebook Page and an Instagram profile each count as one. You can connect more accounts — extra ones stay connected but unmonitored.",
     compareRows: {
-      connectedAccounts: "Connected accounts", teamMembers: "Team members", facebookPages: "Facebook Pages", instagram: "Instagram",
+      connectedAccounts: "Monitored profiles", facebookPages: "Facebook Pages", instagram: "Instagram",
       commentsReviews: "Comments & reviews", actionQueue: "Action queue", reputationAnalytics: "Reputation analytics", actorRisk: "Actor risk",
       controlCenter: "Control Center rules", prioritySupport: "Priority support", dedicatedContact: "Dedicated contact", advancedControls: "Advanced controls & roles",
     },
@@ -130,8 +133,9 @@ const C: Record<Locale, Copy> = {
     summary: { title: "Predplatné", billingCycle: "Fakturačný cyklus", nextBilling: "Ďalšia platba", invoiceStatus: "Stav faktúry", workspaceId: "ID pracovného priestoru", trialRemaining: "Zostáva skúšobná verzia" },
     invoices: { title: "Zatiaľ žiadne faktúry", body: "Prvá faktúra sa zobrazí po prvej úspešnej platbe predplatného." },
     compare: { title: "Porovnať plány", hint: "Pozrite si, čo obsahuje každý plán", plan: "Funkcia" },
+    monitorNote: "„Monitorované profily“ je počet profilov, ktoré môžete aktívne chrániť. Facebook stránka a Instagram profil sa počítajú každý ako jeden. Pripojiť môžete viac účtov — tie nad rámec ostanú pripojené, ale nemonitorované.",
     compareRows: {
-      connectedAccounts: "Pripojené účty", teamMembers: "Členovia tímu", facebookPages: "Facebook stránky", instagram: "Instagram",
+      connectedAccounts: "Monitorované profily", facebookPages: "Facebook stránky", instagram: "Instagram",
       commentsReviews: "Komentáre a recenzie", actionQueue: "Fronta akcií", reputationAnalytics: "Analytika reputácie", actorRisk: "Riziko aktéra",
       controlCenter: "Pravidlá Control Center", prioritySupport: "Prioritná podpora", dedicatedContact: "Vyhradený kontakt", advancedControls: "Pokročilé ovládanie a role",
     },
@@ -174,8 +178,9 @@ const C: Record<Locale, Copy> = {
     summary: { title: "Abo", billingCycle: "Abrechnungszyklus", nextBilling: "Nächste Abrechnung", invoiceStatus: "Rechnungsstatus", workspaceId: "Workspace-ID", trialRemaining: "Verbleibende Testphase" },
     invoices: { title: "Noch keine Rechnungen", body: "Ihre erste Rechnung erscheint nach Ihrer ersten erfolgreichen Abo-Zahlung." },
     compare: { title: "Tarife vergleichen", hint: "Sehen Sie, was jeder Tarif enthält", plan: "Funktion" },
+    monitorNote: "„Überwachte Profile“ ist die Anzahl der Profile, die Sie aktiv schützen können. Eine Facebook-Seite und ein Instagram-Profil zählen jeweils als eines. Sie können weitere Konten verbinden — zusätzliche bleiben verbunden, aber unüberwacht.",
     compareRows: {
-      connectedAccounts: "Verbundene Konten", teamMembers: "Teammitglieder", facebookPages: "Facebook-Seiten", instagram: "Instagram",
+      connectedAccounts: "Überwachte Profile", facebookPages: "Facebook-Seiten", instagram: "Instagram",
       commentsReviews: "Kommentare & Bewertungen", actionQueue: "Aktionswarteschlange", reputationAnalytics: "Reputationsanalyse", actorRisk: "Akteur-Risiko",
       controlCenter: "Control-Center-Regeln", prioritySupport: "Priorisierter Support", dedicatedContact: "Fester Ansprechpartner", advancedControls: "Erweiterte Steuerung & Rollen",
     },
@@ -443,6 +448,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
               ))}
             </tbody>
           </table>
+          <p className="px-3 py-3 text-xs text-[var(--color-muted)]">{c.monitorNote}</p>
         </div>
       </details>
 

@@ -1,5 +1,5 @@
-import { Role, Permission, can } from "@guardora/core";
-import { PageHeader, Card, SectionHeader, Badge, Field, Input, Select, PrimaryButton } from "@/components/dashboard/ui";
+import { Role } from "@guardora/core";
+import { PageHeader, Card, SectionHeader, Badge } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
@@ -21,15 +21,12 @@ const ROLE_TONE: Record<string, string> = {
 export default async function TeamPage() {
   const session = await requireSession();
   const hdrT = await getT();
-  const manage = can(session.role, Permission.MemberManage);
 
   const memberships = await withTenant(session.tenantId, (db) => db.membership.findMany({
     where: { tenantId: session.tenantId },
     include: { user: { select: { name: true, email: true } } },
     orderBy: { createdAt: "asc" },
   }));
-
-  const roleOptions = Object.values(Role).map((r) => ({ value: r, label: tEnum(hdrT, "role", r) }));
 
   return (
     <>
@@ -63,24 +60,6 @@ export default async function TeamPage() {
         </Card>
 
         <div className="space-y-6">
-          <Card>
-            <SectionHeader title={hdrT.dash.inviteTeammate} description={hdrT.dash.inviteDesc} />
-            <form className="space-y-3">
-              <Field label={hdrT.dash.email}>
-                <Input type="email" placeholder={hdrT.dash.emailPlaceholder} disabled={!manage} />
-              </Field>
-              <Field label={hdrT.dash.role}>
-                <Select options={roleOptions} disabled={!manage} defaultValue={Role.Viewer} />
-              </Field>
-              <PrimaryButton type="button" disabled className="w-full">
-                {hdrT.dash.sendInvite}
-              </PrimaryButton>
-              <p className="text-xs text-[var(--color-muted)]">
-                {manage ? hdrT.dash.invitationsComingSoon : hdrT.dash.cantManageMembers}
-              </p>
-            </form>
-          </Card>
-
           <Card>
             <SectionHeader title={hdrT.dash.roles} />
             <ul className="space-y-2.5">

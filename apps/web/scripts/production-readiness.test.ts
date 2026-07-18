@@ -292,21 +292,21 @@ function run() {
   check("76) unavailable plan → small truthful 'coming soon' (no big fake disabled checkout button); resolveStripePriceId not used in the page",
     /comingSoon/.test(billing) && !/resolveStripePriceId/.test(billing) && stripePriceAvailability({}, { requireLive: true }).STARTER_MONTHLY === false);
 
-  // ---------------- global public footer on landing v2 (V1.58D.2) ----------------
+  // ---------------- global public footer on landing (V1.61 — shared SiteFooter) ----------------
   const landingV2 = src("src/components/landing-v2/landing-v2.tsx");
-  const footerV2 = src("src/components/landing-v2/footer-v2.tsx");
+  const siteFooter = src("src/components/site-footer.tsx");
   const dashLayoutSrc = src("src/app/dashboard/layout.tsx");
-  // Homepage (landing v2) must render the full FooterV2, not the old stub.
-  check("39) landing v2 renders the global FooterV2 (not the minimal stub footer)",
-    /FooterV2/.test(landingV2) && /<FooterV2[\s/>]/.test(landingV2) && !/EU reputation-security platform<\/span>/.test(landingV2));
-  // FooterV2 content: uses next/link (no plain <a> internal reloads, no placeholder #), required
-  // legal + platform links present, operator identity, truthful "In development" grouping, no Guardora.
-  const footerLegalOk = ["/privacy", "/cookies", "/terms", "/security", "/register", "/login", "/contact", "/about", "/integrations/facebook"].every((h) => footerV2.includes(h));
-  check("40) FooterV2 is truthful & link-clean (next/link, legal+platform routes, operator copy, no Guardora, no placeholder #, no localhost)",
-    /from ["']next\/link["']/.test(footerV2) && footerLegalOk &&
-    /In development/.test(footerV2) && /Infotech Solutions/.test(footerV2) &&
-    !/guardora/i.test(footerV2) && !/href=["']#["']/.test(footerV2) && !/localhost|\.vercel\.app/.test(footerV2) &&
-    !/<a\s+href=["']\//.test(footerV2));
+  // Homepage (landing) must render the shared global SiteFooter, not the old stub.
+  check("39) landing renders the shared global SiteFooter (not the minimal stub footer)",
+    /SiteFooter/.test(landingV2) && /<SiteFooter[\s/>]/.test(landingV2) && !/EU reputation-security platform<\/span>/.test(landingV2));
+  // SiteFooter content: uses next/link (no plain <a> internal reloads, no placeholder #), required
+  // legal + platform links present, operator identity, truthful "in development" grouping, no Guardora.
+  const footerLegalOk = ["/privacy", "/cookies", "/terms", "/security", "/register", "/login", "/contact", "/about", "/integrations/facebook"].every((h) => siteFooter.includes(h));
+  check("40) SiteFooter is truthful & link-clean (next/link, legal+platform routes, operator copy, no Guardora, no placeholder #, no localhost)",
+    /from ["']next\/link["']/.test(siteFooter) && footerLegalOk &&
+    /inDevelopment/.test(siteFooter) && /Infotech Solutions/.test(siteFooter) &&
+    !/guardora/i.test(siteFooter) && !/href=["']#["']/.test(siteFooter) && !/localhost|\.vercel\.app/.test(siteFooter) &&
+    !/<a\s+href=["']\//.test(siteFooter));
   // The authenticated dashboard shell must NOT render the marketing footer.
   check("41) dashboard layout does not render the public marketing footer (FooterV2/SiteFooter)",
     !/FooterV2|SiteFooter/.test(dashLayoutSrc));

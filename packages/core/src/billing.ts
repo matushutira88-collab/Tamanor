@@ -32,7 +32,7 @@ export type PlanCatalogueEntry = {
   currency: string;
   /** The usage-policy plan key this billing plan maps to (AI limits live in usage-policy). */
   aiPlan: string;
-  limits: { connectedAccounts: number | null; teamMembers: number | null };
+  limits: { connectedAccounts: number | null };
   features: string[];
   /** Whether this plan is purchasable via self-service Stripe Checkout. */
   selfServeCheckout: boolean;
@@ -48,35 +48,35 @@ export const BILLING_PLANS: Record<BillingPlanId, PlanCatalogueEntry> = {
   free_trial: {
     id: "free_trial", name: "Free Trial", tagline: "14 days, no card required.",
     priceMonthly: 0, priceYearly: 0, currency: "EUR", aiPlan: "free_trial",
-    limits: { connectedAccounts: 1, teamMembers: 2 },
+    limits: { connectedAccounts: 1 },
     features: ["1 connected account", "Full trial access", "AI-assisted risk scoring", "Human approval workflow"],
     selfServeCheckout: false, env: null,
   },
   starter: {
     id: "starter", name: "Starter", tagline: "For a small brand, creator or local business.",
     priceMonthly: 49, priceYearly: 490, currency: "EUR", aiPlan: "starter",
-    limits: { connectedAccounts: 1, teamMembers: 3 },
-    features: ["1 Facebook Page", "Comments & reviews", "Action queue", "Basic reputation", "Manual review"],
+    limits: { connectedAccounts: 1 },
+    features: ["1 monitored profile (Facebook Page or Instagram)", "Comments & reviews", "Action queue", "Basic reputation", "Manual review"],
     selfServeCheckout: true, env: { monthly: "STRIPE_PRICE_STARTER_MONTHLY", yearly: "STRIPE_PRICE_STARTER_YEARLY" },
   },
   growth: {
     id: "growth", name: "Growth", tagline: "For an active e-shop, brand or agency client.",
     priceMonthly: 149, priceYearly: 1490, currency: "EUR", aiPlan: "growth",
-    limits: { connectedAccounts: 3, teamMembers: 8 },
+    limits: { connectedAccounts: 3 },
     features: ["Up to 3 connected accounts", "Facebook + Instagram", "Reputation analytics", "Actor risk", "Control Center rules"],
     selfServeCheckout: true, env: { monthly: "STRIPE_PRICE_GROWTH_MONTHLY", yearly: "STRIPE_PRICE_GROWTH_YEARLY" },
   },
   agency: {
     id: "agency", name: "Agency", tagline: "For agencies managing multiple clients.",
     priceMonthly: 399, priceYearly: 3990, currency: "EUR", aiPlan: "agency",
-    limits: { connectedAccounts: 10, teamMembers: 25 },
+    limits: { connectedAccounts: 10 },
     features: ["Multiple brands/clients", "Multi-account monitoring", "Reputation + Actor Risk", "Priority support", "Dedicated contact"],
     selfServeCheckout: true, env: { monthly: "STRIPE_PRICE_AGENCY_MONTHLY", yearly: "STRIPE_PRICE_AGENCY_YEARLY" },
   },
   enterprise: {
     id: "enterprise", name: "Enterprise / Custom", tagline: "For media, public figures and larger brands.",
     priceMonthly: null, priceYearly: null, currency: "EUR", aiPlan: "enterprise",
-    limits: { connectedAccounts: null, teamMembers: null },
+    limits: { connectedAccounts: null },
     features: ["Custom volume & scale", "Multiple brands by agreement", "Advanced controls & roles", "Onboarding & support"],
     selfServeCheckout: false, env: null,
   },

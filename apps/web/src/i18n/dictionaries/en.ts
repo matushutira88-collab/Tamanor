@@ -1784,8 +1784,8 @@ export const en = {
     priceSub: "14-day trial on every plan — no credit card. Prices indicative.",
     monthly: "Monthly", yearly: "Yearly", popular: "Popular", perMo: "/mo", perYr: "/yr", entPrice: "Talk", entPer: "to us",
     plans: [
-      { name: "Starter", tagline: "Small brand, creator or local business.", cta: "Start free", features: ["1 brand", "1 Facebook Page", "Comments & queue", "Basic reputation", "Manual review"] },
-      { name: "Growth", tagline: "Active e-shop, brand or agency client.", cta: "Start free", features: ["Up to 3 accounts", "Facebook protection", "Instagram monitoring", "Reputation analytics", "Actor risk & rules"] },
+      { name: "Starter", tagline: "Small brand, creator or local business.", cta: "Start free", features: ["1 brand", "1 monitored profile (Facebook or Instagram)", "Comments & queue", "Basic reputation", "Manual review"] },
+      { name: "Growth", tagline: "Active e-shop, brand or agency client.", cta: "Start free", features: ["Up to 3 monitored profiles", "Facebook + Instagram", "Reputation analytics", "Actor risk & rules"] },
       { name: "Agency", tagline: "Agencies managing multiple clients.", cta: "Start free", features: ["Multiple brands", "Onboarding support", "Multi-account monitoring", "Reputation + actor risk", "Priority support"] },
       { name: "Enterprise", tagline: "Media, public figures, larger brands.", cta: "Contact sales", features: ["Custom scale", "Advanced roles", "Dedicated contact", "Onboarding & SLA"] },
     ],

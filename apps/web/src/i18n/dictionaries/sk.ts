@@ -1732,8 +1732,8 @@ export const sk: Dictionary = {
     priceSub: "14-dňová skúšobná verzia pri každom pláne — bez karty. Ceny sú orientačné.",
     monthly: "Mesačne", yearly: "Ročne", popular: "Obľúbený", perMo: "/mes.", perYr: "/rok", entPrice: "Napíš", entPer: "nám",
     plans: [
-      { name: "Starter", tagline: "Malá značka, tvorca alebo lokálny biznis.", cta: "Začni zadarmo", features: ["1 značka", "1 Facebook stránka", "Komentáre & fronta", "Základná reputácia", "Manuálna kontrola"] },
-      { name: "Growth", tagline: "Aktívny e-shop, značka alebo klient agentúry.", cta: "Začni zadarmo", features: ["Až 3 účty", "Ochrana Facebooku", "Instagram monitoring", "Reputačná analytika", "Riziko aktérov & pravidlá"] },
+      { name: "Starter", tagline: "Malá značka, tvorca alebo lokálny biznis.", cta: "Začni zadarmo", features: ["1 značka", "1 monitorovaný profil (Facebook alebo Instagram)", "Komentáre & fronta", "Základná reputácia", "Manuálna kontrola"] },
+      { name: "Growth", tagline: "Aktívny e-shop, značka alebo klient agentúry.", cta: "Začni zadarmo", features: ["Až 3 monitorované profily", "Facebook + Instagram", "Reputačná analytika", "Riziko aktérov & pravidlá"] },
       { name: "Agency", tagline: "Agentúry spravujúce viacerých klientov.", cta: "Začni zadarmo", features: ["Viacero značiek", "Pomoc s onboardingom", "Multi-účet monitoring", "Reputácia + riziko aktérov", "Prioritná podpora"] },
       { name: "Enterprise", tagline: "Médiá, verejné osoby, väčšie značky.", cta: "Kontaktuj predaj", features: ["Vlastný rozsah", "Pokročilé role", "Dedikovaný kontakt", "Onboarding & SLA"] },
     ],
