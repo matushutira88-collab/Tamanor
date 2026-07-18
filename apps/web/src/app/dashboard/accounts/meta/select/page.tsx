@@ -5,6 +5,7 @@ import { Permission } from "@guardora/core";
 import { loadOnboardingForUi } from "@/server/meta-onboarding";
 import { confirmMetaSelection, cancelMetaSelection } from "../actions";
 import { getLocale } from "@/i18n/locale-server";
+import { BrandIcon } from "@/components/dashboard/platform-icon";
 
 // V1.59 — per-account monitoring choices (separate from connecting). Each enable is atomically
 // limit-checked (FB=1, IG=1); an account past the plan limit stays connected but unmonitored.
@@ -165,64 +166,32 @@ export default async function MetaSelectPage({
         ))}
       </div>
 
+      {/* V1.59 2b — FLAT multi-select: every Facebook Page AND every Instagram account is a SEPARATE
+          checkbox item. Pick any combination; monitoring is enforced per-account (FB=1, IG=1) on submit. */}
       <form action={confirmMetaSelection.bind(null, onboarding.id)} className="space-y-3">
-        {onboarding.pages.map((p, i) => (
-          <label
-            key={p.pageId}
-            className="gu-card flex cursor-pointer items-start gap-3 p-4 transition hover:border-[var(--color-brand)]"
-          >
-            <input
-              type="radio"
-              name="pageId"
-              value={p.pageId}
-              defaultChecked={i === 0}
-              className="mt-1"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{p.name}</span>
-                <Badge tone="brand">{c.readOnly}</Badge>
-                {p.category ? <Badge>{p.category}</Badge> : null}
-              </div>
-              <p className="mt-0.5 font-mono text-xs text-[var(--color-muted)]">
-                {c.pageId} {shortId(p.pageId)}
-              </p>
-              <p className="mt-1 text-xs">
-                {p.hasInstagram ? (
-                  <span className="text-[var(--color-ok)]">
-                    {c.igLinked}
-                    {p.igUsername ? ` (@${p.igUsername})` : ""}
-                  </span>
-                ) : (
-                  <span className="text-[var(--color-muted)]">
-                    {c.igNotLinked}
-                  </span>
-                )}
-              </p>
-            </div>
-          </label>
-        ))}
-
-        <label className="flex items-center gap-2 px-1 text-sm">
-          <input type="checkbox" name="connectIg" defaultChecked />
-          <span className="text-[var(--color-muted)]">
-            {c.alsoConnectIg}
-          </span>
-        </label>
-
-        {/* V1.59 — CONNECT and MONITOR are separate, per-account choices (FB and IG counted separately). */}
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2.5">
-          <p className="mb-2 text-xs font-medium text-[var(--color-muted)]">{MON[locale].heading}</p>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="monitorFb" defaultChecked />
-            <span>{MON[locale].fb}</span>
-          </label>
-          <label className="mt-1.5 flex items-center gap-2 text-sm">
-            <input type="checkbox" name="monitorIg" defaultChecked />
-            <span>{MON[locale].ig}</span>
-          </label>
-          <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">{MON[locale].note}</p>
-        </div>
+        <p className="px-1 text-xs text-[var(--color-muted)]">{MON[locale].heading}</p>
+        <fieldset className="space-y-2.5" role="group" aria-label={MON[locale].heading}>
+          {onboarding.pages.flatMap((p) => {
+            const items: Array<{ key: string; platform: "facebook_page" | "instagram_business"; label: string; sub: string }> = [
+              { key: `facebook:${p.pageId}`, platform: "facebook_page", label: p.name, sub: `Facebook · ${shortId(p.pageId)}` },
+            ];
+            if (p.hasInstagram && p.igBusinessId) {
+              items.push({ key: `instagram:${p.igBusinessId}`, platform: "instagram_business", label: p.igUsername ? `@${p.igUsername}` : p.name, sub: "Instagram Professional" });
+            }
+            return items;
+          }).map((it) => (
+            <label key={it.key} className="gu-card flex cursor-pointer items-center gap-3 p-3.5 transition hover:border-[var(--color-brand)]">
+              <input type="checkbox" name="select" value={it.key} defaultChecked className="h-4 w-4 accent-[var(--color-brand)]" />
+              <BrandIcon platform={it.platform} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{it.label}</span>
+                <span className="block truncate text-xs text-[var(--color-muted)]">{it.sub}</span>
+              </span>
+              <Badge tone="brand">{c.readOnly}</Badge>
+            </label>
+          ))}
+        </fieldset>
+        <p className="px-1 text-[11px] text-[var(--color-muted)]">{MON[locale].note}</p>
 
         <div className="flex items-center gap-2 pt-2">
           <PrimaryButton type="submit">{c.connectSelected}</PrimaryButton>

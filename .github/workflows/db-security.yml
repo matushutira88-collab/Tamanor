@@ -89,6 +89,9 @@ jobs:
       - name: Meta finalize — no bundle, per-account monitoring limit, reconnect no-dup (real Postgres)
         run: pnpm meta-finalize:test
 
+      - name: Accounts overview + today metrics (UTC day, connection/monitoring split, capacity, isolation)
+        run: pnpm accounts-overview:test
+
       - name: Webhook out-of-order ordering guard
         run: pnpm webhook-ordering:test
 

@@ -152,7 +152,8 @@
     "auto-hide-decision:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/auto-hide-decision.test.ts",
     "account-protection:test": "bash packages/db/scripts/run-account-protection.sh",
     "dashboard-metrics:test": "bash packages/db/scripts/run-dashboard-metrics.sh",
-    "meta-finalize:test": "bash packages/db/scripts/run-meta-finalize.sh"
+    "meta-finalize:test": "bash packages/db/scripts/run-meta-finalize.sh",
+    "accounts-overview:test": "bash packages/db/scripts/run-accounts-overview.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

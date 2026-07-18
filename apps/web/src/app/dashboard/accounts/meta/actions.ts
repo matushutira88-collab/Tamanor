@@ -22,73 +22,54 @@ export async function confirmMetaSelection(
   // V1.45C1 — a deleting tenant persists no real provider connection (defence-in-depth).
   await assertTenantActive(session.tenantId);
 
-  const pageId = String(formData.get("pageId") ?? "");
-  // V1.59 — CONNECT and MONITOR are separate, per-account choices. `connectIg` still controls whether the
-  // IG account is persisted; `monitorFb`/`monitorIg` (default on) control whether monitoring is ACTIVATED
-  // for each — enforced atomically, FB and IG counted separately.
-  const connectIg = formData.get("connectIg") === "on";
-  const monitorFb = formData.get("monitorFb") !== "off";
-  const monitorIg = formData.get("monitorIg") !== "off";
+  // V1.59 2b — FLAT MULTI-SELECT. The form submits `select` values keyed `${platform}:${externalId}` for
+  // each chosen Facebook Page / Instagram account (FB and IG are independent items). A page is connected
+  // whenever its FB item OR its IG item is chosen (an IG requires its parent Page); monitoring is then
+  // activated PER chosen item, atomically (FB=1, IG=1), never a bundle.
+  const selected = formData.getAll("select").map(String).filter(Boolean);
+  const fbSel = new Set(selected.filter((s) => s.startsWith("facebook:")).map((s) => s.slice("facebook:".length)));
+  const igSel = new Set(selected.filter((s) => s.startsWith("instagram:")).map((s) => s.slice("instagram:".length)));
 
   const row = await loadOnboardingRaw(session, onboardingId);
   if (!row) {
     redirect("/dashboard/accounts/meta/select?flow=expired");
   }
-
-  const brand = await withTenant(session.tenantId, (db) => db.brand.findFirst({
-    where: { id: row.brandId, tenantId: session.tenantId },
-    select: { id: true },
-  }));
+  const brand = await withTenant(session.tenantId, (db) => db.brand.findFirst({ where: { id: row.brandId, tenantId: session.tenantId }, select: { id: true } }));
   if (!brand) {
     redirect("/dashboard/accounts?meta=bad_brand");
   }
-
   const pages = row.pages as unknown as MetaDiscoveredPage[];
-  const page = pages.find((p) => p.pageId === pageId);
-  if (!page) {
-    redirect("/dashboard/accounts/meta/select?flow=bad_page");
+  if (selected.length === 0) {
+    redirect("/dashboard/accounts/meta/select?flow=none_selected");
   }
 
-  // Scopes actually requested/granted for THIS flow (env-driven).
-  const scopes = row.grantedScopes;
-  const granted = row.grantedScopes;
-  // Page tokens (from a long-lived user token) are long-lived. Encrypt at rest.
-  const encryptedToken = encryptToken(page.pageAccessToken);
-
-  // V1.59 — CONNECT the Page (+ optionally IG) WITHOUT a bundle limit. Accounts are persisted as
-  // connected-but-not-monitored; the plan limit is enforced per-account when monitoring is activated.
-  const link = await linkMetaAssets({
-    tenantId: session.tenantId,
-    brandId: row.brandId,
-    page,
-    connectIg,
-    scopes,
-    grantedPermissions: granted,
-    encryptedToken,
-    tokenType: row.tokenType,
-    tokenExpiresAt: row.tokenExpiresAt,
-  });
-  const fbId = link.pageAccountId;
-
-  await clearOnboarding(session, onboardingId);
-
-  // V1.59 — ACTIVATE monitoring per selected account, ATOMICALLY (FB=1, IG=1). Each enable goes through
-  // enableAccountMonitoringWithinLimit (advisory-locked); an account that would exceed the plan limit is
-  // left connected-but-unmonitored and reported — never a silent partial result, never a bypass.
-  let monitored = 0, limited = 0;
+  let connected = 0, monitored = 0, limited = 0;
   const activate = async (id: string) => {
     try { await enableAccountMonitoringWithinLimit(session.tenantId, id); emitOpsEvent("account.monitoring_enabled", { operation: "connect" }); monitored++; }
     catch (e) { if (e instanceof EntitlementError) { emitOpsEvent("subscription.account_limit_reached", { operation: "connect" }); limited++; } else throw e; }
   };
-  if (monitorFb) await activate(fbId);
-  if (connectIg && monitorIg && link.igAccountId) await activate(link.igAccountId);
 
-  // V1.27C — verify the stored PAGE token against Graph right away (best-effort).
-  let verify = "ok";
-  try { verify = (await checkAccountToken(session.tenantId, fbId)).result; } catch { /* best-effort */ }
+  for (const page of pages) {
+    const fbChosen = fbSel.has(page.pageId);
+    const igChosen = page.igBusinessId ? igSel.has(page.igBusinessId) : false;
+    if (!fbChosen && !igChosen) continue;
+    // CONNECT (no bundle limit). The Page is persisted whenever anything on it is chosen (IG needs it).
+    const link = await linkMetaAssets({
+      tenantId: session.tenantId, brandId: row.brandId, page, connectIg: igChosen,
+      scopes: row.grantedScopes, grantedPermissions: row.grantedScopes,
+      encryptedToken: encryptToken(page.pageAccessToken), tokenType: row.tokenType, tokenExpiresAt: row.tokenExpiresAt,
+    });
+    connected += 1 + (igChosen && link.igAccountId ? 1 : 0);
+    // ACTIVATE monitoring only for the items the user actually selected (atomic, FB=1, IG=1).
+    if (fbChosen) await activate(link.pageAccountId);
+    if (igChosen && link.igAccountId) await activate(link.igAccountId);
+    // Best-effort token verification on the Page.
+    try { await checkAccountToken(session.tenantId, link.pageAccountId); } catch { /* best-effort */ }
+  }
 
+  await clearOnboarding(session, onboardingId);
   revalidatePath("/dashboard/accounts");
-  redirect(`/dashboard/accounts?connected=1&mon=${monitored}&lim=${limited}&verify=${encodeURIComponent(verify)}`);
+  redirect(`/dashboard/accounts?connected=${connected}&mon=${monitored}&lim=${limited}`);
 }
 
 /** Abandon the onboarding flow without connecting anything. */
