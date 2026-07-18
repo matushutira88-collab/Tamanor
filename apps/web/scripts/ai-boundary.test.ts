@@ -47,10 +47,19 @@ const isDevOrTest = (p: string) => /(\/scripts\/|\.test\.|\.spec\.|prisma\/seed|
 function run() {
   const files = SRC_DIRS.flatMap((d) => walk(d));
 
-  // 1) No real AI SDK imports anywhere.
-  const sdk = /(from\s+['"](openai|@anthropic-ai\/[^'"]+|cohere-ai|mistralai|@google\/generative-ai|google-generativeai|@ai-sdk\/[^'"]+)['"])/;
-  const sdkHits = files.filter((f) => sdk.test(readFileSync(f, "utf8"))).map(rel);
-  check("1) no real AI SDK import in any source file", sdkHits.length === 0, sdkHits.join(", "));
+  // 1) The official AI SDK may be imported ONLY inside the one approved server-side openai adapter —
+  //    never in any other package, and never in browser/UI code (apps/web/src). This confines all direct
+  //    SDK access to the central provider.
+  const sdk = /(from\s+['"](openai|@anthropic-ai\/[^'"]+|cohere-ai|mistralai|@google\/generative-ai|google-generativeai|@ai-sdk\/[^'"]+)['"])|import\(\s*['"]openai['"]\s*\)/;
+  const sdkAllow = new Set(["packages/ai/src/openai-provider.ts"]);
+  const sdkHits = files.filter((f) => sdk.test(readFileSync(f, "utf8")) && !sdkAllow.has(rel(f))).map(rel);
+  check("1) AI SDK import confined to the approved openai adapter (never elsewhere, never in web/UI)", sdkHits.length === 0, sdkHits.join(", "));
+  // 1b) The approved adapter really is the one importing the SDK (allowlist is not stale).
+  const adapterSrc = readFileSync(join(ROOT, "packages", "ai", "src", "openai-provider.ts"), "utf8");
+  check("1b) the approved openai adapter imports the official SDK", sdk.test(adapterSrc));
+  // 1c) No browser/UI code imports the openai adapter directly (it is server-only, reached via the factory).
+  const webAdapterHits = walk(join(ROOT, "apps", "web", "src")).filter((f) => /openai-provider/.test(readFileSync(f, "utf8"))).map(rel);
+  check("1c) openai adapter not imported by any web/UI file", webAdapterHits.length === 0, webAdapterHits.join(", "));
 
   // 2) No direct AI-provider HTTP endpoints.
   const http = /(api\.openai\.com|api\.anthropic\.com|api\.cohere\.|generativelanguage\.googleapis\.com|api\.mistral\.ai)/;

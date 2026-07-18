@@ -15,6 +15,7 @@ import {
   type AiRiskCallStatus,
   type TranslationCallStatus,
   type RecommendedAction,
+  type OpenAiRiskConfig,
 } from "./providers";
 import { applyBrandMemory, type BrandMemoryRule, type BrandMemoryMatch } from "./brand-memory";
 
@@ -24,7 +25,7 @@ const rank = (l: string) => Math.max(0, RISK_ORDER.indexOf(l as (typeof RISK_ORD
 export interface HybridConfig {
   workspaceLocale: string;
   translation: { enabled: boolean; provider: string; targetMode: "workspace_locale" | "en" };
-  aiRisk: { enabled: boolean; provider: string; minConfidence: number };
+  aiRisk: { enabled: boolean; provider: string; minConfidence: number; openai?: OpenAiRiskConfig };
   brandContext?: string;
   /** Active brand-scoped memory rules (applied after Risk Rules V1). */
   memoryRules?: BrandMemoryRule[];
@@ -66,6 +67,8 @@ export interface HybridResult {
   classificationMode: "rules_only" | "ai_assisted";
   aiProvider: string;
   aiProviderStatus: AiRiskCallStatus;
+  /** REAL token usage from a successful paid provider call (for metering). Absent otherwise. */
+  aiUsage?: { inputTokens: number; outputTokens: number };
   // Brand memory.
   memoryMatched: BrandMemoryMatch[];
   // Engine + observability.
@@ -156,8 +159,9 @@ export async function classifyHybrid(
   const gated = cfg.aiRisk.enabled && cfg.aiRisk.provider !== "none" &&
     shouldCallAi({ detectedLanguage, isMixedLanguage: rules.isMixedLanguage, confidence, level, explanation: rules.explanation }, cfg.aiRisk.minConfidence);
 
+  let aiUsage: HybridResult["aiUsage"];
   if (gated) {
-    const ai = getAiRiskProvider(cfg.aiRisk.provider);
+    const ai = getAiRiskProvider(cfg.aiRisk.provider, cfg.aiRisk.openai);
     const out = await ai.classify({
       originalText: input.text,
       translatedText,
@@ -180,6 +184,7 @@ export async function classifyHybrid(
       if (out.sentiment) sentiment = out.sentiment;
       approvalRequired = approvalRequired || out.approvalRequired || rank(level) >= rank("high");
       shortReason = out.shortReason;
+      aiUsage = out.usage;
     }
     // failed/unavailable → fall back to rules result (already the default).
   }
@@ -208,6 +213,7 @@ export async function classifyHybrid(
     classificationMode,
     aiProvider,
     aiProviderStatus,
+    aiUsage,
     memoryMatched: memory.matches,
     engine: rules.engine ?? "risk-rules-v1",
     providerCalls,

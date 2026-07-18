@@ -12,12 +12,20 @@ export const PRICING_VERSION = "2026-07-13.v1";
 
 type ModelPricing = { inputMicrosPerToken: number; outputMicrosPerToken: number };
 
-/** provider → modelKey → per-token micros. `none`/`mock` are free (no network / no billing). */
+/**
+ * provider → modelKey → per-token micros (1 micro = 1e-6 of the provider's pricing currency = USD for
+ * OpenAI). `none`/`mock` are free. For openai the modelKey is the ACTUAL model (OPENAI_MODEL), so a model
+ * with no entry here falls through to SAFE_FALLBACK (fail closed) — no invented price.
+ */
 const PRICING: Record<string, Record<string, ModelPricing>> = {
   none: { none: { inputMicrosPerToken: 0, outputMicrosPerToken: 0 } },
   mock: { mock: { inputMicrosPerToken: 0, outputMicrosPerToken: 0 } },
-  // --- Real provider slots (PLACEHOLDER — confirm before enabling) ---
-  // "example-cloud": { small: { inputMicrosPerToken: 3, outputMicrosPerToken: 15 } },
+  // --- OpenAI (USD list price per 1M tokens → micros/token). CONFIRM against platform.openai.com/pricing
+  //     before scaling; these reflect the published rates known at authoring (2026-01): gpt-4o-mini =
+  //     $0.15 / 1M input, $0.60 / 1M output ⇒ 0.15 / 0.60 micros per token. Unlisted models fail closed.
+  openai: {
+    "gpt-4o-mini": { inputMicrosPerToken: 0.15, outputMicrosPerToken: 0.60 },
+  },
 };
 
 /** Conservative fallback when a paid provider/model has no published price yet (fail closed). */

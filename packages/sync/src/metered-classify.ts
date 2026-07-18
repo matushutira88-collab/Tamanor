@@ -9,7 +9,7 @@
  * provider error) which the ingest layer persists on the ReputationItem.
  */
 import { classifyHybrid, type HybridConfig, type HybridResult, type ClassificationInput } from "@guardora/ai";
-import { resolveEffectiveUsagePolicy, POLICY_VERSION, estimateCostMicros } from "@guardora/core";
+import { resolveEffectiveUsagePolicy, POLICY_VERSION, estimateCostMicros, actualCostMicros } from "@guardora/core";
 import { getPaidAiFuseConfig } from "@guardora/config";
 import {
   contentVersionHash, consumeBasicUnit, reservePremiumCall, finalizePremiumCall, releaseReservation,
@@ -44,7 +44,9 @@ export async function classifyWithUsagePolicy(
   // V1.50D — billing-aware policy: a restricted/suspended tenant gets NO paid AI regardless of plan.
   const policy = resolveEffectiveUsagePolicy(ctx.plan, ctx.accessState);
   const provider = cfg.aiRisk.provider || "none";
-  const modelKey = provider;
+  // Model-specific key for openai (the real OPENAI_MODEL) so pricing + cache + reservation are per-model;
+  // an unpriced model then fails closed to SAFE_FALLBACK. Other providers key by provider name.
+  const modelKey = provider === "openai" && cfg.aiRisk.openai?.model ? cfg.aiRisk.openai.model : provider;
   const contentHash = contentVersionHash({
     text: input.text, rating: input.rating, context: `${input.platform}|${cfg.workspaceLocale}`,
     classifierVersion: CLASSIFIER_VERSION, policyVersion: POLICY_VERSION,
@@ -64,9 +66,12 @@ export async function classifyWithUsagePolicy(
   const basic = await consumeBasicUnit(ctx.tenantId, ctx.plan, { idempotencyKey: `basic:${contentHash}`, tier: "rules", ...evRefs }, now);
   const baseStatus: ProcessingStatus = basic.denied ? "basic_limit_reached" : "processed_rules";
 
-  // 3) PAID fallback — policy → per-instance fuses → GLOBAL reserve → TENANT reserve → provider.
-  const wantPaid = policy.allowPaidFallback && cfg.aiRisk.enabled && provider !== "none";
-  if (!wantPaid) return done(rules, "rules", baseStatus, basic.reason);
+  // 3) PAID fallback — policy → canary allowlist → per-instance fuses → GLOBAL reserve → TENANT reserve.
+  const fuse = getPaidAiFuseConfig();
+  // Canary allowlist: EMPTY = inactive; NON-EMPTY = only listed tenants may reach the paid provider.
+  const allowlisted = fuse.tenantAllowlist.length === 0 || fuse.tenantAllowlist.includes(ctx.tenantId);
+  const wantPaid = policy.allowPaidFallback && cfg.aiRisk.enabled && provider !== "none" && allowlisted;
+  if (!wantPaid) return done(rules, "rules", baseStatus, allowlisted ? basic.reason : "tenant_not_allowlisted");
 
   const acq = paidAiGuard.tryAcquire(now);
   if (!acq.ok) {
@@ -77,7 +82,6 @@ export async function classifyWithUsagePolicy(
 
   try {
     const estMicros = estimateCostMicros(provider, modelKey, policy.maxInputTokensPerCall, policy.maxOutputTokensPerCall);
-    const fuse = getPaidAiFuseConfig();
 
     // 3a) GLOBAL reserve (multi-instance safe) FIRST.
     const global = await reserveGlobalDailyCall(provider, estMicros, { callLimit: fuse.globalDailyCallLimit, costLimitMicros: fuse.globalDailyCostLimitMicros }, now);
@@ -109,8 +113,12 @@ export async function classifyWithUsagePolicy(
         paidAiGuard.recordFailure(now);
         return done(rules, "rules", "failed", "paid_provider_failed");
       }
-      await finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "succeeded", actualCostMicros: estMicros, billed: true });
-      await finalizeGlobalDailyCall(provider, estMicros, estMicros, now);
+      // Use the provider's REAL reported token usage for actual cost when available (never invented).
+      // For an unpriced model this equals the conservative estimate (fail-closed) until prices are set.
+      const usage = paid.aiUsage;
+      const actual = usage ? actualCostMicros(provider, modelKey, usage.inputTokens, usage.outputTokens) : estMicros;
+      await finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "succeeded", actualCostMicros: actual, billed: true });
+      await finalizeGlobalDailyCall(provider, estMicros, actual, now);
       paidAiGuard.recordSuccess();
       await cachePut(ctx.tenantId, { contentHash, modelKey, policyVersion: POLICY_VERSION, normalizedResult: paid as unknown });
       return done(paid, "paid", "processed_paid");

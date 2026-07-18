@@ -13,7 +13,9 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@guardora/core": "workspace:*"
+    "@guardora/core": "workspace:*",
+    "openai": "^6.48.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

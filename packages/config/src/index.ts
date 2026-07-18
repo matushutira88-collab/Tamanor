@@ -26,6 +26,10 @@ const EnvSchema = z.object({
   AI_PROVIDER: z.enum(["placeholder", "anthropic", "openai"]).default("placeholder"),
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().optional(),
+  // V1.60 — OpenAI adapter. OPENAI_API_KEY is preferred; AI_API_KEY / AI_MODEL remain as documented
+  // fallbacks only. Server-only (never NEXT_PUBLIC). OPENAI_MODEL is REQUIRED when AI_RISK_PROVIDER=openai.
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().optional(),
 
   // Worker
   WORKER_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
@@ -394,18 +398,38 @@ export function getTranslationConfig(source: NodeJS.ProcessEnv = process.env): {
   };
 }
 
-/** External AI risk provider configuration (off by default). */
+/**
+ * External AI risk provider configuration (OFF by default). For provider=openai the adapter needs a
+ * key + model; if either is missing the provider is forced DISABLED (it must never masquerade as active)
+ * and a `configError` is surfaced. Note the paid path additionally requires AI_PAID_ENABLED (the fuse),
+ * so a real OpenAI call requires ALL THREE: AI_RISK_PROVIDER=openai, AI_RISK_PROVIDER_ENABLED=true,
+ * AI_PAID_ENABLED=true (plus a present key+model).
+ */
 export function getAiRiskConfig(source: NodeJS.ProcessEnv = process.env): {
   enabled: boolean;
   provider: string;
   minConfidence: number;
+  openai?: { apiKey: string; model: string; timeoutMs: number; maxRetries: number };
+  configError?: string;
 } {
   const env = loadEnv(source);
-  return {
-    enabled: env.AI_RISK_PROVIDER_ENABLED,
-    provider: env.AI_RISK_PROVIDER,
-    minConfidence: env.AI_RISK_MIN_CONFIDENCE,
-  };
+  const provider = env.AI_RISK_PROVIDER;
+  let enabled = env.AI_RISK_PROVIDER_ENABLED;
+  let openai: { apiKey: string; model: string; timeoutMs: number; maxRetries: number } | undefined;
+  let configError: string | undefined;
+
+  if (provider === "openai") {
+    const apiKey = env.OPENAI_API_KEY ?? env.AI_API_KEY; // OPENAI_API_KEY preferred; AI_API_KEY = fallback
+    const model = env.OPENAI_MODEL ?? env.AI_MODEL;       // OPENAI_MODEL required when openai is selected
+    if (!apiKey) { enabled = false; configError = "openai_api_key_missing"; }
+    else if (!model) { enabled = false; configError = "openai_model_missing"; }
+    else {
+      const fuse = getPaidAiFuseConfig(source); // reuse the paid-AI timeout/retry knobs for the adapter
+      openai = { apiKey, model, timeoutMs: fuse.timeoutMs, maxRetries: fuse.maxRetries };
+    }
+  }
+
+  return { enabled, provider, minConfidence: env.AI_RISK_MIN_CONFIDENCE, openai, configError };
 }
 
 export interface PaidAiFuseConfig {
@@ -420,6 +444,8 @@ export interface PaidAiFuseConfig {
   maxRetries: number;
   circuitFailureThreshold: number;
   circuitCooldownMs: number;
+  /** Canary allowlist of tenant ids. EMPTY = inactive; NON-EMPTY = only these tenants may use paid AI. */
+  tenantAllowlist: string[];
 }
 
 /**
@@ -441,6 +467,9 @@ const PaidAiFuseSchema = z.object({
   AI_PAID_MAX_RETRIES: z.coerce.number().int().nonnegative().max(5).default(1),
   AI_PAID_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(5),
   AI_PAID_CIRCUIT_COOLDOWN_MS: z.coerce.number().int().positive().default(60_000),
+  // V1.60 — canary allowlist. EMPTY = inactive (paid AI gated only by the flags/quota above). NON-EMPTY
+  // = ONLY these tenant ids may use the paid provider (comma-separated), for a controlled rollout.
+  AI_PAID_TENANT_ALLOWLIST: z.string().default(""),
 });
 
 export function getPaidAiFuseConfig(source: NodeJS.ProcessEnv = process.env): PaidAiFuseConfig & { effectiveEnabled: boolean } {
@@ -457,6 +486,7 @@ export function getPaidAiFuseConfig(source: NodeJS.ProcessEnv = process.env): Pa
     maxRetries: env.AI_PAID_MAX_RETRIES,
     circuitFailureThreshold: env.AI_PAID_CIRCUIT_FAILURE_THRESHOLD,
     circuitCooldownMs: env.AI_PAID_CIRCUIT_COOLDOWN_MS,
+    tenantAllowlist: env.AI_PAID_TENANT_ALLOWLIST.split(",").map((s) => s.trim()).filter(Boolean),
   };
   const configInvalid = base.globalDailyCallLimit <= 0 || base.globalDailyCostLimitMicros <= 0;
   const effectiveEnabled = base.enabled && !base.emergencyDisable && !configInvalid;

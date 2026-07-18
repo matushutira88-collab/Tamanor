@@ -25,7 +25,7 @@ const T0 = new Date("2026-07-14T12:00:00.000Z");
 const at = (ms: number) => new Date(T0.getTime() + ms);
 // Full fuse cfg with overrides for guard-unit tests.
 type Cfg = Parameters<typeof paidAiGuard.tryAcquire>[1];
-const CFG = (o: Partial<NonNullable<Cfg>> = {}): NonNullable<Cfg> => ({ effectiveEnabled: true, enabled: true, emergencyDisable: false, globalDailyCallLimit: 1000, globalDailyCostLimitMicros: 5_000_000, providerDailyCallLimit: 1000, rpmLimit: 60, maxConcurrency: 4, timeoutMs: 10_000, maxRetries: 1, circuitFailureThreshold: 5, circuitCooldownMs: 60_000, ...o });
+const CFG = (o: Partial<NonNullable<Cfg>> = {}): NonNullable<Cfg> => ({ effectiveEnabled: true, enabled: true, emergencyDisable: false, globalDailyCallLimit: 1000, globalDailyCostLimitMicros: 5_000_000, providerDailyCallLimit: 1000, rpmLimit: 60, maxConcurrency: 4, timeoutMs: 10_000, maxRetries: 1, circuitFailureThreshold: 5, circuitCooldownMs: 60_000, tenantAllowlist: [], ...o });
 
 async function okProvider(i: ClassificationInput, c: HybridConfig): Promise<HybridResult> {
   const base = await classifyHybrid(i, { ...c, aiRisk: { enabled: false, provider: "none", minConfidence: 0.7 } });

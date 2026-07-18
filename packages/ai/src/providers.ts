@@ -75,6 +75,9 @@ export function getTranslationProvider(name: string): TranslationProvider {
 }
 
 /* ----------------------------------------------------------------- AI Risk */
+// Value import of the real adapter. openai-provider imports back ONLY types from here (erased at
+// runtime), so there is no runtime import cycle; the official SDK stays lazy inside the adapter.
+import { OpenAiRiskProvider, createOpenAiTransport } from "./openai-provider";
 
 export type RecommendedAction = "escalate" | "review" | "monitor" | "none";
 
@@ -104,6 +107,16 @@ export interface AiRiskOutput {
   status: AiRiskCallStatus;
   errorCode?: string;
   latencyMs: number;
+  /** REAL token usage reported by the provider (never invented). Absent for none/mock/failed. */
+  usage?: { inputTokens: number; outputTokens: number };
+}
+
+/** Config for the real OpenAI adapter, threaded from the caller (never read from env inside this package). */
+export interface OpenAiRiskConfig {
+  apiKey: string;
+  model: string;
+  timeoutMs: number;
+  maxRetries: number;
 }
 
 export interface AiRiskProvider {
@@ -186,7 +199,20 @@ export class MockAiRiskProvider implements AiRiskProvider {
   }
 }
 
-export function getAiRiskProvider(name: string): AiRiskProvider {
+/**
+ * Resolve the AI risk provider by name. `openai` returns the real adapter ONLY when a full config
+ * (apiKey + model) is supplied by the caller — a missing key/model can never masquerade as an active
+ * provider; it falls back to the honest `none` no-op. `mock` is dev/test only. The official SDK is
+ * reached solely through the openai adapter's isolated transport factory.
+ */
+export function getAiRiskProvider(name: string, openai?: OpenAiRiskConfig): AiRiskProvider {
+  if (name === "openai") {
+    if (!openai || !openai.apiKey || !openai.model) return new NoneAiRiskProvider();
+    return new OpenAiRiskProvider(
+      { apiKey: openai.apiKey, model: openai.model, timeoutMs: openai.timeoutMs, maxRetries: openai.maxRetries },
+      { transport: createOpenAiTransport(openai.apiKey) },
+    );
+  }
   if (name === "mock" && process.env.NODE_ENV !== "production") return new MockAiRiskProvider();
   return new NoneAiRiskProvider();
 }
