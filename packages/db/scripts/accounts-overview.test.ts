@@ -40,6 +40,10 @@ async function run() {
     // FB has an expired token (connection problem) BUT monitoring ON — the two are independent.
     const fb = await mkAcc(A, "fb", "facebook_page", { tokenHealth: "expired", monitoringEnabled: true, lastSuccessfulSyncAt: BEFORE });
     const ig = await mkAcc(A, "ig", "instagram_business", { parentAccountId: fb.id });
+    // Sync-status truthfulness: never-synced (health error but NO attempt) must NOT read as sync_error;
+    // a real failed attempt (health error + lastSyncedAt) does.
+    const never = await mkAcc(A, "never", "facebook_page", { health: "error", tokenHealth: "ok", connectionStatus: "connected", lastSuccessfulSyncAt: null, lastSyncedAt: null });
+    const failed = await mkAcc(A, "failed", "facebook_page", { health: "error", tokenHealth: "ok", connectionStatus: "connected", lastSyncedAt: BEFORE });
 
     // FB: 3 comments today (2 high, 1 low) + 1 yesterday. IG: 1 today (critical).
     await comment(A, fb, "high", TODAY); await comment(A, fb, "high", TODAY); await comment(A, fb, "low", TODAY);
@@ -57,11 +61,15 @@ async function run() {
     check("comments today = 3 (yesterday excluded)", rfb.commentsToday === 3, `${rfb.commentsToday}`);
     check("risk today = 2 (high/critical today only)", rfb.riskToday === 2, `${rfb.riskToday}`);
     check("IG today = 1 comment, 1 risk", rig.commentsToday === 1 && rig.riskToday === 1);
-    check("no cross-account / cross-tenant leakage into A's rows", ov.rows.every((r) => r.id === fb.id || r.id === ig.id));
+    check("no cross-tenant leakage into A's rows (tenant B absent)", ov.rows.every((r) => [fb.id, ig.id, never.id, failed.id].includes(r.id)) && !ov.rows.some((r) => r.id === bfb.id));
 
     console.log("Connection status SEPARATE from monitoring");
     check("FB: permissions_expired connection BUT monitoring stays ON", rfb.connectionStatus === "permissions_expired" && rfb.reconnectRequired && rfb.monitoringEnabled === true);
     check("IG: connected + monitoring off", rig.connectionStatus === "connected" && rig.monitoringEnabled === false);
+    const rnever = ov.rows.find((r) => r.id === never.id)!;
+    const rfailed = ov.rows.find((r) => r.id === failed.id)!;
+    check("never-synced (health error, NO attempt) is NOT sync_error", rnever.connectionStatus === "connected" && rnever.hasSyncError === false && rnever.lastSuccessAt === null);
+    check("real failed attempt (health error + attempt) → sync_error", rfailed.connectionStatus === "sync_error" && rfailed.hasSyncError === true);
 
     console.log("Capacity");
     check("capacity: used=1 (FB monitored), limit=3, remaining=2", ov.capacity.used === 1 && ov.capacity.limit === 3 && ov.capacity.remaining === 2, JSON.stringify(ov.capacity));

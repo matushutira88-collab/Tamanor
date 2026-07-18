@@ -54,11 +54,19 @@ export function navItem(href: string): NavItem {
  *   Incidents       = crises & escalations
  */
 export const DASHBOARD_NAV: NavItem[] = [
+  // V1.60 mockup nav — Overview first, guarded accounts + comments + alerts as the
+  // daily loop, policies/billing/settings below; power pages live under "More".
   {
-    href: "/dashboard/command-center",
-    label: "Command Center",
-    description: "Control how your brand reacts online — in one place.",
-    icon: "command",
+    href: "/dashboard",
+    label: "Overview",
+    description: "Your reputation at a glance across every brand and platform.",
+    icon: "dashboard",
+  },
+  {
+    href: "/dashboard/accounts",
+    label: "Guarded accounts",
+    description: "Connect platforms via official OAuth. No passwords, no scraping.",
+    icon: "accounts",
   },
   {
     href: "/dashboard/comments",
@@ -69,27 +77,46 @@ export const DASHBOARD_NAV: NavItem[] = [
   },
   {
     href: "/dashboard/action-queue",
-    label: "Action Queue",
+    label: "Alerts",
     description: "Items that still need a decision.",
     icon: "queue",
+  },
+  {
+    href: "/dashboard/timeline",
+    label: "Activity",
+    description: "Every event over time — syncs, matches, decisions and safety blocks.",
+    icon: "timeline",
+  },
+  {
+    href: "/dashboard/control-center",
+    label: "Protection rules",
+    description: "Define what Tamanor may do for each risk category and platform.",
+    icon: "control",
+  },
+  {
+    href: "/dashboard/billing",
+    label: "Billing",
+    description: "Your plan, subscription, and invoices.",
+    icon: "billing",
+  },
+  {
+    href: "/dashboard/settings",
+    label: "Settings",
+    description: "Workspace profile, automations, webhooks, and security.",
+    icon: "settings",
+  },
+  {
+    href: "/dashboard/command-center",
+    label: "Command Center",
+    description: "Control how your brand reacts online — in one place.",
+    icon: "command",
+    group: "More",
   },
   {
     href: "/dashboard/reputation",
     label: "Reputation",
     description: "Public mood, risk trends, topics and the riskiest posts for your brand.",
     icon: "insights",
-  },
-  {
-    href: "/dashboard/control-center",
-    label: "Control Center",
-    description: "Define what Tamanor may do for each risk category and platform.",
-    icon: "control",
-  },
-  {
-    href: "/dashboard/accounts",
-    label: "Accounts",
-    description: "Connect platforms via official OAuth. No passwords, no scraping.",
-    icon: "accounts",
     group: "More",
   },
   {
@@ -108,28 +135,13 @@ export const DASHBOARD_NAV: NavItem[] = [
     group: "More",
   },
   {
-    href: "/dashboard/timeline",
-    label: "Timeline",
-    description: "Every event over time — syncs, matches, decisions and safety blocks.",
-    icon: "timeline",
-    group: "More",
-  },
-  {
     href: "/dashboard/audit",
     label: "Audit Log",
     description: "An append-only record of every automated and manual action.",
     icon: "audit",
     group: "More",
   },
-  {
-    href: "/dashboard/settings",
-    label: "Settings",
-    description: "Workspace profile, automations, webhooks, and security.",
-    icon: "settings",
-    group: "More",
-  },
   // --- Hidden from the sidebar (routes stay available) ---
-  { href: "/dashboard", label: "Dashboard", description: "Your reputation at a glance across every brand and platform.", icon: "dashboard", hidden: true },
   { href: "/dashboard/inbox", label: "Inbox", description: "Triage comments, reviews, and mentions in one unified place.", icon: "inbox", hidden: true },
   { href: "/dashboard/approvals", label: "Approvals", description: "Review proposed actions. Nothing runs until approved and executed.", icon: "approvals", hidden: true },
   { href: "/dashboard/brands", label: "Brands", description: "The brands you protect — language, timezone, tone, and status.", icon: "brands", hidden: true },
@@ -138,5 +150,4 @@ export const DASHBOARD_NAV: NavItem[] = [
   { href: "/dashboard/reports", label: "Reports", description: "Reputation trends and moderation metrics over time.", icon: "reports", hidden: true },
   { href: "/dashboard/leads", label: "Leads", description: "Platform-level prospect administration (platform staff only). Hidden in nav; access is enforced server-side, not by hiding.", icon: "leads", hidden: true },
   { href: "/dashboard/team", label: "Team", description: "Members and roles across your workspace.", icon: "team", hidden: true },
-  { href: "/dashboard/billing", label: "Billing", description: "Your plan, subscription, and invoices.", icon: "billing", hidden: false },
 ];

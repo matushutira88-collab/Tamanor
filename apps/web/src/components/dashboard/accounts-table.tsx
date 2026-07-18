@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getDashboardAccountsOverview, type DashboardAccountRow } from "@guardora/db";
 import { PlatformIcon } from "./platform-icon";
-import { toggleMonitoringAction } from "@/app/dashboard/accounts/monitoring-actions";
+import { MonitoringSwitch } from "./monitoring-switch";
 import { runSyncAction, disconnect } from "@/app/dashboard/accounts/actions";
 import type { Locale } from "@/i18n";
 
@@ -40,17 +40,13 @@ function fmt(d: Date | null, never: string): string { return d ? d.toISOString()
 const initials = (n: string | null) => (n ?? "?").replace(/^@/, "").slice(0, 2).toUpperCase();
 
 function Switch({ row, c }: { row: DashboardAccountRow; c: (typeof T)[Locale] }) {
-  const disabled = !row.monitoringEnabled && !row.monitoringCanBeEnabled;
   return (
-    <form action={toggleMonitoringAction}>
-      <input type="hidden" name="accountId" value={row.id} />
-      <input type="hidden" name="enable" value={String(!row.monitoringEnabled)} />
-      <button type="submit" disabled={disabled} role="switch" aria-checked={row.monitoringEnabled}
-        aria-label={row.monitoringEnabled ? c.on : c.off} title={disabled ? c.limitReached : row.monitoringEnabled ? c.on : c.off}
-        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${row.monitoringEnabled ? "bg-[var(--color-ok)]" : "bg-[var(--color-border-strong)]"}`}>
-        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${row.monitoringEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
-      </button>
-    </form>
+    <MonitoringSwitch
+      accountId={row.id}
+      enabled={row.monitoringEnabled}
+      disabled={!row.monitoringEnabled && !row.monitoringCanBeEnabled}
+      on={c.on} off={c.off} limit={c.limitReached}
+    />
   );
 }
 

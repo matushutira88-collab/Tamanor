@@ -96,19 +96,21 @@ body {
    the rest of the dashboard stays light.
    ========================================================================== */
 .gu-sidebar {
-  --color-bg-soft: #0a201d;
-  --color-surface: #0e2723;
-  --color-surface-2: #123630;
-  --color-border: #163a33;
-  --color-border-strong: #1e5049;
-  --color-fg: #ecf7f3;
-  --color-muted: #8db2ab;
+  /* V1.60 — near-black enterprise rail (SaaS mockup): neutral dark surfaces,
+     teal reserved for the active item + brand accents only. */
+  --color-bg-soft: #0b1210;
+  --color-surface: #101917;
+  --color-surface-2: #16211e;
+  --color-border: #1b2724;
+  --color-border-strong: #273632;
+  --color-fg: #f2f7f5;
+  --color-muted: #93a5a0;
   --color-brand: #2ee3b2;
   --color-brand-strong: #74f0d0;
-  --color-brand-soft: #113b33;
+  --color-brand-soft: #12302a;
   --color-brand-fg: #04140f;
   color: var(--color-fg);
-  background-image: linear-gradient(180deg, #0b2320 0%, #081b18 100%);
+  background-image: linear-gradient(180deg, #0d1513 0%, #090f0e 100%);
 }
 
 /* =============================================================================

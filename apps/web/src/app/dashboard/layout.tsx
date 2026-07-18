@@ -37,19 +37,30 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // V1.51 perf — the tenant NAME already rides the validated session (`session.tenantName`), so the
   // former per-render `tenant.findUnique(name)` withTenant transaction was a redundant round trip.
   // Dropped: one fewer tenant transaction (set_config + query) on every dashboard navigation.
-  const [period, billing, ent] = await Promise.all([
+  const [[period, pendingCount, accountsUsed], billing, ent] = await Promise.all([
     // V1.50E — authoritative PERIOD-scoped processed-item usage (current billing month), not an
     // all-time count. Avoids impossible values like "5038 / 500" on a fresh trial.
-    withTenant(session.tenantId, (db) => db.usagePeriod.findFirst({
-      where: { tenantId: session.tenantId, periodStart: { lte: now }, periodEnd: { gt: now } },
-      select: { basicUnitsUsed: true },
-    })),
+    // V1.60 — plus the two small sidebar counts (alerts badge, plan-widget accounts) in the
+    // same tenant transaction so navigation stays a single withTenant round trip.
+    withTenant(session.tenantId, (db) => Promise.all([
+      db.usagePeriod.findFirst({
+        where: { tenantId: session.tenantId, periodStart: { lte: now }, periodEnd: { gt: now } },
+        select: { basicUnitsUsed: true },
+      }),
+      // V1.60 — sidebar "Alerts" badge: same source as the dashboard "pending" KPI
+      // (action-queue items awaiting approval), so the two never disagree.
+      db.actionQueueItem.count({ where: { tenantId: session.tenantId, queueState: "approval_required" } }),
+      db.connectedAccount.count({ where: { tenantId: session.tenantId, status: { in: ["active", "mock_connected"] } } }),
+    ])),
     getTenantBilling(session.tenantId),
     getTenantEntitlements(session.tenantId),
   ]);
 
   const isDemoWorkspace = session.tenantName.toLowerCase().includes("demo");
   const trialDaysLeft = billing?.trialEndsAt ? Math.max(0, Math.ceil((billing.trialEndsAt.getTime() - Date.now()) / DAY)) : null;
+  // V1.60 — plan-widget display name: paid subscription plan wins; trial shows the localized fallback.
+  const planKey = billing?.subscription?.plan ?? (billing?.billingStatus === "no_subscription" ? null : billing?.plan) ?? null;
+  const planName = planKey ? planKey.charAt(0).toUpperCase() + planKey.slice(1) : undefined;
 
   return (
     <DashboardShell
@@ -58,6 +69,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
       role={session.role}
       trialUsed={period?.basicUnitsUsed ?? 0}
       trialLimit={ent.monthlyProcessedItems || 500}
+      planName={planName}
+      accountsUsed={accountsUsed}
+      accountsLimit={ent.maxConnectedAccounts}
+      pendingCount={pendingCount}
       demo={isDemoWorkspace}
       locale={locale}
       navLabels={dict.dashboardNav}

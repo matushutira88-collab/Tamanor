@@ -301,15 +301,15 @@ export const sk: Dictionary = {
   dashboardNav: {
     command: "Riadiace centrum",
     comments: "Komentáre",
-    timeline: "Časová os",
-    control: "Kontrolné pravidlá",
-    queue: "Fronta akcií",
+    timeline: "Aktivita",
+    control: "Pravidlá ochrany",
+    queue: "Upozornenia",
     incidents: "Incidenty",
     dashboard: "Prehľad",
     inbox: "Schránka",
     approvals: "Schvaľovanie",
     brands: "Značky",
-    accounts: "Účty",
+    accounts: "Strážené účty",
     insights: "Reputácia",
     actorRisk: "Rizikové profily",
     reports: "Reporty",
@@ -317,7 +317,7 @@ export const sk: Dictionary = {
     audit: "Audit",
     leads: "Leady",
     team: "Tím",
-    billing: "Fakturácia",
+    billing: "Predplatné",
     settings: "Nastavenia",
   },
 
@@ -1302,6 +1302,8 @@ export const sk: Dictionary = {
     itemsProcessed: "Spracované položky",
     choosePlan: "Vybrať plán",
     signOut: "Odhlásiť sa",
+    yourPlan: "Váš plán",
+    accountsUsed: "Účty",
   },
 
   dash: {

@@ -301,15 +301,15 @@ export const de: Dictionary = {
   dashboardNav: {
     command: "Kommandozentrale",
     comments: "Kommentare",
-    timeline: "Zeitleiste",
-    control: "Kontrollrichtlinien",
-    queue: "Aktionswarteschlange",
+    timeline: "Aktivität",
+    control: "Schutzregeln",
+    queue: "Warnungen",
     incidents: "Vorfälle",
     dashboard: "Übersicht",
     inbox: "Posteingang",
     approvals: "Freigaben",
     brands: "Marken",
-    accounts: "Konten",
+    accounts: "Überwachte Konten",
     insights: "Reputation",
     actorRisk: "Risikoprofile",
     reports: "Berichte",
@@ -317,7 +317,7 @@ export const de: Dictionary = {
     audit: "Audit-Protokoll",
     leads: "Leads",
     team: "Team",
-    billing: "Abrechnung",
+    billing: "Abonnement",
     settings: "Einstellungen",
   },
 
@@ -1302,6 +1302,8 @@ export const de: Dictionary = {
     itemsProcessed: "Verarbeitete Elemente",
     choosePlan: "Plan wählen",
     signOut: "Abmelden",
+    yourPlan: "Ihr Tarif",
+    accountsUsed: "Konten",
   },
 
   dash: {

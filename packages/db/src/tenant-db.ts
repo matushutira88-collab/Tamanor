@@ -40,6 +40,12 @@ export async function withTenantDb<T>(
       // `true` = local to this transaction. Parameterized — never string-interpolated.
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
       return fn(tx);
+    }, {
+      // V1.60 — raise Prisma's interactive-transaction limits above the 5s/2s defaults.
+      // Dashboards batch many reads into one tenant transaction; on a large tenant or a
+      // cold serverless start the default 5s ceiling can trip P2028 mid-render.
+      timeout: 15_000,
+      maxWait: 5_000,
     });
   } finally {
     metrics.observe("db_query_duration", Date.now() - _t0, { operation: "tenant_tx" });

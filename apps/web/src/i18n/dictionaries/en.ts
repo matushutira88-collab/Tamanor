@@ -304,15 +304,15 @@ export const en = {
   dashboardNav: {
     command: "Command Center",
     comments: "Comments",
-    timeline: "Timeline",
-    control: "Control Policies",
-    queue: "Action Queue",
+    timeline: "Activity",
+    control: "Protection rules",
+    queue: "Alerts",
     incidents: "Incidents",
     dashboard: "Overview",
     inbox: "Inbox",
     approvals: "Approvals",
     brands: "Brands",
-    accounts: "Accounts",
+    accounts: "Guarded accounts",
     insights: "Reputation",
     actorRisk: "Actor Risk",
     reports: "Reports",
@@ -320,7 +320,7 @@ export const en = {
     audit: "Audit Log",
     leads: "Leads",
     team: "Team",
-    billing: "Billing",
+    billing: "Subscription",
     settings: "Settings",
   },
 
@@ -1334,6 +1334,8 @@ export const en = {
     itemsProcessed: "Items processed",
     choosePlan: "Choose a plan",
     signOut: "Sign out",
+    yourPlan: "Your plan",
+    accountsUsed: "Accounts",
   },
 
   // Inner dashboard page content.

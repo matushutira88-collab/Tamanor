@@ -38,6 +38,30 @@ export async function getDashboardKpis(tenantId: string, since: Date): Promise<D
   });
 }
 
+/**
+ * V1.60 — previous-window counterparts of the three event-based headline KPIs, bounded to
+ * [prevSince, since). Kept SEPARATE from getDashboardKpis (which is an unbounded "since now" count)
+ * so the dashboard can show an honest period-over-period delta. `pending`/`accountsWithProblem` are
+ * live-state metrics with no meaningful historical baseline, so they are intentionally not included.
+ */
+export interface DashboardKpiDeltas {
+  analyzedComments: number;
+  riskComments: number;
+  autoHidden: number;
+}
+
+export async function getDashboardKpiDeltas(tenantId: string, prevSince: Date, since: Date): Promise<DashboardKpiDeltas> {
+  return withTenant(tenantId, async (db) => {
+    const prevWindow = { gte: prevSince, lt: since };
+    const [analyzedComments, riskComments, autoHidden] = await Promise.all([
+      db.reputationItem.count({ where: { tenantId, createdAt: prevWindow } }),
+      db.reputationItem.count({ where: { tenantId, createdAt: prevWindow, riskLevel: { in: ["high", "critical"] as never } } }),
+      db.actionQueueItem.count({ where: { tenantId, queueState: "executed", updatedAt: prevWindow } }),
+    ]);
+    return { analyzedComments, riskComments, autoHidden };
+  });
+}
+
 /** Risk comments grouped by category within [since, now]. Real taxonomy only (no invented mapping). */
 export async function getRiskByCategory(tenantId: string, since: Date): Promise<Array<{ category: string; count: number }>> {
   return withTenant(tenantId, async (db) => {
@@ -176,11 +200,17 @@ export interface DashboardAccountsOverview {
   capacity: { used: number; limit: number; remaining: number };
 }
 
-function connectionStatusOf(a: { status: string; health: string; connectionStatus: string; tokenHealth: string }): ConnectionStatusView {
+/**
+ * V1.59 hotfix — truthful CONNECTION status (separate from monitoring and from sync progress). A never-
+ * synced account is NOT an error (its "Last sync" column already shows "Never synchronized" — that is a
+ * waiting state, not a failure). Only a REAL failed sync ATTEMPT (health="error" AND a sync was actually
+ * attempted) maps to sync_error; a transient `degraded` health is not surfaced as an error.
+ */
+function connectionStatusOf(a: { status: string; health: string; connectionStatus: string; tokenHealth: string; lastAttemptAt: Date | null }): ConnectionStatusView {
   if (a.status === "disconnected") return "disconnected";
   if (["expired", "invalid", "revoked"].includes(a.tokenHealth)) return "permissions_expired";
   if (["needs_reconnect", "invalid_token", "missing_permission"].includes(a.connectionStatus)) return "reconnect_required";
-  if (["error", "degraded"].includes(a.health)) return "sync_error";
+  if (a.health === "error" && a.lastAttemptAt) return "sync_error"; // an attempt was made and it failed
   return "connected";
 }
 
@@ -211,7 +241,7 @@ export async function getDashboardAccountsOverview(tenantId: string, now: Date =
     const remaining = limit < 0 ? Number.MAX_SAFE_INTEGER : Math.max(0, limit - used);
 
     const rows: DashboardAccountRow[] = accounts.map((a) => {
-      const cs = connectionStatusOf({ status: a.status as unknown as string, health: a.health as unknown as string, connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth });
+      const cs = connectionStatusOf({ status: a.status as unknown as string, health: a.health as unknown as string, connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth, lastAttemptAt: a.lastSyncedAt });
       return {
         id: a.id, platform: a.platform as unknown as string, name: a.externalName, username: a.platform as unknown as string === "instagram_business" ? a.externalName : null,
         avatarUrl: null, followersCount: null, monitoringEnabled: a.monitoringEnabled,

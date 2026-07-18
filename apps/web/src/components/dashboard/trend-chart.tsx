@@ -40,6 +40,58 @@ export function TrendChart({
   );
 }
 
+/**
+ * V1.60 — smooth area chart for a day-bucketed trend (dashboard hero chart).
+ * Dependency-free SVG: gradient fill under a brand-coloured line, with light
+ * horizontal gridlines and start/mid/end date labels. Presentational only.
+ */
+export function AreaTrend({
+  buckets,
+  height = 200,
+}: {
+  buckets: DayBucket[];
+  height?: number;
+}) {
+  const W = 640;
+  const H = height;
+  const padY = 12;
+  const max = Math.max(1, ...buckets.map((b) => b.count));
+  const n = buckets.length;
+  const stepX = n > 1 ? W / (n - 1) : W;
+  const x = (i: number) => (n > 1 ? i * stepX : W / 2);
+  const y = (v: number) => padY + (1 - v / max) * (H - padY * 2);
+
+  const pts = buckets.map((b, i) => [x(i), y(b.count)] as const);
+  const line = pts.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
+  const area = `${line} L${W},${H} L0,${H} Z`;
+  const peak = buckets.reduce((m, b, i) => (b.count > buckets[m]!.count ? i : m), 0);
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} preserveAspectRatio="none" role="img" aria-label="Risk trend">
+        <defs>
+          <linearGradient id="gu-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-brand)" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="var(--color-brand)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75].map((f) => (
+          <line key={f} x1="0" x2={W} y1={padY + f * (H - padY * 2)} y2={padY + f * (H - padY * 2)}
+            stroke="var(--color-border)" strokeWidth="1" strokeDasharray="3 4" />
+        ))}
+        <path d={area} fill="url(#gu-area)" />
+        <path d={line} fill="none" stroke="var(--color-brand)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {n > 0 ? <circle cx={x(peak)} cy={y(buckets[peak]!.count)} r="3.5" fill="var(--color-brand-strong)" /> : null}
+      </svg>
+      <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--color-muted)]">
+        <span>{buckets[0]?.label}</span>
+        <span>{buckets[Math.floor(buckets.length / 2)]?.label}</span>
+        <span>{buckets[buckets.length - 1]?.label}</span>
+      </div>
+    </div>
+  );
+}
+
 /** Horizontal labelled bars (breakdowns). */
 export function BarList({
   rows,

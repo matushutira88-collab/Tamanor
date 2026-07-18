@@ -11,6 +11,10 @@ export function DashboardShell({
   role,
   trialUsed,
   trialLimit,
+  planName,
+  accountsUsed,
+  accountsLimit,
+  pendingCount,
   demo = false,
   locale = defaultLocale,
   navLabels,
@@ -22,6 +26,10 @@ export function DashboardShell({
   role: string;
   trialUsed: number;
   trialLimit: number;
+  planName?: string;
+  accountsUsed?: number;
+  accountsLimit?: number | null;
+  pendingCount?: number;
   demo?: boolean;
   locale?: Locale;
   navLabels?: Record<string, string>;
@@ -31,7 +39,7 @@ export function DashboardShell({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
-  const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, demo, locale, navLabels, sidebarStrings };
+  const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, planName, accountsUsed, accountsLimit, pendingCount, demo, locale, navLabels, sidebarStrings };
 
   // V1.39C — mobile drawer a11y: Escape closes and returns focus to the trigger; opening
   // moves focus into the drawer's first link so keyboard users land inside the menu.

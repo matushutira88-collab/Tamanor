@@ -16,6 +16,10 @@ export function Sidebar({
   role,
   trialUsed,
   trialLimit,
+  planName,
+  accountsUsed = 0,
+  accountsLimit = null,
+  pendingCount = 0,
   demo = false,
   locale = defaultLocale,
   navLabels,
@@ -27,6 +31,13 @@ export function Sidebar({
   role: string;
   trialUsed: number;
   trialLimit: number;
+  /** V1.60 — plan widget: current plan display name (e.g. "Business", "Free trial"). */
+  planName?: string;
+  /** V1.60 — plan widget: connected accounts used / plan limit (null = unlimited). */
+  accountsUsed?: number;
+  accountsLimit?: number | null;
+  /** V1.60 — red badge on the Alerts nav item (pending decisions). */
+  pendingCount?: number;
   demo?: boolean;
   locale?: Locale;
   navLabels?: Record<string, string>;
@@ -37,6 +48,7 @@ export function Sidebar({
   const pathname = usePathname();
   const cleanTenant = tenantName.replace(/\[MOCK\]\s*/i, "");
   const pct = Math.min(100, Math.round((trialUsed / trialLimit) * 100));
+  const accountsPct = accountsLimit ? Math.min(100, Math.round((accountsUsed / accountsLimit) * 100)) : 0;
 
   return (
     <aside className="gu-sidebar flex h-dvh w-[248px] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-soft)]">
@@ -85,24 +97,53 @@ export function Sidebar({
                 >
                   <NavIconGlyph icon={item.icon} />
                 </span>
-                {navLabels?.[item.navKey ?? item.icon] ?? item.label}
+                <span className="min-w-0 flex-1 truncate">
+                  {navLabels?.[item.navKey ?? item.icon] ?? item.label}
+                </span>
+                {item.href === "/dashboard/action-queue" && pendingCount > 0 ? (
+                  <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--color-danger)] px-1.5 text-[11px] font-bold leading-none text-white">
+                    {pendingCount > 99 ? "99+" : pendingCount}
+                  </span>
+                ) : null}
               </Link>
             </div>
           );
         })}
       </nav>
 
-      {/* Trial / billing box */}
+      {/* V1.60 — plan widget (mockup): "Your plan · <name>", accounts used bar,
+          items-processed bar, upgrade CTA. */}
       <div className="px-3">
-        <div className="rounded-xl border border-[var(--color-border)] bg-gradient-to-b from-[var(--color-brand-soft)] to-[var(--color-surface-2)] p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[var(--color-fg)]">
-              {s.freeTrial ?? "Free trial"}
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <p className="text-[11px] font-medium text-[var(--color-muted)]">
+            {s.yourPlan ?? "Your plan"}
+          </p>
+          <div className="mt-0.5 flex items-center justify-between">
+            <span className="text-sm font-semibold text-[var(--color-fg)]">
+              {planName ?? s.freeTrial ?? "Free trial"}
             </span>
             <span className="rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-brand)]">
               {s.beta ?? "Beta"}
             </span>
           </div>
+
+          {accountsLimit ? (
+            <div className="mt-3">
+              <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--color-muted)]">
+                <span>{s.accountsUsed ?? "Accounts"}</span>
+                <span className="font-medium text-[var(--color-fg)]">
+                  {accountsUsed} / {accountsLimit}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-[var(--color-brand)] to-[var(--color-accent)]"
+                  style={{ width: `${accountsPct}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+
           <div className="mt-3">
             <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--color-muted)]">
               <span>{s.itemsProcessed ?? "Items processed"}</span>
@@ -117,6 +158,7 @@ export function Sidebar({
               />
             </div>
           </div>
+
           <Link
             href="/dashboard/billing"
             className="mt-3 block rounded-lg bg-[var(--color-brand)] px-3 py-2 text-center text-xs font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]"
