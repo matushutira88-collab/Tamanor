@@ -78,7 +78,7 @@ async function heartbeatGroup() {
   // expired, then fails closed. A clock past the last-known expiry fails closed immediately.
   {
     const ft = fakeTimerFactory();
-    let t = 0;
+    const t = 0;
     const hb = createLeaseHeartbeat({
       tenantId: "t", lease: { ...LEASE, expiresAt: new Date(1_000_000) }, ttlMs: 300_000, intervalMs: 75_000,
       heartbeat: async () => { throw new Error("db blip"); },
@@ -125,8 +125,7 @@ async function shutdownGroup() {
   // F53/F55) drain observes the signal (cooperative) — a signal-aware drain returns and we exit 0.
   {
     const drain = (signal: AbortSignal) => new Promise<void>((r) => { signal.addEventListener("abort", () => r()); });
-    let sc: ReturnType<typeof createShutdownController>;
-    sc = createShutdownController({ deadlineMs: 25_000, stopScheduler: () => {}, drain: () => drain(sc.signal), closeResources: async () => {}, now: () => 0, setTimer: (fn) => ({ cancel: () => {} }), onEvent: () => {} });
+    const sc: ReturnType<typeof createShutdownController> = createShutdownController({ deadlineMs: 25_000, stopScheduler: () => {}, drain: () => drain(sc.signal), closeResources: async () => {}, now: () => 0, setTimer: (fn) => ({ cancel: () => {} }), onEvent: () => {} });
     const code = await sc.shutdown("SIGINT");
     check("F53) a signal-aware drain returns on abort → exit 0", code === 0);
   }

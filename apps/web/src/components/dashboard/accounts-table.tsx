@@ -13,17 +13,17 @@ import type { Locale } from "@/i18n";
  */
 const T = {
   en: { platform: "Platform", account: "Account", monitoring: "Monitoring", connection: "Connection status", commentsToday: "Comments today", riskToday: "Risk today", lastSync: "Last sync",
-    actions: "Actions", never: "Never synchronized", on: "Monitoring active", off: "Monitoring inactive", limitReached: "You have reached the monitored account limit.",
+    actions: "Actions", never: "Never synchronized", kindTest: "Test connection", kindReadOnly: "Read-only", syncWaiting: "Waiting for first synchronization", syncNotActive: "Automatic sync not active", syncFailed: "Last sync failed", on: "Monitoring active", off: "Monitoring inactive", limitReached: "You have reached the monitored account limit.",
     view: "View comments", sync: "Sync now", reconnect: "Reconnect", disconnect: "Disconnect", unavailable: "Unavailable via current permissions",
     facebook: "Facebook", instagram: "Instagram", emptyTitle: "No connected accounts", emptyBody: "Connect Facebook Pages or Instagram Business accounts to start monitoring.", connect: "Connect Meta accounts",
     cs: { connected: "Connected", reconnect_required: "Reconnect required", permissions_expired: "Permissions expired", disconnected: "Disconnected", sync_error: "Sync error" } },
   sk: { platform: "Platforma", account: "Účet", monitoring: "Monitorovanie", connection: "Stav pripojenia", commentsToday: "Komentáre dnes", riskToday: "Rizikové dnes", lastSync: "Posledná synchronizácia",
-    actions: "Akcie", never: "Nikdy nesynchronizované", on: "Monitorovanie aktívne", off: "Monitorovanie neaktívne", limitReached: "Dosiahli ste limit monitorovaných účtov.",
+    actions: "Akcie", never: "Nikdy nesynchronizované", kindTest: "Testovacie pripojenie", kindReadOnly: "Iba na čítanie", syncWaiting: "Čaká na prvú synchronizáciu", syncNotActive: "Automatická synchronizácia nie je aktívna", syncFailed: "Posledná synchronizácia zlyhala", on: "Monitorovanie aktívne", off: "Monitorovanie neaktívne", limitReached: "Dosiahli ste limit monitorovaných účtov.",
     view: "Zobraziť komentáre", sync: "Synchronizovať", reconnect: "Znovu pripojiť", disconnect: "Odpojiť", unavailable: "Nedostupné cez aktuálne oprávnenia",
     facebook: "Facebook", instagram: "Instagram", emptyTitle: "Žiadne pripojené účty", emptyBody: "Pripojte Facebook Pages alebo Instagram Business účty a spustite monitoring.", connect: "Pripojiť Meta účty",
     cs: { connected: "Pripojené", reconnect_required: "Vyžaduje opätovné pripojenie", permissions_expired: "Oprávnenia expirovali", disconnected: "Odpojené", sync_error: "Chyba synchronizácie" } },
   de: { platform: "Plattform", account: "Konto", monitoring: "Überwachung", connection: "Verbindungsstatus", commentsToday: "Kommentare heute", riskToday: "Risiko heute", lastSync: "Letzte Synchronisierung",
-    actions: "Aktionen", never: "Nie synchronisiert", on: "Überwachung aktiv", off: "Überwachung inaktiv", limitReached: "Sie haben das Limit überwachter Konten erreicht.",
+    actions: "Aktionen", never: "Nie synchronisiert", kindTest: "Testverbindung", kindReadOnly: "Nur-Lesen", syncWaiting: "Warten auf erste Synchronisierung", syncNotActive: "Automatische Synchronisierung nicht aktiv", syncFailed: "Letzte Synchronisierung fehlgeschlagen", on: "Überwachung aktiv", off: "Überwachung inaktiv", limitReached: "Sie haben das Limit überwachter Konten erreicht.",
     view: "Kommentare ansehen", sync: "Synchronisieren", reconnect: "Neu verbinden", disconnect: "Trennen", unavailable: "Über aktuelle Berechtigungen nicht verfügbar",
     facebook: "Facebook", instagram: "Instagram", emptyTitle: "Keine verbundenen Konten", emptyBody: "Verbinden Sie Facebook-Seiten oder Instagram-Business-Konten, um die Überwachung zu starten.", connect: "Meta-Konten verbinden",
     cs: { connected: "Verbunden", reconnect_required: "Neu verbinden erforderlich", permissions_expired: "Berechtigungen abgelaufen", disconnected: "Getrennt", sync_error: "Synchronisierungsfehler" } },
@@ -38,6 +38,26 @@ const TONE: Record<string, string> = {
 };
 function fmt(d: Date | null, never: string): string { return d ? d.toISOString().replace("T", " ").slice(0, 16) + " UTC" : never; }
 const initials = (n: string | null) => (n ?? "?").replace(/^@/, "").slice(0, 2).toUpperCase();
+
+/**
+ * SINGLE source of truth for the "Last sync" cell text. Derives a TRUTHFUL label from the account's
+ * real syncState (computed once, tenant-scoped, in getDashboardAccountsOverview) — never from the file
+ * name or a guess. A test account says sync isn't active; a real account that has never synced says it
+ * is waiting for the first sync; a real failed attempt says the last sync failed; otherwise the timestamp.
+ */
+function lastSyncText(row: DashboardAccountRow, c: (typeof T)[Locale]): string {
+  switch (row.syncState) {
+    case "not_active": return c.syncNotActive;
+    case "waiting_first_sync": return c.syncWaiting;
+    case "failed": return c.syncFailed;
+    default: return fmt(row.lastSuccessAt, c.never);
+  }
+}
+function KindChip({ row, c }: { row: DashboardAccountRow; c: (typeof T)[Locale] }) {
+  if (row.accountKind === "real") return null;
+  const label = row.accountKind === "test" ? c.kindTest : c.kindReadOnly;
+  return <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-muted)]">{label}</span>;
+}
 
 function Switch({ row, c }: { row: DashboardAccountRow; c: (typeof T)[Locale] }) {
   return (
@@ -128,12 +148,12 @@ export async function AccountsTable({ tenantId, locale }: { tenantId: string; lo
             {rows.map((row) => (
               <tr key={row.id} className="border-b border-[var(--color-border)] last:border-0">
                 <td className="px-3 py-2.5"><PlatformBadge platform={row.platform} c={c} /></td>
-                <td className="px-3 py-2.5"><AccountCell row={row} /></td>
+                <td className="px-3 py-2.5"><span className="flex flex-wrap items-center gap-1.5"><AccountCell row={row} /><KindChip row={row} c={c} /></span></td>
                 <td className="px-3 py-2.5"><Switch row={row} c={c} /></td>
                 <td className="px-3 py-2.5"><ConnBadge row={row} c={c} /></td>
                 <td className="px-3 py-2.5 text-right tabular-nums">{row.commentsToday}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums">{row.riskToday}</td>
-                <td className="px-3 py-2.5 text-xs">{fmt(row.lastSuccessAt, c.never)}</td>
+                <td className="px-3 py-2.5 text-xs">{lastSyncText(row, c)}</td>
                 <td className="px-3 py-2.5"><Actions row={row} c={c} /></td>
               </tr>
             ))}
@@ -152,11 +172,12 @@ export async function AccountsTable({ tenantId, locale }: { tenantId: string; lo
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               <PlatformBadge platform={row.platform} c={c} />
               <ConnBadge row={row} c={c} />
+              <KindChip row={row} c={c} />
             </div>
             <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
               <div><dt className="text-[var(--color-muted)]">{c.commentsToday}</dt><dd className="font-medium tabular-nums">{row.commentsToday}</dd></div>
               <div><dt className="text-[var(--color-muted)]">{c.riskToday}</dt><dd className="font-medium tabular-nums">{row.riskToday}</dd></div>
-              <div><dt className="text-[var(--color-muted)]">{c.lastSync}</dt><dd className="font-medium">{fmt(row.lastSuccessAt, c.never)}</dd></div>
+              <div><dt className="text-[var(--color-muted)]">{c.lastSync}</dt><dd className="font-medium">{lastSyncText(row, c)}</dd></div>
             </dl>
             <div className="mt-3"><Actions row={row} c={c} /></div>
           </li>

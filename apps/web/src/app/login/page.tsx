@@ -110,7 +110,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   // the signInAs action itself is disabled in production. Real credential login (above)
   // works in every environment.
   const devLoginEnabled = process.env.NODE_ENV !== "production";
-  const devUsers = devLoginEnabled ? await listDevLoginUsers() : [];
+  // Fail-closed: guard BEFORE the dev-user query so production never lists real users.
+  let devUsers: Awaited<ReturnType<typeof listDevLoginUsers>> = [];
+  if (!devLoginEnabled) devUsers = [];
+  else devUsers = await listDevLoginUsers();
 
   return (
     <main className="gu-grid flex min-h-dvh items-center justify-center px-6 py-12">

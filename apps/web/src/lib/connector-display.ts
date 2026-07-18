@@ -114,7 +114,7 @@ function connectorDisplayRaw(a: ConnectorAccountLike, opts: { liveSyncEnabled?: 
 
   // 3) Sync disabled (placeholder mode or live sync turned off for a real account).
   if (a.mode === "placeholder" || opts.liveSyncEnabled === false) {
-    return { state: "sync_disabled", label: "Connected · sync off", tone: "warn", copy: "This account is connected, but automatic sync is currently disabled.", cta: { label: "View", kind: "view" } };
+    return { state: "sync_disabled", label: "Connected · monitoring off", tone: "warn", copy: "This account is connected, but automatic monitoring is currently off.", cta: { label: "View", kind: "view" } };
   }
 
   // 4) Healthy — only reachable for a live-verified provider with a healthy connection.

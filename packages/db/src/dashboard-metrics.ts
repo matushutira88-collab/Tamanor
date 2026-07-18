@@ -193,6 +193,24 @@ export interface DashboardAccountRow {
   lastAttemptAt: Date | null;
   hasSyncError: boolean;
   parentAccountId: string | null;
+  /** V1.59 hotfix — truthful account kind (from mode/status/permissions), for honest UX naming. */
+  accountKind: "real" | "read_only" | "test";
+  /** Truthful sync state, SEPARATE from connection: not_active (test) / waiting first run / ok / failed. */
+  syncState: "ok" | "waiting_first_sync" | "failed" | "not_active";
+}
+
+/** Single source of truth for the account KIND (uses only existing fields — no new DB state). */
+function accountKindOf(a: { status: string; mode: string; grantedPermissions: string[] }): "real" | "read_only" | "test" {
+  if (a.status === "mock_connected" || a.mode === "placeholder") return "test";
+  // A real account that was not granted the engagement permission can read/sync but not act (auto-hide).
+  if (a.mode === "read_only" && !a.grantedPermissions.includes("pages_manage_engagement")) return "read_only";
+  return "real";
+}
+function syncStateOf(kind: "real" | "read_only" | "test", cs: ConnectionStatusView, lastSuccessAt: Date | null): "ok" | "waiting_first_sync" | "failed" | "not_active" {
+  if (kind === "test") return "not_active";           // demo/test connection → automatic sync is not active
+  if (cs === "sync_error") return "failed";           // a REAL attempt failed
+  if (!lastSuccessAt) return "waiting_first_sync";    // connected, never synced yet — NOT an error
+  return "ok";
 }
 
 export interface DashboardAccountsOverview {
@@ -228,7 +246,7 @@ export async function getDashboardAccountsOverview(tenantId: string, now: Date =
       db.connectedAccount.findMany({
         where: { tenantId, status: { not: "disconnected" } },
         select: {
-          id: true, platform: true, externalName: true, externalId: true, status: true, health: true,
+          id: true, platform: true, externalName: true, externalId: true, status: true, health: true, mode: true, grantedPermissions: true,
           connectionStatus: true, tokenHealth: true, monitoringEnabled: true, lastSuccessfulSyncAt: true, lastSyncedAt: true, parentAccountId: true,
         },
       }),
@@ -242,6 +260,7 @@ export async function getDashboardAccountsOverview(tenantId: string, now: Date =
 
     const rows: DashboardAccountRow[] = accounts.map((a) => {
       const cs = connectionStatusOf({ status: a.status as unknown as string, health: a.health as unknown as string, connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth, lastAttemptAt: a.lastSyncedAt });
+      const kind = accountKindOf({ status: a.status as unknown as string, mode: a.mode as unknown as string, grantedPermissions: a.grantedPermissions });
       return {
         id: a.id, platform: a.platform as unknown as string, name: a.externalName, username: a.platform as unknown as string === "instagram_business" ? a.externalName : null,
         avatarUrl: null, followersCount: null, monitoringEnabled: a.monitoringEnabled,
@@ -250,6 +269,7 @@ export async function getDashboardAccountsOverview(tenantId: string, now: Date =
         commentsToday: comments.get(a.id) ?? 0, riskToday: risk.get(a.id) ?? 0,
         lastSuccessAt: a.lastSuccessfulSyncAt, lastAttemptAt: a.lastSyncedAt, hasSyncError: cs === "sync_error",
         parentAccountId: a.parentAccountId,
+        accountKind: kind, syncState: syncStateOf(kind, cs, a.lastSuccessfulSyncAt),
       };
     });
     return { rows, capacity: { used, limit, remaining: limit < 0 ? -1 : remaining } };

@@ -84,6 +84,21 @@ async function run() {
     check("at full limit, an OFF account cannot be enabled", ov2.capacity.remaining === 0 && (!off || off.monitoringCanBeEnabled === false));
     check("an already-ON account can still be turned off at full limit", ov2.rows.filter((r) => r.monitoringEnabled).every((r) => r.monitoringCanBeEnabled === true));
 
+    console.log("Account kind + sync state (truthful UX naming — single source of truth)");
+    // test/mock connection → kind=test, sync not active. real-no-engagement-perm → read_only.
+    // real (engagement granted) that has synced → real+ok; real that never synced → real+waiting_first_sync.
+    const kTest = await mkAcc(A, "ktest", "facebook_page", { status: "mock_connected", mode: "placeholder", lastSuccessfulSyncAt: TODAY });
+    const kReadOnly = await mkAcc(A, "kro", "facebook_page", { mode: "read_only", grantedPermissions: [], lastSuccessfulSyncAt: TODAY });
+    const kRealOk = await mkAcc(A, "krok", "facebook_page", { mode: "read_only", grantedPermissions: ["pages_manage_engagement"], lastSuccessfulSyncAt: TODAY });
+    const kRealWait = await mkAcc(A, "kwait", "facebook_page", { mode: "read_only", grantedPermissions: ["pages_manage_engagement"], lastSuccessfulSyncAt: null, lastSyncedAt: null });
+    const ovK = await getDashboardAccountsOverview(A.t.id, now);
+    const rk = (id: string) => ovK.rows.find((r) => r.id === id)!;
+    check("test/mock account → kind=test, syncState=not_active", rk(kTest.id).accountKind === "test" && rk(kTest.id).syncState === "not_active", `${rk(kTest.id).accountKind}/${rk(kTest.id).syncState}`);
+    check("real without engagement permission → kind=read_only", rk(kReadOnly.id).accountKind === "read_only", rk(kReadOnly.id).accountKind);
+    check("real with engagement + synced → kind=real, syncState=ok", rk(kRealOk.id).accountKind === "real" && rk(kRealOk.id).syncState === "ok", `${rk(kRealOk.id).accountKind}/${rk(kRealOk.id).syncState}`);
+    check("real never synced → syncState=waiting_first_sync (NOT error)", rk(kRealWait.id).accountKind === "real" && rk(kRealWait.id).syncState === "waiting_first_sync", `${rk(kRealWait.id).accountKind}/${rk(kRealWait.id).syncState}`);
+    check("real failed attempt → syncState=failed", rk(failed.id).syncState === "failed", rk(failed.id).syncState);
+
     console.log("Tenant isolation");
     const ovB = await getDashboardAccountsOverview(B.t.id, now);
     check("tenant B overview shows only B's account", ovB.rows.length === 1 && ovB.rows[0]!.id === bfb.id);

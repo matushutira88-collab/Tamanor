@@ -40,7 +40,7 @@ function run() {
   // Facebook sync disabled (placeholder / live sync off) → NOT healthy/live.
   const fbOff = render({ platformKey: "facebook", status: "active", health: "healthy", mode: "placeholder" }, true);
   const fbOff2 = render({ platformKey: "facebook", status: "active", health: "healthy" }, false);
-  check("4) Facebook sync-disabled renders sync_disabled, never healthy/live", state(fbOff) === "sync_disabled" && live(fbOff) === "false" && state(fbOff2) === "sync_disabled" && !/>Connected</.test(fbOff.replace("Connected · sync off", "")));
+  check("4) Facebook sync-disabled renders sync_disabled, never healthy/live", state(fbOff) === "sync_disabled" && live(fbOff) === "false" && state(fbOff2) === "sync_disabled" && !/>Connected</.test(fbOff.replace("Connected · monitoring off", "")));
 
   // Token expired → Reconnect.
   const exp = render({ platformKey: "facebook", status: "active", tokenHealth: "expired" }, true);
