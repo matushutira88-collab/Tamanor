@@ -15,7 +15,7 @@ const check = (l: string, cond: boolean, d = "") => { console.log(`${cond ? "  �
 const BASE: AutonomousHideInput = {
   plan: "starter", accessState: "full_access", featureEnabled: true,
   account: { status: "active", mode: "oauth_ready", grantedPermissions: ["pages_manage_engagement"], connectionStatus: "connected", tokenHealth: "ok" },
-  effectiveProtection: { monitoringEnabled: true, autoHideEnabled: true, autoHideMode: "automatic", autoHideRiskThreshold: "high" },
+  effectiveProtection: { monitoringEnabled: true, autoHideEnabled: true, autoHideMode: "automatic", autoHideRiskThreshold: "high", autoHideMinConfidence: 0.8 },
   controlPolicies: [{ category: "spam", mode: "autonomous", minConfidence: 0.8 }],
   matchedCategory: "spam", riskLevel: "high", confidence: 0.9,
 };
@@ -51,6 +51,8 @@ function run() {
     g({ controlPolicies: [{ category: "spam", mode: "autonomous", minConfidence: 0.95 }], confidence: 0.9 }).gate === "low_confidence");
   check("below hard 0.8 floor even with no policy minConfidence → low_confidence",
     g({ controlPolicies: [{ category: "spam", mode: "autonomous" }], confidence: 0.7 }).gate === "low_confidence");
+  check("per-account autoHideMinConfidence raises the bar → low_confidence",
+    g({ effectiveProtection: { ...BASE.effectiveProtection, autoHideMinConfidence: 0.95 }, confidence: 0.9 }).gate === "low_confidence");
   check("below risk threshold (medium < high) → below_threshold", g({ riskLevel: "medium" }).gate === "below_threshold");
 
   console.log("Plan entitlement (moderationExecution)");

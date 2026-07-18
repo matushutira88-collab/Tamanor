@@ -598,6 +598,10 @@ model ConnectedAccount {
   autoHideRiskThreshold String   @default("high")      // medium | high | critical
   autoHideCategories    String[] @default([])
   requireManualApproval Boolean  @default(false)
+  // V1.60 — per-account min classifier confidence to auto-execute. The server floor
+  // (AUTO_HIDE_MIN_CONFIDENCE = 0.8) is applied in the gate regardless, so a stored value below it can
+  // never weaken execution; the UI + write path clamp to [0.8, 1.0].
+  autoHideMinConfidence Float    @default(0.8)
   protectionConfiguredAt DateTime?
 
   // V1.27C Persistent Connection Manager — token/connection health, separate from

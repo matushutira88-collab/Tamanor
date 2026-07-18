@@ -6,7 +6,7 @@
  * Every read/write is tenant-scoped through withTenant (RLS), so a foreign tenant can neither see nor
  * change another tenant's account protection. No token/secret is ever read or logged here.
  */
-import { EntitlementError, isWithinLimit } from "@guardora/core";
+import { EntitlementError, isWithinLimit, AUTO_HIDE_MIN_CONFIDENCE } from "@guardora/core";
 import type { TenantTx } from "./tenant-db";
 import { withTenant } from "./repositories";
 import { getTenantEntitlements } from "./billing-repo";
@@ -20,6 +20,7 @@ export interface EffectiveProtection {
   autoHideEnabled: boolean;
   autoHideMode: AutoHideMode;
   autoHideRiskThreshold: RiskThreshold;
+  autoHideMinConfidence: number;
   autoHideCategories: string[];
   requireManualApproval: boolean;
   /** Where the effective config came from — an account override or the inherited tenant default. */
@@ -32,8 +33,25 @@ interface AccountProtectionFields {
   autoHideEnabled: boolean;
   autoHideMode: string;
   autoHideRiskThreshold: string;
+  autoHideMinConfidence: number;
   autoHideCategories: string[];
   requireManualApproval: boolean;
+}
+
+/** Clamp a UI-supplied min-confidence into [server floor, 1]. A client value can never drop below the
+ *  server floor (defense-in-depth on top of the gate, which also applies the floor). */
+export function clampAutoHideMinConfidence(v: number): number {
+  if (!Number.isFinite(v)) return AUTO_HIDE_MIN_CONFIDENCE;
+  return Math.min(1, Math.max(AUTO_HIDE_MIN_CONFIDENCE, v));
+}
+
+/** Whether an account KIND may ever run in AUTOMATIC mode: real, actionable accounts only — never a
+ *  demo/mock (placeholder / mock_connected) or a read-only account without the engagement permission.
+ *  Mirrors the runtime gate's isTestOrReadOnly so the UI/server can't offer AUTOMATIC where it can't run. */
+export function canAccountUseAutomatic(a: { status: string; mode: string | null; grantedPermissions: string[] }): boolean {
+  if (a.status === "mock_connected" || a.mode === "placeholder") return false;
+  if (a.mode === "read_only" && !a.grantedPermissions.includes("pages_manage_engagement")) return false;
+  return true;
 }
 interface TenantDefaultFields {
   defaultAutoHideEnabled: boolean;
@@ -55,6 +73,7 @@ export function resolveAccountProtection(account: AccountProtectionFields, defau
       autoHideEnabled: account.autoHideEnabled,
       autoHideMode: asMode(account.autoHideMode),
       autoHideRiskThreshold: asThreshold(account.autoHideRiskThreshold),
+      autoHideMinConfidence: clampAutoHideMinConfidence(account.autoHideMinConfidence),
       autoHideCategories: account.autoHideCategories,
       requireManualApproval: account.requireManualApproval,
       source: "account_override",
@@ -65,6 +84,8 @@ export function resolveAccountProtection(account: AccountProtectionFields, defau
     autoHideEnabled: defaults.defaultAutoHideEnabled,
     autoHideMode: asMode(defaults.defaultAutoHideMode),
     autoHideRiskThreshold: asThreshold(defaults.defaultAutoHideRiskThreshold),
+    // Tenant defaults carry no per-account confidence; the server floor applies.
+    autoHideMinConfidence: AUTO_HIDE_MIN_CONFIDENCE,
     autoHideCategories: defaults.defaultAutoHideCategories,
     requireManualApproval: defaults.defaultRequireManualApproval,
     source: "tenant_default",
@@ -73,7 +94,7 @@ export function resolveAccountProtection(account: AccountProtectionFields, defau
 
 const ACCOUNT_SELECT = {
   id: true, monitoringEnabled: true, protectionOverridden: true, autoHideEnabled: true, autoHideMode: true,
-  autoHideRiskThreshold: true, autoHideCategories: true, requireManualApproval: true,
+  autoHideRiskThreshold: true, autoHideMinConfidence: true, autoHideCategories: true, requireManualApproval: true,
 } as const;
 const TENANT_SELECT = {
   defaultAutoHideEnabled: true, defaultAutoHideMode: true, defaultAutoHideRiskThreshold: true,
@@ -95,17 +116,20 @@ export interface ProtectionPatch {
   autoHideEnabled?: boolean;
   autoHideMode?: AutoHideMode;
   autoHideRiskThreshold?: RiskThreshold;
+  autoHideMinConfidence?: number;
   autoHideCategories?: string[];
   requireManualApproval?: boolean;
 }
 
 /** Override an account's protection (tenant-scoped). Marks it overridden + stamps protectionConfiguredAt.
+ *  min-confidence is clamped to the server floor here too (a client can never store a weaker value).
  *  Returns the rows changed (0 = not this tenant's account → denied). */
 export async function updateAccountProtection(tenantId: string, accountId: string, patch: ProtectionPatch): Promise<number> {
   const data: Record<string, unknown> = { protectionOverridden: true, protectionConfiguredAt: new Date() };
   if (patch.autoHideEnabled !== undefined) data.autoHideEnabled = patch.autoHideEnabled;
   if (patch.autoHideMode !== undefined) data.autoHideMode = asMode(patch.autoHideMode);
   if (patch.autoHideRiskThreshold !== undefined) data.autoHideRiskThreshold = asThreshold(patch.autoHideRiskThreshold);
+  if (patch.autoHideMinConfidence !== undefined) data.autoHideMinConfidence = clampAutoHideMinConfidence(patch.autoHideMinConfidence);
   if (patch.autoHideCategories !== undefined) data.autoHideCategories = patch.autoHideCategories;
   if (patch.requireManualApproval !== undefined) data.requireManualApproval = patch.requireManualApproval;
   return withTenant(tenantId, async (tx) => (await tx.connectedAccount.updateMany({ where: { id: accountId }, data })).count);

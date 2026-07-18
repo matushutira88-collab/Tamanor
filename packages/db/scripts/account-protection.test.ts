@@ -8,7 +8,7 @@ import {
   systemDb, withTenant,
   resolveAccountProtection, getAccountProtection, updateAccountProtection, resetAccountProtectionToDefault,
   setAccountMonitoring, updateTenantProtectionDefaults, countMonitoredAccounts, previewMonitoredAccountLimit,
-  enableAccountMonitoringWithinLimit,
+  enableAccountMonitoringWithinLimit, clampAutoHideMinConfidence, canAccountUseAutomatic,
 } from "@guardora/db";
 
 let failures = 0;
@@ -38,12 +38,12 @@ async function run() {
     const fb = await mkAcc(A, "fb", "facebook_page");
     // Pure resolution: not overridden ⇒ tenant default.
     const eff0 = resolveAccountProtection(
-      { monitoringEnabled: true, protectionOverridden: false, autoHideEnabled: false, autoHideMode: "recommend", autoHideRiskThreshold: "high", autoHideCategories: [], requireManualApproval: false },
+      { monitoringEnabled: true, protectionOverridden: false, autoHideEnabled: false, autoHideMode: "recommend", autoHideRiskThreshold: "high", autoHideMinConfidence: 0.8, autoHideCategories: [], requireManualApproval: false },
       { defaultAutoHideEnabled: true, defaultAutoHideMode: "automatic", defaultAutoHideRiskThreshold: "medium", defaultAutoHideCategories: ["spam"], defaultRequireManualApproval: true },
     );
     check("not overridden → inherits tenant default", eff0.source === "tenant_default" && eff0.autoHideEnabled === true && eff0.autoHideMode === "automatic");
     const eff1 = resolveAccountProtection(
-      { monitoringEnabled: true, protectionOverridden: true, autoHideEnabled: false, autoHideMode: "recommend", autoHideRiskThreshold: "critical", autoHideCategories: ["fraud"], requireManualApproval: false },
+      { monitoringEnabled: true, protectionOverridden: true, autoHideEnabled: false, autoHideMode: "recommend", autoHideRiskThreshold: "critical", autoHideMinConfidence: 0.8, autoHideCategories: ["fraud"], requireManualApproval: false },
       { defaultAutoHideEnabled: true, defaultAutoHideMode: "automatic", defaultAutoHideRiskThreshold: "medium", defaultAutoHideCategories: ["spam"], defaultRequireManualApproval: true },
     );
     check("overridden → account fields win", eff1.source === "account_override" && eff1.autoHideEnabled === false && eff1.autoHideRiskThreshold === "critical");
@@ -84,6 +84,42 @@ async function run() {
     } else {
       check("unlimited plan → atomic-limit race N/A (skipped)", true);
     }
+
+    // -------------------------------------------------------------------------
+    console.log("V1.60 (2c) — protection mode + min-confidence + account-kind gating");
+    check("clampAutoHideMinConfidence floors sub-0.8 at 0.8", clampAutoHideMinConfidence(0.5) === 0.8 && clampAutoHideMinConfidence(0.2) === 0.8);
+    check("clampAutoHideMinConfidence keeps valid + caps at 1 + NaN→floor", clampAutoHideMinConfidence(0.9) === 0.9 && clampAutoHideMinConfidence(1.5) === 1 && clampAutoHideMinConfidence(Number.NaN) === 0.8);
+    check("canAccountUseAutomatic: mock / placeholder / read-only-without-perm → false",
+      canAccountUseAutomatic({ status: "mock_connected", mode: "read_only", grantedPermissions: ["pages_manage_engagement"] }) === false
+      && canAccountUseAutomatic({ status: "active", mode: "placeholder", grantedPermissions: [] }) === false
+      && canAccountUseAutomatic({ status: "active", mode: "read_only", grantedPermissions: [] }) === false);
+    check("canAccountUseAutomatic: real actionable (oauth_ready / read-only+perm) → true",
+      canAccountUseAutomatic({ status: "active", mode: "oauth_ready", grantedPermissions: ["pages_manage_engagement"] }) === true
+      && canAccountUseAutomatic({ status: "active", mode: "read_only", grantedPermissions: ["pages_manage_engagement"] }) === true);
+
+    // Existing account (no override) → the SAFE default: SUGGEST_ONLY (recommend) + server-floor confidence.
+    const eff0mc = resolveAccountProtection(
+      { monitoringEnabled: true, protectionOverridden: false, autoHideEnabled: false, autoHideMode: "recommend", autoHideRiskThreshold: "high", autoHideMinConfidence: 0.8, autoHideCategories: [], requireManualApproval: false },
+      { defaultAutoHideEnabled: false, defaultAutoHideMode: "recommend", defaultAutoHideRiskThreshold: "high", defaultAutoHideCategories: [], defaultRequireManualApproval: false },
+    );
+    check("default (no override) → SUGGEST_ONLY + min-confidence 0.8", eff0mc.autoHideMode === "recommend" && eff0mc.autoHideMinConfidence === 0.8);
+
+    // Save AUTOMATIC + a sub-floor confidence → mode persists, confidence clamped up to the floor.
+    const fb2 = await mkAcc(A, "fb2", "facebook_page", undefined, true);
+    await updateAccountProtection(A.t.id, fb2.id, { autoHideMode: "automatic", autoHideEnabled: true, autoHideMinConfidence: 0.5 });
+    const gfb2 = await getAccountProtection(A.t.id, fb2.id);
+    check("AUTOMATIC persists + sub-0.8 confidence clamped to 0.8 (client can't weaken the gate)",
+      gfb2?.effective.autoHideMode === "automatic" && gfb2?.effective.autoHideEnabled === true && gfb2?.effective.autoHideMinConfidence === 0.8);
+    await updateAccountProtection(A.t.id, fb2.id, { autoHideMinConfidence: 0.93 });
+    check("a valid (≥0.8) confidence is stored as-is", (await getAccountProtection(A.t.id, fb2.id))?.effective.autoHideMinConfidence === 0.93);
+
+    // Saving one account must not change another account in the same tenant.
+    const fb3 = await mkAcc(A, "fb3", "facebook_page", undefined, true);
+    const before3 = await getAccountProtection(A.t.id, fb3.id);
+    await updateAccountProtection(A.t.id, fb2.id, { autoHideMode: "manual_approval" });
+    const after3 = await getAccountProtection(A.t.id, fb3.id);
+    check("saving one account leaves another account in the same tenant unchanged",
+      after3?.overridden === false && after3?.effective.autoHideMode === before3?.effective.autoHideMode);
 
     // -------------------------------------------------------------------------
     console.log("Cross-tenant denial (RLS)");

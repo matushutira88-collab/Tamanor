@@ -39,6 +39,7 @@ export interface AutonomousHideInput {
     autoHideEnabled: boolean;
     autoHideMode: "recommend" | "manual_approval" | "automatic";
     autoHideRiskThreshold: Level;
+    autoHideMinConfidence: number;
   };
   /** Control-Center per-category policies for this brand (autonomous ⇒ category is user-enabled). */
   controlPolicies: { category: string; mode: string; minConfidence?: number | null }[];
@@ -68,7 +69,8 @@ export function evaluateAutonomousHide(i: AutonomousHideInput): AutoHideDecision
     autoHideCategories: autonomousCategories,
     riskLevel: i.riskLevel,
     confidence: i.confidence,
-    confidenceThreshold: Math.max(matchedPolicy?.minConfidence ?? 0, AUTO_HIDE_MIN_CONFIDENCE),
+    // The strictest of: per-account min-confidence, per-category Control-Center minConfidence, server floor.
+    confidenceThreshold: Math.max(i.effectiveProtection.autoHideMinConfidence, matchedPolicy?.minConfidence ?? 0, AUTO_HIDE_MIN_CONFIDENCE),
     matchedCategory: i.matchedCategory,
     // Idempotency is enforced in the EXECUTION layer (findExistingExecutions + the partial unique index
     // on executed rows); the pure decision stays idempotency-agnostic here.

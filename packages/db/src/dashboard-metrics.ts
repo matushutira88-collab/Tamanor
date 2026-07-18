@@ -141,7 +141,7 @@ export async function getWatchedAccountsView(tenantId: string, since: Date): Pro
           id: true, platform: true, externalName: true, externalId: true, status: true, health: true,
           connectionStatus: true, tokenHealth: true, monitoringEnabled: true, lastSuccessfulSyncAt: true, parentAccountId: true,
           protectionOverridden: true, autoHideEnabled: true, autoHideMode: true, autoHideRiskThreshold: true,
-          autoHideCategories: true, requireManualApproval: true,
+          autoHideMinConfidence: true, autoHideCategories: true, requireManualApproval: true,
         },
       }),
       db.tenant.findUnique({ where: { id: tenantId }, select: {

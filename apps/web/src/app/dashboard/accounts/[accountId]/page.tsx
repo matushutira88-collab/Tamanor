@@ -17,11 +17,13 @@ import { ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Badge, StatCard, Card } from "@/components/dashboard/ui";
 import { SubmitButton } from "@/components/dashboard/submit-button";
 import { ConnectorStatusBadge } from "@/components/dashboard/connector-status-badge";
+import { ProtectionCard } from "@/components/dashboard/protection-card";
 import { toggleAccountKillSwitch } from "../../safety-actions";
 import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
+import { getLocale } from "@/i18n/locale-server";
 import { tEnum } from "@/i18n/labels";
-import { withTenant, getLatestWebhookForPlatform } from "@guardora/db";
+import { withTenant, getLatestWebhookForPlatform, getAccountProtection, canAccountUseAutomatic } from "@guardora/db";
 import { humanize, formatDate, formatDateTime } from "@/lib/format";
 import { CONNECTOR_TONE } from "@/lib/ui-maps";
 import { runSyncAction } from "../actions";
@@ -137,6 +139,18 @@ export default async function AccountDetailPage({
     autoSync.enabled && account.lastSyncedAt
       ? new Date(account.lastSyncedAt.getTime() + autoSync.intervalSeconds * 1000)
       : null;
+
+  // V1.60 (2c) — per-account comment protection. Effective config (account override or tenant default;
+  // default is the safe SUGGEST_ONLY / recommend). AUTOMATIC is only offered to a real actionable account;
+  // the operator kill-switch / dry-run state is shown as "paused" without touching the saved choice.
+  const protection = await getAccountProtection(session.tenantId, account.id);
+  const DB_TO_UI = { recommend: "suggest_only", manual_approval: "require_approval", automatic: "automatic" } as const;
+  const protectionMode = DB_TO_UI[protection?.effective.autoHideMode ?? "recommend"];
+  const protectionMinConfidence = protection?.effective.autoHideMinConfidence ?? 0.8;
+  const protectionMonitoringActive = (protection?.effective.monitoringEnabled ?? false) && account.connectionStatus === "connected";
+  const protectionCanAutomatic = canAccountUseAutomatic({ status: account.status as unknown as string, mode: account.mode as unknown as string, grantedPermissions: account.grantedPermissions });
+  const liveExecutionPaused = anyKill || !live.canExecuteLive;
+  const protectionLocale = await getLocale();
 
   return (
     <>
@@ -293,6 +307,18 @@ export default async function AccountDetailPage({
         </div>
         {lastFailed?.providerErrorMessage ? <p className="mt-2 text-xs text-[var(--color-danger)]">{lastFailed.providerErrorMessage}</p> : null}
       </div>
+
+      {/* V1.60 (2c) — per-account comment protection (SUGGEST_ONLY / REQUIRE_APPROVAL / AUTOMATIC) */}
+      <ProtectionCard
+        accountId={account.id}
+        currentMode={protectionMode}
+        currentMinConfidence={protectionMinConfidence}
+        canAutomatic={protectionCanAutomatic}
+        monitoringActive={protectionMonitoringActive}
+        killSwitchActive={liveExecutionPaused}
+        canManage={manage}
+        locale={protectionLocale}
+      />
 
       {/* Sync control */}
       <div className="mt-6 gu-card p-5">
