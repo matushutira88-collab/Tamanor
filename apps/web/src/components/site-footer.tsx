@@ -116,22 +116,23 @@ export function SiteFooter({
         { label: t.footer.contact, href: "/contact" },
       ],
     },
-    {
-      title: t.footer.legal,
-      links: [
-        { label: t.footer.privacy, href: "/privacy" },
-        { label: t.footer.cookies, href: "/cookies" },
-        { label: t.footer.terms, href: "/terms" },
-        { label: t.footer.security, href: "/security" },
-        ...COMPLIANCE_LINKS[locale],
-      ],
-    },
+  ];
+
+  // V1.61 — the legal/compliance library is long (16 entries). Instead of one tall
+  // skinny column that dwarfs the rest of the footer, it gets its own full-width row
+  // laid out as a compact responsive multi-column list.
+  const legalLinks: FooterLink[] = [
+    { label: t.footer.privacy, href: "/privacy" },
+    { label: t.footer.cookies, href: "/cookies" },
+    { label: t.footer.terms, href: "/terms" },
+    { label: t.footer.security, href: "/security" },
+    ...COMPLIANCE_LINKS[locale],
   ];
 
   return (
-    <footer className="border-t border-[var(--color-border)]">
+    <footer className="border-t border-[var(--color-border)] bg-[var(--color-bg-soft)]">
       <div className="mx-auto max-w-7xl px-6 py-14">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(5,1fr)]">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
           <div>
             <span className="text-lg font-semibold">Tamanor</span>
             <p className="mt-3 max-w-xs text-sm text-[var(--color-muted)]">{t.footer.tagline}</p>
@@ -175,13 +176,25 @@ export function SiteFooter({
             </div>
           ))}
         </div>
-        <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-[var(--color-border)] pt-6 text-xs text-[var(--color-muted)] md:flex-row">
+
+        {/* Legal & compliance — full-width, compact multi-column so it never dominates. */}
+        <div className="mt-12 border-t border-[var(--color-border)] pt-8">
+          <p className="text-sm font-semibold">{t.footer.legal}</p>
+          <ul className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 text-sm text-[var(--color-muted)] sm:grid-cols-3 lg:grid-cols-4">
+            {legalLinks.map((l) => (
+              <li key={l.label}>
+                <Link href={l.href} className="transition hover:text-[var(--color-fg)]">{l.label}</Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-[var(--color-border)] pt-6 text-xs text-[var(--color-muted)] md:flex-row">
           <div className="flex flex-col items-center gap-0.5 md:items-start">
             <span>© {new Date().getFullYear()} Tamanor — {t.footer.rights}</span>
             {/* V1.54 — truthful operator identity + European Union framing (no invented geography). */}
             <span>Operated by Infotech Solutions, s. r. o. · {({ en: "European Union", sk: "Európska únia", de: "Europäische Union" } as const)[locale] ?? "European Union"}</span>
           </div>
-          <span>{t.footer.badge}</span>
         </div>
       </div>
     </footer>

@@ -1,38 +1,37 @@
 "use client";
 
 /**
- * Tamanor landing v2 — "mission control" redesign.
- * Route: /v2 (see app/v2/page.tsx). Self-contained: fonts via v2/layout.tsx,
- * styles inline + a few keyframes injected below. No external deps.
+ * Tamanor landing — served at /, /sk, /de. Self-contained body (inline styles +
+ * a few keyframes); the header and footer are the SHARED SiteHeader / SiteFooter
+ * so every public page/subpage carries an identical header and footer.
  */
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { FooterV2 } from "./footer-v2";
+import { SiteHeader } from "../site-header";
+import { SiteFooter } from "../site-footer";
 import type { Dictionary, Locale } from "@/i18n";
-import { locales, localeShort, localePrefix, LOCALE_COOKIE } from "@/i18n/config";
 
 type L2 = Dictionary["landingV2"];
 export type LandingV2Props = {
   copy: L2;
-  startFree: string;
   logIn: string;
-  footer: Dictionary["footer"];
   locale: Locale;
 };
 
-/* ---------- palette ---------- */
+/* ---------- palette (V1.61 — modern light system, blue brand) ---------- */
 const C = {
-  bg: "#030b09",
-  panel: "#04100d",
-  line: "#0f2b25",
-  mint: "#2ee3b2",
-  bright: "#eafff8",
-  text: "#d9fff2",
-  dim: "#6fa093",
-  faint: "#3c6459",
-  red: "#ff4d5e",
-  amber: "#ffb454",
+  bg: "#f8fafc",
+  panel: "#ffffff",
+  line: "#e5e7eb",
+  mint: "#2563eb", // brand blue (key kept to minimise diff)
+  bright: "#111827",
+  text: "#111827",
+  dim: "#6b7280",
+  faint: "#64748b",
+  red: "#dc2626",
+  amber: "#b45309",
+  green: "#16a34a",
 };
 
 const KEYFRAMES = `
@@ -40,7 +39,12 @@ const KEYFRAMES = `
 @keyframes tmr-spin { to { transform: rotate(360deg); } }
 @keyframes tmr-blip { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.9); opacity: .35; } }
 @keyframes tmr-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
-@keyframes tmr-glow { 0%,100% { filter: drop-shadow(0 0 18px rgba(46,227,178,.55)); } 50% { filter: drop-shadow(0 0 42px rgba(46,227,178,.95)); } }
+@keyframes tmr-glow { 0%,100% { filter: drop-shadow(0 0 10px rgba(37,99,235,.30)); } 50% { filter: drop-shadow(0 0 20px rgba(37,99,235,.5)); } }
+.tmr-anim-tkr { animation: tmr-tkr 28s linear infinite; }
+.tmr-anim-spin { animation: tmr-spin 4.6s linear infinite; }
+.tmr-anim-blip { animation: tmr-blip 1.8s ease-in-out infinite; }
+.tmr-anim-blink { animation: tmr-blink 1.1s step-end infinite; }
+.tmr-anim-glow { animation: tmr-glow 2.6s ease-in-out infinite; }
 .tmr-v2 details > summary { list-style: none; }
 .tmr-v2 details > summary::-webkit-details-marker { display: none; }
 .tmr-v2 details[open] .tmr-faq-sign { transform: rotate(45deg); }
@@ -48,10 +52,15 @@ const KEYFRAMES = `
 @media (max-width: 860px) {
   .tmr-v2 .tmr-cols { grid-template-columns: 1fr !important; }
   .tmr-v2 .tmr-kpi { grid-template-columns: repeat(2, 1fr) !important; }
-  .tmr-v2 .tmr-nav, .tmr-v2 .tmr-online { display: none !important; }
 }
-@media (max-width: 420px) {
-  .tmr-v2 .tmr-cta { display: none !important; }
+/* V1.61 — narrow screens: hide the sim panel's top-left feed labels so they never
+   collide with the clock on the right. */
+@media (max-width: 520px) {
+  .tmr-v2 .tmr-simhide { display: none !important; }
+}
+/* V1.61 — accessibility: honour reduced-motion for every decorative animation. */
+@media (prefers-reduced-motion: reduce) {
+  .tmr-anim-tkr, .tmr-anim-spin, .tmr-anim-blip, .tmr-anim-blink, .tmr-anim-glow { animation: none !important; }
 }
 `;
 
@@ -66,7 +75,7 @@ const sans = "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif";
  */
 function Avatar() {
   return (
-    <span aria-hidden style={{ display: "grid", placeItems: "center", height: 34, width: 34, borderRadius: 9999, background: "rgba(46,227,178,.07)", border: `1px solid ${C.line}`, color: C.dim, flexShrink: 0 }}>
+    <span aria-hidden style={{ display: "grid", placeItems: "center", height: 34, width: 34, borderRadius: 9999, background: "rgba(37,99,235,.06)", border: `1px solid ${C.line}`, color: C.dim, flexShrink: 0 }}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="8.5" r="3.4" /><path d="M5 20a7 7 0 0 1 14 0" />
       </svg>
@@ -94,6 +103,10 @@ function FirewallSim({
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
+    // V1.61 — accessibility: respect reduced-motion. When set, render a single static
+    // frame (the wall + grid) and never start the animation loop.
+    const reduce = typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
     let raf = 0;
     let dead = false;
     let lastSpawn = 0;
@@ -121,7 +134,7 @@ function FirewallSim({
         const laneTop = 34;
         const laneBot = h - 66;
 
-        ctx.strokeStyle = "rgba(46,227,178,0.05)";
+        ctx.strokeStyle = "rgba(15,23,42,0.06)";
         ctx.lineWidth = 1;
         for (let x = 0; x < w; x += 64) {
           ctx.beginPath();
@@ -146,16 +159,16 @@ function FirewallSim({
 
         const pulse = 0.65 + 0.35 * Math.sin(t / 320);
         ctx.save();
-        ctx.shadowColor = `rgba(46,227,178,${0.8 * pulse})`;
-        ctx.shadowBlur = 22;
-        ctx.strokeStyle = `rgba(46,227,178,${0.55 + 0.35 * pulse})`;
+        ctx.shadowColor = `rgba(37,99,235,${0.45 * pulse})`;
+        ctx.shadowBlur = 16;
+        ctx.strokeStyle = `rgba(37,99,235,${0.55 + 0.35 * pulse})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(wallX, 14);
         ctx.lineTo(wallX, h - 60);
         ctx.stroke();
         ctx.restore();
-        ctx.strokeStyle = "rgba(46,227,178,0.25)";
+        ctx.strokeStyle = "rgba(37,99,235,0.28)";
         ctx.lineWidth = 6;
         ctx.setLineDash([2, 10]);
         ctx.beginPath();
@@ -164,7 +177,7 @@ function FirewallSim({
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.font = "600 9px var(--font-mono-v2), monospace";
-        ctx.fillStyle = "rgba(46,227,178,0.8)";
+        ctx.fillStyle = "rgba(37,99,235,0.85)";
         ctx.fillText("TAMANOR", wallX - 22, 12);
 
         const pw = 104;
@@ -200,18 +213,18 @@ function FirewallSim({
             onCount?.(ic, dc);
             continue;
           }
-          const c = p.threat ? "rgba(255,77,94," : "rgba(46,227,178,";
-          ctx.fillStyle = "rgba(4,16,13,0.92)";
-          ctx.strokeStyle = c + (p.crossed ? "0.85)" : "0.4)");
+          const c = p.threat ? "rgba(220,38,38," : "rgba(22,163,74,";
+          ctx.fillStyle = "rgba(248,250,252,0.96)";
+          ctx.strokeStyle = c + (p.crossed ? "0.85)" : "0.45)");
           ctx.lineWidth = 1;
           ctx.fillRect(p.x, p.y, pw, ph);
           ctx.strokeRect(p.x, p.y, pw, ph);
           ctx.fillStyle = c + "0.9)";
           ctx.fillRect(p.x + 8, p.y + ph / 2 - 2.5, 5, 5);
-          ctx.fillStyle = "rgba(217,255,242,0.75)";
+          ctx.fillStyle = "rgba(17,24,39,0.8)";
           ctx.font = "600 8px var(--font-mono-v2), monospace";
           ctx.fillText(p.tag, p.x + 19, p.y + ph / 2 + 3);
-          ctx.fillStyle = "rgba(111,160,147,0.35)";
+          ctx.fillStyle = "rgba(148,163,184,0.55)";
           ctx.fillRect(p.x + 62, p.y + 8, 34, 3);
           ctx.fillRect(p.x + 62, p.y + 15, 24, 3);
         }
@@ -227,7 +240,7 @@ function FirewallSim({
             parts.splice(i, 1);
             continue;
           }
-          ctx.fillStyle = (q.hot ? "rgba(255,180,84," : "rgba(255,77,94,") + q.life + ")";
+          ctx.fillStyle = (q.hot ? "rgba(245,158,11," : "rgba(220,38,38,") + q.life + ")";
           ctx.fillRect(q.x, q.y, 2.4, 2.4);
         }
 
@@ -240,14 +253,14 @@ function FirewallSim({
             ripples.splice(i, 1);
             continue;
           }
-          ctx.strokeStyle = (r.mint ? "rgba(46,227,178," : "rgba(255,77,94,") + r.a + ")";
+          ctx.strokeStyle = (r.mint ? "rgba(22,163,74," : "rgba(220,38,38,") + r.a + ")";
           ctx.lineWidth = 1.4;
           ctx.beginPath();
           ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
-      raf = requestAnimationFrame(tick);
+      if (!reduce) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => {
@@ -256,7 +269,7 @@ function FirewallSim({
     };
   }, [threatRatio, onCount]);
 
-  return <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />;
+  return <canvas ref={canvasRef} aria-hidden="true" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />;
 }
 
 /* ---------- small shared bits ---------- */
@@ -305,32 +318,9 @@ const BLIPS = [
 // Self-serve monthly prices by plan index (Starter/Growth/Agency); Enterprise (index 3) is contact-sales.
 const PLAN_PRICES = [49, 149, 399, null] as const;
 
-/* ---------- language switcher (existing convention: cookie + locale-prefixed route) ---------- */
-
-function LangSwitchV2({ locale }: { locale: Locale }) {
-  return (
-    <div role="group" aria-label="Language" style={{ display: "inline-flex", gap: 2, border: `1px solid ${C.line}`, padding: 2 }}>
-      {locales.map((l) => {
-        const on = l === locale;
-        return (
-          <Link
-            key={l}
-            href={localePrefix(l) || "/"}
-            onClick={() => { document.cookie = `${LOCALE_COOKIE}=${l}; path=/; max-age=31536000; samesite=lax`; }}
-            aria-current={on ? "true" : undefined}
-            style={{ padding: "4px 9px", fontSize: 10, fontFamily: mono, textTransform: "uppercase", letterSpacing: "0.08em", textDecoration: "none", ...(on ? { background: C.mint, color: C.bg, fontWeight: 600 } : { color: C.dim }) }}
-          >
-            {localeShort[l]}
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ---------- page ---------- */
 
-export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2Props) {
+export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
   const [yearly, setYearly] = useState(false);
   const icRef = useRef<HTMLSpanElement | null>(null);
   const dcRef = useRef<HTMLSpanElement | null>(null);
@@ -352,55 +342,22 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
     };
   });
 
-  const navA: React.CSSProperties = { color: C.dim, fontFamily: mono };
   const secBorder = `1px solid ${C.line}`;
 
   return (
     <div className="tmr-v2" style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif", overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
 
-      {/* scanlines + vignette */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 60, pointerEvents: "none", background: "repeating-linear-gradient(0deg, rgba(46,227,178,.028) 0 1px, transparent 1px 3px)" }} />
-      <div style={{ position: "fixed", inset: 0, zIndex: 60, pointerEvents: "none", background: "radial-gradient(120% 90% at 50% 10%, transparent 55%, rgba(0,0,0,.5) 100%)" }} />
-
-      {/* header */}
-      <header style={{ position: "sticky", top: 0, zIndex: 40, borderBottom: secBorder, background: "rgba(3,11,9,.88)", backdropFilter: "blur(10px)" }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto", display: "flex", height: 54, alignItems: "center", justifyContent: "space-between", padding: "0 24px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-            <svg width="22" height="22" viewBox="0 0 32 32" fill="none" style={{ filter: "drop-shadow(0 0 8px rgba(46,227,178,.6))" }}>
-              <path d="M16 3 5 6.5v7.2c0 6.4 4.5 10.7 11 13.3 6.5-2.6 11-6.9 11-13.3V6.5L16 3Z" fill={C.mint} />
-              <rect x="11" y="14.5" width="10" height="8" rx="1.6" fill={C.bg} />
-              <path d="M13 14.5v-1.8a3 3 0 0 1 6 0v1.8" stroke={C.bg} strokeWidth="1.7" strokeLinecap="round" />
-            </svg>
-            <span style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-              <span style={{ fontFamily: disp, fontSize: 18, textTransform: "none", letterSpacing: "-0.01em", color: C.text, fontWeight: 600 }}>Tamanor</span>
-              <span style={{ marginTop: 3, fontSize: 8, letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>{copy.tagline}</span>
-            </span>
-          </span>
-          <nav className="tmr-nav" style={{ display: "flex", gap: 22 }}>
-            <a href="#wall" style={navA}>{copy.navFirewall}</a>
-            <a href="#phases" style={navA}>{copy.navProtocol}</a>
-            <a href="#radar" style={navA}>{copy.navActorRisk}</a>
-            <a href="#diag" style={navA}>{copy.navDiagnostics}</a>
-            <a href="#pricing" style={navA}>{copy.navPricing}</a>
-          </nav>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span className="tmr-online" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.dim, fontFamily: mono }}>
-              <span style={{ height: 6, width: 6, borderRadius: 9999, background: C.mint, boxShadow: `0 0 8px ${C.mint}` }} />{copy.online}
-            </span>
-            <LangSwitchV2 locale={locale} />
-            <Link href="/register" className="tmr-cta" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "8px 16px", fontWeight: 600, fontFamily: mono }}>{startFree}</Link>
-          </div>
-        </div>
-      </header>
+      {/* Shared global header — identical across every public page/subpage. */}
+      <SiteHeader locale={locale} />
 
       {/* hero */}
-      <section id="wall" style={{ position: "relative", borderBottom: secBorder, background: "radial-gradient(70rem 30rem at 50% -20%, rgba(46,227,178,.09), transparent 60%)" }}>
+      <section id="wall" style={{ position: "relative", borderBottom: secBorder, background: "radial-gradient(70rem 30rem at 50% -20%, rgba(37,99,235,.06), transparent 60%)" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "66px 24px 28px" }}>
           <p style={{ ...eyebrow, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ height: 1, width: 34, background: C.mint }} />{copy.heroEyebrow}
           </p>
-          <h1 style={{ margin: "20px 0 0", maxWidth: "18ch", fontSize: "clamp(32px, 5.4vw, 52px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em", textShadow: "0 0 60px rgba(46,227,178,.25)" }}>
+          <h1 style={{ margin: "20px 0 0", maxWidth: "18ch", fontSize: "clamp(32px, 5.4vw, 52px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
             {copy.heroA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.heroB}</span>
           </h1>
           <div style={{ marginTop: 26, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
@@ -408,8 +365,8 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
               {copy.heroBody}
             </p>
             <div style={{ display: "flex", gap: 10 }}>
-              <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "14px 26px", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", boxShadow: "0 0 34px rgba(46,227,178,.35)", fontFamily: mono }}>{copy.deployFree}</Link>
-              <a href="#phases" style={{ border: secBorder, color: C.text, padding: "14px 26px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{copy.theProtocol}</a>
+              <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: "#fff", padding: "14px 26px", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", boxShadow: "0 6px 18px rgba(37,99,235,.25)", fontFamily: mono }}>{copy.deployFree}</Link>
+              <a href="#features" style={{ border: secBorder, color: C.text, padding: "14px 26px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{copy.theProtocol}</a>
             </div>
           </div>
         </div>
@@ -425,16 +382,16 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
                 if (dcRef.current) dcRef.current.textContent = dc.toLocaleString("en-US");
               }}
             />
-            <div style={{ position: "absolute", top: 12, left: 16, zIndex: 5, display: "flex", gap: 18, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>
+            <div className="tmr-simhide" style={{ position: "absolute", top: 12, left: 16, zIndex: 5, display: "flex", gap: 18, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>
               <span>{copy.feedInbound}</span><span style={{ color: C.mint }}>{copy.liveSim}</span>
             </div>
             <div style={{ position: "absolute", top: 12, right: 16, zIndex: 5, fontSize: 10, letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>
               <Clock /> {copy.utc}
             </div>
-            <div className="tmr-kpi" style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 5, display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: secBorder, background: "rgba(3,11,9,.9)" }}>
+            <div className="tmr-kpi" style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 5, display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: secBorder, background: C.bg }}>
               {[
                 { l: copy.c1, v: <span ref={icRef}>12,847</span>, c: C.red },
-                { l: copy.c2, v: <span ref={dcRef}>48,102</span>, c: C.mint },
+                { l: copy.c2, v: <span ref={dcRef}>48,102</span>, c: C.green },
                 { l: copy.c3, v: "3", c: C.amber },
                 { l: copy.c4, v: <>0 <span style={{ fontSize: 11, fontFamily: mono, color: C.faint }}>{copy.humansDecide}</span></>, c: C.text },
               ].map((s, i) => (
@@ -453,19 +410,19 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
 
       {/* ticker */}
       <section style={{ borderBottom: secBorder, background: C.panel, overflow: "hidden" }}>
-        <div style={{ display: "inline-flex", whiteSpace: "nowrap", animation: "tmr-tkr 28s linear infinite", padding: "10px 0", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: mono }}>
+        <div className="tmr-anim-tkr" style={{ display: "inline-flex", whiteSpace: "nowrap", padding: "10px 0", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: mono }}>
           {[...copy.ticker, ...copy.ticker].map((t, i) => (
             <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 34 }}>
               <span style={{ color: C.faint }}>{t.time}</span>
-              <span style={{ color: t.bad ? C.red : C.mint }}>{t.verb}</span>
+              <span style={{ color: t.bad ? C.red : C.green }}>{t.verb}</span>
               <span style={{ color: C.dim }}>{t.what}</span>
             </span>
           ))}
         </div>
       </section>
 
-      {/* phases */}
-      <section id="phases" style={{ borderBottom: secBorder }}>
+      {/* phases → "features" (unified header nav target) */}
+      <section id="features" style={{ borderBottom: secBorder }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "96px 24px" }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 20, marginBottom: 44 }}>
             <div>
@@ -491,8 +448,8 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
         </div>
       </section>
 
-      {/* radar */}
-      <section id="radar" style={{ borderBottom: secBorder, background: C.panel }}>
+      {/* radar → "product" (unified header nav target) */}
+      <section id="product" style={{ borderBottom: secBorder, background: C.panel }}>
         <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "center", padding: "96px 24px" }}>
           <div style={{ position: "relative", margin: "0 auto", height: 420, width: 420 }}>
             {[0, 52, 104, 156].map((inset) => (
@@ -500,11 +457,11 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
             ))}
             <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: C.line }} />
             <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: C.line }} />
-            <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "conic-gradient(from 0deg, rgba(46,227,178,.35), transparent 70deg, transparent 360deg)", animation: "tmr-spin 4.6s linear infinite" }} />
-            <div style={{ position: "absolute", left: "50%", top: "50%", height: 10, width: 10, margin: "-5px 0 0 -5px", borderRadius: "50%", background: C.mint, boxShadow: `0 0 14px ${C.mint}` }} />
+            <div className="tmr-anim-spin" style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "conic-gradient(from 0deg, rgba(37,99,235,.20), transparent 70deg, transparent 360deg)" }} />
+            <div style={{ position: "absolute", left: "50%", top: "50%", height: 10, width: 10, margin: "-5px 0 0 -5px", borderRadius: "50%", background: C.mint }} />
             {BLIPS.map((b) => (
               <div key={b.label} style={{ position: "absolute", top: b.top, left: b.left, display: "flex", alignItems: "center", gap: 7, zIndex: 3 }}>
-                <span style={{ height: 9, width: 9, borderRadius: 9999, flexShrink: 0, background: b.danger ? C.red : C.amber, boxShadow: `0 0 12px ${b.danger ? C.red : C.amber}`, animation: "tmr-blip 1.8s ease-in-out infinite" }} />
+                <span className="tmr-anim-blip" style={{ height: 9, width: 9, borderRadius: 9999, flexShrink: 0, background: b.danger ? C.red : C.amber }} />
                 <span style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", color: C.dim, whiteSpace: "nowrap", fontFamily: mono }}>{b.label}</span>
               </div>
             ))}
@@ -528,8 +485,8 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
         </div>
       </section>
 
-      {/* approval */}
-      <section style={{ borderBottom: secBorder }}>
+      {/* approval → "control" (unified header nav target) */}
+      <section id="control" style={{ borderBottom: secBorder }}>
         <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 48, alignItems: "center", padding: "96px 24px" }}>
           <div>
             <p style={eyebrow}>{copy.commandEyebrow}</p>
@@ -540,7 +497,7 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
               {copy.cmdBody}
             </p>
             <p style={{ margin: "18px 0 0", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>
-              {copy.cmdCursor}<span style={{ animation: "tmr-blink 1.1s step-end infinite" }}>_</span>
+              {copy.cmdCursor}<span className="tmr-anim-blink">_</span>
             </p>
             {/* V1.58D.6 — the people behind the workflow (real roles, consistent illustrated avatars) */}
             <div style={{ marginTop: 30, paddingTop: 24, borderTop: secBorder }}>
@@ -568,11 +525,11 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
                 <span style={{ color: C.faint }}>{copy.cardScore}</span><span style={{ color: C.red }}>{copy.cardHigh}</span>
               </div>
               <div style={{ marginTop: 7, height: 5, background: C.line }}>
-                <div style={{ height: "100%", width: "82%", background: `linear-gradient(90deg,${C.amber},${C.red})`, boxShadow: "0 0 12px rgba(255,77,94,.5)" }} />
+                <div style={{ height: "100%", width: "82%", background: `linear-gradient(90deg,${C.amber},${C.red})` }} />
               </div>
               <div style={{ marginTop: 12, display: "flex", gap: 6 }}>
                 {[copy.cardTag1, copy.cardTag2].map((t) => (
-                  <span key={t} style={{ border: "1px solid #3a1620", background: "#160a0e", color: C.red, padding: "3px 10px", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{t}</span>
+                  <span key={t} style={{ border: "1px solid #fecaca", background: "#fef2f2", color: C.red, padding: "3px 10px", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{t}</span>
                 ))}
               </div>
             </div>
@@ -584,15 +541,15 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
             </div>
             <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
               <button style={{ flex: 1, border: secBorder, background: "transparent", color: C.dim, padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono }}>{copy.cardReject}</button>
-              <button style={{ flex: 2, border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono, boxShadow: "0 0 22px rgba(46,227,178,.4)" }}>{copy.cardApprove}</button>
+              <button style={{ flex: 2, border: `1px solid ${C.mint}`, background: C.mint, color: "#fff", padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono, boxShadow: "0 6px 16px rgba(37,99,235,.22)" }}>{copy.cardApprove}</button>
             </div>
             <p style={{ margin: "12px 0 0", fontSize: 10, color: C.faint, fontFamily: mono }}>{copy.cardFootnote}</p>
           </div>
         </div>
       </section>
 
-      {/* platforms */}
-      <section style={{ borderBottom: secBorder, background: C.panel }}>
+      {/* platforms (unified header nav target) */}
+      <section id="platforms" style={{ borderBottom: secBorder, background: C.panel }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "70px 24px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 34 }}>
             <p style={eyebrow}>{copy.coverageEyebrow}</p>
@@ -616,8 +573,8 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
         </div>
       </section>
 
-      {/* diagnostics */}
-      <section id="diag" style={{ borderBottom: secBorder }}>
+      {/* diagnostics → "safety" (unified header nav target) */}
+      <section id="safety" style={{ borderBottom: secBorder }}>
         <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 48, padding: "96px 24px" }}>
           <div>
             <p style={eyebrow}>{copy.diagnosticsEyebrow}</p>
@@ -633,7 +590,7 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
               <div key={d} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "10px 20px" }}>
                 <span style={{ color: C.dim, flexShrink: 0 }}>{d}</span>
                 <span style={{ flex: 1, borderBottom: `1px dotted ${C.line}`, transform: "translateY(-3px)" }} />
-                <span style={{ color: C.mint, flexShrink: 0, textShadow: "0 0 10px rgba(46,227,178,.5)" }}>{copy.pass}</span>
+                <span style={{ color: C.green, flexShrink: 0, fontWeight: 600 }}>{copy.pass}</span>
               </div>
             ))}
           </div>
@@ -664,7 +621,7 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
           </div>
           <div className="tmr-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
             {plans.map((p) => (
-              <div key={p.name} style={p.pop ? { background: "#061711", padding: "26px 24px", boxShadow: `inset 0 0 0 1px ${C.mint}, 0 0 34px rgba(46,227,178,.14)` } : { background: C.bg, padding: "26px 24px" }}>
+              <div key={p.name} style={p.pop ? { background: "#eff6ff", padding: "26px 24px", boxShadow: `inset 0 0 0 1px ${C.mint}` } : { background: C.bg, padding: "26px 24px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.16em", color: p.pop ? C.mint : C.dim, fontFamily: mono }}>{p.name}</span>
                   {p.pop && <span style={{ background: C.mint, color: C.bg, padding: "2px 8px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{copy.popular}</span>}
@@ -710,28 +667,28 @@ export function LandingV2({ copy, startFree, logIn, footer, locale }: LandingV2P
       </section>
 
       {/* cta */}
-      <section style={{ borderBottom: secBorder, background: "radial-gradient(50rem 26rem at 50% 120%, rgba(46,227,178,.14), transparent 65%)" }}>
+      <section style={{ borderBottom: secBorder, background: "radial-gradient(50rem 26rem at 50% 120%, rgba(37,99,235,.08), transparent 65%)" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "104px 24px", textAlign: "center" }}>
-          <svg width="64" height="64" viewBox="0 0 32 32" fill="none" style={{ margin: "0 auto", animation: "tmr-glow 2.6s ease-in-out infinite" }}>
+          <svg width="64" height="64" viewBox="0 0 32 32" fill="none" className="tmr-anim-glow" style={{ margin: "0 auto" }}>
             <path d="M16 3 5 6.5v7.2c0 6.4 4.5 10.7 11 13.3 6.5-2.6 11-6.9 11-13.3V6.5L16 3Z" fill={C.mint} />
-            <rect x="11" y="14.5" width="10" height="8" rx="1.6" fill={C.bg} />
-            <path d="M13 14.5v-1.8a3 3 0 0 1 6 0v1.8" stroke={C.bg} strokeWidth="1.7" strokeLinecap="round" />
+            <rect x="11" y="14.5" width="10" height="8" rx="1.6" fill="#fff" />
+            <path d="M13 14.5v-1.8a3 3 0 0 1 6 0v1.8" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" />
           </svg>
-          <h2 style={{ margin: "30px auto 0", maxWidth: "22ch", fontSize: "clamp(30px, 4.5vw, 48px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em", textShadow: "0 0 60px rgba(46,227,178,.25)" }}>
+          <h2 style={{ margin: "30px auto 0", maxWidth: "22ch", fontSize: "clamp(30px, 4.5vw, 48px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
             {copy.ctaA} <span style={{ fontStyle: "italic", color: C.mint }}>{copy.ctaB}</span>
           </h2>
           <p style={{ margin: "20px auto 0", maxWidth: "44ch", fontSize: 15, lineHeight: 1.75, color: C.dim }}>
             {copy.ctaBody}
           </p>
           <div style={{ marginTop: 36, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
-            <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: C.bg, padding: "16px 34px", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", boxShadow: "0 0 40px rgba(46,227,178,.45)", fontFamily: mono }}>{copy.ctaPrimary}</Link>
+            <Link href="/register" style={{ border: `1px solid ${C.mint}`, background: C.mint, color: "#fff", padding: "16px 34px", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", boxShadow: "0 8px 22px rgba(37,99,235,.28)", fontFamily: mono }}>{copy.ctaPrimary}</Link>
             <Link href="/login" style={{ border: secBorder, color: C.text, padding: "16px 34px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: mono }}>{logIn}</Link>
           </div>
         </div>
       </section>
 
-      {/* V1.58D.2 — full global public footer (mission-control styling) replaces the old stub */}
-      <FooterV2 footer={footer} locale={locale} startFree={startFree} logIn={logIn} />
+      {/* Shared global footer — identical across every public page/subpage. */}
+      <SiteFooter locale={locale} />
     </div>
   );
 }

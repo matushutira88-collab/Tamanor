@@ -21,9 +21,9 @@ export function MarketingPage({
   children: ReactNode;
 }) {
   return (
-    <main className="gu-dark min-h-dvh bg-[var(--color-bg)] text-[var(--color-fg)]">
+    <main className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-fg)]">
       <SiteHeader dict={dict} locale={locale} />
-      <section className="gu-hero border-b border-[var(--color-border)]">
+      <section className="border-b border-[var(--color-border)] bg-[var(--color-bg-soft)]">
         <div className="mx-auto max-w-4xl px-6 py-16 md:py-20">
           {eyebrow ? (
             <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-[var(--color-brand)]">
