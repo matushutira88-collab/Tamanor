@@ -38,24 +38,24 @@ export function ShieldMark({ size = 28 }: { size?: number }) {
         width="10"
         height="8"
         rx="1.6"
-        fill="#04140f"
-        opacity="0.9"
+        fill="#ffffff"
+        opacity="0.95"
       />
       {/* padlock shackle */}
       <path
         d="M13 14.5v-1.8a3 3 0 0 1 6 0v1.8"
-        stroke="#04140f"
+        stroke="#ffffff"
         strokeWidth="1.7"
         strokeLinecap="round"
-        opacity="0.9"
+        opacity="0.95"
       />
       {/* keyhole */}
       <circle cx="16" cy="17.8" r="1.15" fill="var(--color-brand)" />
       <rect x="15.45" y="18.2" width="1.1" height="2.4" rx="0.55" fill="var(--color-brand)" />
       <defs>
         <linearGradient id={id} x1="5" y1="3" x2="27" y2="28">
-          <stop stopColor="#74f0d0" />
-          <stop offset="1" stopColor="#0d9488" />
+          <stop stopColor="#2563eb" />
+          <stop offset="1" stopColor="#1d4ed8" />
         </linearGradient>
       </defs>
     </svg>
@@ -96,15 +96,15 @@ export function ShieldEmblem({ size = 132 }: { size?: number }) {
           opacity="0.4"
         />
         {/* padlock */}
-        <rect x="66" y="72" width="28" height="24" rx="4.5" fill="#04140f" opacity="0.92" />
-        <path d="M71 72v-6a9 9 0 0 1 18 0v6" stroke="#04140f" strokeWidth="4.5" strokeLinecap="round" opacity="0.92" />
+        <rect x="66" y="72" width="28" height="24" rx="4.5" fill="#ffffff" opacity="0.95" />
+        <path d="M71 72v-6a9 9 0 0 1 18 0v6" stroke="#ffffff" strokeWidth="4.5" strokeLinecap="round" opacity="0.95" />
         <circle cx="80" cy="82" r="3.2" fill="var(--color-brand)" />
         <rect x="78.4" y="83" width="3.2" height="7" rx="1.6" fill="var(--color-brand)" />
         <defs>
           <linearGradient id="gu-emblem-fill" x1="38" y1="26" x2="122" y2="118">
-            <stop stopColor="#2ee3b2" />
-            <stop offset="0.55" stopColor="#14b48f" />
-            <stop offset="1" stopColor="#0b3f38" />
+            <stop stopColor="#60a5fa" />
+            <stop offset="0.55" stopColor="#3b82f6" />
+            <stop offset="1" stopColor="#1d4ed8" />
           </linearGradient>
         </defs>
       </svg>

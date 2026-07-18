@@ -1801,6 +1801,27 @@ export const en = {
     ctaA: "Protect your reputation", ctaB: "starting today.",
     ctaBody: "Deploy in read-only mode in minutes. Connect your channels. Sleep while the wall watches — and nothing fires without you.",
     ctaPrimary: "Deploy free — 14 days",
+    protect: {
+      eyebrow: "Time back in your day",
+      titleA: "Protect your brand,",
+      titleB: "get your time back.",
+      body: "Tamanor watches every comment, review and message across your connected accounts — so your team stops scrolling feeds and only steps in when it truly matters.",
+      centerTop: "Protected",
+      centerBottom: "24 / 7",
+      stats: [
+        { v: "~80%", l: "less time spent on moderation" },
+        { v: "~90%", l: "of comments cleared automatically" },
+        { v: "24/7", l: "monitoring — no one watching the feed" },
+      ],
+      note: "Illustrative estimate — actual time saved depends on your account volume.",
+      capsTitle: "What Tamanor does for you",
+      caps: [
+        "Scores every comment, review and message for risk",
+        "Auto-handles spam, scams and phishing links",
+        "Escalates real threats to a person on your team",
+        "Keeps genuine feedback visible to your audience",
+      ],
+    },
     tags: { threat: ["SPAM", "SCAM", "PHISHING", "THREAT", "FRAUD"], clean: ["QUESTION", "REVIEW", "FEEDBACK", "SUPPORT"] },
   },
 };

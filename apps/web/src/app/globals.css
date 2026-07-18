@@ -36,17 +36,29 @@
   --color-ok-soft: #dcfce7;
   --color-neutral-soft: #f1f5f9;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    Helvetica, Arial, sans-serif;
-  /* Display serif — headings & big stats (Playfair Display via next/font). */
-  --font-serif: var(--font-serif-src), "Playfair Display", ui-serif, Georgia,
-    "Times New Roman", serif;
+  /* V1.62 — one humanist typeface everywhere (Plus Jakarta Sans via --font-app).
+     `--font-serif` is no longer a serif: display headings/big stats now render in
+     the same warm sans as body text, for a unified, human feel. */
+  --font-sans: var(--font-app), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: var(--font-app), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
   --radius: 12px;
   --radius-lg: 16px;
 
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
   --shadow-pop: 0 12px 40px rgba(15, 23, 42, 0.12);
+}
+
+/* V1.62 — alias every legacy font token to the single app typeface, so the
+   landing's inline serif/mono/display references all render in one warm sans
+   (no terminal-mono, no separate serif). */
+:root {
+  --font-serif-src: var(--font-app);
+  --font-disp-v2: var(--font-app);
+  --font-sans-v2: var(--font-app);
+  --font-mono-v2: var(--font-app);
 }
 
 html,

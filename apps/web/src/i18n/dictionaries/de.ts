@@ -1749,6 +1749,27 @@ export const de: Dictionary = {
     ctaA: "Schütze deine Reputation", ctaB: "ab heute.",
     ctaBody: "Starte in Minuten im Nur-Lese-Modus. Verbinde deine Kanäle. Schlaf, während die Mauer wacht — nichts feuert ohne dich.",
     ctaPrimary: "Kostenlos starten — 14 Tage",
+    protect: {
+      eyebrow: "Zeit zurückgewinnen",
+      titleA: "Marke schützen,",
+      titleB: "Zeit zurückgewinnen.",
+      body: "Tamanor überwacht jeden Kommentar, jede Bewertung und Nachricht auf Ihren verbundenen Konten — Ihr Team scrollt nicht mehr durch Feeds und greift nur ein, wenn es wirklich zählt.",
+      centerTop: "Geschützt",
+      centerBottom: "24 / 7",
+      stats: [
+        { v: "~80%", l: "weniger Zeit für Moderation" },
+        { v: "~90%", l: "der Kommentare automatisch freigegeben" },
+        { v: "24/7", l: "Überwachung — niemand beobachtet den Feed" },
+      ],
+      note: "Illustrative Schätzung — die tatsächliche Zeitersparnis hängt vom Volumen Ihrer Konten ab.",
+      capsTitle: "Was Tamanor für Sie tut",
+      caps: [
+        "Bewertet jeden Kommentar, jede Bewertung und Nachricht nach Risiko",
+        "Bearbeitet Spam, Betrug und Phishing-Links automatisch",
+        "Eskaliert echte Bedrohungen an eine Person im Team",
+        "Hält echtes Feedback für Ihr Publikum sichtbar",
+      ],
+    },
     tags: { threat: ["SPAM", "BETRUG", "PHISHING", "DROHUNG", "FÄLSCHUNG"], clean: ["FRAGE", "REZENSION", "FEEDBACK", "SUPPORT"] },
   },
 };

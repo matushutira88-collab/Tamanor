@@ -1749,6 +1749,27 @@ export const sk: Dictionary = {
     ctaA: "Chráň svoju reputáciu", ctaB: "už dnes.",
     ctaBody: "Nasaď v režime iba na čítanie za pár minút. Prepoj svoje kanály. Spi, kým múr stráži — a nič sa nespustí bez teba.",
     ctaPrimary: "Nasaď zadarmo — 14 dní",
+    protect: {
+      eyebrow: "Získajte späť svoj čas",
+      titleA: "Chráňte značku,",
+      titleB: "získajte späť čas.",
+      body: "Tamanor sleduje každý komentár, recenziu a správu na vašich pripojených účtoch — váš tím prestane scrollovať feedy a zapojí sa len vtedy, keď na tom naozaj záleží.",
+      centerTop: "Chránené",
+      centerBottom: "24 / 7",
+      stats: [
+        { v: "~80%", l: "menej času stráveného moderáciou" },
+        { v: "~90%", l: "komentárov vyriešených automaticky" },
+        { v: "24/7", l: "monitoring — nikto nemusí sledovať feed" },
+      ],
+      note: "Ilustračný odhad — reálne ušetrený čas závisí od objemu na vašich účtoch.",
+      capsTitle: "Čo pre vás Tamanor robí",
+      caps: [
+        "Skóruje každý komentár, recenziu a správu podľa rizika",
+        "Automaticky rieši spam, podvody a phishingové odkazy",
+        "Reálne hrozby eskaluje človeku z vášho tímu",
+        "Skutočnú spätnú väzbu necháva viditeľnú pre publikum",
+      ],
+    },
     tags: { threat: ["SPAM", "PODVOD", "PHISHING", "HROZBA", "FALOŠNÉ"], clean: ["OTÁZKA", "RECENZIA", "NÁZOR", "PODPORA"] },
   },
 };

@@ -10,6 +10,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { SiteHeader } from "../site-header";
 import { SiteFooter } from "../site-footer";
+import { ShieldEmblem } from "../logo";
+import { PersonAvatar } from "./person-avatar";
 import type { Dictionary, Locale } from "@/i18n";
 
 type L2 = Dictionary["landingV2"];
@@ -68,20 +70,6 @@ const mono = "var(--font-mono-v2), ui-monospace, Menlo, monospace";
 const disp = "var(--font-disp-v2), ui-sans-serif, system-ui, sans-serif";
 const sans = "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif";
 
-/**
- * V1.58D.6 — premium illustrated role avatar (inline SVG, one consistent neutral style — no
- * photos, no AI-generated portraits, no artifacts). Used to give the workflow a human face
- * ("real people review") without dominating the page.
- */
-function Avatar() {
-  return (
-    <span aria-hidden style={{ display: "grid", placeItems: "center", height: 34, width: 34, borderRadius: 9999, background: "rgba(37,99,235,.06)", border: `1px solid ${C.line}`, color: C.dim, flexShrink: 0 }}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="8.5" r="3.4" /><path d="M5 20a7 7 0 0 1 14 0" />
-      </svg>
-    </span>
-  );
-}
 
 /* ---------- firewall canvas simulation ---------- */
 
@@ -308,15 +296,50 @@ function Clock() {
 
 /* ---------- data (non-textual / technical only) ---------- */
 
+// V1.62 — radar blips now carry (illustrative, fictional) first names instead of raw ids,
+// so the reputation view reads about people, not just numbers.
 const BLIPS = [
-  { top: "22%", left: "60%", danger: true, label: "fb:8842 · 0.91" },
-  { top: "62%", left: "70%", danger: false, label: "ig:2214 · 0.44" },
-  { top: "38%", left: "20%", danger: false, label: "fb:5511 · 0.38" },
-  { top: "74%", left: "34%", danger: true, label: "fb:9917 · 0.87" },
+  { top: "22%", left: "60%", danger: true, label: "Marek · 0.91" },
+  { top: "62%", left: "70%", danger: false, label: "Lena · 0.44" },
+  { top: "38%", left: "20%", danger: false, label: "Tomáš · 0.38" },
+  { top: "74%", left: "34%", danger: true, label: "Adam · 0.87" },
+];
+
+// V1.62 — fictional people (name + handle + photo) for the illustrative examples. NOT real
+// users and NOT testimonials — purely to make the demo feel human instead of numeric.
+const ACTORS = [
+  { photo: "/humans/actor1.png", name: "Marek Horák", handle: "@m.horak" },
+  { photo: "/humans/actor2.png", name: "Lena Fischer", handle: "@lena.f" },
+  { photo: "/humans/actor3.png", name: "Tomáš Varga", handle: "@t.varga" },
+];
+const COMMENT_AUTHOR = { photo: "/humans/author.png", name: "Adam Král", handle: "@adamk_" };
+const FEED_PEOPLE = [
+  { photo: "/humans/feed1.png", name: "Jana N." },
+  { photo: "/humans/feed2.png", name: "Luca B." },
+  { photo: "/humans/feed3.png", name: "Sofia M." },
+  { photo: "/humans/feed4.png", name: "David S." },
+  { photo: "/humans/feed5.png", name: "Nina R." },
+  { photo: "/humans/feed6.png", name: "Peter K." },
+];
+
+// V1.63 — "protection network" orbit: 6 people around the Tamanor shield. Positions are on a
+// circle (~42% radius); each avatar is centred on its point via translate(-50%,-50%).
+const ORBIT = [
+  { top: "7%", left: "50%", photo: "/humans/marketing.png" },
+  { top: "29%", left: "90%", photo: "/humans/support.png" },
+  { top: "71%", left: "90%", photo: "/humans/owner.png" },
+  { top: "93%", left: "50%", photo: "/humans/feed3.png" },
+  { top: "71%", left: "10%", photo: "/humans/feed5.png" },
+  { top: "29%", left: "10%", photo: "/humans/feed1.png" },
 ];
 
 // Self-serve monthly prices by plan index (Starter/Growth/Agency); Enterprise (index 3) is contact-sales.
 const PLAN_PRICES = [49, 149, 399, null] as const;
+
+// V1.62 — real portrait photos for the generic team roles (public/humans/). Order matches
+// copy.teamRoles (Marketing manager, Support agent, Brand owner). Extra roles fall back to
+// the illustrated PersonAvatar automatically.
+const TEAM_PHOTOS = ["/humans/marketing.png", "/humans/support.png", "/humans/owner.png"];
 
 /* ---------- page ---------- */
 
@@ -343,6 +366,7 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
   });
 
   const secBorder = `1px solid ${C.line}`;
+  const pr = copy.protect;
 
   return (
     <div className="tmr-v2" style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif", overflow: "hidden" }}>
@@ -411,13 +435,18 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
       {/* ticker */}
       <section style={{ borderBottom: secBorder, background: C.panel, overflow: "hidden" }}>
         <div className="tmr-anim-tkr" style={{ display: "inline-flex", whiteSpace: "nowrap", padding: "10px 0", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: mono }}>
-          {[...copy.ticker, ...copy.ticker].map((t, i) => (
-            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 34 }}>
-              <span style={{ color: C.faint }}>{t.time}</span>
-              <span style={{ color: t.bad ? C.red : C.green }}>{t.verb}</span>
-              <span style={{ color: C.dim }}>{t.what}</span>
-            </span>
-          ))}
+          {[...copy.ticker, ...copy.ticker].map((t, i) => {
+            const person = FEED_PEOPLE[i % FEED_PEOPLE.length]!;
+            return (
+              <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 34 }}>
+                <span style={{ color: C.faint }}>{t.time}</span>
+                <PersonAvatar seed={i + 20} size={18} src={person.photo} alt={person.name} />
+                <span style={{ color: C.text, fontWeight: 500 }}>{person.name}</span>
+                <span style={{ color: t.bad ? C.red : C.green }}>{t.verb}</span>
+                <span style={{ color: C.dim }}>{t.what}</span>
+              </span>
+            );
+          })}
         </div>
       </section>
 
@@ -474,12 +503,22 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
             <p style={{ margin: "20px 0 0", maxWidth: "46ch", fontSize: 15, lineHeight: 1.75, color: C.dim }}>
               {copy.radarBody}
             </p>
-            <div style={{ marginTop: 26, display: "flex", flexDirection: "column", gap: 8, fontSize: 12, fontFamily: mono }}>
-              {copy.actors.map((r, i) => (
-                <div key={r.a} style={{ display: "flex", justifyContent: "space-between", border: secBorder, padding: "10px 14px" }}>
-                  <span style={{ color: C.dim }}>{r.a}</span><span style={{ color: [C.red, C.amber, C.mint][i] ?? C.dim }}>{r.s}</span>
-                </div>
-              ))}
+            <div style={{ marginTop: 26, display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
+              {copy.actors.map((r, i) => {
+                const person = ACTORS[i];
+                return (
+                  <div key={r.a} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: secBorder, borderRadius: 12, padding: "9px 12px" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <PersonAvatar seed={i + 10} size={30} src={person?.photo} alt={person?.name ?? ""} />
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", color: C.bright, fontWeight: 600, fontSize: 13 }}>{person?.name}</span>
+                        <span style={{ display: "block", color: C.faint, fontSize: 11, fontFamily: mono }}>{person?.handle}</span>
+                      </span>
+                    </span>
+                    <span style={{ color: [C.red, C.amber, C.mint][i] ?? C.dim, fontFamily: mono, whiteSpace: "nowrap" }}>{r.s}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -499,13 +538,14 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
             <p style={{ margin: "18px 0 0", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>
               {copy.cmdCursor}<span className="tmr-anim-blink">_</span>
             </p>
-            {/* V1.58D.6 — the people behind the workflow (real roles, consistent illustrated avatars) */}
+            {/* V1.62 — the real people behind the workflow. Generic roles (no fake named
+                testimonials); illustrated portraits today, swappable for photos in /public/humans/. */}
             <div style={{ marginTop: 30, paddingTop: 24, borderTop: secBorder }}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 18 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
                 {copy.teamRoles.map((role, i) => (
-                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                    <Avatar />
-                    <span style={{ fontSize: 12.5, color: C.text, fontFamily: sans }}>{role}</span>
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 11 }}>
+                    <PersonAvatar seed={i + 1} size={40} src={TEAM_PHOTOS[i]} alt={role} />
+                    <span style={{ fontSize: 13, color: C.text, fontFamily: sans }}>{role}</span>
                   </span>
                 ))}
               </div>
@@ -517,7 +557,14 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>
               <span>{copy.cardSource}</span><span style={{ color: C.amber }}>{copy.cardPending}</span>
             </div>
-            <p style={{ margin: "16px 0 0", fontSize: 14, lineHeight: 1.65, color: C.text }}>
+            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+              <PersonAvatar seed={9} size={34} src={COMMENT_AUTHOR.photo} alt={COMMENT_AUTHOR.name} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.bright }}>{COMMENT_AUTHOR.name}</span>
+                <span style={{ display: "block", fontSize: 11, color: C.faint, fontFamily: mono }}>{COMMENT_AUTHOR.handle}</span>
+              </span>
+            </div>
+            <p style={{ margin: "12px 0 0", fontSize: 14, lineHeight: 1.65, color: C.text }}>
               {copy.cardComment}
             </p>
             <div style={{ marginTop: 16 }}>
@@ -533,11 +580,9 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
                 ))}
               </div>
             </div>
-            <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 9 }}>
-              <span aria-hidden style={{ display: "grid", placeItems: "center", height: 24, width: 24, borderRadius: 9999, border: `1px solid ${C.mint}`, color: C.mint, flexShrink: 0 }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2" /><path d="M5.5 20a6.5 6.5 0 0 1 13 0" /></svg>
-              </span>
-              <span style={{ fontSize: 11.5, lineHeight: 1.45, color: C.dim, fontFamily: "var(--font-sans-v2), ui-sans-serif, system-ui, sans-serif" }}>{copy.cardReviewer}</span>
+            <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10 }}>
+              <PersonAvatar seed={5} size={30} src="/humans/reviewer.png" alt="Reviewer" />
+              <span style={{ fontSize: 11.5, lineHeight: 1.45, color: C.dim, fontFamily: sans }}>{copy.cardReviewer}</span>
             </div>
             <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
               <button style={{ flex: 1, border: secBorder, background: "transparent", color: C.dim, padding: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer", fontFamily: mono }}>{copy.cardReject}</button>
@@ -569,6 +614,58 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
               </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* protect — "protection network" + illustrative time saved */}
+      <section style={{ borderBottom: secBorder }}>
+        <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center", padding: "96px 24px" }}>
+          {/* orbit of protected people around the Tamanor shield */}
+          <div style={{ position: "relative", width: "min(420px, 100%)", margin: "0 auto", aspectRatio: "1 / 1" }}>
+            <div style={{ position: "absolute", inset: "6%", borderRadius: "50%", border: `1px dashed ${C.line}` }} />
+            <div style={{ position: "absolute", inset: "24%", borderRadius: "50%", border: secBorder }} />
+            <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", display: "grid", placeItems: "center", textAlign: "center" }}>
+              <ShieldEmblem size={116} />
+              <span style={{ marginTop: 4, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.16em", color: C.faint, fontFamily: mono, lineHeight: 1.5 }}>
+                {pr.centerTop}<br />{pr.centerBottom}
+              </span>
+            </div>
+            {ORBIT.map((o, i) => (
+              <div key={i} style={{ position: "absolute", top: o.top, left: o.left, transform: "translate(-50%,-50%)", borderRadius: 9999, boxShadow: "0 6px 18px rgba(15,23,42,.12)" }}>
+                <PersonAvatar seed={i + 30} size={54} src={o.photo} />
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <p style={eyebrow}>{pr.eyebrow}</p>
+            <h2 style={{ margin: "16px 0 0", fontSize: "clamp(28px, 3.8vw, 40px)", lineHeight: 1.1, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
+              {pr.titleA} <span style={{ fontStyle: "italic", color: C.mint }}>{pr.titleB}</span>
+            </h2>
+            <p style={{ margin: "18px 0 0", maxWidth: "48ch", fontSize: 15, lineHeight: 1.75, color: C.dim }}>{pr.body}</p>
+
+            <div className="tmr-kpi" style={{ marginTop: 26, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+              {pr.stats.map((s) => (
+                <div key={s.l} style={{ border: secBorder, borderRadius: 14, background: C.panel, padding: "16px 14px" }}>
+                  <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: C.mint, fontFamily: disp, letterSpacing: "-0.02em" }}>{s.v}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 12, lineHeight: 1.5, color: C.dim }}>{s.l}</p>
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: "10px 0 0", fontSize: 11, color: C.faint }}>{pr.note}</p>
+
+            <p style={{ margin: "24px 0 0", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em", color: C.faint, fontFamily: mono }}>{pr.capsTitle}</p>
+            <ul style={{ listStyle: "none", margin: "12px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+              {pr.caps.map((c) => (
+                <li key={c} style={{ display: "flex", gap: 10, fontSize: 14, lineHeight: 1.5, color: C.text }}>
+                  <span aria-hidden style={{ marginTop: 2, flexShrink: 0, color: C.mint }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                  </span>
+                  {c}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
