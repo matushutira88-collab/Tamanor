@@ -86,11 +86,13 @@ export async function readSessionResultFromJar(jar: CookieJar): Promise<{ sessio
   return { session: result.session, reason: null };
 }
 
-/** Create a session (bootstrap/login) and set the cookie; clears the legacy cookie. */
-export async function startSessionInJar(jar: CookieJar, userId: string, activeTenantId?: string, rememberMe = false, userAgentSummary?: string): Promise<ResolvedSession> {
-  const { token, session } = await createUserSession({ userId, activeTenantId, rememberMe, userAgentSummary });
+/** Create a session (bootstrap/login) and set the cookie; clears the legacy cookie.
+ *  V1.63 — optional `onPhase` emits SESSION_CREATED (inside createUserSession) + COOKIE_SET (here). */
+export async function startSessionInJar(jar: CookieJar, userId: string, activeTenantId?: string, rememberMe = false, userAgentSummary?: string, onPhase?: (phase: string, meta?: Record<string, unknown>) => void): Promise<ResolvedSession> {
+  const { token, session } = await createUserSession({ userId, activeTenantId, rememberMe, userAgentSummary, onPhase });
   jar.set(SESSION_COOKIE, token, cookieOptions(rememberMe));
   clearLegacyInJar(jar);
+  try { onPhase?.("COOKIE_SET"); } catch { /* diagnostics must not break login */ }
   return session;
 }
 

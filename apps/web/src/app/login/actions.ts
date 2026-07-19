@@ -1,11 +1,12 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { findUserForLogin, verifyPassword, normalizeEmail, DUMMY_PASSWORD_HASH } from "@guardora/db";
 import { metrics, emitOpsEvent, getTurnstileConfig } from "@guardora/core";
 import { authLimiter, loginChallengeLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 import { startSession } from "@/server/session";
+import { newTraceId, TRACE_COOKIE, traceCookieOptions, logPhase, withPhase, phaseLogger } from "@/server/diagnostics/login-trace";
 import { isSameOrigin } from "@/server/csrf";
 import { verifyChallenge, summarizeUserAgent } from "@/server/auth-security";
 import { sendSecurityEmail } from "@/server/security-email";
@@ -22,6 +23,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  */
 export async function loginAction(formData: FormData): Promise<void> {
   const fail = (code: string): never => redirect(`/login?error=${encodeURIComponent(code)}`);
+
+  // V1.63 — diagnostic trace: ONE stable id for the whole login → dashboard flow, carried to the dashboard
+  // render via an httpOnly cookie (never a URL param). Fully fail-open — never alters login behaviour, and
+  // NEXT_REDIRECT control-flow is never treated as an error (see withPhase / onRequestError).
+  const traceId = newTraceId();
+  try { (await cookies()).set(TRACE_COOKIE, traceId, traceCookieOptions()); } catch { /* fail-open */ }
+  logPhase({ traceId, phase: "LOGIN_SUBMITTED", route: "/login", success: true });
 
   if (!(await isSameOrigin())) fail("csrf");
 
@@ -60,7 +68,7 @@ export async function loginAction(formData: FormData): Promise<void> {
     emitOpsEvent("auth.bot_challenge", { operation: "login", reason: "challenge_required_no_provider" });
   }
 
-  const user = await findUserForLogin(email);
+  const user = await withPhase(traceId, "USER_LOOKUP_COMPLETED", () => findUserForLogin(email), { route: "/login" });
 
   // ALWAYS run a full Argon2 verify — against a dummy hash when the account is missing
   // or has no local password — so response time never distinguishes "no such user"
@@ -73,7 +81,8 @@ export async function loginAction(formData: FormData): Promise<void> {
     return;
   }
 
-  if (!(await verifyPassword(user.passwordHash, password))) {
+  const passwordOk = await withPhase(traceId, "PASSWORD_VERIFIED", () => verifyPassword(user.passwordHash, password), { route: "/login", userId: user.id });
+  if (!passwordOk) {
     metrics.inc("auth_login_total", { operation: "login", result: "denied" });
     emitOpsEvent("auth.login_failed", { operation: "login", reason: "invalid_credentials" });
     fail("invalid_credentials");
@@ -82,8 +91,10 @@ export async function loginAction(formData: FormData): Promise<void> {
 
   // V1.58.9 — a fresh server-minted token per login (never accepts a client token pre-auth) is the
   // session-fixation defense; rememberMe selects the persistent ceiling.
+  // V1.63 — onPhase emits MEMBERSHIP_RESOLVED / SESSION_CREATED / COOKIE_SET (fail-open); a throw here is
+  // captured by onRequestError with the same traceId (from the cookie set above).
   const ua = summarizeUserAgent((await headers()).get("user-agent"));
-  const session = await startSession(user.id, undefined, rememberMe, ua ?? undefined);
+  const session = await startSession(user.id, undefined, rememberMe, ua ?? undefined, { onPhase: phaseLogger(traceId, { userId: user.id }) });
   metrics.inc("auth_login_total", { operation: "login", result: "ok" });
   emitOpsEvent("auth.login_succeeded", { operation: "login", result: rememberMe ? "remember" : "session" });
   // V1.58.9 — security notification: a successful sign-in emails the account (best-effort; never blocks
@@ -91,6 +102,7 @@ export async function loginAction(formData: FormData): Promise<void> {
   try {
     await sendSecurityEmail(session.userEmail, await getLocale(), "new_login", { when: new Date().toISOString().replace("T", " ").slice(0, 16) + " UTC", device: ua });
   } catch { /* delivery failure must not block login (already audited inside) */ }
+  logPhase({ traceId, phase: "REDIRECT_STARTED", success: true, userId: user.id, tenantId: session.tenantId });
   // V1.50C — an unverified email/password user goes to the verification-required screen.
   redirect(session.emailVerified ? "/dashboard" : "/verify-email");
 }

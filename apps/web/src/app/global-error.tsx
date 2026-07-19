@@ -1,15 +1,29 @@
 "use client";
 
-import { newCorrelationId } from "@/lib/errors";
+import { useEffect, useRef } from "react";
+import { reportClientError, computeReferenceId, newClientReference } from "@/lib/client-diagnostics";
 
 /**
  * Root error boundary — the last line of defense. It REPLACES the root layout, so it
  * ships its own <html>/<body> and inline styles (globals.css may not be present here).
  * It NEVER shows the raw error message, stack, digest internals, DB role or any secret —
  * only a safe message + a correlation id the user can quote to support.
+ *
+ * V1.63 — the reference id is pinned ONCE via useRef (stable across re-renders and until reset), and a
+ * safe report is sent to the diagnostics sink on mount (deduped). "Try again" (reset) never changes the
+ * id for the current error.
  */
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  const correlationId = error.digest ?? newCorrelationId();
+  const idRef = useRef<string | null>(null);
+  if (idRef.current === null) idRef.current = computeReferenceId(error.digest, undefined, newClientReference());
+  const correlationId = idRef.current;
+  useEffect(() => {
+    reportClientError({
+      referenceId: correlationId, boundary: "global",
+      route: typeof window !== "undefined" ? window.location.pathname : "/",
+      errorName: error.name, safeMessage: error.message, digest: error.digest,
+    });
+  }, [correlationId, error]);
   return (
     <html lang="en">
       <body style={{ margin: 0, background: "#0b0f14", color: "#e6edf3", fontFamily: "system-ui, sans-serif" }}>

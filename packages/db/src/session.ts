@@ -134,11 +134,14 @@ export async function createUserSession(input: {
   absoluteExpiresAt?: Date;
   userAgentSummary?: string;
   now?: Date;
+  /** V1.63 — OPTIONAL diagnostic phase callback (no PII; success milestones only). Fail-open in the caller. */
+  onPhase?: (phase: string, meta?: Record<string, unknown>) => void;
 }): Promise<{ token: string; sessionId: string; session: ResolvedSession }> {
   const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { id: true } });
   if (!user) throw new Error("createUserSession: user not found");
   const tenantId = await resolveActiveTenant(input.userId, input.activeTenantId);
   if (!tenantId) throw new Error("createUserSession: no valid tenant membership");
+  try { input.onPhase?.("MEMBERSHIP_RESOLVED", { tenantId }); } catch { /* diagnostics must not break login */ }
 
   const t = input.timeouts ?? sessionTimeoutsFromEnv();
   const now = input.now ?? new Date();
@@ -154,6 +157,7 @@ export async function createUserSession(input: {
   });
   const session = await hydrate(created.id, input.userId, tenantId, expiresAt, absoluteExpiresAt, rememberMe, created.createdAt);
   if (!session.ok) throw new Error(`createUserSession: could not hydrate (${session.reason})`);
+  try { input.onPhase?.("SESSION_CREATED", { tenantId }); } catch { /* diagnostics must not break login */ }
   return { token, sessionId: created.id, session: session.session! };
 }
 

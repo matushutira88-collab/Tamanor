@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/logo";
 import { Sidebar } from "./sidebar";
 import { defaultLocale, type Locale } from "@/i18n/config";
+import { reportDashboardMounted } from "@/lib/client-diagnostics";
 
 export function DashboardShell({
+  traceId,
   tenantName,
   userName,
   role,
@@ -21,6 +23,7 @@ export function DashboardShell({
   sidebarStrings,
   children,
 }: {
+  traceId?: string;
   tenantName: string;
   userName: string;
   role: string;
@@ -40,6 +43,15 @@ export function DashboardShell({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, planName, accountsUsed, accountsLimit, pendingCount, demo, locale, navLabels, sidebarStrings };
+
+  // V1.63 — one-time client mount marker: proves hydration completed (server bootstrap done + client
+  // mounted). Its absence after DASHBOARD_BOOTSTRAP_COMPLETED points at a hydration/import/render failure.
+  const mountReportedRef = useRef(false);
+  useEffect(() => {
+    if (mountReportedRef.current) return;
+    mountReportedRef.current = true;
+    reportDashboardMounted(window.location.pathname, traceId);
+  }, [traceId]);
 
   // V1.39C — mobile drawer a11y: Escape closes and returns focus to the trigger; opening
   // moves focus into the drawer's first link so keyboard users land inside the menu.

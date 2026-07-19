@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { requireVerifiedSession } from "@/server/auth";
 import { withTenant, getTenantBilling, getTenantEntitlements } from "@guardora/db";
 import { getLocale } from "@/i18n/locale-server";
 import { getDictionary, type Locale } from "@/i18n";
+import { TRACE_COOKIE, readValidTraceId, newTraceId, logPhase, withPhase } from "@/server/diagnostics/login-trace";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -30,7 +32,14 @@ function StateBanner({ accessState, billingStatus, trialDaysLeft, locale }: { ac
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireVerifiedSession();
+  // V1.63 — first-authenticated-render trace. Inherit the login traceId from the httpOnly cookie (a Server
+  // Component can READ but not delete it — the client mount marker clears it via the diagnostics endpoint).
+  const traceId = readValidTraceId((await cookies()).get(TRACE_COOKIE)?.value) ?? newTraceId();
+  logPhase({ traceId, phase: "DASHBOARD_BOOTSTRAP_STARTED", route: "/dashboard", success: true });
+
+  const session = await withPhase(traceId, "SESSION_READ", () => requireVerifiedSession(), { route: "/dashboard" });
+  logPhase({ traceId, phase: "USER_CONTEXT_RESOLVED", success: true, userId: session.userId, tenantId: session.tenantId });
+  logPhase({ traceId, phase: "TENANT_LOADED", success: true, tenantId: session.tenantId });
   const locale = await getLocale();
   const dict = getDictionary(locale);
   const now = new Date();
@@ -42,7 +51,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // all-time count. Avoids impossible values like "5038 / 500" on a fresh trial.
     // V1.60 — plus the two small sidebar counts (alerts badge, plan-widget accounts) in the
     // same tenant transaction so navigation stays a single withTenant round trip.
-    withTenant(session.tenantId, (db) => Promise.all([
+    withPhase(traceId, "USAGE_LOADED", () => withTenant(session.tenantId, (db) => Promise.all([
       db.usagePeriod.findFirst({
         where: { tenantId: session.tenantId, periodStart: { lte: now }, periodEnd: { gt: now } },
         select: { basicUnitsUsed: true },
@@ -51,9 +60,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       // (action-queue items awaiting approval), so the two never disagree.
       db.actionQueueItem.count({ where: { tenantId: session.tenantId, queueState: "approval_required" } }),
       db.connectedAccount.count({ where: { tenantId: session.tenantId, status: { in: ["active", "mock_connected"] } } }),
-    ])),
-    getTenantBilling(session.tenantId),
-    getTenantEntitlements(session.tenantId),
+    ])), { userId: session.userId, tenantId: session.tenantId }),
+    withPhase(traceId, "BILLING_LOADED", () => getTenantBilling(session.tenantId), { tenantId: session.tenantId }),
+    withPhase(traceId, "ENTITLEMENTS_LOADED", () => getTenantEntitlements(session.tenantId), { tenantId: session.tenantId }),
   ]);
 
   const isDemoWorkspace = session.tenantName.toLowerCase().includes("demo");
@@ -62,8 +71,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const planKey = billing?.subscription?.plan ?? (billing?.billingStatus === "no_subscription" ? null : billing?.plan) ?? null;
   const planName = planKey ? planKey.charAt(0).toUpperCase() + planKey.slice(1) : undefined;
 
+  logPhase({ traceId, phase: "SHELL_RENDER_STARTED", success: true, userId: session.userId, tenantId: session.tenantId });
+  // Server data bootstrap is done; the client mount marker (DASHBOARD_CLIENT_MOUNTED) confirms hydration.
+  logPhase({ traceId, phase: "DASHBOARD_BOOTSTRAP_COMPLETED", success: true, userId: session.userId, tenantId: session.tenantId });
+
   return (
     <DashboardShell
+      traceId={traceId}
       tenantName={session.tenantName}
       userName={session.userName}
       role={session.role}

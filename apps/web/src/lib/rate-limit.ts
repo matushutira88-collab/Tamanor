@@ -51,6 +51,10 @@ export const authLimiter = new CentralLimiter("auth", { limit: 10, windowMs: 5 *
 /** Outbound-email auth flows (resend verification, forgot-password) — per-IP AND per-email. Fail closed. */
 export const emailSendLimiter = new CentralLimiter("email", { limit: 5, windowMs: 60 * 60_000, failClosed: true });
 
+// V1.63 — client diagnostics sink abuse guard. Low-stakes (fail-OPEN so a store blip never drops reports),
+// but tightly capped per key so it can't be used to flood logs.
+export const diagnosticsLimiter = new CentralLimiter("diagnostics", { limit: 20, windowMs: 60_000, failClosed: false });
+
 /**
  * V1.58.9 — adaptive-challenge trigger for login. Counts recent login ATTEMPTS per (account|ip); once the
  * count reaches LOGIN_CHALLENGE_AFTER_FAILURES within the window, `check()` returns allowed=false → the
