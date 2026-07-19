@@ -32,10 +32,15 @@ function StateBanner({ accessState, billingStatus, trialDaysLeft, locale }: { ac
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  // V1.63 — first-authenticated-render trace. Inherit the login traceId from the httpOnly cookie (a Server
-  // Component can READ but not delete it — the client mount marker clears it via the diagnostics endpoint).
-  const traceId = readValidTraceId((await cookies()).get(TRACE_COOKIE)?.value) ?? newTraceId();
-  logPhase({ traceId, phase: "DASHBOARD_BOOTSTRAP_STARTED", route: "/dashboard", success: true });
+  // V1.63 — first-authenticated-render trace. Prefer the login traceId inherited from the httpOnly cookie
+  // (a Server Component can READ but not write it). When the cookie is absent — direct /dashboard open,
+  // refresh after the trace expired, or an existing session with no fresh login — we mint a LOCAL dashboard
+  // trace. V1.63.1: that fallback is tagged `traceSource:"fallback"` so it is NEVER read as proof that a
+  // specific login flow continued; it just keeps the render self-correlated.
+  const cookieTraceId = readValidTraceId((await cookies()).get(TRACE_COOKIE)?.value);
+  const traceId = cookieTraceId ?? newTraceId();
+  const traceSource = cookieTraceId ? "cookie" : "fallback";
+  logPhase({ traceId, traceSource, phase: "DASHBOARD_BOOTSTRAP_STARTED", route: "/dashboard", success: true });
 
   const session = await withPhase(traceId, "SESSION_READ", () => requireVerifiedSession(), { route: "/dashboard" });
   logPhase({ traceId, phase: "USER_CONTEXT_RESOLVED", success: true, userId: session.userId, tenantId: session.tenantId });

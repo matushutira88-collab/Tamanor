@@ -77,7 +77,7 @@ export function reportClientError(r: ClientErrorReport): void {
   });
 }
 
-/** Fire the one-time DASHBOARD_CLIENT_MOUNTED marker (clears the trace cookie server-side). Never throws. */
+/** Fire the one-time DASHBOARD_CLIENT_MOUNTED marker (sends the server-threaded traceId). Never throws. */
 export function reportDashboardMounted(route: string, traceId?: string): void {
   const r = (route || "/dashboard").split("?")[0]!.slice(0, 128);
   if (alreadyReported(clientReportKey("mounted", r, "shell_mount"))) return;

@@ -14,8 +14,9 @@ const MAX_BODY = 2048;
 /**
  * V1.63 — same-origin, rate-limited, size-capped client diagnostics sink. Accepts a tiny validated JSON
  * report (render-error or dashboard mount marker). Never authenticates (it may fire on /login or after the
- * session is gone), never reflects input, and returns 204 on success. On the mount marker it clears the
- * short-lived login trace cookie. All heavy lifting is in the pure `handleClientErrorReport`.
+ * session is gone), never reflects input, and returns 204 on success. V1.63.1: the mount marker no longer
+ * clears the login trace cookie (it self-expires via Max-Age so a post-mount error can still fall back to
+ * it); `clearTraceCookie` is retained but currently always false. Heavy lifting is in `handleClientErrorReport`.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const contentLength = Number(req.headers.get("content-length") ?? "0");

@@ -68,7 +68,12 @@ export interface ClientReportInput {
 
 export interface ClientReportResult {
   status: number;
-  /** True only for the `mounted` marker → the route handler clears the login trace cookie. */
+  /**
+   * Whether the route handler should delete the login trace cookie. V1.63.1: the mount marker NO LONGER
+   * clears it — an error can surface immediately AFTER mount and CLIENT_ERROR must still be able to fall
+   * back to the cookie. The cookie self-expires via its 300s Max-Age (a dedicated stabilization marker
+   * could clear it later, but that is intentionally out of scope here). So this is currently always false.
+   */
   clearTraceCookie: boolean;
 }
 
@@ -81,9 +86,18 @@ export function handleClientErrorReport(input: ClientReportInput, sink?: DiagSin
   const d = parseReport(input.rawBody);
   if (!d) return { status: 400, clearTraceCookie: false };
 
+  // V1.63.1 — the SERVER-THREADED traceId (rendered into the shell, echoed in the payload and already
+  // validated against TRACE_RE in parseReport) is AUTHORITATIVE. The httpOnly cookie is only a fallback
+  // for when the client could not carry it (e.g. an error before the shell prop was available). This makes
+  // DASHBOARD_CLIENT_MOUNTED / CLIENT_ERROR correlate to the id the dashboard was actually rendered with,
+  // independent of any cookie clear/expiry between render and report.
+  const traceId = d.traceId ?? input.cookieTraceId ?? "t_none";
+  const traceSource = d.traceId ? "payload" : input.cookieTraceId ? "cookie" : "none";
+
   logPhase(
     {
-      traceId: input.cookieTraceId ?? "t_none",
+      traceId,
+      traceSource,
       phase: d.event === "mounted" ? "DASHBOARD_CLIENT_MOUNTED" : "CLIENT_ERROR",
       route: d.route ? d.route.split("?")[0]!.slice(0, 128) : undefined,
       boundary: d.boundary,
@@ -96,5 +110,5 @@ export function handleClientErrorReport(input: ClientReportInput, sink?: DiagSin
     },
     sink,
   );
-  return { status: 204, clearTraceCookie: d.event === "mounted" };
+  return { status: 204, clearTraceCookie: false };
 }

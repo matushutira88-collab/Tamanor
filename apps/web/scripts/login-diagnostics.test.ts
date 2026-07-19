@@ -67,13 +67,61 @@ async function run() {
   check("cross-origin → 403", handleClientErrorReport({ sameOrigin: false, rateAllowed: true, rawBody: body({ event: "error" }) }).status === 403);
   check("oversize body → 413", handleClientErrorReport({ ...base, rawBody: "x".repeat(4000) }).status === 413);
 
-  // --- 10) mount marker clears the trace cookie ---------------------------------------------------
+  // --- V1.63.1 trace hardening: payload authoritative + cookie NOT cleared on mount ---------------
+  const P = "t_aaaaaaaaaaaa"; // server-threaded payload trace (valid t_<hex>)
+  const C = "t_bbbbbbbbbbbb"; // httpOnly cookie trace (valid t_<hex>)
+
   {
     const { lines, sink } = captured();
-    const r = handleClientErrorReport({ ...base, rawBody: body({ event: "mounted", route: "/dashboard" }), cookieTraceId: "t_login00000000" }, sink);
-    check("10) mounted marker → 204 + clearTraceCookie true", r.status === 204 && r.clearTraceCookie === true);
-    check("10) mounted marker logs DASHBOARD_CLIENT_MOUNTED with the login traceId", lines.length === 1 && lines[0]?.diag === "DASHBOARD_CLIENT_MOUNTED" && lines[0]?.traceId === "t_login00000000");
-    check("error report does NOT clear the cookie", handleClientErrorReport({ ...base, rawBody: body({ event: "error" }) }).clearTraceCookie === false);
+    const r = handleClientErrorReport({ ...base, rawBody: body({ event: "mounted", route: "/dashboard", traceId: P }), cookieTraceId: C }, sink);
+    check("H1) mounted marker → 204 and does NOT clear the trace cookie", r.status === 204 && r.clearTraceCookie === false);
+    check("H1) mount logs DASHBOARD_CLIENT_MOUNTED", lines.length === 1 && lines[0]?.diag === "DASHBOARD_CLIENT_MOUNTED");
+    check("H1) payload traceId is AUTHORITATIVE over the cookie (source=payload)", lines[0]?.traceId === P && lines[0]?.traceSource === "payload");
+    check("H1) an error report also never clears the cookie", handleClientErrorReport({ ...base, rawBody: body({ event: "error" }) }).clearTraceCookie === false);
+  }
+
+  // --- H2) fallback chain: payload absent → cookie; neither → t_none -------------------------------
+  {
+    const { lines, sink } = captured();
+    handleClientErrorReport({ ...base, rawBody: body({ event: "mounted", route: "/dashboard" }), cookieTraceId: C }, sink);
+    check("H2) no payload traceId → the cookie is the fallback (source=cookie)", lines[0]?.traceId === C && lines[0]?.traceSource === "cookie");
+    const { lines: l2, sink: s2 } = captured();
+    handleClientErrorReport({ ...base, rawBody: body({ event: "error", boundary: "dashboard" }) }, s2);
+    check("H2) neither payload nor cookie → t_none (source=none)", l2[0]?.traceId === "t_none" && l2[0]?.traceSource === "none");
+  }
+
+  // --- H3) CLIENT_ERROR immediately after mount keeps the SAME id even with the cookie gone --------
+  {
+    const T = "t_dddddddddddd";
+    const { lines, sink } = captured();
+    handleClientErrorReport({ ...base, rawBody: body({ event: "mounted", route: "/dashboard", traceId: T }) }, sink); // cookie already expired/absent
+    handleClientErrorReport({ ...base, rawBody: body({ event: "error", boundary: "dashboard", traceId: T }) }, sink);
+    check("H3) post-mount CLIENT_ERROR keeps the same server-threaded traceId (no cookie needed)",
+      lines.length === 2 && lines[0]?.traceId === T && lines[1]?.traceId === T && lines[1]?.diag === "CLIENT_ERROR" && lines[1]?.traceSource === "payload");
+  }
+
+  // --- H4) a malformed payload traceId is STILL strictly rejected → 400 (never logged) -------------
+  check("H4) malformed payload traceId rejected at parse → 400 (strict validation preserved)",
+    handleClientErrorReport({ ...base, rawBody: body({ event: "mounted", traceId: "t_NOThex" }), cookieTraceId: C }).status === 400);
+
+  // --- H5) two independent reports are NOT reconciled into a single-flow mismatch ------------------
+  {
+    const { lines, sink } = captured();
+    handleClientErrorReport({ ...base, rawBody: body({ event: "mounted", route: "/dashboard", traceId: P }) }, sink);
+    handleClientErrorReport({ ...base, rawBody: body({ event: "mounted", route: "/dashboard" }), cookieTraceId: C }, sink);
+    check("H5) two separate attempts each log their OWN id (sink never cross-correlates)",
+      lines[0]?.traceId === P && lines[1]?.traceId === C);
+  }
+
+  // --- H6) layout fallback logic: missing cookie → valid local trace tagged 'fallback' -------------
+  {
+    const cookieAbsent = readValidTraceId(undefined); // what the layout reads when the trace cookie is gone
+    const fallback = cookieAbsent ?? newTraceId();
+    check("H6) missing cookie → layout mints a valid t_ trace tagged 'fallback' (not login continuation)",
+      cookieAbsent === undefined && /^t_[a-f0-9]{12,64}$/.test(fallback) && (cookieAbsent ? "cookie" : "fallback") === "fallback");
+    const present = readValidTraceId(C);
+    check("H6) present cookie → layout inherits it, tagged 'cookie'",
+      present === C && (present ? "cookie" : "fallback") === "cookie");
   }
 
   // --- 6b) the sink never logs a secret-shaped field even if smuggled in safeMessage --------------

@@ -102,6 +102,12 @@ const defaultSink: DiagSink = (line) => {
 export interface PhaseFields {
   traceId: string;
   phase: string;
+  /**
+   * Where `traceId` came from, for honest correlation. "cookie" = inherited login trace; "fallback" =
+   * a locally-minted dashboard trace (direct open / refresh / existing session, NOT proof that a specific
+   * login flow continued); "payload" = the server-threaded id echoed by the client; "none" = no id at all.
+   */
+  traceSource?: string;
   route?: string;
   success?: boolean;
   durationMs?: number;
@@ -120,7 +126,7 @@ export interface PhaseFields {
   renderSource?: string;
 }
 
-const ALLOWED_FIELDS = ["traceId", "route", "success", "durationMs", "userId", "tenantId", "errorClass", "safeMessage", "digest", "boundary", "referenceId", "userAgentFamily", "method", "routerKind", "routeType", "renderSource"] as const;
+const ALLOWED_FIELDS = ["traceId", "traceSource", "route", "success", "durationMs", "userId", "tenantId", "errorClass", "safeMessage", "digest", "boundary", "referenceId", "userAgentFamily", "method", "routerKind", "routeType", "renderSource"] as const;
 
 /** Fail-open structured phase log. NEVER throws into the caller (diagnostics must not break the request). */
 export function logPhase(fields: PhaseFields, sink: DiagSink = defaultSink): void {
