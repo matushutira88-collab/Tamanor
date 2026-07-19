@@ -59,15 +59,64 @@ interface AdminDiag {
 
 // Self-contained localized copy for the customer chip + the admin diagnostics panel (kept out of the large
 // CommentsCopy map). The chip is customer-visible; the panel is admin-only.
+// V1.65 — the raw classifier version ("risk-rules-v1"), callMode, gateReason and ai.status are internal
+// pipeline strings that must NEVER leak to customers verbatim. The customer chip shows a friendly
+// "Base protection" label; the admin panel maps callMode/gate/status codes to readable phrases (with a
+// raw last-resort fallback only for unknown gate codes). Underlying stored values are untouched.
 const DIAG_COPY: Record<Locale, {
   chipBasic: string; chipAi: string; heading: string; rules: string; ai: string; merged: string;
   callMode: string; model: string; tokens: string; cost: string; gate: string; aiStatus: string; notCalled: string; error: string; none: string; usageUnavailable: string;
+  classifier: string;
+  callModeVal: Record<"all" | "value_gated", string>;
+  gateVal: Record<string, string>;
+  gatePaused: string;
+  aiStatusVal: Record<string, string>;
 }> = {
-  en: { chipBasic: "Basic protection", chipAi: "AI assisted", heading: "AI diagnostics (admin only)", rules: "Rules result", ai: "AI result", merged: "Merged result", callMode: "Call mode", model: "Model", tokens: "Tokens (in/out/total)", cost: "Cost", gate: "Gate", aiStatus: "AI status", notCalled: "not called", error: "Error", none: "—", usageUnavailable: "Usage details unavailable" },
-  sk: { chipBasic: "Základná ochrana", chipAi: "S pomocou AI", heading: "AI diagnostika (len admin)", rules: "Výsledok pravidiel", ai: "Výsledok AI", merged: "Zlúčený výsledok", callMode: "Režim volania", model: "Model", tokens: "Tokeny (in/out/spolu)", cost: "Náklad", gate: "Brána", aiStatus: "AI stav", notCalled: "nevolané", error: "Chyba", none: "—", usageUnavailable: "Údaje o spotrebe nedostupné" },
-  de: { chipBasic: "Basisschutz", chipAi: "KI-unterstützt", heading: "KI-Diagnose (nur Admin)", rules: "Regel-Ergebnis", ai: "KI-Ergebnis", merged: "Zusammengeführtes Ergebnis", callMode: "Aufrufmodus", model: "Modell", tokens: "Tokens (ein/aus/gesamt)", cost: "Kosten", gate: "Gate", aiStatus: "KI-Status", notCalled: "nicht aufgerufen", error: "Fehler", none: "—", usageUnavailable: "Nutzungsdetails nicht verfügbar" },
+  en: {
+    chipBasic: "Basic protection", chipAi: "AI assisted", heading: "AI diagnostics (admin only)", rules: "Rules result", ai: "AI result", merged: "Merged result", callMode: "Call mode", model: "Model", tokens: "Tokens (in/out/total)", cost: "Cost", gate: "Gate", aiStatus: "AI status", notCalled: "not called", error: "Error", none: "—", usageUnavailable: "Usage details unavailable",
+    classifier: "Base protection",
+    callModeVal: { all: "Advanced AI check", value_gated: "Targeted AI check" },
+    gateVal: { value_added: "AI added value", gate_not_fired: "AI check not needed", ai_disabled: "AI check off", no_provider: "AI provider not configured" },
+    gatePaused: "AI check paused",
+    aiStatusVal: { classified: "Checked", skipped: "Skipped", failed: "Failed", unavailable: "Unavailable" },
+  },
+  sk: {
+    chipBasic: "Základná ochrana", chipAi: "S pomocou AI", heading: "AI diagnostika (len admin)", rules: "Výsledok pravidiel", ai: "Výsledok AI", merged: "Zlúčený výsledok", callMode: "Režim volania", model: "Model", tokens: "Tokeny (in/out/spolu)", cost: "Náklad", gate: "Brána", aiStatus: "AI stav", notCalled: "nevolané", error: "Chyba", none: "—", usageUnavailable: "Údaje o spotrebe nedostupné",
+    classifier: "Základná ochrana",
+    callModeVal: { all: "Pokročilá AI kontrola", value_gated: "Cielená AI kontrola" },
+    gateVal: { value_added: "AI pridala hodnotu", gate_not_fired: "AI kontrola nebola potrebná", ai_disabled: "AI kontrola vypnutá", no_provider: "AI poskytovateľ nenastavený" },
+    gatePaused: "AI kontrola pozastavená",
+    aiStatusVal: { classified: "Skontrolované", skipped: "Preskočené", failed: "Zlyhalo", unavailable: "Nedostupné" },
+  },
+  de: {
+    chipBasic: "Basisschutz", chipAi: "KI-unterstützt", heading: "KI-Diagnose (nur Admin)", rules: "Regel-Ergebnis", ai: "KI-Ergebnis", merged: "Zusammengeführtes Ergebnis", callMode: "Aufrufmodus", model: "Modell", tokens: "Tokens (ein/aus/gesamt)", cost: "Kosten", gate: "Gate", aiStatus: "KI-Status", notCalled: "nicht aufgerufen", error: "Fehler", none: "—", usageUnavailable: "Nutzungsdetails nicht verfügbar",
+    classifier: "Basisschutz",
+    callModeVal: { all: "Erweiterte KI-Prüfung", value_gated: "Gezielte KI-Prüfung" },
+    gateVal: { value_added: "KI mit Mehrwert", gate_not_fired: "KI-Prüfung nicht nötig", ai_disabled: "KI-Prüfung aus", no_provider: "KI-Anbieter nicht konfiguriert" },
+    gatePaused: "KI-Prüfung pausiert",
+    aiStatusVal: { classified: "Geprüft", skipped: "Übersprungen", failed: "Fehlgeschlagen", unavailable: "Nicht verfügbar" },
+  },
 };
 const microsToUsd = (m: number | null): string => (m === null ? "—" : `$${(m / 1_000_000).toFixed(6)}`);
+
+type DiagCopy = (typeof DIAG_COPY)[Locale];
+// callMode → readable phrase (raw fallback only if a new mode appears).
+function diagCallMode(dc: DiagCopy, raw: string): string {
+  return dc.callModeVal[raw as "all" | "value_gated"] ?? raw;
+}
+// ai.status → readable phrase (raw fallback for any future status).
+function diagAiStatus(dc: DiagCopy, raw: string): string {
+  return dc.aiStatusVal[raw] ?? raw;
+}
+// gateReason → readable phrase. "all_mode" mirrors the "all" call mode; limit/circuit codes collapse to
+// "paused"; unknown codes fall back to the raw value as a last resort (admin-only surface).
+function diagGate(dc: DiagCopy, raw: string | null): string {
+  if (!raw) return dc.none;
+  if (raw === "all_mode") return dc.callModeVal.all;
+  if (dc.gateVal[raw]) return dc.gateVal[raw];
+  if (raw.includes("cost_limit") || raw.includes("call_limit") || raw.includes("circuit")) return dc.gatePaused;
+  return raw;
+}
 
 // Merge the persisted per-comment breakdown (aiDiagnostics) with the finalized cost/model (UsageEvent) and
 // the AI provider-call status/error (ProviderCall). Historical rows without aiDiagnostics degrade gracefully.
@@ -667,7 +716,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
           ) : null}
 
           {/* Tenant label management (create/rename/delete), rendered once. */}
-          <LabelManager allLabels={allLabels} canAct={canAct} />
+          <LabelManager allLabels={allLabels} canAct={canAct} locale={locale} />
 
           {shown.length === 0 ? (
             <Card className="p-6 text-sm text-[var(--color-muted)]" data-testid="inbox-empty">{
@@ -682,7 +731,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
             <SelectionProvider>
               {canAct ? (
                 <div className="mb-2 flex items-center gap-2">
-                  <SelectAllCheckbox ids={shownIds} />
+                  <SelectAllCheckbox ids={shownIds} locale={locale} />
                   <span className="text-xs text-[var(--color-muted)]">{c.onThisPage(shown.length, counts.total)}</span>
                 </div>
               ) : null}
@@ -694,7 +743,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                     <div key={r.id} data-inbox-item={r.id} data-read={r.isRead ? "true" : "false"} data-archived={r.archived ? "true" : "false"} data-priority={r.priority} data-status={r.workflowStatus} data-notecount={r.noteCount} data-assignee={r.assigneeId ?? ""} data-connector-health={r.connectorHealth} data-processing={r.processingStatus} className="flex items-start gap-2">
                       {/* Bulk checkbox lives OUTSIDE the <summary> (an interactive control nested in a
                           summary is an a11y anti-pattern and would toggle the disclosure). */}
-                      {canAct ? <div className="pt-4"><SelectCheckbox id={r.id} /></div> : null}
+                      {canAct ? <div className="pt-4"><SelectCheckbox id={r.id} locale={locale} /></div> : null}
                       <Card className="p-0 flex-1 min-w-0">
                         <details className="group">
                           <summary className="flex cursor-pointer flex-col gap-2 p-4">
@@ -744,7 +793,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                               <span className="font-medium">{processingCopy(r.processingStatus)}</span>
                               {r.processingTier ? <span className="text-[var(--color-muted)]"> · {c.tierLabel(r.processingTier)}</span> : null}
                               {r.lastProcessedAt ? <span className="text-[var(--color-muted)]"> · {c.checkedPrefix} {relativeTime(r.lastProcessedAt, rel, now)}</span> : null}
-                              {r.classifierVersion ? <span className="text-[var(--color-muted)]"> · {r.classifierVersion}</span> : null}
+                              {r.classifierVersion ? <span className="text-[var(--color-muted)]"> · {dc.classifier}</span> : null}
                               {PROCESSING_LIMIT_STATES.has(r.processingStatus) ? (
                                 <div className="mt-1"><Link href="/dashboard/usage" className="text-[var(--color-brand)] hover:underline" data-testid="processing-usage-link">{c.viewUsage}</Link></div>
                               ) : null}
@@ -757,14 +806,14 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                               <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs" data-testid="ai-diagnostics">
                                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
                                   <span className="font-semibold uppercase tracking-wide text-[var(--color-muted)]">{dc.heading}</span>
-                                  <Badge tone="neutral">{dc.callMode}: {r.diag.callMode}</Badge>
-                                  <Badge tone={r.diag.ai.called ? "brand" : "neutral"}>{dc.aiStatus}: {r.diag.ai.called ? r.diag.ai.status : dc.notCalled}</Badge>
+                                  <Badge tone="neutral">{dc.callMode}: {diagCallMode(dc, r.diag.callMode)}</Badge>
+                                  <Badge tone={r.diag.ai.called ? "brand" : "neutral"}>{dc.aiStatus}: {r.diag.ai.called ? diagAiStatus(dc, r.diag.ai.status) : dc.notCalled}</Badge>
                                 </div>
                                 <dl className="space-y-1">
                                   {r.diag.rules ? <Row2 label={dc.rules}>{tEnum(t, "risk", r.diag.rules.level)} · {r.diag.rules.confidence.toFixed(2)}{r.diag.rules.categories.length ? ` · ${r.diag.rules.categories.join(", ")}` : ""}</Row2> : null}
                                   <Row2 label={dc.ai}>{r.diag.ai.verdict ? `${tEnum(t, "risk", r.diag.ai.verdict.level)} · ${r.diag.ai.verdict.confidence.toFixed(2)}${r.diag.ai.verdict.categories.length ? ` · ${r.diag.ai.verdict.categories.join(", ")}` : ""}` : dc.notCalled}{r.diag.ai.errorCode ? ` · ${dc.error}: ${r.diag.ai.errorCode}` : ""}</Row2>
                                   {r.diag.merged ? <Row2 label={dc.merged}>{tEnum(t, "risk", r.diag.merged.level)} · {r.diag.merged.confidence.toFixed(2)}{r.diag.merged.categories.length ? ` · ${r.diag.merged.categories.join(", ")}` : ""}</Row2> : null}
-                                  <Row2 label={dc.gate}>{r.diag.gateReason ?? dc.none}</Row2>
+                                  <Row2 label={dc.gate}>{diagGate(dc, r.diag.gateReason)}</Row2>
                                   {r.diag.usageAvailable ? (
                                     <>
                                       <Row2 label={dc.model}>{r.diag.model ?? dc.none}</Row2>
@@ -783,18 +832,18 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
                               <section>
                                 <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{c.workflowHeading}</h4>
-                                <InboxControls id={r.id} isRead={r.isRead} archived={r.archived} priority={r.priority} workflowStatus={r.workflowStatus} canAct={canAct} />
-                                <div className="mt-2"><AssigneeSelector itemId={r.id} assigneeId={r.assigneeId} members={memberList} selfId={session.userId} canAct={canAct} /></div>
+                                <InboxControls id={r.id} isRead={r.isRead} archived={r.archived} priority={r.priority} workflowStatus={r.workflowStatus} canAct={canAct} locale={locale} />
+                                <div className="mt-2"><AssigneeSelector itemId={r.id} assigneeId={r.assigneeId} members={memberList} selfId={session.userId} canAct={canAct} locale={locale} /></div>
                               </section>
                               <section>
                                 <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{c.labelsHeading}</h4>
-                                <LabelSelector itemId={r.id} labels={r.labels} allLabels={allLabels} canAct={canAct} />
+                                <LabelSelector itemId={r.id} labels={r.labels} allLabels={allLabels} canAct={canAct} locale={locale} />
                               </section>
                             </div>
 
                             <section className="mt-4">
                               <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{c.notesHeading} <span className="font-normal normal-case text-[var(--color-muted)]">{c.notesHeadingSub}</span></h4>
-                              <NotesSection itemId={r.id} notes={notes} selfId={session.userId} canAct={canAct} />
+                              <NotesSection itemId={r.id} notes={notes} selfId={session.userId} canAct={canAct} locale={locale} />
                             </section>
 
                             {/* Audit timeline (internal actions; body never shown). */}
@@ -822,7 +871,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                   );
                 })}
               </div>
-              {canAct ? <BulkActionBar members={memberList} allLabels={allLabels} /> : null}
+              {canAct ? <BulkActionBar members={memberList} allLabels={allLabels} locale={locale} /> : null}
             </SelectionProvider>
           )}
 

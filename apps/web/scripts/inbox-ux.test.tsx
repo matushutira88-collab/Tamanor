@@ -31,7 +31,7 @@ function run() {
   console.log("Inbox mutation-feedback (inbox-ux) — rendered truth\n");
 
   // 1) Every known reason maps to a non-empty, human (non-machine) string.
-  const allMapped = REASONS.every((r) => { const t = reasonText(r); return t.length > 0 && t !== r && !t.includes("_"); });
+  const allMapped = REASONS.every((r) => { const t = reasonText(r, "en"); return t.length > 0 && t !== r && !t.includes("_"); });
   check("1) every repository reason maps to human text (no raw machine codes)", allMapped);
 
   // 2) Unknown / adversarial reasons fall back generically — never echoed back verbatim.
@@ -39,7 +39,7 @@ function run() {
     "SELECT * FROM inbox_notes", "PrismaClientKnownRequestError", "P2002",
     "Bearer sk_live_abcdef", "the secret note body text", "at Object.<anonymous> (repo.ts:1)",
   ];
-  const noLeak = leaky.every((r) => { const t = reasonText(r); return t === "That action could not be completed." && !t.includes(r); });
+  const noLeak = leaky.every((r) => { const t = reasonText(r, "en"); return t === "That action could not be completed." && !t.includes(r); });
   check("2) unknown/adversarial reasons never leak (SQL/Prisma/token/stack/body)", noLeak);
 
   // 3) ActionNotice renders the correct semantic tone + testable marker, and escapes content.
