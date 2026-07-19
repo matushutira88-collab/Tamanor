@@ -1047,6 +1047,10 @@ model UsageEvent {
   units              Int              @default(0)
   reservedCostMicros BigInt           @default(0)
   actualCostMicros   BigInt?
+  // V1.61.1 — provider-reported token usage for a finalized paid call (admin diagnostics join). Nullable;
+  // historical rows and non-paid events stay NULL. NOT the source of cost (that is actualCostMicros).
+  inputTokens        Int?
+  outputTokens       Int?
   idempotencyKey     String
   status             UsageEventStatus
   reason             String?

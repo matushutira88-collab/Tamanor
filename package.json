@@ -103,6 +103,7 @@
     "ai-call-mode:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/ai-call-mode.test.ts",
     "ai-call-mode-routing:test": "pnpm --filter @guardora/worker exec dotenv -e ../../.env -- tsx ../web/scripts/ai-call-mode-routing.test.ts",
     "ai-diagnostics:test": "pnpm --filter @guardora/worker exec dotenv -e ../../.env -- tsx ../web/scripts/ai-diagnostics.test.ts",
+    "ai-usage-link:test": "pnpm --filter @guardora/worker exec dotenv -e ../../.env -- tsx ../web/scripts/ai-usage-link.test.ts",
     "processing-state:test": "pnpm --filter @guardora/worker exec dotenv -e ../../.env -- tsx ../web/scripts/processing-state.test.ts",
     "global-fuse:test": "pnpm --filter @guardora/worker exec dotenv -e ../../.env -- tsx ../web/scripts/global-fuse.test.ts",
     "format-hydration:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/format-hydration.test.ts",

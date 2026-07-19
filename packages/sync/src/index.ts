@@ -719,8 +719,11 @@ async function persistNewItem(
 
   // Classification via the METERED policy service (cache → rules → paid, cost-protected) — OUTSIDE
   // any transaction. A paid provider is NEVER reached without a prior atomic reservation.
+  // V1.61.1 — a per-classification correlationId stamps every UsageEvent this call creates (basic/paid/
+  // cache). The ReputationItem does not exist yet, so we link the UsageEvents to it by this id AFTER create.
+  const usageCorrelationId = randomUUID();
   const hybrid = await classifyWithUsagePolicy(
-    { tenantId, plan, accessState },
+    { tenantId, plan, accessState, correlationId: usageCorrelationId },
     { text: item.text, platform: item.platform, locale: item.author.locale, rating: item.rating, rules },
     {
       workspaceLocale: brand?.defaultLocale ?? "en",
@@ -806,6 +809,14 @@ async function persistNewItem(
         })),
       });
     }
+
+    // V1.61.1 — link this classification's UsageEvent(s) (created before the ReputationItem existed) to it
+    // by the per-classification correlationId, so the admin panel can join model / tokens / cost. Only rows
+    // still unlinked are touched; concurrent items use distinct correlationIds so they never cross-link.
+    await db.usageEvent.updateMany({
+      where: { tenantId: account.tenantId, correlationId: usageCorrelationId, reputationItemId: null },
+      data: { reputationItemId: repItem.id },
+    });
 
     // Audit when brand memory influenced the classification (no secrets/tokens).
     if (hybrid.memoryMatched.length > 0) {

@@ -47,9 +47,13 @@ interface AdminDiag {
   rules: { level: string; confidence: number; categories: string[] } | null;
   ai: { called: boolean; provider: string; status: string; errorCode: string | null; verdict: { level: string; confidence: number; categories: string[] } | null };
   merged: { level: string; confidence: number; categories: string[] } | null;
-  // model + cost are JOINED from UsageEvent (never duplicated in aiDiagnostics). Tokens are not persisted
-  // in ProviderCall/UsageEvent, so they are not shown here.
+  // model + tokens + cost are JOINED from the finalized (succeeded) paid UsageEvent — never duplicated in
+  // aiDiagnostics. `usageAvailable` is false when no such row exists (historical/cached/failed) → the panel
+  // shows "Usage details unavailable" instead of a misleading "—".
+  usageAvailable: boolean;
   model: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
   costMicros: number | null;
 }
 
@@ -57,11 +61,11 @@ interface AdminDiag {
 // CommentsCopy map). The chip is customer-visible; the panel is admin-only.
 const DIAG_COPY: Record<Locale, {
   chipBasic: string; chipAi: string; heading: string; rules: string; ai: string; merged: string;
-  callMode: string; model: string; cost: string; gate: string; aiStatus: string; notCalled: string; error: string; none: string;
+  callMode: string; model: string; tokens: string; cost: string; gate: string; aiStatus: string; notCalled: string; error: string; none: string; usageUnavailable: string;
 }> = {
-  en: { chipBasic: "Basic protection", chipAi: "AI assisted", heading: "AI diagnostics (admin only)", rules: "Rules result", ai: "AI result", merged: "Merged result", callMode: "Call mode", model: "Model", cost: "Cost", gate: "Gate", aiStatus: "AI status", notCalled: "not called", error: "Error", none: "—" },
-  sk: { chipBasic: "Základná ochrana", chipAi: "S pomocou AI", heading: "AI diagnostika (len admin)", rules: "Výsledok pravidiel", ai: "Výsledok AI", merged: "Zlúčený výsledok", callMode: "Režim volania", model: "Model", cost: "Náklad", gate: "Brána", aiStatus: "AI stav", notCalled: "nevolané", error: "Chyba", none: "—" },
-  de: { chipBasic: "Basisschutz", chipAi: "KI-unterstützt", heading: "KI-Diagnose (nur Admin)", rules: "Regel-Ergebnis", ai: "KI-Ergebnis", merged: "Zusammengeführtes Ergebnis", callMode: "Aufrufmodus", model: "Modell", cost: "Kosten", gate: "Gate", aiStatus: "KI-Status", notCalled: "nicht aufgerufen", error: "Fehler", none: "—" },
+  en: { chipBasic: "Basic protection", chipAi: "AI assisted", heading: "AI diagnostics (admin only)", rules: "Rules result", ai: "AI result", merged: "Merged result", callMode: "Call mode", model: "Model", tokens: "Tokens (in/out/total)", cost: "Cost", gate: "Gate", aiStatus: "AI status", notCalled: "not called", error: "Error", none: "—", usageUnavailable: "Usage details unavailable" },
+  sk: { chipBasic: "Základná ochrana", chipAi: "S pomocou AI", heading: "AI diagnostika (len admin)", rules: "Výsledok pravidiel", ai: "Výsledok AI", merged: "Zlúčený výsledok", callMode: "Režim volania", model: "Model", tokens: "Tokeny (in/out/spolu)", cost: "Náklad", gate: "Brána", aiStatus: "AI stav", notCalled: "nevolané", error: "Chyba", none: "—", usageUnavailable: "Údaje o spotrebe nedostupné" },
+  de: { chipBasic: "Basisschutz", chipAi: "KI-unterstützt", heading: "KI-Diagnose (nur Admin)", rules: "Regel-Ergebnis", ai: "KI-Ergebnis", merged: "Zusammengeführtes Ergebnis", callMode: "Aufrufmodus", model: "Modell", tokens: "Tokens (ein/aus/gesamt)", cost: "Kosten", gate: "Gate", aiStatus: "KI-Status", notCalled: "nicht aufgerufen", error: "Fehler", none: "—", usageUnavailable: "Nutzungsdetails nicht verfügbar" },
 };
 const microsToUsd = (m: number | null): string => (m === null ? "—" : `$${(m / 1_000_000).toFixed(6)}`);
 
@@ -69,7 +73,7 @@ const microsToUsd = (m: number | null): string => (m === null ? "—" : `$${(m /
 // the AI provider-call status/error (ProviderCall). Historical rows without aiDiagnostics degrade gracefully.
 function buildDiag(
   r: InboxItemRow,
-  usage: { modelKey: string | null; actualCostMicros: bigint | null } | undefined,
+  usage: { modelKey: string | null; actualCostMicros: bigint | null; inputTokens: number | null; outputTokens: number | null } | undefined,
   aiCall: { provider: string; status: string; errorCode: string | null } | undefined,
 ): AdminDiag {
   const d = (r.aiDiagnostics ?? null) as AiDiagnostics | null;
@@ -87,8 +91,11 @@ function buildDiag(
       verdict: d?.ai.verdict ?? null,
     },
     merged: d?.merged ?? { level: r.riskLevel as string, confidence: (r.riskConfidence as number) ?? 0, categories: (r.riskCategories ?? []) as string[] },
-    // model + cost are JOINED from UsageEvent (finalized billing truth) — never duplicated in aiDiagnostics.
+    // model + tokens + cost are JOINED from the finalized paid UsageEvent — never duplicated in aiDiagnostics.
+    usageAvailable: !!usage,
     model: usage?.modelKey ?? null,
+    inputTokens: usage?.inputTokens ?? null,
+    outputTokens: usage?.outputTokens ?? null,
     costMicros: usage?.actualCostMicros != null ? Number(usage.actualCostMicros) : null,
   };
 }
@@ -414,7 +421,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     pageIds.length ? db.auditLog.findMany({ where: { targetType: "reputation_item", targetId: { in: pageIds }, event: { startsWith: "inbox." } }, orderBy: { createdAt: "desc" }, take: 400, include: { actor: { select: { name: true, email: true } } } }) : Promise.resolve([] as never[]),
     // V1.61 — admin-only diagnostics joins: finalized paid cost/model (UsageEvent) + the AI provider call
     // status/error (ProviderCall). Page-bounded, tenant-scoped, and fetched ONLY for admins/owners.
-    isAdmin && pageIds.length ? db.usageEvent.findMany({ where: { reputationItemId: { in: pageIds }, processingTier: "paid" }, select: { reputationItemId: true, modelKey: true, actualCostMicros: true, status: true }, orderBy: { createdAt: "desc" } }) : Promise.resolve([] as { reputationItemId: string | null; modelKey: string | null; actualCostMicros: bigint | null; status: string }[]),
+    isAdmin && pageIds.length ? db.usageEvent.findMany({ where: { reputationItemId: { in: pageIds }, processingTier: "paid", status: "succeeded" }, select: { reputationItemId: true, modelKey: true, actualCostMicros: true, inputTokens: true, outputTokens: true, status: true }, orderBy: { createdAt: "desc" } }) : Promise.resolve([] as { reputationItemId: string | null; modelKey: string | null; actualCostMicros: bigint | null; inputTokens: number | null; outputTokens: number | null; status: string }[]),
     isAdmin && pageIds.length ? db.providerCall.findMany({ where: { itemId: { in: pageIds }, type: "ai_risk" }, select: { itemId: true, provider: true, status: true, errorCode: true }, orderBy: { createdAt: "desc" } }) : Promise.resolve([] as { itemId: string | null; provider: string; status: string; errorCode: string | null }[]),
   ]));
 
@@ -432,7 +439,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const queueByItem = new Map(queueItems.map((qi) => [qi.itemId, qi]));
 
   // Admin diagnostics lookups (first row wins = most recent). Empty for non-admins.
-  const usageByItem = new Map<string, { modelKey: string | null; actualCostMicros: bigint | null }>();
+  const usageByItem = new Map<string, { modelKey: string | null; actualCostMicros: bigint | null; inputTokens: number | null; outputTokens: number | null }>();
   for (const u of usageRows) { if (u.reputationItemId && !usageByItem.has(u.reputationItemId)) usageByItem.set(u.reputationItemId, u); }
   const aiCallByItem = new Map<string, { provider: string; status: string; errorCode: string | null }>();
   for (const a of aiCallRows) { if (a.itemId && !aiCallByItem.has(a.itemId)) aiCallByItem.set(a.itemId, a); }
@@ -758,8 +765,15 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                                   <Row2 label={dc.ai}>{r.diag.ai.verdict ? `${tEnum(t, "risk", r.diag.ai.verdict.level)} · ${r.diag.ai.verdict.confidence.toFixed(2)}${r.diag.ai.verdict.categories.length ? ` · ${r.diag.ai.verdict.categories.join(", ")}` : ""}` : dc.notCalled}{r.diag.ai.errorCode ? ` · ${dc.error}: ${r.diag.ai.errorCode}` : ""}</Row2>
                                   {r.diag.merged ? <Row2 label={dc.merged}>{tEnum(t, "risk", r.diag.merged.level)} · {r.diag.merged.confidence.toFixed(2)}{r.diag.merged.categories.length ? ` · ${r.diag.merged.categories.join(", ")}` : ""}</Row2> : null}
                                   <Row2 label={dc.gate}>{r.diag.gateReason ?? dc.none}</Row2>
-                                  <Row2 label={dc.model}>{r.diag.model ?? dc.none}</Row2>
-                                  <Row2 label={dc.cost}>{microsToUsd(r.diag.costMicros)}</Row2>
+                                  {r.diag.usageAvailable ? (
+                                    <>
+                                      <Row2 label={dc.model}>{r.diag.model ?? dc.none}</Row2>
+                                      <Row2 label={dc.tokens}>{r.diag.inputTokens ?? "—"} / {r.diag.outputTokens ?? "—"} / {r.diag.inputTokens != null && r.diag.outputTokens != null ? r.diag.inputTokens + r.diag.outputTokens : "—"}</Row2>
+                                      <Row2 label={dc.cost}>{microsToUsd(r.diag.costMicros)}</Row2>
+                                    </>
+                                  ) : (
+                                    <Row2 label={dc.model}>{dc.usageUnavailable}</Row2>
+                                  )}
                                 </dl>
                               </div>
                             ) : null}

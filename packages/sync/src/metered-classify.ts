@@ -118,7 +118,7 @@ export async function classifyWithUsagePolicy(
       // For an unpriced model this equals the conservative estimate (fail-closed) until prices are set.
       const usage = paid.aiUsage;
       const actual = usage ? actualCostMicros(provider, modelKey, usage.inputTokens, usage.outputTokens) : estMicros;
-      await finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "succeeded", actualCostMicros: actual, billed: true });
+      await finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "succeeded", actualCostMicros: actual, billed: true, inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens });
       await finalizeGlobalDailyCall(provider, estMicros, actual, now);
       paidAiGuard.recordSuccess();
       await cachePut(ctx.tenantId, { contentHash, modelKey, policyVersion: POLICY_VERSION, normalizedResult: paid as unknown });
