@@ -20,7 +20,7 @@ import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
 import { navItem } from "@/lib/nav";
-import { getT } from "@/i18n/server";
+import { getTL } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { withEmoji } from "@/lib/enum-emoji";
 import { createRule, toggleRule, deleteRule, createMemoryRule, toggleMemoryRule, deleteMemoryRule, updateAutoProtectPolicy } from "./actions";
@@ -55,7 +55,7 @@ export default async function RulesPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
-  const hdrT = await getT();
+  const { locale, t: hdrT } = await getTL();
   const sp = await searchParams;
   const manage = can(session.role, Permission.RuleManage);
   const categoryOptions = Object.values(RuleCategory).map((v) => ({
@@ -96,7 +96,7 @@ export default async function RulesPage({
         description={hdrT.dash.rulesSubtitle}
         action={<Badge tone="brand">{hdrT.dash.usedByAiRiskEngine}</Badge>}
       />
-      <Notice notice={sp.notice} kind={sp.kind} />
+      <Notice notice={sp.notice} kind={sp.kind} locale={locale} />
 
       {brands.length === 0 ? (
         <EmptyState

@@ -150,7 +150,7 @@ export default async function ReportsPage() {
             {attention > 0 ? <Badge tone="warn">{attention} {hdrT.dash.needAttention}</Badge> : null}
           </div>
           <p className="mt-3 text-sm text-[var(--color-muted)]">
-            {lastRun ? `${hdrT.dash.lastSync} ${formatDateTime(lastRun.startedAt)} · ${lastRun.mock ? "mock" : "live"} · ${tEnum(hdrT, "syncStatus", lastRun.status)}` : hdrT.dash.noSyncRun}
+            {lastRun ? `${hdrT.dash.lastSync} ${formatDateTime(lastRun.startedAt)} · ${lastRun.mock ? hdrT.dash.syncModeDemo : hdrT.dash.syncModeLive} · ${tEnum(hdrT, "syncStatus", lastRun.status)}` : hdrT.dash.noSyncRun}
           </p>
         </Card>
       </div>
@@ -160,7 +160,7 @@ export default async function ReportsPage() {
         <Card>
           <SectionHeader title={hdrT.dash.syncMonitoring} description={hdrT.dash.syncMonitoringDesc} action={<Link href="/dashboard/accounts" className="text-xs font-medium text-[var(--color-brand)] hover:underline">{hdrT.dash.accountsLink}</Link>} />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric label={hdrT.dash.lastSync} value={lastRun ? formatDateTime(lastRun.startedAt) : "—"} hint={lastRun ? `${lastRun.mock ? "mock" : "live"} · ${tEnum(hdrT, "syncStatus", lastRun.status)}` : hdrT.home.noSyncYetLower} />
+            <Metric label={hdrT.dash.lastSync} value={lastRun ? formatDateTime(lastRun.startedAt) : "—"} hint={lastRun ? `${lastRun.mock ? hdrT.dash.syncModeDemo : hdrT.dash.syncModeLive} · ${tEnum(hdrT, "syncStatus", lastRun.status)}` : hdrT.home.noSyncYetLower} />
             <Metric label={hdrT.dash.failedSyncs} value={String(failedSyncs)} hint={`${hdrT.dash.ofLast} ${syncRuns.length} ${hdrT.dash.runs}`} tone={failedSyncs > 0 ? "danger" : "ok"} />
             <Metric label={hdrT.dash.avgDuration} value={avgDuration != null ? `${avgDuration} ms` : "—"} hint={hdrT.dash.completedRuns} />
             <Metric label={hdrT.dash.needReconnect} value={String(reconnectCount)} hint={hdrT.dash.accountsWord} tone={reconnectCount > 0 ? "warn" : "ok"} />
@@ -172,12 +172,15 @@ export default async function ReportsPage() {
               <p className="text-sm text-[var(--color-muted)]">{hdrT.dash.noSyncErrors}</p>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {errorRows.map(([event, n]) => (
-                  <span key={event} className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-surface-2)] px-3 py-1 text-sm">
-                    <span className="font-mono text-xs">{event.replace("sync.", "")}</span>
-                    <span className="text-xs text-[var(--color-muted)]">{n}</span>
-                  </span>
-                ))}
+                {errorRows.map(([event, n]) => {
+                  const code = event.replace("sync.", "");
+                  return (
+                    <span key={event} className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-surface-2)] px-3 py-1 text-sm">
+                      <span className="text-xs">{hdrT.dash.syncEvents[code] ?? code.replace(/_/g, " ")}</span>
+                      <span className="text-xs text-[var(--color-muted)]">{n}</span>
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -252,7 +255,7 @@ export default async function ReportsPage() {
       </div>
 
       <p className="mt-6 text-xs text-[var(--color-muted)]">
-        Scheduled exports (PDF/CSV) and per-brand snapshots are coming soon. No export is generated today.
+        {hdrT.dash.exportsComingSoonNote}
       </p>
     </>
   );

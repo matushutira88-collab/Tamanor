@@ -10,7 +10,7 @@ import { CapabilityLockedState } from "@/components/dashboard/capability-locked"
 import { getLocale } from "@/i18n/locale-server";
 import { withTenant } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
-import { getT } from "@/i18n/server";
+import { getTL } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { AutonomySave } from "@/components/dashboard/autonomy-save";
 import { updateControlPolicy, applyPreset } from "./actions";
@@ -20,7 +20,7 @@ import { AutoHideOptIn } from "@/components/dashboard/auto-hide-optin";
 export const dynamic = "force-dynamic";
 
 export default async function ControlCenterPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const t = await getT();
+  const { locale, t } = await getTL();
   const cap = await requireDashboardCapability("controlCenter");
   if (!cap.allowed) return <CapabilityLockedState capability={cap.locked.capability} plan={cap.locked.plan} locale={await getLocale()} />;
   const session = await requireSession();
@@ -48,7 +48,7 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
   return (
     <>
       <PageHeader eyebrow={t.cc.neverHideCriticism} title={t.cc.controlTitle} description={t.cc.controlSubtitle} />
-      <Notice notice={sp.notice} kind={sp.kind} />
+      <Notice notice={sp.notice} kind={sp.kind} locale={locale} />
 
       {(() => {
         const live = getLiveActionsConfig();

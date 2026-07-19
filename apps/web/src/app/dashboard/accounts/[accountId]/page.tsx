@@ -366,9 +366,9 @@ export default async function AccountDetailPage({
                   <span className="flex items-center gap-1.5">
                     <Badge tone={RUN_TONE[r.status] ?? "neutral"}>{humanize(r.status)}</Badge>
                     {r.mock ? (
-                      <Badge tone="neutral">mock</Badge>
+                      <Badge tone="neutral">{t.dash.syncModeDemo}</Badge>
                     ) : (
-                      <Badge tone="brand">live</Badge>
+                      <Badge tone="brand">{t.dash.syncModeLive}</Badge>
                     )}
                   </span>
                   <span>{r.fetched}</span>

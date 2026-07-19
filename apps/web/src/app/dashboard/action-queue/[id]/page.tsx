@@ -10,7 +10,7 @@ import { LiveHideForm } from "@/components/dashboard/live-hide-form";
 import { Notice } from "@/components/dashboard/notice";
 import { requireSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
-import { getT } from "@/i18n/server";
+import { getTL } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { formatDateTime } from "@/lib/format";
 import { approveQueueItem, approveWithoutHide, retryQueueItem, rejectQueueItem, markSafeQueueItem, markHarmfulQueueItem, markHandledQueueItem, createIncidentFromQueue } from "./actions";
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function ApprovalDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
   const { id } = await params;
   const sp = await searchParams;
-  const t = await getT();
+  const { locale, t } = await getTL();
   const session = await requireSession();
   const canApprove = can(session.role, Permission.ProposalApprove);
   const canAct = can(session.role, Permission.InboxAct);
@@ -167,7 +167,7 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
   return (
     <>
       <PageHeader eyebrow={t.cc.queueTitle} title={t.cc.approvalTitle} description={item?.contentItem.text ?? ""} action={<Badge tone="neutral">{t.cc.noLiveAction}</Badge>} />
-      <Notice notice={sp.notice} kind={sp.kind} />
+      <Notice notice={sp.notice} kind={sp.kind} locale={locale} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-4">

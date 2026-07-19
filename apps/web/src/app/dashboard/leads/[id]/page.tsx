@@ -164,7 +164,7 @@ export default async function LeadDetailPage({
       />
       <Link href="/dashboard/leads" className="text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]">{c.backToLeads}</Link>
       <div className="mt-4">
-        <Notice notice={sp.notice} kind={sp.kind} />
+        <Notice notice={sp.notice} kind={sp.kind} locale={locale} />
       </div>
 
       <div className="mt-4 grid gap-6 lg:grid-cols-[1.4fr_1fr]">

@@ -1,3 +1,4 @@
+import type { Locale } from "@/i18n";
 import { Badge } from "./ui";
 
 const TONE: Record<string, string> = {
@@ -8,6 +9,12 @@ const TONE: Record<string, string> = {
   info: "brand",
 };
 
+const LABELS: Record<Locale, { done: string; error: string; unsupported: string; notice: string }> = {
+  en: { done: "Done", error: "Error", unsupported: "Unsupported", notice: "Notice" },
+  sk: { done: "Hotovo", error: "Chyba", unsupported: "Nepodporované", notice: "Oznámenie" },
+  de: { done: "Fertig", error: "Fehler", unsupported: "Nicht unterstützt", notice: "Hinweis" },
+};
+
 /**
  * Unified server-action feedback banner. Reads the `?notice=&kind=` query
  * params that server actions redirect with. Renders nothing when absent.
@@ -15,14 +22,17 @@ const TONE: Record<string, string> = {
 export function Notice({
   notice,
   kind = "ok",
+  locale = "en",
 }: {
   notice?: string;
   kind?: string;
+  locale?: Locale;
 }) {
   if (!notice) return null;
   const tone = TONE[kind] ?? "brand";
+  const labels = LABELS[locale] ?? LABELS.en;
   const label =
-    kind === "ok" ? "Done" : kind === "error" ? "Error" : kind === "unsupported" ? "Unsupported" : "Notice";
+    kind === "ok" ? labels.done : kind === "error" ? labels.error : kind === "unsupported" ? labels.unsupported : labels.notice;
   return (
     <div
       role="status"
