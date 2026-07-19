@@ -13,6 +13,17 @@ const boolFromEnv = z
   .optional()
   .transform((v) => v === "true" || v === "1");
 
+/**
+ * How broadly the AI risk layer is consulted (AI_RISK_CALL_MODE). The ONLY value that opts into the
+ * broader `all` mode is the exact token "all" (case-insensitive, trimmed); everything else — missing,
+ * empty, whitespace, or an unrecognized value — fails SAFE to `value_gated`. Single source of truth,
+ * exported so it can be unit-tested directly (env parsing is memoized, so it can't be exercised via loadEnv).
+ */
+export function normalizeAiRiskCallMode(raw: unknown): "value_gated" | "all" {
+  const v = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return v === "all" ? "all" : "value_gated";
+}
+
 const EnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -61,6 +72,15 @@ const EnvSchema = z.object({
   AI_RISK_PROVIDER_ENABLED: boolFromEnv,
   AI_RISK_PROVIDER: z.string().default("none"),
   AI_RISK_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.7),
+  /**
+   * V1.61 — how broadly the AI layer is consulted once it is fully enabled+funded:
+   *   `value_gated` (default, SAFE): only when the rules result adds value (unknown/mixed language,
+   *     low rules confidence, level ≥ high, an escalating signal, or a matched rule) — the historical behaviour.
+   *   `all`: consult the AI provider for EVERY comment (after ALL paid guards pass + non-cache), so a
+   *     sophisticated scam the rules confidently mislabel as neutral still gets a second opinion.
+   * Missing / empty / invalid MUST fail safe to `value_gated`.
+   */
+  AI_RISK_CALL_MODE: z.unknown().transform(normalizeAiRiskCallMode),
 
   /**
    * V1.44 — PAID cloud-AI global fuses. ALL fail closed. `AI_PAID_ENABLED` is the master kill
@@ -409,6 +429,7 @@ export function getAiRiskConfig(source: NodeJS.ProcessEnv = process.env): {
   enabled: boolean;
   provider: string;
   minConfidence: number;
+  callMode: "value_gated" | "all";
   openai?: { apiKey: string; model: string; timeoutMs: number; maxRetries: number };
   configError?: string;
 } {
@@ -429,7 +450,7 @@ export function getAiRiskConfig(source: NodeJS.ProcessEnv = process.env): {
     }
   }
 
-  return { enabled, provider, minConfidence: env.AI_RISK_MIN_CONFIDENCE, openai, configError };
+  return { enabled, provider, minConfidence: env.AI_RISK_MIN_CONFIDENCE, callMode: env.AI_RISK_CALL_MODE, openai, configError };
 }
 
 export interface PaidAiFuseConfig {

@@ -880,6 +880,10 @@ model ReputationItem {
   classificationMode String @default("rules_only") // rules_only | ai_assisted
   aiProvider         String @default("none")
   aiProviderStatus   String @default("skipped") // classified | skipped | unavailable | failed
+  // V1.61 — admin-only classification breakdown: { callMode, rules, ai{verdict,tokens,...}, merged }.
+  // NO comment text / prompt / raw model output — structured verdicts + provider metadata only. Nullable
+  // (historical rows have none); surfaced solely in the admin diagnostics panel.
+  aiDiagnostics      Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

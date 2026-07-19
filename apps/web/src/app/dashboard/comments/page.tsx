@@ -1,9 +1,9 @@
 import Link from "next/link";
 import {
   buildActorSignals, actorRiskScore, actorRiskLevel, sentimentBucket,
-  type ActorComment, type ActorRiskLevel, type SentimentBucket,
+  type ActorComment, type ActorRiskLevel, type SentimentBucket, type AiDiagnostics,
 } from "@guardora/ai";
-import { getPlatformConnector, platformKeyFor, actorIdentityKey, PLATFORM_META, ALL_PLATFORMS, can, Permission, providerCapabilities, connectorHealthStatus, type Platform, type ConnectorHealthState } from "@guardora/core";
+import { getPlatformConnector, platformKeyFor, actorIdentityKey, PLATFORM_META, ALL_PLATFORMS, can, Permission, Role, providerCapabilities, connectorHealthStatus, type Platform, type ConnectorHealthState } from "@guardora/core";
 import { InboxControls } from "./inbox-controls";
 import { LabelSelector, LabelManager, type LabelLite } from "./label-editor";
 import { AssigneeSelector, type MemberLite } from "./assignee-editor";
@@ -39,6 +39,60 @@ const BUCKET_TONE: Record<SentimentBucket, "ok" | "neutral" | "warn" | "danger">
 
 interface AuditLite { id: string; label: string; actor: string; at: string }
 
+// V1.61 — ADMIN-ONLY per-comment classification breakdown. Never contains comment text, prompt, API key,
+// or raw model output — structured verdicts + provider metadata only. Populated solely for admins/owners.
+interface AdminDiag {
+  callMode: string;
+  gateReason: string | null;
+  rules: { level: string; confidence: number; categories: string[] } | null;
+  ai: { called: boolean; provider: string; status: string; errorCode: string | null; verdict: { level: string; confidence: number; categories: string[] } | null };
+  merged: { level: string; confidence: number; categories: string[] } | null;
+  // model + cost are JOINED from UsageEvent (never duplicated in aiDiagnostics). Tokens are not persisted
+  // in ProviderCall/UsageEvent, so they are not shown here.
+  model: string | null;
+  costMicros: number | null;
+}
+
+// Self-contained localized copy for the customer chip + the admin diagnostics panel (kept out of the large
+// CommentsCopy map). The chip is customer-visible; the panel is admin-only.
+const DIAG_COPY: Record<Locale, {
+  chipBasic: string; chipAi: string; heading: string; rules: string; ai: string; merged: string;
+  callMode: string; model: string; cost: string; gate: string; aiStatus: string; notCalled: string; error: string; none: string;
+}> = {
+  en: { chipBasic: "Basic protection", chipAi: "AI assisted", heading: "AI diagnostics (admin only)", rules: "Rules result", ai: "AI result", merged: "Merged result", callMode: "Call mode", model: "Model", cost: "Cost", gate: "Gate", aiStatus: "AI status", notCalled: "not called", error: "Error", none: "—" },
+  sk: { chipBasic: "Základná ochrana", chipAi: "S pomocou AI", heading: "AI diagnostika (len admin)", rules: "Výsledok pravidiel", ai: "Výsledok AI", merged: "Zlúčený výsledok", callMode: "Režim volania", model: "Model", cost: "Náklad", gate: "Brána", aiStatus: "AI stav", notCalled: "nevolané", error: "Chyba", none: "—" },
+  de: { chipBasic: "Basisschutz", chipAi: "KI-unterstützt", heading: "KI-Diagnose (nur Admin)", rules: "Regel-Ergebnis", ai: "KI-Ergebnis", merged: "Zusammengeführtes Ergebnis", callMode: "Aufrufmodus", model: "Modell", cost: "Kosten", gate: "Gate", aiStatus: "KI-Status", notCalled: "nicht aufgerufen", error: "Fehler", none: "—" },
+};
+const microsToUsd = (m: number | null): string => (m === null ? "—" : `$${(m / 1_000_000).toFixed(6)}`);
+
+// Merge the persisted per-comment breakdown (aiDiagnostics) with the finalized cost/model (UsageEvent) and
+// the AI provider-call status/error (ProviderCall). Historical rows without aiDiagnostics degrade gracefully.
+function buildDiag(
+  r: InboxItemRow,
+  usage: { modelKey: string | null; actualCostMicros: bigint | null } | undefined,
+  aiCall: { provider: string; status: string; errorCode: string | null } | undefined,
+): AdminDiag {
+  const d = (r.aiDiagnostics ?? null) as AiDiagnostics | null;
+  return {
+    callMode: d?.callMode ?? "value_gated",
+    // Gate reason: prefer the pipeline decision in aiDiagnostics; fall back to the metered processingReason
+    // for historical rows written before aiDiagnostics existed.
+    gateReason: d?.gate?.reason ?? r.processingReason ?? null,
+    rules: d?.rules ?? null,
+    ai: {
+      called: d?.gate?.aiCalled ?? (aiCall ? aiCall.status !== "skipped" : false),
+      provider: aiCall?.provider ?? (r.aiProvider as string) ?? "none",
+      status: d?.ai.status ?? aiCall?.status ?? "skipped",
+      errorCode: d?.ai.errorCode ?? aiCall?.errorCode ?? null,
+      verdict: d?.ai.verdict ?? null,
+    },
+    merged: d?.merged ?? { level: r.riskLevel as string, confidence: (r.riskConfidence as number) ?? 0, categories: (r.riskCategories ?? []) as string[] },
+    // model + cost are JOINED from UsageEvent (finalized billing truth) — never duplicated in aiDiagnostics.
+    model: usage?.modelKey ?? null,
+    costMicros: usage?.actualCostMicros != null ? Number(usage.actualCostMicros) : null,
+  };
+}
+
 interface Row {
   id: string; text: string; author: string; authorKey: string | null; platformLabel: string; account: string;
   permalink: string | null; createdAt: Date; bucket: SentimentBucket; riskLevel: string; category: string | null;
@@ -47,6 +101,7 @@ interface Row {
   isRead: boolean; archived: boolean; priority: string; workflowStatus: string; assigneeId: string | null; assigneeName: string | null;
   labels: LabelLite[]; noteCount: number; connectorHealth: ConnectorHealthState;
   processingStatus: string; processingTier: string | null; processingReason: string | null; lastProcessedAt: Date | null; classifierVersion: string | null;
+  classificationMode: string; diag: AdminDiag | null;
 }
 
 // Honest connector-health tone (never a fake green). Only a truly healthy connector is "ok".
@@ -297,6 +352,8 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const realMode = await getRealModeFilter(session.tenantId);
   const canAct = can(session.role, Permission.InboxAct); // viewers see no mutation controls
+  const isAdmin = session.role === Role.Owner || session.role === Role.Admin; // gates the AI diagnostics panel
+  const dc = DIAG_COPY[locale];
   const rel = { justNow: t.cc.relJustNow, minAgo: t.cc.relMinAgo, today: t.cc.relToday };
 
   // ---- Parse + validate every filter from the URL (all applied server-side) ----
@@ -345,7 +402,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
 
   const baseWhere = { tenantId: session.tenantId, ...realMode.brandWhere };
   // ---- Per-PAGE enrichment only (bounded by the current page's ids — never the whole dataset) ----
-  const [executions, queueItems, accountCount, members, allLabels, noteRows, auditRows] = await withTenant(session.tenantId, (db) => Promise.all([
+  const [executions, queueItems, accountCount, members, allLabels, noteRows, auditRows, usageRows, aiCallRows] = await withTenant(session.tenantId, (db) => Promise.all([
     pageExternalIds.length
       ? db.platformActionExecution.findMany({ where: { ...baseWhere, status: "executed", reason: { in: [...HIDE_REASONS, "comment_deleted", "facebook_can_hide_false"] }, externalCommentId: { in: pageExternalIds } }, select: { externalCommentId: true, reason: true } })
       : Promise.resolve([] as { externalCommentId: string | null; reason: string | null }[]),
@@ -355,6 +412,10 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     db.inboxLabel.findMany({ where: { tenantId: session.tenantId }, select: { id: true, name: true, colorKey: true }, orderBy: { normalizedName: "asc" } }),
     pageIds.length ? db.inboxNote.findMany({ where: { reputationItemId: { in: pageIds }, deletedAt: null }, orderBy: { createdAt: "asc" }, include: { author: { select: { id: true, name: true, email: true } } } }) : Promise.resolve([] as never[]),
     pageIds.length ? db.auditLog.findMany({ where: { targetType: "reputation_item", targetId: { in: pageIds }, event: { startsWith: "inbox." } }, orderBy: { createdAt: "desc" }, take: 400, include: { actor: { select: { name: true, email: true } } } }) : Promise.resolve([] as never[]),
+    // V1.61 — admin-only diagnostics joins: finalized paid cost/model (UsageEvent) + the AI provider call
+    // status/error (ProviderCall). Page-bounded, tenant-scoped, and fetched ONLY for admins/owners.
+    isAdmin && pageIds.length ? db.usageEvent.findMany({ where: { reputationItemId: { in: pageIds }, processingTier: "paid" }, select: { reputationItemId: true, modelKey: true, actualCostMicros: true, status: true }, orderBy: { createdAt: "desc" } }) : Promise.resolve([] as { reputationItemId: string | null; modelKey: string | null; actualCostMicros: bigint | null; status: string }[]),
+    isAdmin && pageIds.length ? db.providerCall.findMany({ where: { itemId: { in: pageIds }, type: "ai_risk" }, select: { itemId: true, provider: true, status: true, errorCode: true }, orderBy: { createdAt: "desc" } }) : Promise.resolve([] as { itemId: string | null; provider: string; status: string; errorCode: string | null }[]),
   ]));
 
   const memberList: MemberLite[] = members.map((m) => m.user);
@@ -369,6 +430,12 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     execState.set(e.externalCommentId, next);
   }
   const queueByItem = new Map(queueItems.map((qi) => [qi.itemId, qi]));
+
+  // Admin diagnostics lookups (first row wins = most recent). Empty for non-admins.
+  const usageByItem = new Map<string, { modelKey: string | null; actualCostMicros: bigint | null }>();
+  for (const u of usageRows) { if (u.reputationItemId && !usageByItem.has(u.reputationItemId)) usageByItem.set(u.reputationItemId, u); }
+  const aiCallByItem = new Map<string, { provider: string; status: string; errorCode: string | null }>();
+  for (const a of aiCallRows) { if (a.itemId && !aiCallByItem.has(a.itemId)) aiCallByItem.set(a.itemId, a); }
 
   // Per-author risk (medium+), computed over THIS PAGE's rows only (bounded; the full cross-item
   // actor picture lives on /dashboard/actor-risk).
@@ -436,6 +503,8 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       processingReason: r.processingReason ?? null,
       lastProcessedAt: r.lastProcessedAt ?? null,
       classifierVersion: r.classifierVersion ?? null,
+      classificationMode: (r.classificationMode as string) ?? "rules_only",
+      diag: isAdmin ? buildDiag(r, usageByItem.get(r.id), aiCallByItem.get(r.id)) : null,
     };
   });
 
@@ -630,6 +699,8 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                               {r.priority !== "normal" ? <Badge tone={r.priority === "urgent" ? "danger" : r.priority === "high" ? "warn" : "neutral"}>{c.priority[r.priority] ?? r.priority}</Badge> : null}
                               <Badge tone="neutral">{c.workflow[r.workflowStatus] ?? r.workflowStatus.replace(/_/g, " ")}</Badge>
                               <span data-testid="processing-badge" data-status={r.processingStatus}><Badge tone={PROCESSING_TONE[r.processingStatus] ?? "neutral"}>{processingCopy(r.processingStatus)}</Badge></span>
+                              {/* Customer-visible classification chip: Basic protection (rules) / AI assisted. */}
+                              <span data-testid="classification-chip" data-mode={r.classificationMode}><Badge tone={r.classificationMode === "ai_assisted" ? "brand" : "neutral"}>{r.classificationMode === "ai_assisted" ? dc.chipAi : dc.chipBasic}</Badge></span>
                               {r.archived ? <Badge tone="neutral">{c.viewArchived}</Badge> : null}
                               {r.assigneeName ? <Badge tone="neutral">@{r.assigneeName}</Badge> : null}
                               {r.labels.map((l) => <Badge key={l.id} tone={l.colorKey}>{l.name}</Badge>)}
@@ -671,6 +742,27 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                                 <div className="mt-1"><Link href="/dashboard/usage" className="text-[var(--color-brand)] hover:underline" data-testid="processing-usage-link">{c.viewUsage}</Link></div>
                               ) : null}
                             </div>
+
+                            {/* V1.61 — ADMIN-ONLY AI diagnostics: rules vs AI vs merged verdict, how the AI
+                                was invoked, gate reason. Model + cost are JOINED from UsageEvent (not stored
+                                in aiDiagnostics). No key/prompt/raw response. */}
+                            {isAdmin && r.diag ? (
+                              <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs" data-testid="ai-diagnostics">
+                                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                                  <span className="font-semibold uppercase tracking-wide text-[var(--color-muted)]">{dc.heading}</span>
+                                  <Badge tone="neutral">{dc.callMode}: {r.diag.callMode}</Badge>
+                                  <Badge tone={r.diag.ai.called ? "brand" : "neutral"}>{dc.aiStatus}: {r.diag.ai.called ? r.diag.ai.status : dc.notCalled}</Badge>
+                                </div>
+                                <dl className="space-y-1">
+                                  {r.diag.rules ? <Row2 label={dc.rules}>{tEnum(t, "risk", r.diag.rules.level)} · {r.diag.rules.confidence.toFixed(2)}{r.diag.rules.categories.length ? ` · ${r.diag.rules.categories.join(", ")}` : ""}</Row2> : null}
+                                  <Row2 label={dc.ai}>{r.diag.ai.verdict ? `${tEnum(t, "risk", r.diag.ai.verdict.level)} · ${r.diag.ai.verdict.confidence.toFixed(2)}${r.diag.ai.verdict.categories.length ? ` · ${r.diag.ai.verdict.categories.join(", ")}` : ""}` : dc.notCalled}{r.diag.ai.errorCode ? ` · ${dc.error}: ${r.diag.ai.errorCode}` : ""}</Row2>
+                                  {r.diag.merged ? <Row2 label={dc.merged}>{tEnum(t, "risk", r.diag.merged.level)} · {r.diag.merged.confidence.toFixed(2)}{r.diag.merged.categories.length ? ` · ${r.diag.merged.categories.join(", ")}` : ""}</Row2> : null}
+                                  <Row2 label={dc.gate}>{r.diag.gateReason ?? dc.none}</Row2>
+                                  <Row2 label={dc.model}>{r.diag.model ?? dc.none}</Row2>
+                                  <Row2 label={dc.cost}>{microsToUsd(r.diag.costMicros)}</Row2>
+                                </dl>
+                              </div>
+                            ) : null}
 
                             {/* Internal workflow controls. Archive is a Tamanor-side action, NOT a
                                 provider hide; "resolved" never implies provider moderation. */}

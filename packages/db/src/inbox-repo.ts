@@ -319,6 +319,8 @@ export const inboxItemSelect = {
   isRead: true, archivedAt: true, priority: true, inboxWorkflowStatus: true, assignedToUserId: true,
   // V1.44B — truthful processing state for the inbox card/detail.
   processingTier: true, processingStatus: true, processingReason: true, lastProcessedAt: true, classifierVersion: true,
+  // V1.61 — AI provenance + admin-only diagnostics breakdown (customer sees only the mode chip).
+  classificationMode: true, aiProvider: true, aiProviderStatus: true, riskEngine: true, riskConfidence: true, aiDiagnostics: true,
   assignedTo: { select: { id: true, name: true, email: true } },
   inboxLabels: { select: { label: { select: { id: true, name: true, colorKey: true } } } },
   _count: { select: { inboxNotes: true } },

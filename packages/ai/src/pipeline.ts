@@ -25,7 +25,18 @@ const rank = (l: string) => Math.max(0, RISK_ORDER.indexOf(l as (typeof RISK_ORD
 export interface HybridConfig {
   workspaceLocale: string;
   translation: { enabled: boolean; provider: string; targetMode: "workspace_locale" | "en" };
-  aiRisk: { enabled: boolean; provider: string; minConfidence: number; openai?: OpenAiRiskConfig };
+  aiRisk: {
+    enabled: boolean;
+    provider: string;
+    minConfidence: number;
+    /**
+     * `value_gated` (default): call the AI provider only when `shouldCallAi` says it adds value.
+     * `all`: call the AI provider for every comment (still only after enabled+provider hold, and — in the
+     * metered path — after all paid guards + non-cache). Missing is treated as `value_gated` (safe default).
+     */
+    callMode?: "value_gated" | "all";
+    openai?: OpenAiRiskConfig;
+  };
   brandContext?: string;
   /** Active brand-scoped memory rules (applied after Risk Rules V1). */
   memoryRules?: BrandMemoryRule[];
@@ -37,6 +48,56 @@ export interface ProviderCallRecord {
   status: string;
   latencyMs: number;
   errorCode?: string;
+}
+
+/** A single verdict snapshot (level/confidence/categories) — used to record the rules, AI, and merged views. */
+export interface RiskSnapshot {
+  level: string;
+  confidence: number;
+  categories: string[];
+}
+
+/**
+ * V1.61 — the admin-only classification breakdown persisted per comment. Lets an operator see EXACTLY what
+ * the rules said, what (if anything) the AI said, and the merged outcome — plus how the AI was invoked.
+ * Contains NO comment text, prompt, or raw model output; only structured verdicts + provider metadata.
+ */
+export interface AiDiagnostics {
+  callMode: "value_gated" | "all";
+  /** Pipeline value-gate decision: whether the AI was consulted and WHY (all_mode / value_added /
+   *  gate_not_fired / ai_disabled / no_provider). */
+  gate: { aiCalled: boolean; reason: string };
+  rules: RiskSnapshot;
+  /**
+   * Normalized AI verdict/status/errorCode ONLY. Model, input/output tokens and cost are deliberately NOT
+   * stored here — the admin panel joins the model + cost from UsageEvent and the status/error from
+   * ProviderCall, so nothing is duplicated in this JSON.
+   */
+  ai: {
+    status: AiRiskCallStatus;
+    errorCode?: string;
+    /** AI's OWN verdict (present only when it classified) — before the rules-floor merge. */
+    verdict?: RiskSnapshot;
+  };
+  merged: RiskSnapshot;
+}
+
+// Test-only seam to exercise the fail-open path in {@link safeBuildAiDiagnostics}. No effect in production.
+let __forceDiagnosticsError = false;
+export function __setForceDiagnosticsErrorForTests(v: boolean): void { __forceDiagnosticsError = v; }
+
+/**
+ * V1.61 — assemble the admin diagnostics snapshot with a HARD fail-open guarantee: ANY error while
+ * building/normalizing it returns `null` instead of throwing, so a diagnostics problem can NEVER block the
+ * classification result or the ReputationItem persist. Emits nothing carrying comment text or secrets.
+ */
+export function safeBuildAiDiagnostics(build: () => AiDiagnostics): AiDiagnostics | null {
+  try {
+    if (__forceDiagnosticsError) throw new Error("forced diagnostics failure (test-only)");
+    return build();
+  } catch {
+    return null; // fail-open: diagnostics are optional; classification + persistence proceed unaffected.
+  }
 }
 
 export interface HybridResult {
@@ -74,6 +135,9 @@ export interface HybridResult {
   // Engine + observability.
   engine: string;
   providerCalls: ProviderCallRecord[];
+  /** Admin-only classification breakdown (rules vs AI vs merged + how the AI was invoked). No text.
+   *  `null` when the (fail-open) diagnostics build errored — never blocks the result. */
+  diagnostics: AiDiagnostics | null;
 }
 
 const classifier = new RiskClassifier();
@@ -156,8 +220,23 @@ export async function classifyHybrid(
   let approvalRequired = rank(level) >= rank("high");
   let shortReason = "";
 
-  const gated = cfg.aiRisk.enabled && cfg.aiRisk.provider !== "none" &&
-    shouldCallAi({ detectedLanguage, isMixedLanguage: rules.isMixedLanguage, confidence, level, explanation: rules.explanation }, cfg.aiRisk.minConfidence);
+  // Rules (+ brand memory) verdict, captured BEFORE any AI merge — the "rules result" for admin diagnostics.
+  const rulesSnapshot: RiskSnapshot = { level, confidence: round2(confidence), categories: [...categories] };
+  let aiVerdict: RiskSnapshot | undefined;
+  let aiErrorCode: string | undefined;
+
+  // `all` consults the provider for every comment (rules already ran above and remain the floor); `value_gated`
+  // (default, incl. when unset) keeps the historical shouldCallAi value-gate untouched.
+  const callMode = cfg.aiRisk.callMode ?? "value_gated";
+  const aiEnabled = cfg.aiRisk.enabled && cfg.aiRisk.provider !== "none";
+  const valueGateOpen = shouldCallAi({ detectedLanguage, isMixedLanguage: rules.isMixedLanguage, confidence, level, explanation: rules.explanation }, cfg.aiRisk.minConfidence);
+  const gated = aiEnabled && (callMode === "all" || valueGateOpen);
+  // Diagnostics-only gate reason (why the AI was / was not consulted at the pipeline layer).
+  const gateReason = !cfg.aiRisk.enabled ? "ai_disabled"
+    : cfg.aiRisk.provider === "none" ? "no_provider"
+    : callMode === "all" ? "all_mode"
+    : valueGateOpen ? "value_added"
+    : "gate_not_fired";
 
   let aiUsage: HybridResult["aiUsage"];
   if (gated) {
@@ -173,9 +252,12 @@ export async function classifyHybrid(
     });
     aiProvider = out.provider;
     aiProviderStatus = out.status;
+    aiErrorCode = out.errorCode;
     providerCalls.push({ type: "ai_risk", provider: out.provider, status: out.status, latencyMs: out.latencyMs, errorCode: out.errorCode });
     if (out.status === "classified") {
       classificationMode = "ai_assisted";
+      // AI's OWN verdict, recorded BEFORE the merge so diagnostics can prove the floor was applied.
+      aiVerdict = { level: out.riskLevel, confidence: round2(out.confidence), categories: [...out.categories] };
       // Merge: never LOWER the rules risk (rules are a safety floor); union signals.
       if (rank(out.riskLevel) > rank(level)) level = out.riskLevel;
       confidence = Math.max(confidence, out.confidence);
@@ -217,6 +299,13 @@ export async function classifyHybrid(
     memoryMatched: memory.matches,
     engine: rules.engine ?? "risk-rules-v1",
     providerCalls,
+    diagnostics: safeBuildAiDiagnostics(() => ({
+      callMode,
+      gate: { aiCalled: gated, reason: gateReason },
+      rules: rulesSnapshot,
+      ai: { status: aiProviderStatus, errorCode: aiErrorCode, verdict: aiVerdict },
+      merged: { level, confidence: round2(confidence), categories },
+    })),
   };
 }
 
@@ -242,5 +331,6 @@ export function buildIntelFromHybrid(h: HybridResult) {
     aiProvider: h.aiProvider,
     aiProviderStatus: h.aiProviderStatus,
     riskExplanation: (h.explanation ?? undefined) as never,
+    aiDiagnostics: (h.diagnostics ?? undefined) as never,
   };
 }

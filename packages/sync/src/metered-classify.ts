@@ -62,7 +62,7 @@ export async function classifyWithUsagePolicy(
   }
 
   // 2) RULES (+ local) — always free, deterministic. Consume ONE basic unit (deduped by content).
-  const rules = await classifyHybrid(input, { ...cfg, aiRisk: { enabled: false, provider: "none", minConfidence: cfg.aiRisk.minConfidence } });
+  const rules = await classifyHybrid(input, { ...cfg, aiRisk: { enabled: false, provider: "none", minConfidence: cfg.aiRisk.minConfidence, callMode: cfg.aiRisk.callMode } });
   const basic = await consumeBasicUnit(ctx.tenantId, ctx.plan, { idempotencyKey: `basic:${contentHash}`, tier: "rules", ...evRefs }, now);
   const baseStatus: ProcessingStatus = basic.denied ? "basic_limit_reached" : "processed_rules";
 
@@ -101,10 +101,11 @@ export async function classifyWithUsagePolicy(
       const paid = await callProviderWithRetry(input, cfg, provider, deps);
       const call = paid.providerCalls.find((c) => c.type === "ai_risk" && c.status !== "skipped");
       if (!call) {
-        // Value-gate did not fire → provider not called → release both (unbilled).
+        // Value-gate did not fire → provider not called → release both (unbilled). Surface the normalized
+        // skip reason (admin diagnostics) instead of the basic-unit reason, unless the basic cap was hit.
         await releaseReservation(ctx.tenantId, tenant.eventId, "gate_not_fired");
         await releaseGlobalDailyCall(provider, estMicros, now);
-        return done(paid, "rules", baseStatus, basic.reason);
+        return done(paid, "rules", baseStatus, basic.denied ? basic.reason : "gate_not_fired");
       }
       const failed = call.status === "failed" || call.status === "unavailable";
       if (failed) {
@@ -137,7 +138,9 @@ export async function classifyWithUsagePolicy(
 
 /** Provider call with per-instance timeout + bounded retry (one reservation; never re-charges). */
 async function callProviderWithRetry(input: ClassificationInput, cfg: HybridConfig, provider: string, deps: MeteredDeps): Promise<HybridResult> {
-  const call = deps.callProvider ?? ((i: ClassificationInput, c: HybridConfig) => classifyHybrid(i, { ...c, aiRisk: { enabled: true, provider, minConfidence: c.aiRisk.minConfidence } }));
+  // Preserve the FULL aiRisk config (openai key/model + callMode) — only `enabled`/`provider` are forced on
+  // for the paid pass. Dropping `openai` here would rebuild the provider as `none` and silently skip the call.
+  const call = deps.callProvider ?? ((i: ClassificationInput, c: HybridConfig) => classifyHybrid(i, { ...c, aiRisk: { ...c.aiRisk, enabled: true, provider } }));
   const retries = paidAiGuard.maxRetries();
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
