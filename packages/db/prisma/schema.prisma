@@ -1547,7 +1547,24 @@ model SecurityDetection {
   kind            String // SecurityDetectionKind (new_device, breach_exposure, mfa_disabled, ...)
   severity        RiskLevel @default(low)
   status          String    @default("open") // open | acknowledged | dismissed | confirmed | resolved
-  evidence        Json? // PII-minimal signal evidence (never tokens/secrets)
+  // S2 — 0..100 deterministic strength of evidence (NOT a probability model). Null until a detector sets it.
+  confidence      Int?
+  // S2 — DetectionSource: auth | session | connector | action | manual. Null on legacy rows.
+  source          String?
+  // S2 — DEDUPLICATION. `dedupeKey` is the stable idempotency key (core detectionDedupeKey). A PARTIAL
+  // UNIQUE index (raw SQL, in the migration) enforces at most ONE ACTIVE (open/acknowledged/confirmed)
+  // detection per (tenantId, dedupeKey) — a recurring signal increments occurrenceCount + lastObservedAt
+  // instead of piling up duplicate open rows. Terminal rows (dismissed/resolved) do NOT block a new one.
+  dedupeKey       String? // null on legacy rows; excluded from the partial-unique guard
+  // detectedAt IS the first-observed timestamp (set on create, never updated). lastObservedAt bumps on
+  // each re-observation of the same active detection.
+  lastObservedAt  DateTime @default(now())
+  occurrenceCount Int      @default(1)
+  // S2 — stable machine reason code for localized display (mirrors the score's issueCode pattern).
+  reasonCode      String?
+  // S2 — human note captured on dismiss/resolve (bounded + sanitized at the action layer; never a secret).
+  resolutionNote  String?
+  evidence        Json? // PII-minimal, sanitized signal evidence (never tokens/secrets/keys)
   detectedByEngine String? // detector/engine version for auditability
   detectedAt      DateTime  @default(now())
   reviewedByUserId String?
@@ -1560,6 +1577,7 @@ model SecurityDetection {
   @@unique([id, tenantId])
   @@index([tenantId, status, detectedAt])
   @@index([tenantId, subjectType, subjectId])
+  @@index([tenantId, kind, status])
   @@map("security_detections")
 }
 

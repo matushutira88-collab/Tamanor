@@ -68,6 +68,11 @@ export enum SecurityDetectionKind {
   BreachExposure = "breach_exposure",
   PrivilegeEscalation = "privilege_escalation",
   SessionAnomaly = "session_anomaly",
+  // S2 — added additively (never renumber). Owned, deterministic ATO signals.
+  PasswordChanged = "password_changed",
+  TokenExpired = "token_expired",
+  MultipleFailedActions = "multiple_failed_actions",
+  ManualFlag = "manual_flag",
   // Connected-account ATO (official API signals only).
   TokenRevoked = "token_revoked",
   PermissionDrift = "permission_drift",
@@ -80,6 +85,49 @@ export enum SecurityDetectionKind {
 
 export const ALL_SECURITY_DETECTION_KINDS: readonly SecurityDetectionKind[] =
   Object.values(SecurityDetectionKind);
+
+/**
+ * S2 — the ACCOUNT-TAKEOVER detection type set (foundation). These are the eight kinds the ATO Detection
+ * Engine may emit; every other `SecurityDetectionKind` belongs to a different module (brand abuse) or is
+ * reserved. The engine is deterministic and NEVER depends on IP, geolocation, "impossible travel", AI, or
+ * heuristics — only owned, observable facts. Ordered here for a stable, documented canonical order.
+ */
+export const ATO_DETECTION_KINDS: readonly SecurityDetectionKind[] = [
+  SecurityDetectionKind.NewDevice,             // UNKNOWN_DEVICE
+  SecurityDetectionKind.SessionAnomaly,        // SESSION_ANOMALY
+  SecurityDetectionKind.PasswordChanged,       // PASSWORD_CHANGED
+  SecurityDetectionKind.PrivilegeEscalation,   // PRIVILEGE_CHANGED
+  SecurityDetectionKind.TokenRevoked,          // TOKEN_REVOKED
+  SecurityDetectionKind.TokenExpired,          // TOKEN_EXPIRED
+  SecurityDetectionKind.MultipleFailedActions, // MULTIPLE_FAILED_ACTIONS
+  SecurityDetectionKind.ManualFlag,            // MANUAL_FLAG
+];
+
+/** True iff a detection kind belongs to the ATO engine (vs. brand abuse / reserved). */
+export function isAtoDetectionKind(kind: SecurityDetectionKind): boolean {
+  return ATO_DETECTION_KINDS.includes(kind);
+}
+
+/**
+ * The S2 spec names (UPPER_CASE) mapped to their canonical persisted `SecurityDetectionKind`. One explicit
+ * table so the product vocabulary (UNKNOWN_DEVICE …) is unambiguously tied to one stored value — no second
+ * source of truth, no renumbering.
+ */
+export const ATO_DETECTION_TYPE: Record<string, SecurityDetectionKind> = {
+  UNKNOWN_DEVICE: SecurityDetectionKind.NewDevice,
+  SESSION_ANOMALY: SecurityDetectionKind.SessionAnomaly,
+  PASSWORD_CHANGED: SecurityDetectionKind.PasswordChanged,
+  PRIVILEGE_CHANGED: SecurityDetectionKind.PrivilegeEscalation,
+  TOKEN_REVOKED: SecurityDetectionKind.TokenRevoked,
+  TOKEN_EXPIRED: SecurityDetectionKind.TokenExpired,
+  MULTIPLE_FAILED_ACTIONS: SecurityDetectionKind.MultipleFailedActions,
+  MANUAL_FLAG: SecurityDetectionKind.ManualFlag,
+};
+
+/** The eight S2 spec type names. */
+export type AtoDetectionTypeName =
+  | "UNKNOWN_DEVICE" | "SESSION_ANOMALY" | "PASSWORD_CHANGED" | "PRIVILEGE_CHANGED"
+  | "TOKEN_REVOKED" | "TOKEN_EXPIRED" | "MULTIPLE_FAILED_ACTIONS" | "MANUAL_FLAG";
 
 /**
  * Detection lifecycle. Detectors ONLY ever create `Open`. A human review is the
@@ -99,6 +147,62 @@ export const TERMINAL_DETECTION_STATUSES: readonly SecurityDetectionStatus[] = [
   SecurityDetectionStatus.Dismissed,
   SecurityDetectionStatus.Resolved,
 ];
+
+/**
+ * The detection lifecycle state machine. Detectors ONLY ever create `Open`; every other transition is a
+ * human-review action. Deterministic + auditable: an illegal transition is rejected (never silently
+ * applied). Terminal states allow no outgoing transitions.
+ */
+export const DETECTION_STATUS_TRANSITIONS: Readonly<Record<SecurityDetectionStatus, readonly SecurityDetectionStatus[]>> = {
+  [SecurityDetectionStatus.Open]: [
+    SecurityDetectionStatus.Acknowledged,
+    SecurityDetectionStatus.Confirmed,
+    SecurityDetectionStatus.Dismissed,
+    SecurityDetectionStatus.Resolved,
+  ],
+  [SecurityDetectionStatus.Acknowledged]: [
+    SecurityDetectionStatus.Confirmed,
+    SecurityDetectionStatus.Dismissed,
+    SecurityDetectionStatus.Resolved,
+  ],
+  [SecurityDetectionStatus.Confirmed]: [
+    SecurityDetectionStatus.Resolved,
+    SecurityDetectionStatus.Dismissed,
+  ],
+  [SecurityDetectionStatus.Dismissed]: [], // terminal
+  [SecurityDetectionStatus.Resolved]: [], // terminal
+};
+
+/** True iff `to` is a legal next status from `from` (identity transitions are not moves → false). */
+export function canTransitionDetection(from: SecurityDetectionStatus, to: SecurityDetectionStatus): boolean {
+  return DETECTION_STATUS_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+/** The audit event name for a given lifecycle transition target (append-only vocabulary from S0). */
+export function detectionTransitionAuditEvent(to: SecurityDetectionStatus): string {
+  switch (to) {
+    case SecurityDetectionStatus.Acknowledged: return SECURITY_AUDIT_EVENTS.detectionAcknowledged;
+    case SecurityDetectionStatus.Dismissed: return SECURITY_AUDIT_EVENTS.detectionDismissed;
+    case SecurityDetectionStatus.Confirmed: return SECURITY_AUDIT_EVENTS.detectionConfirmed;
+    case SecurityDetectionStatus.Resolved: return SECURITY_AUDIT_EVENTS.detectionResolved;
+    case SecurityDetectionStatus.Open: return SECURITY_AUDIT_EVENTS.detectionOpened;
+  }
+}
+
+/**
+ * S2 product lifecycle (NEW → ACKNOWLEDGED → RESOLVED | FALSE_POSITIVE) mapped to the persisted
+ * `SecurityDetectionStatus`. `NEW` is stored `open`; `FALSE_POSITIVE` is stored `dismissed`. The extra
+ * `confirmed` state stays available for later phases but is not part of the S2 surface.
+ */
+export const S2_DETECTION_STATUS: Record<string, SecurityDetectionStatus> = {
+  NEW: SecurityDetectionStatus.Open,
+  ACKNOWLEDGED: SecurityDetectionStatus.Acknowledged,
+  RESOLVED: SecurityDetectionStatus.Resolved,
+  FALSE_POSITIVE: SecurityDetectionStatus.Dismissed,
+};
+
+/** The four S2 lifecycle names. */
+export type S2DetectionStatusName = "NEW" | "ACKNOWLEDGED" | "RESOLVED" | "FALSE_POSITIVE";
 
 // --- Brand Protection ------------------------------------------------------
 

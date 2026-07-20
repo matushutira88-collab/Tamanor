@@ -8,7 +8,9 @@ import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { getLocale } from "@/i18n/locale-server";
 import { type Locale } from "@/i18n/config";
 import { loadSecurityScore } from "@/server/security-score";
+import { loadAtoDetections } from "@/server/security-detections";
 import { SecurityScoreView } from "./security-score-view";
+import { AtoDetectionsView } from "./ato-detections-view";
 import { saveSecurityScoreSnapshotAction } from "./actions";
 import { CHROME } from "./score-i18n";
 
@@ -127,6 +129,8 @@ export default async function SecurityCenterPage({ searchParams }: { searchParam
 
   // S1 — deterministic composite Security Score computed live from real facts.
   const score = await loadSecurityScore(session.tenantId);
+  // S2 — Potential Account Takeover detections (foundation: empty until detectors ship).
+  const atoDetections = await loadAtoDetections(session.tenantId);
 
   return (
     <>
@@ -154,11 +158,14 @@ export default async function SecurityCenterPage({ searchParams }: { searchParam
       {/* S1 — composite Security Score: ring, dimension breakdown, reasons & recommendations. */}
       <SecurityScoreView result={score} locale={locale} />
 
+      {/* S2 — Potential Account Takeover: deterministic detection ledger (foundation, human-reviewed). */}
+      <AtoDetectionsView data={atoDetections} locale={locale} />
+
       {/* Other Security Suite modules (later phases). Incident Center links to the existing surface. */}
       <div className="mt-10">
         <SectionHeader title={t.modulesTitle} description={t.detectOnly} />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <ModuleTile title={t.detections.title} body={t.detections.body} badge={t.soon} tone="warn" />
+          <ModuleTile title={t.detections.title} body={t.detections.body} badge={t.active} tone="ok" />
           <ModuleTile title={t.brand.title} body={t.brand.body} badge={t.soon} tone="neutral" />
           <ModuleTile
             title={t.incidents.title}
