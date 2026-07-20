@@ -431,4 +431,43 @@ To preview the unlocked shell, set the active tenant's plan to growth+ (the seed
 
 ---
 
+### S1 — Composite Security Score ✅ (local branch `s1-composite-security-score`)
+
+Deterministic, explainable 0–100 posture score from five weighted dimensions —
+Access Security (25%), Connector Security (20%), Protection Coverage (20%),
+Response Readiness (20%), Account Health & Compliance (15%). No AI, no network.
+
+- **Engine** `packages/core/src/security-score.ts` — pure `computeSecurityScore()`.
+  Each factor is `measured | unavailable | insufficient_data`; a dimension is the
+  weighted average of its **measured** factors only; the overall is the weighted
+  average of scored dimensions with weights **renormalized** and a `coverage`
+  (dimensions-measured / confidence) report. **Missing data is never 0** — it is
+  `unavailable`/`insufficient_data`, and an overall score needs ≥2 measured
+  dimensions (`MIN_MEASURED_DIMENSIONS`) else it is `insufficient_data` (null).
+  Every deduction carries a machine-readable `issueCode` + `evidence`. The
+  existing reputation **ProtectionScore is unchanged** and feeds Coverage.
+- **Factor audit** (real / derived / unavailable / future):
+  *real* — email verification, session hygiene, privilege distribution, password
+  age, token health/status/monitoring, billing/access state, audit trail, data
+  retention, token-encryption mode (production only); *derived* — aggregate
+  ProtectionScore, connection health, response backlogs (aged incidents /
+  approvals / high-risk); *unavailable today* — MFA (no feature), breach exposure
+  (HIBP not persisted), permission drift (no baseline), encryption-at-rest in dev
+  (plaintext by design); *future* — impossible-travel/geo (deferred), ATO signals
+  (S2). No fabricated signals were added to fill the score.
+- **Persistence** `SecurityScoreSnapshot.score` made **nullable** + `status`
+  column (migration `20260730090000_s1_security_score_snapshot`); auditable
+  tenant-scoped snapshot via `persistSecurityScoreSnapshot` (audit
+  `security.score.snapshot`, gated by `security:manage`).
+- **Loader** `apps/web/src/server/security-score.ts` — gathers only real,
+  tenant-scoped facts (RLS), reuses `getWatchedAccountsView` + `accountProtectionScore`.
+- **UI** Security Center now shows the score ring, coverage/confidence,
+  per-dimension breakdown, and reasons + recommendations (EN/SK/DE in a dedicated
+  compile-enforced module). Gating unchanged from S0.
+- **Verified:** core unit tests 32/0 (boundary states incl. all-unavailable →
+  insufficient, renormalization, determinism), snapshot RLS 5/5 (null persists as
+  null; tenant isolation; WITH CHECK), typecheck 8/8, lint, i18n 1983,
+  rls-security 37/37, entitlements, production build; screenshots desktop+mobile
+  EN/SK/DE.
+
 *Prepared in the Tamanor R&D lab. No production (Guardora) code touched.*

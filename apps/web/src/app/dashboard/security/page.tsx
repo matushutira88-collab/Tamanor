@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { can, Permission } from "@guardora/core";
-import { PageHeader, Card, SectionHeader, Badge, StatCard } from "@/components/dashboard/ui";
+import { PageHeader, Card, SectionHeader, Badge } from "@/components/dashboard/ui";
 import { requireVerifiedSession } from "@/server/auth";
 import { requireDashboardCapability } from "@/server/route-guard";
 import { CapabilityLockedState } from "@/components/dashboard/capability-locked";
 import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { getLocale } from "@/i18n/locale-server";
 import { type Locale } from "@/i18n/config";
+import { loadSecurityScore } from "@/server/security-score";
+import { SecurityScoreView } from "./security-score-view";
+import { saveSecurityScoreSnapshotAction } from "./actions";
+import { CHROME } from "./score-i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -100,16 +104,7 @@ const COPY: Record<Locale, Copy> = {
   },
 };
 
-function IconShield() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" />
-      <path d="M9 12l2 2 4-4" />
-    </svg>
-  );
-}
-
-export default async function SecurityCenterPage() {
+export default async function SecurityCenterPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const locale = await getLocale();
   // Two independent gates, checked in order so each denial gets its OWN truthful
   // state and no tenant content ever renders on a denial:
@@ -126,42 +121,43 @@ export default async function SecurityCenterPage() {
     return <CapabilityLockedState capability={cap.locked.capability} plan={cap.locked.plan} locale={locale} />;
   }
   const t = COPY[locale];
+  const chrome = CHROME[locale];
+  const canManage = can(session.role, Permission.SecurityManage);
+  const saved = (await searchParams).saved === "1";
+
+  // S1 — deterministic composite Security Score computed live from real facts.
+  const score = await loadSecurityScore(session.tenantId);
 
   return (
     <>
-      <PageHeader eyebrow={t.eyebrow} title={t.title} description={t.description} />
+      <PageHeader
+        eyebrow={t.eyebrow}
+        title={t.title}
+        description={t.description}
+        action={
+          canManage ? (
+            <form action={saveSecurityScoreSnapshotAction}>
+              <button type="submit" className="rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-xs font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-2)]">
+                {chrome.saveSnapshot}
+              </button>
+            </form>
+          ) : undefined
+        }
+      />
 
-      {/* Posture stat row — honest placeholders (no fake numbers) until S1–S3. */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label={t.stats.score} value="—" hint={t.pending} tone="brand" icon={<IconShield />} />
-        <StatCard label={t.stats.detections} value="—" hint={t.pending} tone="neutral" />
-        <StatCard label={t.stats.incidents} value="—" hint={t.pending} tone="neutral" />
-        <StatCard label={t.stats.accounts} value="—" hint={t.pending} tone="neutral" />
-      </div>
+      {saved ? (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-[var(--color-ok)] bg-[var(--color-ok-soft)] px-3 py-2 text-sm text-[var(--color-ok)]">
+          <span aria-hidden="true">✓</span> {chrome.savedNotice}
+        </div>
+      ) : null}
 
-      {/* Security Score set-up notice. */}
-      <div className="mt-6">
-        <Card>
-          <div className="flex items-start gap-4">
-            <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--color-brand-soft)] text-[var(--color-brand-strong)]">
-              <IconShield />
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-semibold">{t.postureTitle}</h2>
-                <Badge tone="brand">{t.soon}</Badge>
-              </div>
-              <p className="mt-1.5 max-w-2xl text-sm text-[var(--color-muted)]">{t.postureBody}</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      {/* S1 — composite Security Score: ring, dimension breakdown, reasons & recommendations. */}
+      <SecurityScoreView result={score} locale={locale} />
 
-      {/* Module tiles. Incident Center links to the existing incidents surface. */}
-      <div className="mt-8">
+      {/* Other Security Suite modules (later phases). Incident Center links to the existing surface. */}
+      <div className="mt-10">
         <SectionHeader title={t.modulesTitle} description={t.detectOnly} />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <ModuleTile title={t.score.title} body={t.score.body} badge={t.soon} tone="brand" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <ModuleTile title={t.detections.title} body={t.detections.body} badge={t.soon} tone="warn" />
           <ModuleTile title={t.brand.title} body={t.brand.body} badge={t.soon} tone="neutral" />
           <ModuleTile

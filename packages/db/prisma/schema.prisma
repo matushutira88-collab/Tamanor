@@ -1517,9 +1517,12 @@ model SecurityScoreSnapshot {
   brandId    String?
   scope      String // tenant | brand | account (SecurityScoreScope)
   subjectId  String? // brandId or connectedAccountId when scope != tenant
-  score      Int // 0..100 composite
-  subscores  Json // { access, connector, coverage, response, compliance }
-  inputs     Json? // evidence snapshot for explainability (PII-minimal)
+  // S1 — score is NULLABLE: when coverage is below the minimum measurable
+  // dimensions the composite is `insufficient_data` (null), never a fabricated 0.
+  score      Int? // 0..100 composite, or null when insufficient_data
+  status     String   @default("insufficient_data") // measured | insufficient_data
+  subscores  Json // full breakdown: dimensions[], level, coverage, weightsRenormalized
+  inputs     Json? // aggregated input snapshot for explainability (PII-minimal, no raw content)
   computedAt DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
