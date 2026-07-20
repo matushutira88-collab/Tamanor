@@ -18,6 +18,8 @@ export const en = {
     brandFull: "Tamanor — reputation & moderation platform",
     // V1.50A/B — self-service CTAs (replace the former demo-first / beta CTAs sitewide).
     startFree: "Start for free",
+    /** V1.66 — compact label for the mobile header CTA so the bar never wraps at 320px. */
+    startFreeShort: "Start free",
     logIn: "Log in",
     reviewSecurity: "Review security",
     explorePlatform: "Explore the platform",

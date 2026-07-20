@@ -5,11 +5,16 @@
  * names may still use "guardora" during the transition.)
  */
 
-export function Logo({ className = "" }: { className?: string }) {
+/**
+ * `compactOnMobile` (V1.66) collapses the wordmark to the shield alone below `sm`, freeing ~80px so the
+ * public header can also show Log in + Start free at 320px without wrapping. The wordmark stays in the
+ * DOM as `sr-only`, so screen readers still announce "Tamanor" at every width.
+ */
+export function Logo({ className = "", compactOnMobile = false }: { className?: string; compactOnMobile?: boolean }) {
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
       <ShieldMark size={28} />
-      <span className="gu-display text-[18px] tracking-tight">Tamanor</span>
+      <span className={`gu-display text-[18px] tracking-tight ${compactOnMobile ? "sr-only sm:not-sr-only" : ""}`}>Tamanor</span>
     </span>
   );
 }

@@ -16,6 +16,7 @@ export const sk: Dictionary = {
     brandTagline: "Reputačná bezpečnosť",
     brandFull: "Tamanor — reputačná bezpečnosť sociálnych účtov",
     startFree: "Začať zdarma",
+    startFreeShort: "Zadarmo",
     logIn: "Prihlásiť sa",
     reviewSecurity: "Pozrieť bezpečnosť",
     explorePlatform: "Preskúmať platformu",

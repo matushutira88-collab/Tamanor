@@ -69,7 +69,10 @@ export function LanguageSwitcher({
             onClick={() => switchTo(l)}
             aria-label={localeNames[l]}
             aria-pressed={on}
-            className={`rounded-md px-2 py-1 text-xs font-semibold transition ${
+            // V1.66 — the horizontal padding steps up with the viewport: at 320px the narrowest padding is
+            // what lets the public header also fit Log in + Start free in the longest locale (DE), and from
+            // 360px up the tap target widens again. Vertical padding is larger on mobile at zero width cost.
+            className={`rounded-md px-1 py-1.5 text-xs font-semibold transition min-[360px]:px-1.5 sm:px-2 sm:py-1 ${
               on
                 ? "bg-[var(--color-brand)] text-[var(--color-brand-fg)]"
                 : "text-[var(--color-muted)] hover:text-[var(--color-fg)]"

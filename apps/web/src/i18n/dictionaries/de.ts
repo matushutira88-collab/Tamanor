@@ -16,6 +16,7 @@ export const de: Dictionary = {
     brandTagline: "Reputationssicherheit",
     brandFull: "Tamanor — Reputationssicherheit für Social-Media-Konten",
     startFree: "Kostenlos starten",
+    startFreeShort: "Gratis",
     logIn: "Anmelden",
     reviewSecurity: "Sicherheit prüfen",
     explorePlatform: "Plattform entdecken",
