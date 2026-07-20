@@ -153,9 +153,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             🧪 <span className="font-medium">{t.dash.realTestMode}</span> · <span className="text-[var(--color-muted)]">{t.dash.realTestModeHint}</span>
           </div>
         ) : null}
+        {/* V1.66 — on an empty workspace the setup guide leads and the empty state supports it: a member
+            with nothing connected should continue through onboarding, not stare at a blank dashboard. */}
+        <OnboardingPanel state={onboarding} dict={dict} />
         <EmptyState title={t.ui.emptyDashboardTitle} body={t.ui.emptyDashboardBody} hint={t.ui.emptyDashboardHint}
           action={<Link href="/dashboard/accounts"><PrimaryButton type="button">{c.connect}</PrimaryButton></Link>} />
-        <OnboardingPanel state={onboarding} dict={dict} />
       </>
     );
   }

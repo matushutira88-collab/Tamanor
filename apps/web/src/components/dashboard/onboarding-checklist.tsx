@@ -66,7 +66,10 @@ export function OnboardingChecklist({
       </div>
 
       {/* Progress: the bar is decorative; the same information is always present as text. */}
-      <p className="mt-4 text-sm font-semibold">{progressText}</p>
+      <div className="mt-5 flex items-baseline justify-between gap-3">
+        <p className="text-sm font-semibold">{progressText}</p>
+        <p aria-hidden className="text-xs font-semibold tabular-nums text-[var(--color-muted)]">{progressPct}%</p>
+      </div>
       <div
         className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]"
         role="progressbar"
@@ -75,7 +78,10 @@ export function OnboardingChecklist({
         aria-valuemax={totalCount}
         aria-valuetext={progressText}
       >
-        <div className="h-full rounded-full bg-[var(--color-brand)]" style={{ width: `${progressPct}%` }} />
+        <div
+          className="h-full rounded-full bg-[var(--color-brand)] transition-[width] duration-500 ease-out motion-reduce:transition-none"
+          style={{ width: `${progressPct}%` }}
+        />
       </div>
 
       {open ? (
@@ -85,20 +91,29 @@ export function OnboardingChecklist({
             return (
               <li
                 key={item.key}
-                className={`flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
-                  isNext ? "border-[var(--color-brand)] bg-[var(--color-brand-soft)]/40" : "border-[var(--color-border)]"
+                // The optional step is set apart structurally, not by a new colour: a dashed border and a
+                // muted surface read as "aside" next to the solid required rows.
+                className={`flex flex-col gap-2 rounded-xl border p-3 transition-colors motion-reduce:transition-none sm:flex-row sm:items-center sm:justify-between ${
+                  isNext
+                    ? "border-[var(--color-brand)] bg-[var(--color-brand-soft)]/40"
+                    : item.required
+                      ? "border-[var(--color-border)]"
+                      : "border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]/40"
                 }`}
               >
                 <div className="flex min-w-0 items-start gap-3">
-                  <StepMark done={item.done} />
+                  <StepMark done={item.done} required={item.required} />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">
+                    <p className={`text-sm ${item.required ? "font-medium" : "font-normal text-[var(--color-muted)]"}`}>
                       {item.label}
+                      {/* Outline badge — lighter than the filled chips used for required state elsewhere. */}
                       {!item.required ? (
-                        <span className="ml-2 rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-muted)]">
+                        <span className="ml-2 whitespace-nowrap rounded-full border border-[var(--color-border-strong)] px-2 py-0.5 align-middle text-[11px] font-medium text-[var(--color-muted)]">
                           {copy.recommended}
                         </span>
                       ) : null}
+                      {/* Announce the recommended action for screen readers; sighted users get the highlight. */}
+                      {isNext ? <span className="sr-only"> — {copy.next}</span> : null}
                     </p>
                     <p className="mt-0.5 text-xs text-[var(--color-muted)]">
                       {item.body}
@@ -112,13 +127,13 @@ export function OnboardingChecklist({
                   ) : item.cta && item.href ? (
                     <Link
                       href={item.href}
-                      className={`inline-block whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 ${
+                      className={`inline-block whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 ${
                         isNext
                           ? "bg-[var(--color-brand)] text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]"
                           : "border border-[var(--color-border-strong)] hover:bg-[var(--color-surface-2)]"
                       }`}
                     >
-                      {isNext ? `${copy.next}: ${item.cta}` : item.cta}
+                      {item.cta}
                     </Link>
                   ) : null}
                 </div>
@@ -131,12 +146,21 @@ export function OnboardingChecklist({
   );
 }
 
-function StepMark({ done }: { done: boolean }) {
-  return done ? (
-    <span aria-hidden className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--color-ok)] text-white">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-    </span>
-  ) : (
-    <span aria-hidden className="mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 border-[var(--color-border-strong)]" />
+/** Required-and-pending gets a solid ring; the optional step gets a dashed, lighter one. */
+function StepMark({ done, required }: { done: boolean; required: boolean }) {
+  if (done) {
+    return (
+      <span aria-hidden className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--color-ok)] text-white">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-hidden
+      className={`mt-0.5 h-5 w-5 shrink-0 rounded-full ${
+        required ? "border-2 border-[var(--color-border-strong)]" : "border border-dashed border-[var(--color-border-strong)]"
+      }`}
+    />
   );
 }
