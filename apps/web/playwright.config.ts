@@ -14,7 +14,13 @@ import { readFileSync } from "node:fs";
  * parsed here (no dep) and injected via webServer.env, with the E2E overrides winning.
  */
 const PORT = Number(process.env.E2E_PORT ?? 3220);
-const baseURL = `http://localhost:${PORT}`;
+/**
+ * V1.67 — E2E_BASE_URL points the suite at an already-running deployment (e.g. the live site) instead of
+ * a locally built one. When it is set, the local webServer is not started: there is nothing to build or
+ * serve. Used to re-run the landing overflow gate against production after a deploy.
+ */
+const EXTERNAL_BASE_URL = process.env.E2E_BASE_URL;
+const baseURL = EXTERNAL_BASE_URL ?? `http://localhost:${PORT}`;
 const STORAGE = "e2e/.auth/state.json";
 const mobile = (w: number, h: number) => ({ browserName: "chromium" as const, viewport: { width: w, height: h }, isMobile: true, hasTouch: true });
 
@@ -43,7 +49,10 @@ export default defineConfig({
   retries: 0, // V1.42B acceptance gate: a pass must be a pass without retry.
   timeout: 60_000,
   reporter: [["list"]],
-  globalSetup: "./e2e/global-setup.ts",
+  // The auth bootstrap talks to the fail-closed /api/e2e/login seam, which exists only in a local E2E
+  // run. Against a real deployment it is skipped — and deliberately so: enabling that seam on production
+  // to satisfy a test would be a security change. Only unauthenticated specs can run externally.
+  globalSetup: EXTERNAL_BASE_URL ? undefined : "./e2e/global-setup.ts",
   use: { baseURL, headless: true, trace: "off" },
   projects: [
     // Public flows — no session.
@@ -62,7 +71,8 @@ export default defineConfig({
   // Production build served by the `next` binary directly (Playwright prepends node_modules/.bin
   // to PATH, so `next` resolves to apps/web's copy). NODE_ENV stays "production" and the
   // fail-closed E2E seam is enabled only for this run.
-  webServer: {
+  // Skipped entirely when E2E_BASE_URL targets an already-deployed environment.
+  webServer: EXTERNAL_BASE_URL ? undefined : {
     command: `next start -p ${PORT}`,
     url: `${baseURL}/api/health`,
     reuseExistingServer: false,
