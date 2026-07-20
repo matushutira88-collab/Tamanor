@@ -92,6 +92,35 @@ async function run() {
     console.log("Deterministic protection score");
     const s1 = accountProtectionScore(vig); const s2 = accountProtectionScore(vig);
     check("score is deterministic + 0..100 + explainable", s1.score === s2.score && s1.score >= 0 && s1.score <= 100 && s1.components.length === 7);
+
+    // V1.67.1 — brandWhere (real-mode scope) is applied EXACTLY ONCE, on the RIGHT scope. One tenant, TWO
+    // brands: default (no brandWhere) counts both; a per-brand scope counts only that brand (no cross-brand).
+    console.log("brandWhere scope (real-mode)");
+    const c1 = await systemDb.brand.create({ data: { tenantId: A.t.id, name: `DmBc1${sfx}` } });
+    const c2 = await systemDb.brand.create({ data: { tenantId: A.t.id, name: `DmBc2${sfx}` } });
+    const cAcc1 = await systemDb.connectedAccount.create({ data: { tenantId: A.t.id, brandId: c1.id, platform: "facebook_page" as never, status: "active", mode: "read_only", externalId: `DM_c1_${sfx}`, health: "healthy" as never, tokenHealth: "ok", connectionStatus: "connected", lastSuccessfulSyncAt: IN } });
+    const cAcc2 = await systemDb.connectedAccount.create({ data: { tenantId: A.t.id, brandId: c2.id, platform: "instagram_business" as never, status: "active", mode: "read_only", externalId: `DM_c2_${sfx}`, health: "healthy" as never, tokenHealth: "ok", connectionStatus: "connected", lastSuccessfulSyncAt: IN } });
+    const mkOn = async (brandId: string, acc: { id: string; platform: unknown }, risk: string) => {
+      const ci = await systemDb.contentItem.create({ data: { tenantId: A.t.id, brandId, connectedAccountId: acc.id, platform: acc.platform as never, kind: "comment", externalId: `C_${randomUUID()}`, text: "x", publishedAt: IN, ingestedAt: IN } });
+      await systemDb.reputationItem.create({ data: { tenantId: A.t.id, brandId, platform: acc.platform as never, contentItemId: ci.id, status: "classified", riskLevel: risk as never, riskCategories: [], createdAt: IN } });
+    };
+    await mkOn(c1.id, cAcc1, "high"); await mkOn(c1.id, cAcc1, "high"); // brand c1: 2 risk
+    await mkOn(c2.id, cAcc2, "critical");                                // brand c2: 1 risk
+    const scopeC1 = { brandId: { in: [c1.id] } };
+    const scopeC2 = { brandId: { in: [c2.id] } };
+
+    const both = await getDashboardKpis(A.t.id, SINCE); // default {} → all brands (a + c1 + c2)
+    const onlyC1 = await getDashboardKpis(A.t.id, SINCE, scopeC1);
+    const onlyC2 = await getDashboardKpis(A.t.id, SINCE, scopeC2);
+    check("default (no brandWhere) counts ALL brands", both.riskComments === 3 + 2 + 1, `${both.riskComments}`); // a's 3 + c1's 2 + c2's 1
+    check("brandWhere scopes KPIs to exactly one brand (c1 → 2 risk, 2 analyzed)", onlyC1.riskComments === 2 && onlyC1.analyzedComments === 2, JSON.stringify(onlyC1));
+    check("brandWhere scopes KPIs to exactly one brand (c2 → 1 risk, 1 analyzed)", onlyC2.riskComments === 1 && onlyC2.analyzedComments === 1, JSON.stringify(onlyC2));
+    check("no cross-brand leak: c1 + c2 scoped sums do not exceed the whole", onlyC1.analyzedComments + onlyC2.analyzedComments === 3);
+
+    const viewAll = await getWatchedAccountsView(A.t.id, SINCE);
+    const viewC1 = await getWatchedAccountsView(A.t.id, SINCE, scopeC1);
+    check("watched accounts: default shows all brands' accounts", viewAll.some((v) => v.id === cAcc1.id) && viewAll.some((v) => v.id === cAcc2.id));
+    check("watched accounts: brandWhere shows ONLY the scoped brand's account", viewC1.some((v) => v.id === cAcc1.id) && !viewC1.some((v) => v.id === cAcc2.id));
   } finally {
     for (const X of [A, B]) {
       await systemDb.actionQueueItem.deleteMany({ where: { tenantId: X.t.id } });

@@ -125,10 +125,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // the dashboard batch instead of serially before it. Fail-open inside loadOnboarding: onboarding must
   // never be able to take the dashboard down.
   const [kpi, deltas, categories, watched, trendRows, activity, onboarding] = await Promise.all([
-    getDashboardKpis(session.tenantId, since),
-    getDashboardKpiDeltas(session.tenantId, prevSince, since),
-    getRiskByCategory(session.tenantId, since),
-    getWatchedAccountsView(session.tenantId, since),
+    getDashboardKpis(session.tenantId, since, realMode.brandWhere),
+    getDashboardKpiDeltas(session.tenantId, prevSince, since, realMode.brandWhere),
+    getRiskByCategory(session.tenantId, since, realMode.brandWhere),
+    getWatchedAccountsView(session.tenantId, since, realMode.brandWhere),
     withTenant(session.tenantId, (db) => db.reputationItem.findMany({
       where: { ...where, riskLevel: { in: [RiskLevel.High, RiskLevel.Critical] }, createdAt: { gte: since } },
       select: { createdAt: true },

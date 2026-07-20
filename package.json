@@ -129,7 +129,7 @@
     "real:cleanup-demo": "pnpm --filter @guardora/db exec tsx scripts/cleanup-demo.ts",
     "real:reset-content": "pnpm --filter @guardora/db exec tsx scripts/reset-content.ts",
     "demo:seed": "SEED_DEMO=true pnpm --filter @guardora/db seed",
-    "realmode:test": "pnpm --filter @guardora/db exec tsx scripts/real-mode.test.ts",
+    "realmode:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/real-mode.test.ts",
     "reset:test": "pnpm --filter @guardora/db exec tsx scripts/reset-content.test.ts",
     "control:populate": "pnpm --filter @guardora/db exec tsx scripts/control-populate.ts",
     "controldb:test": "pnpm --filter @guardora/db exec tsx scripts/control-center.test.ts",

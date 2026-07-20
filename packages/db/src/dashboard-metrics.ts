@@ -18,15 +18,18 @@ export interface DashboardKpis {
 }
 
 /** The five headline KPIs, all within [since, now]. ONE round-trip (Promise.all) — no N+1. */
-export async function getDashboardKpis(tenantId: string, since: Date): Promise<DashboardKpis> {
+// V1.67.1 — `brandWhere` is the real-mode brand scope (empty `{}` in demo/normal mode → no-op; in
+// GUARDORA_DATA_MODE=real it restricts to real brands, `{ brandId: { in: realBrandIds } }`). Applying it here
+// keeps the headline KPIs consistent with the brand-scoped risk-trend chart (no cross-brand counting).
+export async function getDashboardKpis(tenantId: string, since: Date, brandWhere: Record<string, unknown> = {}): Promise<DashboardKpis> {
   return withTenant(tenantId, async (db) => {
     const [analyzedComments, riskComments, autoHidden, pending, accountsWithProblem] = await Promise.all([
-      db.reputationItem.count({ where: { tenantId, createdAt: { gte: since } } }),
-      db.reputationItem.count({ where: { tenantId, createdAt: { gte: since }, riskLevel: { in: ["high", "critical"] as never } } }),
-      db.actionQueueItem.count({ where: { tenantId, queueState: "executed", updatedAt: { gte: since } } }),
-      db.actionQueueItem.count({ where: { tenantId, queueState: "approval_required" } }),
+      db.reputationItem.count({ where: { tenantId, ...brandWhere, createdAt: { gte: since } } }),
+      db.reputationItem.count({ where: { tenantId, ...brandWhere, createdAt: { gte: since }, riskLevel: { in: ["high", "critical"] as never } } }),
+      db.actionQueueItem.count({ where: { tenantId, ...brandWhere, queueState: "executed", updatedAt: { gte: since } } }),
+      db.actionQueueItem.count({ where: { tenantId, ...brandWhere, queueState: "approval_required" } }),
       db.connectedAccount.count({ where: {
-        tenantId, monitoringEnabled: true, status: { not: "disconnected" },
+        tenantId, ...brandWhere, monitoringEnabled: true, status: { not: "disconnected" },
         OR: [
           { health: { in: ["error", "degraded"] as never } },
           { connectionStatus: { in: ["needs_reconnect", "invalid_token", "missing_permission"] } },
@@ -50,23 +53,23 @@ export interface DashboardKpiDeltas {
   autoHidden: number;
 }
 
-export async function getDashboardKpiDeltas(tenantId: string, prevSince: Date, since: Date): Promise<DashboardKpiDeltas> {
+export async function getDashboardKpiDeltas(tenantId: string, prevSince: Date, since: Date, brandWhere: Record<string, unknown> = {}): Promise<DashboardKpiDeltas> {
   return withTenant(tenantId, async (db) => {
     const prevWindow = { gte: prevSince, lt: since };
     const [analyzedComments, riskComments, autoHidden] = await Promise.all([
-      db.reputationItem.count({ where: { tenantId, createdAt: prevWindow } }),
-      db.reputationItem.count({ where: { tenantId, createdAt: prevWindow, riskLevel: { in: ["high", "critical"] as never } } }),
-      db.actionQueueItem.count({ where: { tenantId, queueState: "executed", updatedAt: prevWindow } }),
+      db.reputationItem.count({ where: { tenantId, ...brandWhere, createdAt: prevWindow } }),
+      db.reputationItem.count({ where: { tenantId, ...brandWhere, createdAt: prevWindow, riskLevel: { in: ["high", "critical"] as never } } }),
+      db.actionQueueItem.count({ where: { tenantId, ...brandWhere, queueState: "executed", updatedAt: prevWindow } }),
     ]);
     return { analyzedComments, riskComments, autoHidden };
   });
 }
 
 /** Risk comments grouped by category within [since, now]. Real taxonomy only (no invented mapping). */
-export async function getRiskByCategory(tenantId: string, since: Date): Promise<Array<{ category: string; count: number }>> {
+export async function getRiskByCategory(tenantId: string, since: Date, brandWhere: Record<string, unknown> = {}): Promise<Array<{ category: string; count: number }>> {
   return withTenant(tenantId, async (db) => {
     const rows = await db.reputationItem.findMany({
-      where: { tenantId, createdAt: { gte: since }, riskLevel: { in: ["high", "critical"] as never } },
+      where: { tenantId, ...brandWhere, createdAt: { gte: since }, riskLevel: { in: ["high", "critical"] as never } },
       select: { riskCategories: true },
     });
     const tally = new Map<string, number>();
@@ -132,11 +135,11 @@ function classifyProblem(a: { monitoringEnabled: boolean; health: string; connec
  * its own card (never merged). Batched: one accounts read + one tenant-defaults read + two groupBy
  * aggregations (comments + risk) for ALL accounts — no per-account N+1.
  */
-export async function getWatchedAccountsView(tenantId: string, since: Date): Promise<WatchedAccountView[]> {
+export async function getWatchedAccountsView(tenantId: string, since: Date, brandWhere: Record<string, unknown> = {}): Promise<WatchedAccountView[]> {
   return withTenant(tenantId, async (db) => {
     const [accounts, tenant, commentGroups, riskGroups] = await Promise.all([
       db.connectedAccount.findMany({
-        where: { tenantId, status: { not: "disconnected" } },
+        where: { tenantId, ...brandWhere, status: { not: "disconnected" } },
         select: {
           id: true, platform: true, externalName: true, externalId: true, status: true, health: true,
           connectionStatus: true, tokenHealth: true, monitoringEnabled: true, lastSuccessfulSyncAt: true, parentAccountId: true,
@@ -148,8 +151,8 @@ export async function getWatchedAccountsView(tenantId: string, since: Date): Pro
         defaultAutoHideEnabled: true, defaultAutoHideMode: true, defaultAutoHideRiskThreshold: true,
         defaultAutoHideCategories: true, defaultRequireManualApproval: true,
       } }),
-      db.contentItem.groupBy({ by: ["connectedAccountId"], where: { tenantId, ingestedAt: { gte: since } }, _count: { connectedAccountId: true } }),
-      db.contentItem.groupBy({ by: ["connectedAccountId"], where: { tenantId, ingestedAt: { gte: since }, reputationItem: { riskLevel: { in: ["high", "critical"] as never } } }, _count: { connectedAccountId: true } }),
+      db.contentItem.groupBy({ by: ["connectedAccountId"], where: { tenantId, ...brandWhere, ingestedAt: { gte: since } }, _count: { connectedAccountId: true } }),
+      db.contentItem.groupBy({ by: ["connectedAccountId"], where: { tenantId, ...brandWhere, ingestedAt: { gte: since }, reputationItem: { riskLevel: { in: ["high", "critical"] as never } } }, _count: { connectedAccountId: true } }),
     ]);
     const defaults = tenant ?? { defaultAutoHideEnabled: false, defaultAutoHideMode: "recommend", defaultAutoHideRiskThreshold: "high", defaultAutoHideCategories: [], defaultRequireManualApproval: false };
     const comments = new Map(commentGroups.map((g) => [g.connectedAccountId, g._count.connectedAccountId]));
