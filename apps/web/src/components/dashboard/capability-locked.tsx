@@ -14,6 +14,7 @@ const CAPABILITY_LABEL: Record<string, Record<Locale, string>> = {
   incidents: { en: "Incidents", sk: "Incidenty", de: "Vorfälle" },
   controlCenter: { en: "Control Center", sk: "Control Center", de: "Control Center" },
   advancedRules: { en: "Advanced rules", sk: "Pokročilé pravidlá", de: "Erweiterte Regeln" },
+  securitySuite: { en: "Security Suite", sk: "Bezpečnostný balík", de: "Security Suite" },
 };
 
 const T: Record<Locale, { title: string; body: (cap: string, plan: string) => string; cta: string; note: string; planName: Record<string, string> }> = {

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { DASHBOARD_NAV } from "@/lib/nav";
+import { can, Role } from "@guardora/core";
 import { requireVerifiedSession } from "@/server/auth";
 import { withTenant, getTenantBilling, getTenantEntitlements } from "@guardora/db";
 import { getLocale } from "@/i18n/locale-server";
@@ -76,6 +78,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const planKey = billing?.subscription?.plan ?? (billing?.billingStatus === "no_subscription" ? null : billing?.plan) ?? null;
   const planName = planKey ? planKey.charAt(0).toUpperCase() + planKey.slice(1) : undefined;
 
+  // S0 — RBAC nav gate computed server-side (keeps permission logic + @guardora/core
+  // out of the client bundle). Items whose requiredPermission the role lacks are
+  // hidden from the sidebar; the page still enforces access authoritatively.
+  const deniedNavHrefs = DASHBOARD_NAV
+    .filter((n) => n.requiredPermission && !can(session.role as Role, n.requiredPermission))
+    .map((n) => n.href);
+
   logPhase({ traceId, phase: "SHELL_RENDER_STARTED", success: true, userId: session.userId, tenantId: session.tenantId });
   // Server data bootstrap is done; the client mount marker (DASHBOARD_CLIENT_MOUNTED) confirms hydration.
   logPhase({ traceId, phase: "DASHBOARD_BOOTSTRAP_COMPLETED", success: true, userId: session.userId, tenantId: session.tenantId });
@@ -96,6 +105,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       locale={locale}
       navLabels={dict.dashboardNav}
       sidebarStrings={dict.sidebar}
+      deniedNavHrefs={deniedNavHrefs}
     >
       <StateBanner accessState={billing?.accessState ?? "full_access"} billingStatus={billing?.billingStatus ?? "no_subscription"} trialDaysLeft={trialDaysLeft} locale={locale} />
       {children}

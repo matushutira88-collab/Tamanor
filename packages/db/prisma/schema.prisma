@@ -419,6 +419,11 @@ model Tenant {
   // V1.45C1 — durable tenant link for matched raw webhook events (explicit purge on deletion).
   webhookEvents            WebhookEvent[]
 
+  // S0 — Security Suite (detection & response only; no new platform-mutation power).
+  securityScoreSnapshots   SecurityScoreSnapshot[]
+  securityDetections       SecurityDetection[]
+  brandProtectionCases     BrandProtectionCase[]
+
   @@map("tenants")
 }
 
@@ -556,6 +561,11 @@ model Brand {
   brandRules        BrandRule[]
   reportSnapshots   ReportSnapshot[]
   liveSafety        BrandLiveSafetySettings?
+
+  // S0 — Security Suite (per-brand security signals; cascade with the brand).
+  securityScoreSnapshots SecurityScoreSnapshot[]
+  securityDetections     SecurityDetection[]
+  brandProtectionCases   BrandProtectionCase[]
 
   @@index([tenantId])
   @@map("brands")
@@ -1486,6 +1496,97 @@ model ReportSnapshot {
   @@index([tenantId])
   @@index([brandId, periodEnd])
   @@map("report_snapshots")
+}
+
+// ===========================================================================
+// Security Suite (S0 foundations) — detection & response only. No model here
+// grants a new platform-mutation capability. Every table is tenant-scoped and
+// added to the RLS strict-table policy in the accompanying migration. String
+// columns (scope/kind/subjectType/status/source) mirror TS enums in
+// @guardora/core `security.ts` (documented allowed values), matching the
+// Incident model's pragmatic string convention; reused Prisma enums (RiskLevel,
+// Platform) keep severity/platform type-safe.
+// ===========================================================================
+
+// Composite (append-only) posture score history, per tenant / brand / account.
+// Live score is computed on demand; the worker persists periodic snapshots so
+// trends survive. `subscores`/`inputs` carry the explainable breakdown.
+model SecurityScoreSnapshot {
+  id         String   @id @default(cuid())
+  tenantId   String
+  brandId    String?
+  scope      String // tenant | brand | account (SecurityScoreScope)
+  subjectId  String? // brandId or connectedAccountId when scope != tenant
+  score      Int // 0..100 composite
+  subscores  Json // { access, connector, coverage, response, compliance }
+  inputs     Json? // evidence snapshot for explainability (PII-minimal)
+  computedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand  Brand? @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, scope, computedAt])
+  @@map("security_score_snapshots")
+}
+
+// Shared detection ledger for Account Takeover (S2) and Brand Protection (S4).
+// INVARIANT: a detection never asserts a confirmed compromise. `severity` is a
+// RiskLevel and the item is phrased as "possible account takeover"; detectors
+// only ever create rows in `open`. Only a human review moves status to
+// `confirmed`/`dismissed`/`resolved`.
+model SecurityDetection {
+  id              String    @id @default(cuid())
+  tenantId        String
+  brandId         String?
+  subjectType     String // user | connected_account | brand (SecurityDetectionSubjectType)
+  subjectId       String
+  kind            String // SecurityDetectionKind (new_device, breach_exposure, mfa_disabled, ...)
+  severity        RiskLevel @default(low)
+  status          String    @default("open") // open | acknowledged | dismissed | confirmed | resolved
+  evidence        Json? // PII-minimal signal evidence (never tokens/secrets)
+  detectedByEngine String? // detector/engine version for auditability
+  detectedAt      DateTime  @default(now())
+  reviewedByUserId String?
+  reviewedAt      DateTime?
+  resolvedAt      DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand  Brand? @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, status, detectedAt])
+  @@index([tenantId, subjectType, subjectId])
+  @@map("security_detections")
+}
+
+// Brand-abuse / impersonation case register (S4). Sources are sanctioned only:
+// inbound classified content, manual reporting, or an official API signal — no
+// scraping. Escalatable to an Incident (S3).
+model BrandProtectionCase {
+  id             String    @id @default(cuid())
+  tenantId       String
+  brandId        String
+  kind           String // impersonation | handle_squat | counterfeit | phishing | brand_attack (BrandProtectionKind)
+  platform       Platform?
+  subjectHandle  String?
+  evidenceUrl    String?
+  evidence       Json?
+  source         String // detected | user_reported | api (BrandProtectionSource)
+  severity       RiskLevel @default(medium)
+  status         String    @default("open") // open | investigating | reported_to_platform | resolved | dismissed
+  linkedDetectionId String?
+  linkedIncidentId  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  resolvedAt     DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand  Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, status, createdAt])
+  @@map("brand_protection_cases")
 }
 
 enum LeadStatus {

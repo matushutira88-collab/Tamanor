@@ -31,6 +31,17 @@ export enum Permission {
   // Audit & reports
   AuditView = "audit:view",
   ReportView = "report:view",
+  // Security Suite (S0) — read = Analyst+; manage = Admin+/Owner. Plan-gated
+  // separately by the `security_suite` entitlement. Detection & response only:
+  // these never grant new platform-mutation power.
+  /** View Security Center, Security Score, and detections. */
+  SecurityView = "security:view",
+  /** Acknowledge/dismiss/confirm detections, manage brand-protection cases. */
+  SecurityManage = "security:manage",
+  /** View security incidents and their timeline. */
+  IncidentView = "incident:view",
+  /** Manage incident lifecycle (assign, transition, resolve). */
+  IncidentManage = "incident:manage",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -61,6 +72,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.RuleManage,
     Permission.AuditView,
     Permission.ReportView,
+    Permission.SecurityView,
+    Permission.SecurityManage,
+    Permission.IncidentView,
+    Permission.IncidentManage,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -73,6 +88,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.RuleManage,
     Permission.AuditView,
     Permission.ReportView,
+    Permission.SecurityView,
+    Permission.IncidentView,
   ],
   [Role.Reviewer]: [
     Permission.BrandView,
@@ -85,6 +102,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.RuleView,
     Permission.AuditView,
     Permission.ReportView,
+    Permission.SecurityView,
+    Permission.IncidentView,
   ],
   [Role.Viewer]: [
     Permission.BrandView,

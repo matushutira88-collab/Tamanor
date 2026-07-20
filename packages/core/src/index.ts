@@ -31,5 +31,6 @@ export * from "./rate-limit-store";
 export * from "./moderation";
 export * from "./brand-rule";
 export * from "./audit";
+export * from "./security";
 export * from "./usage-policy";
 export * from "./usage-pricing";

@@ -1,0 +1,30 @@
+# Local-only Postgres for Tamanor R&D. NOT for production. No cloud dependency.
+# Start:  docker compose -f docker-compose.local.yml up -d
+# Stop:   docker compose -f docker-compose.local.yml down
+# Wipe:   docker compose -f docker-compose.local.yml down -v
+#
+# Host port 5433 (avoids clashing with a system Postgres on 5432). DB "tamanor".
+# The superuser (postgres) is the schema OWNER used by migrations; the runtime
+# app role `tamanor_app` (NOSUPERUSER/NOBYPASSRLS) is created by the RLS
+# migration itself, so RLS is actually enforced when the app connects via
+# APP_DATABASE_URL.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tamanor-local-pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tamanor
+    ports:
+      - "5433:5432"
+    volumes:
+      - tamanor-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tamanor"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  tamanor-pg-data:
