@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  BILLING_PLANS, Permission, can,
+  BILLING_PLANS, Permission, can, planEntitlements,
   stripePriceAvailability, stripePriceKeyFor,
   type BillingInterval,
 } from "@guardora/core";
 import { getTenantBilling } from "@guardora/db";
 import { requireVerifiedSession } from "@/server/auth";
 import { getLocale } from "@/i18n/locale-server";
+import { formatNumber } from "@/lib/format";
 import type { Locale } from "@/i18n";
 import { startCheckout, openBillingPortal } from "./actions";
 import { resolveBillingCta } from "./cta";
@@ -57,7 +58,7 @@ type Copy = {
   ownerOnly: string;
   restricted: { title: string; body: string };
   pastDue: { title: string; body: string };
-  trial: { active: string; remaining: (n: number) => string; unlocked: string; ends: string; workspace: string };
+  trial: { sectionTitle: string; active: string; remaining: (n: number) => string; unlocked: string; ends: string; workspace: string; limitsHeading: string; choosePlan: string };
   wsStatus: Record<string, string>;
   summary: { title: string; billingCycle: string; nextBilling: string; invoiceStatus: string; workspaceId: string; trialRemaining: string };
   invoices: { title: string; body: string };
@@ -87,7 +88,7 @@ const C: Record<Locale, Copy> = {
     ownerOnly: "Only the workspace owner can change the plan.",
     restricted: { title: "Access restricted", body: "Your trial or subscription has ended. Choose a plan to restore full access. Your data is safe and your accounts stay connected." },
     pastDue: { title: "Payment failed", body: "We couldn't process your last payment. Please update your payment method to keep full access." },
-    trial: { active: "Free trial active", remaining: (n) => `${n} ${n === 1 ? "day" : "days"} remaining`, unlocked: "Everything is unlocked during your trial. No payment will be charged until the trial ends.", ends: "Trial ends", workspace: "Workspace" },
+    trial: { sectionTitle: "Free trial", active: "Free trial active", remaining: (n) => `${n} ${n === 1 ? "day" : "days"} remaining`, unlocked: "Everything is unlocked during your trial. No payment will be charged until the trial ends.", ends: "Trial ends", workspace: "Workspace", limitsHeading: "What's included in your trial", choosePlan: "Choose a plan" },
     wsStatus: { full_access: "Active", restricted: "Restricted", grace_period: "Grace period", suspended: "Suspended" },
     summary: { title: "Subscription", billingCycle: "Billing cycle", nextBilling: "Next billing date", invoiceStatus: "Invoice status", workspaceId: "Workspace ID", trialRemaining: "Trial remaining" },
     invoices: { title: "No invoices yet", body: "Your first invoice will appear after your first successful subscription payment." },
@@ -132,7 +133,7 @@ const C: Record<Locale, Copy> = {
     ownerOnly: "Plán môže meniť len vlastník pracovného priestoru.",
     restricted: { title: "Prístup obmedzený", body: "Vaša skúšobná verzia alebo predplatné skončilo. Vyberte plán a obnovte plný prístup. Vaše dáta sú v bezpečí a účty zostávajú pripojené." },
     pastDue: { title: "Platba zlyhala", body: "Poslednú platbu sa nepodarilo spracovať. Aktualizujte platobnú metódu, aby ste si zachovali plný prístup." },
-    trial: { active: "Skúšobná verzia aktívna", remaining: (n) => `zostáva ${n} ${n === 1 ? "deň" : n < 5 ? "dni" : "dní"}`, unlocked: "Počas skúšobnej verzie máte odomknuté všetko. Kým sa neskončí, nič sa neúčtuje.", ends: "Skúšobná verzia končí", workspace: "Pracovný priestor" },
+    trial: { sectionTitle: "Skúšobné obdobie", active: "Skúšobná verzia aktívna", remaining: (n) => `zostáva ${n} ${n === 1 ? "deň" : n < 5 ? "dni" : "dní"}`, unlocked: "Počas skúšobnej verzie máte odomknuté všetko. Kým sa neskončí, nič sa neúčtuje.", ends: "Skúšobná verzia končí", workspace: "Pracovný priestor", limitsHeading: "Čo je v skúšobnom období zahrnuté", choosePlan: "Vybrať predplatné" },
     wsStatus: { full_access: "Aktívny", restricted: "Obmedzený", grace_period: "Ochranná lehota", suspended: "Pozastavený" },
     summary: { title: "Predplatné", billingCycle: "Fakturačný cyklus", nextBilling: "Ďalšia platba", invoiceStatus: "Stav faktúry", workspaceId: "ID pracovného priestoru", trialRemaining: "Zostáva skúšobná verzia" },
     invoices: { title: "Zatiaľ žiadne faktúry", body: "Prvá faktúra sa zobrazí po prvej úspešnej platbe predplatného." },
@@ -177,7 +178,7 @@ const C: Record<Locale, Copy> = {
     ownerOnly: "Nur der Workspace-Inhaber kann den Tarif ändern.",
     restricted: { title: "Zugriff eingeschränkt", body: "Ihre Testphase oder Ihr Abo ist beendet. Wählen Sie einen Tarif, um den vollen Zugriff wiederherzustellen. Ihre Daten sind sicher und Ihre Konten bleiben verbunden." },
     pastDue: { title: "Zahlung fehlgeschlagen", body: "Ihre letzte Zahlung konnte nicht verarbeitet werden. Bitte aktualisieren Sie Ihre Zahlungsmethode." },
-    trial: { active: "Testphase aktiv", remaining: (n) => `noch ${n} ${n === 1 ? "Tag" : "Tage"}`, unlocked: "Während der Testphase ist alles freigeschaltet. Bis zum Ende der Testphase wird nichts berechnet.", ends: "Testphase endet", workspace: "Workspace" },
+    trial: { sectionTitle: "Testphase", active: "Testphase aktiv", remaining: (n) => `noch ${n} ${n === 1 ? "Tag" : "Tage"}`, unlocked: "Während der Testphase ist alles freigeschaltet. Bis zum Ende der Testphase wird nichts berechnet.", ends: "Testphase endet", workspace: "Workspace", limitsHeading: "In deiner Testphase enthalten", choosePlan: "Tarif wählen" },
     wsStatus: { full_access: "Aktiv", restricted: "Eingeschränkt", grace_period: "Kulanzfrist", suspended: "Ausgesetzt" },
     summary: { title: "Abo", billingCycle: "Abrechnungszyklus", nextBilling: "Nächste Abrechnung", invoiceStatus: "Rechnungsstatus", workspaceId: "Workspace-ID", trialRemaining: "Verbleibende Testphase" },
     invoices: { title: "Noch keine Rechnungen", body: "Ihre erste Rechnung erscheint nach Ihrer ersten erfolgreichen Abo-Zahlung." },
@@ -268,6 +269,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
   const priceFor = (planId: keyof typeof BILLING_PLANS) => (interval === "yearly" ? BILLING_PLANS[planId].priceYearly : BILLING_PLANS[planId].priceMonthly);
   const isTrialActive = billingStatus === "no_subscription" && !!trialEndsAt && trialDaysLeft > 0 && accessState !== "restricted";
+  // V1.65 — trial-window entitlements shown in the isolated trial section (the SAME central catalogue the
+  // server enforces). Rendered only inside the trial section; presentation only.
+  const trialEnt = planEntitlements(currentPlanId);
+  const fmtLimit = (n: number | null) => (n === null ? "∞" : formatNumber(n, locale === "en" ? "en-US" : locale === "de" ? "de-DE" : "sk-SK"));
   const invoiceLabel = sub?.latestInvoiceStatus ? (c.invoiceLabels[sub.latestInvoiceStatus] ?? sub.latestInvoiceStatus) : null;
 
   const btnBase = "block w-full rounded-xl px-4 py-2.5 text-center text-sm font-semibold transition motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)]";
@@ -300,13 +305,15 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           <p className="mt-1 text-sm text-[var(--color-muted)]">{c.pastDue.body}</p>
         </section>
       ) : isTrialActive ? (
-        <section className="mt-6 overflow-hidden rounded-2xl border border-[var(--color-brand)] bg-gradient-to-br from-[var(--color-brand-soft)] to-[var(--color-surface)] p-5 shadow-sm">
+        // ── Isolated "Free trial" section — NOT a paid subscription. Days left, end date, included
+        //    limits, and a Choose-a-plan CTA. Hidden entirely once a paid plan is active (below). ──
+        <section className="mt-6 overflow-hidden rounded-2xl border border-[var(--color-brand)] bg-gradient-to-br from-[var(--color-brand-soft)] to-[var(--color-surface)] p-5 shadow-sm" aria-label={c.trial.sectionTitle}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full bg-[var(--color-brand)] text-[var(--color-brand-fg)]">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
               </span>
-              <p className="text-base font-semibold text-[var(--color-brand)]">{c.trial.active}</p>
+              <h2 className="text-base font-semibold text-[var(--color-brand)]">{c.trial.sectionTitle}</h2>
             </div>
             <p className="text-sm font-semibold">{c.trial.remaining(trialDaysLeft)}</p>
           </div>
@@ -314,16 +321,20 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]" role="progressbar" aria-valuenow={trialDaysLeft} aria-valuemin={0} aria-valuemax={trialTotalDays} aria-label={c.trial.remaining(trialDaysLeft)}>
             <div className="h-full rounded-full bg-[var(--color-brand)]" style={{ width: `${trialRemainPct}%` }} />
           </div>
-          <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Info label={c.currentPlan}>{BILLING_PLANS[currentPlanId as keyof typeof BILLING_PLANS]?.name ?? currentPlanId}</Info>
+          <p className="mt-4 text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">{c.trial.limitsHeading}</p>
+          <dl className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            <Info label={c.compareRows.protectedBrands}>{fmtLimit(trialEnt.maxBrands)}</Info>
+            <Info label={c.compareRows.monthlyComments}>{fmtLimit(trialEnt.monthlyProcessedItems)}</Info>
+            <Info label={c.compareRows.connectedAccounts}>{fmtLimit(trialEnt.maxConnectedAccounts)}</Info>
             <Info label={c.trial.ends}>{fmtDate(trialEndsAt, locale)}</Info>
-            <Info label={c.trial.workspace}>{session.tenantName}</Info>
             <Info label={c.status}><span className="text-[var(--color-brand)]">{c.wsStatus[accessState] ?? accessState}</span></Info>
           </dl>
+          <a href="#plans" className={`${btnCheckout} mt-5 sm:w-auto sm:px-6`}>{c.trial.choosePlan}</a>
         </section>
       ) : null}
 
-      {/* ── Phase 5: subscription summary (premium info cards) ── */}
+      {/* ── Phase 5: subscription summary — hidden during an active trial (trial is its own section). ── */}
+      {!isTrialActive ? (
       <section className="mt-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5" aria-label={c.summary.title}>
         <h2 className="text-sm font-semibold">{c.summary.title}</h2>
         <dl className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
@@ -347,9 +358,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           </div>
         ) : null}
       </section>
+      ) : null}
 
-      {/* ── Billing interval toggle ── */}
-      <div className="mt-8 flex items-center justify-center gap-2 text-sm" role="group" aria-label={c.interval}>
+      {/* ── Billing interval toggle + pricing (anchor target for the trial "Choose a plan" CTA) ── */}
+      <div id="plans" className="mt-8 flex items-center justify-center gap-2 text-sm scroll-mt-6" role="group" aria-label={c.interval}>
         <Link href="/dashboard/billing?interval=monthly" aria-current={interval === "monthly"} className={`rounded-lg px-3 py-1.5 transition motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${interval === "monthly" ? "bg-[var(--color-brand)] text-[var(--color-brand-fg)]" : "border border-[var(--color-border)] hover:bg-[var(--color-surface-2)]"}`}>{c.monthly}</Link>
         <Link href="/dashboard/billing?interval=yearly" aria-current={interval === "yearly"} className={`rounded-lg px-3 py-1.5 transition motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${interval === "yearly" ? "bg-[var(--color-brand)] text-[var(--color-brand-fg)]" : "border border-[var(--color-border)] hover:bg-[var(--color-surface-2)]"}`}>{c.yearly} <span className="text-xs opacity-80">· {c.yearlyHint}</span></Link>
       </div>
