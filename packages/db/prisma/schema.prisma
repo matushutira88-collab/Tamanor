@@ -846,6 +846,9 @@ model ContentItem {
   @@index([tenantId])
   @@index([brandId])
   @@index([platform])
+  // V1.67 — dashboard/accounts metrics group content by account over a recent window
+  // (WHERE tenantId + ingestedAt >= since). Without this the groupBy scans the tenant's whole history.
+  @@index([tenantId, ingestedAt])
   @@map("content_items")
 }
 
@@ -1468,6 +1471,9 @@ model AuditLog {
 
   @@index([tenantId, createdAt])
   @@index([event])
+  // V1.67 — the inbox per-item activity timeline queries by (targetType, targetId IN pageIds); without
+  // this it walks the tenant's audit history newest-first and filters.
+  @@index([tenantId, targetType, targetId])
   @@map("audit_logs")
 }
 
