@@ -12,7 +12,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  applyOnboardingAction, acknowledgeOnboarding, getOnboardingState, maybeAutoComplete,
+  applyOnboardingAction, acknowledgeOnboarding, resolveOnboarding,
   OnboardingTransitionError, OnboardingRequirementsError,
   type OnboardingAction, type OnboardingState,
 } from "@guardora/db";
@@ -69,17 +69,17 @@ export async function acknowledgeWelcome(): Promise<void> {
  */
 export async function loadOnboarding(tenantId: string, userId: string): Promise<OnboardingState | null> {
   try {
-    if (await maybeAutoComplete(tenantId, userId)) {
-      const done = await getOnboardingState(tenantId, userId);
+    // V1.67.1 — one round trip (facts derived once) instead of maybeAutoComplete + getOnboardingState.
+    const { state, autoCompleted } = await resolveOnboarding(tenantId, userId);
+    if (autoCompleted && state) {
       emitOpsEvent("onboarding.completed", {
         userId, tenantId,
-        onboardingVersion: done?.version ?? 0,
-        completedSteps: done?.completedCount ?? 0,
-        totalSteps: done?.totalCount ?? 0,
+        onboardingVersion: state.version ?? 0,
+        completedSteps: state.completedCount ?? 0,
+        totalSteps: state.totalCount ?? 0,
       });
-      return done;
     }
-    return await getOnboardingState(tenantId, userId);
+    return state;
   } catch {
     return null;
   }
