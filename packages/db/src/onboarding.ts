@@ -27,9 +27,28 @@ export const ONBOARDING_STEPS = [
 ] as const;
 export type OnboardingStepKey = (typeof ONBOARDING_STEPS)[number];
 
-/** Steps that must be done before a manual "Finish" is offered. The trailing steps depend on provider
- *  data arriving, which a user cannot force, so they never block completion. */
-export const REQUIRED_STEPS: readonly OnboardingStepKey[] = ["workspace", "connect_account", "enable_monitoring"];
+/**
+ * COMPLETION MODEL — steps 1..5 are REQUIRED; `first_review` is a RECOMMENDED follow-up.
+ *
+ * Reviewing a risk item cannot be forced by the user: a healthy, well-behaved audience may simply never
+ * produce one. Making it required would leave such a workspace permanently "setting up". So the five
+ * technical steps gate completion, and `first_review` stays visible as a follow-up until it happens.
+ */
+export const REQUIRED_STEPS: readonly OnboardingStepKey[] = [
+  "workspace", "connect_account", "protect_brand", "enable_monitoring", "first_sync",
+];
+/** Shown and tracked, but never blocks completion. */
+export const RECOMMENDED_STEPS: readonly OnboardingStepKey[] = ["first_review"];
+
+/**
+ * AuditLog events that prove THIS user actually opened or acted on a risk item. Existing server-written
+ * evidence (`actorUserId` + `targetType:"reputation_item"`) — no new marker column is needed, and a bare
+ * client click can never satisfy it.
+ */
+export const REVIEW_AUDIT_EVENTS = [
+  "inbox.mark_read", "inbox.set_workflow_status", "inbox.set_priority",
+  "inbox.assign", "inbox.archive", "inbox.note_add",
+] as const;
 
 /** Keys accepted inside `onboardingChecklist`. Anything else is dropped before persisting. */
 export const ACK_KEYS = ["welcome_seen", "finish_ack"] as const;
@@ -38,7 +57,7 @@ export type AckKey = (typeof ACK_KEYS)[number];
 export interface OnboardingChecklistItem {
   key: OnboardingStepKey;
   done: boolean;
-  /** True when the step is one of REQUIRED_STEPS. */
+  /** True when the step is one of REQUIRED_STEPS (i.e. it gates completion). */
   required: boolean;
 }
 
@@ -51,15 +70,17 @@ export interface OnboardingState {
   dismissedAt: Date | null;
   acknowledgements: Record<string, boolean>;
   checklist: OnboardingChecklistItem[];
-  /** Number of derived steps done. */
+  /** REQUIRED steps done (progress is measured over the required set, not all six). */
   completedCount: number;
   totalCount: number;
-  /** 0-100, rounded. */
+  /** 0-100, rounded, over the REQUIRED steps. */
   progressPct: number;
-  /** The first not-done step, or null when everything is done. */
+  /** The next action to recommend: first unfinished required step, else the pending follow-up. */
   nextStep: OnboardingStepKey | null;
-  /** True when every REQUIRED_STEPS entry is done (a manual "Finish" may be offered). */
+  /** True when every REQUIRED_STEPS entry is done (completion is allowed). */
   canFinish: boolean;
+  /** Recommended-but-unfinished steps (currently: first_review) — never blocks completion. */
+  recommendedPending: OnboardingStepKey[];
   /** True when the checklist surface should render for this member. */
   shouldShow: boolean;
 }
@@ -91,29 +112,39 @@ export function buildChecklist(f: DerivedFacts): OnboardingChecklistItem[] {
   return ONBOARDING_STEPS.map((key) => ({ key, done: done[key], required: REQUIRED_STEPS.includes(key) }));
 }
 
-/** PURE: progress + next recommended action from a checklist. */
+/**
+ * PURE: progress + next recommended action. Progress is measured over the REQUIRED steps (so a workspace
+ * with no risk item yet can still reach 100%); the recommended follow-up is reported separately.
+ */
 export function summarize(checklist: OnboardingChecklistItem[]): {
   completedCount: number; totalCount: number; progressPct: number;
   nextStep: OnboardingStepKey | null; canFinish: boolean;
+  recommendedPending: OnboardingStepKey[];
 } {
-  const completedCount = checklist.filter((c) => c.done).length;
-  const totalCount = checklist.length;
+  const required = checklist.filter((c) => c.required);
+  const completedCount = required.filter((c) => c.done).length;
+  const totalCount = required.length;
   return {
     completedCount,
     totalCount,
     progressPct: totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100),
-    nextStep: checklist.find((c) => !c.done)?.key ?? null,
-    canFinish: checklist.filter((c) => c.required).every((c) => c.done),
+    // Recommend the first unfinished REQUIRED step; once those are done, point at the follow-up.
+    nextStep: required.find((c) => !c.done)?.key ?? checklist.find((c) => !c.done)?.key ?? null,
+    canFinish: required.every((c) => c.done),
+    recommendedPending: checklist.filter((c) => !c.required && !c.done).map((c) => c.key),
   };
 }
 
-/** The allowed state machine. `completed` is TERMINAL except for an explicit restart. */
+/**
+ * The allowed state machine. `completed` is TERMINAL except for an explicit restart (which targets
+ * `in_progress`). `dismissed -> completed` is additionally gated on the required steps actually being
+ * satisfied — enforced in `applyOnboardingAction`, since a pure transition table cannot see live state.
+ */
 const TRANSITIONS: Record<OnboardingStatusValue, readonly OnboardingStatusValue[]> = {
   not_started: ["in_progress", "dismissed", "completed"],
   in_progress: ["in_progress", "dismissed", "completed"],
   dismissed: ["in_progress", "completed"],
-  // Only `restartOnboarding` may leave `completed`, and it targets not_started explicitly.
-  completed: ["not_started"],
+  completed: ["in_progress"],
 };
 
 /** PURE: is this transition allowed? Used to reject invalid/forged state changes server-side. */
@@ -148,23 +179,43 @@ export function shouldShowOnboarding(status: OnboardingStatusValue): boolean {
 // DB access — always tenant-scoped, always ALSO user-scoped.
 // ---------------------------------------------------------------------------------------------------
 
-/** Derive every checklist fact from live system state inside one tenant transaction. */
-export async function deriveFacts(db: TenantTx, tenantId: string): Promise<DerivedFacts> {
-  const [connected, brandsWithAccount, monitored, synced, reviewed] = await Promise.all([
-    db.connectedAccount.count({ where: { tenantId, status: { not: "disconnected" } } }),
+/**
+ * Derive every checklist fact from live system state inside one tenant transaction.
+ *
+ * `userId` matters for the review step only: onboarding is per-member, so "I reviewed a risk item" must be
+ * evidence that THIS member did so — not that a colleague did.
+ */
+export async function deriveFacts(db: TenantTx, tenantId: string, userId: string): Promise<DerivedFacts> {
+  const live = { tenantId, status: { not: "disconnected" as const } };
+  const [connected, brandsWithAccount, monitored, syncedOk, reviewAudits, reviewDecisions] = await Promise.all([
+    db.connectedAccount.count({ where: live }),
     db.brand.count({ where: { tenantId, connectedAccounts: { some: { status: { not: "disconnected" } } } } }),
-    db.connectedAccount.count({ where: { tenantId, monitoringEnabled: true, status: { not: "disconnected" } } }),
-    db.connectedAccount.count({ where: { tenantId, lastSuccessfulSyncAt: { not: null } } }),
-    // A real human review: the item was opened (isRead) or moved out of the `new` workflow state.
-    db.reputationItem.count({ where: { tenantId, OR: [{ isRead: true }, { inboxWorkflowStatus: { not: "new" } }] } }),
+    db.connectedAccount.count({ where: { ...live, monitoringEnabled: true } }),
+    // "first sync completed" == syncStateOf(...) === "ok" (see dashboard-metrics): a real (non-test)
+    // account that has a successful sync AND is not currently in a failed-attempt state.
+    db.connectedAccount.count({
+      where: {
+        tenantId,
+        status: { notIn: ["disconnected", "mock_connected"] },
+        mode: { not: "placeholder" },
+        lastSuccessfulSyncAt: { not: null },
+        NOT: { AND: [{ health: "error" }, { lastSyncedAt: { not: null } }] },
+      },
+    }),
+    // Server-written proof that this member opened/acted on a risk item. A client click alone cannot
+    // create these rows — they are written inside the tenant transaction by the inbox mutations.
+    db.auditLog.count({
+      where: { tenantId, actorUserId: userId, targetType: "reputation_item", event: { in: [...REVIEW_AUDIT_EVENTS] } },
+    }),
+    db.moderationDecision.count({ where: { tenantId, reviewerUserId: userId, reviewedAt: { not: null } } }),
   ]);
   return {
     hasWorkspace: true, // a membership in this tenant is the workspace itself
     hasConnectedAccount: connected > 0,
     hasProtectedBrand: brandsWithAccount > 0,
     hasMonitoringEnabled: monitored > 0,
-    hasFirstSync: synced > 0,
-    hasFirstReview: reviewed > 0,
+    hasFirstSync: syncedOk > 0,
+    hasFirstReview: reviewAudits > 0 || reviewDecisions > 0,
   };
 }
 
@@ -210,7 +261,7 @@ export async function getOnboardingState(tenantId: string, userId: string): Prom
   return withTenant(tenantId, async (db) => {
     const row = await readRow(db, tenantId, userId);
     if (!row) return null; // not a member of this tenant
-    return toState(row, await deriveFacts(db, tenantId));
+    return toState(row, await deriveFacts(db, tenantId, userId));
   });
 }
 
@@ -221,8 +272,17 @@ const TARGET: Record<OnboardingAction, OnboardingStatusValue> = {
   dismiss: "dismissed",
   resume: "in_progress",
   complete: "completed",
-  restart: "not_started",
+  // A restart drops the member back INTO the flow (not to not_started), so the checklist is immediately
+  // visible again rather than waiting for another welcome screen.
+  restart: "in_progress",
 };
+
+export class OnboardingRequirementsError extends Error {
+  constructor() {
+    super("onboarding_requirements_not_met");
+    this.name = "OnboardingRequirementsError";
+  }
+}
 
 /**
  * Apply an onboarding action for EXACTLY ONE member (tenantId + userId). Rejects invalid transitions.
@@ -238,28 +298,37 @@ export async function applyOnboardingAction(
 
     const from = row.onboardingStatus as OnboardingStatusValue;
     const to = TARGET[action];
+    // `restart` is the ONLY sanctioned way to leave `completed`; a plain resume must not reopen it.
+    if (from === "completed" && action !== "restart") throw new OnboardingTransitionError(from, to);
     if (!canTransition(from, to)) throw new OnboardingTransitionError(from, to);
+
+    const facts = await deriveFacts(db, tenantId, userId);
+    const summary = summarize(buildChecklist(facts));
+    // Completing from `dismissed` (or explicitly finishing at all) requires the REQUIRED steps to be real.
+    if (to === "completed" && !summary.canFinish) throw new OnboardingRequirementsError();
 
     const now = new Date();
     const data: Record<string, unknown> = { onboardingStatus: to };
     if (typeof step === "string") data.onboardingStep = step.slice(0, 64);
 
     if (to === "in_progress" && !row.onboardingStartedAt) data.onboardingStartedAt = now;
-    if (to === "completed") data.onboardingCompletedAt = now;
+    // completedAt is written ONCE — a later re-complete must not move the original timestamp.
+    if (to === "completed" && !row.onboardingCompletedAt) data.onboardingCompletedAt = now;
     if (to === "dismissed") data.onboardingDismissedAt = now;
     if (action === "restart") {
-      // A restart clears the previous run's outcome and bumps the version so analytics can tell runs apart.
+      // Clear the previous run's outcome and bump the version so analytics can tell runs apart. This
+      // touches ONLY onboarding columns — accounts, monitoring, sync and inbox data are never altered.
       data.onboardingStartedAt = now;
       data.onboardingCompletedAt = null;
       data.onboardingDismissedAt = null;
-      data.onboardingStep = null;
+      data.onboardingStep = summary.nextStep ?? ONBOARDING_STEPS[0];
       data.onboardingChecklist = null;
       data.onboardingVersion = row.onboardingVersion + 1;
     }
 
     await db.membership.updateMany({ where: { tenantId, userId }, data });
     const fresh = await readRow(db, tenantId, userId);
-    return fresh ? toState(fresh, await deriveFacts(db, tenantId)) : null;
+    return fresh ? toState(fresh, await deriveFacts(db, tenantId, userId)) : null;
   });
 }
 
@@ -274,7 +343,7 @@ export async function acknowledgeOnboarding(
     const acks = { ...sanitizeAcks(row.onboardingChecklist), [key]: value };
     await db.membership.updateMany({ where: { tenantId, userId }, data: { onboardingChecklist: acks } });
     const fresh = await readRow(db, tenantId, userId);
-    return fresh ? toState(fresh, await deriveFacts(db, tenantId)) : null;
+    return fresh ? toState(fresh, await deriveFacts(db, tenantId, userId)) : null;
   });
 }
 
@@ -288,7 +357,7 @@ export async function maybeAutoComplete(tenantId: string, userId: string): Promi
     if (!row) return false;
     const status = row.onboardingStatus as OnboardingStatusValue;
     if (status !== "in_progress" && status !== "not_started") return false;
-    const { canFinish } = summarize(buildChecklist(await deriveFacts(db, tenantId)));
+    const { canFinish } = summarize(buildChecklist(await deriveFacts(db, tenantId, userId)));
     if (!canFinish) return false;
     const res = await db.membership.updateMany({
       where: { tenantId, userId, onboardingStatus: { in: ["not_started", "in_progress"] } },

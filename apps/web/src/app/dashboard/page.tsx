@@ -7,6 +7,9 @@ import { KpiCard } from "@/components/dashboard/kpi-card";
 import { AccountCard } from "@/components/dashboard/account-card";
 import { ProtectionScore } from "@/components/dashboard/protection-score";
 import { AreaTrend } from "@/components/dashboard/trend-chart";
+import { OnboardingPanel } from "@/components/dashboard/onboarding-panel";
+import { loadOnboarding } from "./onboarding-actions";
+import { getDictionary } from "@/i18n";
 import { PLATFORM_META, Platform, RiskLevel } from "@guardora/core";
 import { requireSession } from "@/server/auth";
 import { getT } from "@/i18n/server";
@@ -108,6 +111,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const locale = await getLocale();
   const c = COPY[locale];
   const realMode = await getRealModeFilter(session.tenantId);
+  // V1.66 — this member's OWN onboarding (auto-completes first when every required step is real).
+  // Fail-open inside loadOnboarding: onboarding must never be able to take the dashboard down.
+  const onboarding = await loadOnboarding(session.tenantId, session.userId);
+  const dict = getDictionary(locale);
 
   const tfRaw = Number((await searchParams).tf);
   const tf: Tf = (TIMEFRAMES as readonly number[]).includes(tfRaw) ? (tfRaw as Tf) : 30;
@@ -148,6 +155,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         ) : null}
         <EmptyState title={t.ui.emptyDashboardTitle} body={t.ui.emptyDashboardBody} hint={t.ui.emptyDashboardHint}
           action={<Link href="/dashboard/accounts"><PrimaryButton type="button">{c.connect}</PrimaryButton></Link>} />
+        <OnboardingPanel state={onboarding} dict={dict} />
       </>
     );
   }
@@ -190,6 +198,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           🧪 <span className="font-medium">{t.dash.realTestMode}</span> · <span className="text-[var(--color-muted)]">{t.dash.realTestModeHint}</span>
         </div>
       ) : null}
+
+      {/* V1.66 — per-member setup surface: welcome dialog, live checklist, or a quiet resume entry.
+          Placed above the KPIs so the next action is the first thing a half-set-up member sees; it never
+          blocks the dashboard below it. */}
+      <OnboardingPanel state={onboarding} dict={dict} />
 
       {/* KPI cards — real numbers (getDashboardKpis), honest deltas on the three event metrics. */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

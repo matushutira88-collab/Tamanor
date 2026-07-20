@@ -94,6 +94,13 @@ export type OpsEvent =
   | "auth.turnstile_failed"
   | "auth.breached_password_blocked"
   | "auth.security_email_sent"
+  // V1.66 — PER-MEMBER onboarding lifecycle. Meta carries only userId, tenantId, the onboarding version
+  // and a numeric progress count — never a checklist payload, comment, message or e-mail content.
+  | "onboarding.started"
+  | "onboarding.dismissed"
+  | "onboarding.resumed"
+  | "onboarding.completed"
+  | "onboarding.restarted"
   // V1.51B — Google Workspace transactional email transport (never carry recipient, credential,
   // access/refresh token, body, action URL, raw Gmail response, or Google project/client id).
   | "email.send_succeeded"

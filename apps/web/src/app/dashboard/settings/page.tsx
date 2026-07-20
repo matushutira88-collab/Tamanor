@@ -3,6 +3,8 @@ import { Role } from "@guardora/core";
 import { getMetaConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { OnboardingSettingsCard } from "@/components/dashboard/onboarding-settings-card";
+import { loadOnboarding, resumeOnboarding, restartOnboarding } from "../onboarding-actions";
 import { DangerZone } from "@/components/dashboard/danger-zone";
 import { AccountDangerZone } from "@/components/dashboard/account-danger-zone";
 import { requireSession } from "@/server/auth";
@@ -25,6 +27,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const meta = getMetaConfig();
   const locale = await getLocale();
   const t = getDictionary(locale);
+  // V1.66 — this member's own onboarding, so Settings is a stable way back into the setup guide.
+  const onboarding = await loadOnboarding(session.tenantId, session.userId);
 
   const sections = [
     {
@@ -75,6 +79,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </div>
         <LanguageSwitcher current={locale} variant="app" />
       </Card>
+
+      {onboarding ? (
+        <div className="mb-4">
+          <OnboardingSettingsCard
+            status={onboarding.status}
+            copy={{
+              settingsTitle: t.onboarding.settingsTitle, settingsBody: t.onboarding.settingsBody,
+              continueSetup: t.onboarding.continueSetup, reopen: t.onboarding.reopen, restart: t.onboarding.restart,
+              restartTitle: t.onboarding.restartTitle, restartBody: t.onboarding.restartBody,
+              restartConfirm: t.onboarding.restartConfirm, cancel: t.onboarding.cancel,
+              completedTitle: t.onboarding.completedBody,
+            }}
+            onResume={resumeOnboarding}
+            onRestart={restartOnboarding}
+          />
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         {sections.map((s) => (

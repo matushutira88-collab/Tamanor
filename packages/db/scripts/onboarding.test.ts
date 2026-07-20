@@ -11,7 +11,7 @@ import {
   systemDb, registerUser, hashPassword, withTenant,
   getOnboardingState, applyOnboardingAction, acknowledgeOnboarding, maybeAutoComplete,
   buildChecklist, summarize, canTransition, sanitizeAcks, shouldShowOnboarding,
-  OnboardingTransitionError, ONBOARDING_STEPS, REQUIRED_STEPS,
+  OnboardingTransitionError, OnboardingRequirementsError, ONBOARDING_STEPS, REQUIRED_STEPS, RECOMMENDED_STEPS,
   type DerivedFacts,
 } from "@guardora/db";
 
@@ -36,21 +36,25 @@ async function run() {
   {
     const empty = buildChecklist(NO_FACTS);
     check("9a) checklist has the 6 ordered steps", empty.length === 6 && empty.map((c) => c.key).join(",") === ONBOARDING_STEPS.join(","));
+    check("completion model: steps 1-5 required, first_review recommended only", REQUIRED_STEPS.length === 5 && !REQUIRED_STEPS.includes("first_review") && RECOMMENDED_STEPS.join() === "first_review");
     const s0 = summarize(empty);
-    check("checklist at 0%: only 'workspace' done, next = connect_account", s0.completedCount === 1 && s0.progressPct === 17 && s0.nextStep === "connect_account");
+    check("checklist at 1/5: only 'workspace' done, next = connect_account", s0.completedCount === 1 && s0.totalCount === 5 && s0.progressPct === 20 && s0.nextStep === "connect_account");
     check("canFinish false while required steps are pending", s0.canFinish === false);
+
+    // MINIMUM COMPLETION: the five technical steps are enough — a workspace with no risk item yet
+    // must still be able to finish, and first_review stays as a visible follow-up.
+    const min5 = summarize(buildChecklist({ hasWorkspace: true, hasConnectedAccount: true, hasProtectedBrand: true, hasMonitoringEnabled: true, hasFirstSync: true, hasFirstReview: false }));
+    check("minimum completion 1-5 works without any risk item existing", min5.canFinish === true && min5.completedCount === 5 && min5.progressPct === 100);
+    check("first_review remains a pending RECOMMENDED follow-up (never blocks)", min5.recommendedPending.join() === "first_review" && min5.nextStep === "first_review");
 
     const all = buildChecklist({ hasWorkspace: true, hasConnectedAccount: true, hasProtectedBrand: true, hasMonitoringEnabled: true, hasFirstSync: true, hasFirstReview: true });
     const s1 = summarize(all);
-    check("fully derived checklist → 100%, no next step, canFinish", s1.completedCount === 6 && s1.progressPct === 100 && s1.nextStep === null && s1.canFinish === true);
-
-    const required = summarize(buildChecklist({ ...NO_FACTS, hasConnectedAccount: true, hasMonitoringEnabled: true }));
-    check("canFinish true once ONLY the required steps are done (sync/review never block)", required.canFinish === true && required.nextStep === "protect_brand" && REQUIRED_STEPS.length === 3);
+    check("everything done → 100%, no next step, nothing pending", s1.progressPct === 100 && s1.nextStep === null && s1.canFinish === true && s1.recommendedPending.length === 0);
   }
 
   // ---- PURE: state machine ------------------------------------------------------------------
-  check("12) invalid transition completed→in_progress is rejected", canTransition("completed", "in_progress") === false);
-  check("7) completed never reopens by itself (only restart→not_started allowed)", canTransition("completed", "not_started") === true && canTransition("completed", "dismissed") === false);
+  check("12) completed→dismissed is rejected (completed is terminal apart from restart)", canTransition("completed", "dismissed") === false && canTransition("completed", "not_started") === false);
+  check("7) the ONLY exit from completed is an explicit restart → in_progress", canTransition("completed", "in_progress") === true);
   check("dismissed is resumable", canTransition("dismissed", "in_progress") === true);
   check("shouldShow hides completed and dismissed", shouldShowOnboarding("not_started") && shouldShowOnboarding("in_progress") && !shouldShowOnboarding("completed") && !shouldShowOnboarding("dismissed"));
 
@@ -142,6 +146,37 @@ async function run() {
   check("11) first_sync derives from lastSuccessfulSyncAt", afterSync?.checklist.find((c) => c.key === "first_sync")?.done === true);
   check("first_review remains FALSE with no real moderation activity", afterSync?.checklist.find((c) => c.key === "first_review")?.done === false);
 
+  // ---- negative derivations: disconnected / monitoring-off / failed sync must NOT count ---------
+  {
+    await systemDb.connectedAccount.update({ where: { id: acct.id }, data: { health: "error", lastSyncedAt: new Date() } });
+    const failed = await getOnboardingState(a.tenantId, a.userId);
+    check("11) a FAILED sync attempt does not satisfy first_sync (sync_error != ok)", failed?.checklist.find((c) => c.key === "first_sync")?.done === false);
+    await systemDb.connectedAccount.update({ where: { id: acct.id }, data: { health: "healthy" } });
+
+    await systemDb.connectedAccount.update({ where: { id: acct.id }, data: { status: "disconnected" } });
+    const gone = await getOnboardingState(a.tenantId, a.userId);
+    check("9) a DISCONNECTED account does not count as connected/protected/monitored",
+      gone?.checklist.find((c) => c.key === "connect_account")?.done === false
+      && gone?.checklist.find((c) => c.key === "protect_brand")?.done === false
+      && gone?.checklist.find((c) => c.key === "enable_monitoring")?.done === false);
+    await systemDb.connectedAccount.update({ where: { id: acct.id }, data: { status: "active" } });
+  }
+
+  // ---- 6) first_review needs SERVER-WRITTEN, PER-USER evidence ---------------------------------
+  {
+    const before = await getOnboardingState(a.tenantId, a.userId);
+    check("6) first_review is false with no review audit for this member", before?.checklist.find((c) => c.key === "first_review")?.done === false);
+
+    // A colleague's review must NOT satisfy THIS member's step.
+    await systemDb.auditLog.create({ data: { tenantId: a.tenantId, event: "inbox.mark_read", actorKind: "human", actorUserId: second.userId, targetType: "reputation_item", targetId: "item-x" } });
+    const afterColleague = await getOnboardingState(a.tenantId, a.userId);
+    check("6) another member's review does NOT satisfy this member's first_review", afterColleague?.checklist.find((c) => c.key === "first_review")?.done === false);
+
+    await systemDb.auditLog.create({ data: { tenantId: a.tenantId, event: "inbox.mark_read", actorKind: "human", actorUserId: a.userId, targetType: "reputation_item", targetId: "item-y" } });
+    const afterOwn = await getOnboardingState(a.tenantId, a.userId);
+    check("6) this member's OWN review audit satisfies first_review", afterOwn?.checklist.find((c) => c.key === "first_review")?.done === true);
+  }
+
   // ---- auto-complete once every REQUIRED step is satisfied -------------------------------------
   {
     const completed = await maybeAutoComplete(a.tenantId, a.userId);
@@ -159,7 +194,8 @@ async function run() {
     const before = await getOnboardingState(a.tenantId, second.userId);
     const restarted = await applyOnboardingAction(a.tenantId, a.userId, "restart");
     const after = await getOnboardingState(a.tenantId, second.userId);
-    check("8) restart resets the current user and bumps the version", restarted?.status === "not_started" && restarted?.version === 2 && restarted?.completedAt === null);
+    check("8) restart puts the current user back IN the flow and bumps the version", restarted?.status === "in_progress" && restarted?.version === 2 && restarted?.completedAt === null && restarted?.dismissedAt === null);
+    check("8) restart re-stamps startedAt and points at the next relevant step", restarted?.startedAt !== null && restarted?.step !== null);
     check("8) restart did NOT touch the other member of the same tenant", after?.status === before?.status && after?.version === before?.version);
   }
 
