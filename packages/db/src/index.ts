@@ -108,6 +108,7 @@ export * from "./platform-repo";
 export * from "./sync-lease";
 export * from "./session-mgmt";
 export * from "./account-protection";
+export * from "./onboarding";
 export * from "./dashboard-metrics";
 export * from "./tenant-lifecycle";
 export * from "./tenant-deletion";

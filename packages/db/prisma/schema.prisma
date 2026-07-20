@@ -47,6 +47,15 @@ enum PlatformRole {
   admin
 }
 
+// V1.66 — PER-USER onboarding lifecycle, stored on Membership (a user may belong to several tenants
+// and their setup progress differs per workspace). `dismissed` is a resumable "not now", NEVER a lock.
+enum OnboardingStatus {
+  not_started
+  in_progress
+  completed
+  dismissed
+}
+
 // V1.45C1 — tenant deletion lifecycle. `active` is the only state in which ordinary tenant
 // activity (sessions, sync, webhook ingest, membership/provider changes) may proceed. Once a
 // tenant transitions to `deleting`, every activity path fails closed (see assertTenantActive /
@@ -500,6 +509,20 @@ model Membership {
   tenantId  String
   role      Role     @default(viewer)
   createdAt DateTime @default(now())
+
+  // V1.66 — per-user × per-tenant onboarding progress. Deliberately on Membership, NOT User: the steps
+  // (connect account, protect a brand, enable monitoring, first sync, first review) are all tenant-scoped,
+  // and the `memberships` RLS policy is a direct `tenantId = current_app_tenant_id()` match, whereas the
+  // `users` policy is an EXISTS over memberships (writable from ANY tenant the user belongs to).
+  // NOTE: checklist STEP COMPLETION is never stored here — it is derived from live system state so it can
+  // never drift. `onboardingChecklist` holds ONLY manual acknowledgements (allow-listed keys, no PII).
+  onboardingStatus      OnboardingStatus @default(not_started)
+  onboardingStartedAt   DateTime?
+  onboardingCompletedAt DateTime?
+  onboardingDismissedAt DateTime?
+  onboardingVersion     Int              @default(1)
+  onboardingStep        String?
+  onboardingChecklist   Json?
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
