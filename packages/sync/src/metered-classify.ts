@@ -37,6 +37,15 @@ export interface MeteredResult extends HybridResult {
 
 const CLASSIFIER_VERSION = "risk-rules-v1";
 
+/**
+ * Run a reservation settlement/compensation DB op FAIL-OPEN. A throw here must never crash the whole
+ * classification (rules must still stand) and, on the success path, must never refund/undo a paid provider
+ * call the model actually performed. Worst case a settlement is retried by `recoverStaleReservations`.
+ */
+async function bestEffort(fn: () => Promise<unknown>): Promise<void> {
+  try { await fn(); } catch { /* settlement is best-effort — see recoverStaleReservations */ }
+}
+
 export async function classifyWithUsagePolicy(
   ctx: MeteredCtx, input: ClassificationInput, cfg: HybridConfig, deps: MeteredDeps = {},
 ): Promise<MeteredResult> {
@@ -87,50 +96,61 @@ export async function classifyWithUsagePolicy(
     const global = await reserveGlobalDailyCall(provider, estMicros, { callLimit: fuse.globalDailyCallLimit, costLimitMicros: fuse.globalDailyCostLimitMicros }, now);
     if (!global.ok) return done(rules, "rules", baseStatus, global.reason); // global cap → rules stands, reason surfaced
 
-    // 3b) TENANT reserve. If it denies OR is an idempotent retry, compensate the global reserve.
-    const tenant = await reservePremiumCall(ctx.tenantId, ctx.plan, { provider, modelKey, estMicros, idempotencyKey: `prem:${contentHash}:${modelKey}`, ...evRefs }, now);
+    // 3b) TENANT reserve. A THROW here (transient DB error) must ALSO release the global reserve and fall
+    // back to rules — otherwise the cross-tenant global daily counter leaks for the rest of the UTC day
+    // (there is no stale-recovery for the global counter). If it denies or is an idempotent retry, likewise.
+    let tenant: Awaited<ReturnType<typeof reservePremiumCall>>;
+    try {
+      tenant = await reservePremiumCall(ctx.tenantId, ctx.plan, { provider, modelKey, estMicros, idempotencyKey: `prem:${contentHash}:${modelKey}`, ...evRefs }, now);
+    } catch {
+      await bestEffort(() => releaseGlobalDailyCall(provider, estMicros, now));
+      return done(rules, "rules", "failed", "paid_provider_error");
+    }
     if (!tenant.ok || tenant.reused) {
-      await releaseGlobalDailyCall(provider, estMicros, now);
+      await bestEffort(() => releaseGlobalDailyCall(provider, estMicros, now));
       return tenant.ok
         ? done(rules, "rules", baseStatus, "reused_reservation")
         : done(rules, "rules", "premium_limit_reached", tenant.reason);
     }
 
-    // 3c) PROVIDER — only now, after BOTH reservations. Timeout + bounded retry.
+    // 3c) PROVIDER — only now, after BOTH reservations. The provider call is the ONLY refund-on-throw op;
+    // everything after it is SETTLEMENT, which is best-effort and NEVER refunds a call the model performed.
+    let paid: HybridResult;
     try {
-      const paid = await callProviderWithRetry(input, cfg, provider, deps);
-      const call = paid.providerCalls.find((c) => c.type === "ai_risk" && c.status !== "skipped");
-      if (!call) {
-        // Value-gate did not fire → provider not called → release both (unbilled). Surface the normalized
-        // skip reason (admin diagnostics) instead of the basic-unit reason, unless the basic cap was hit.
-        await releaseReservation(ctx.tenantId, tenant.eventId, "gate_not_fired");
-        await releaseGlobalDailyCall(provider, estMicros, now);
-        return done(paid, "rules", baseStatus, basic.denied ? basic.reason : "gate_not_fired");
-      }
-      const failed = call.status === "failed" || call.status === "unavailable";
-      if (failed) {
-        await finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "failed", billed: false });
-        await releaseGlobalDailyCall(provider, estMicros, now);
-        paidAiGuard.recordFailure(now);
-        return done(rules, "rules", "failed", "paid_provider_failed");
-      }
-      // Use the provider's REAL reported token usage for actual cost when available (never invented).
-      // For an unpriced model this equals the conservative estimate (fail-closed) until prices are set.
-      const usage = paid.aiUsage;
-      const actual = usage ? actualCostMicros(provider, modelKey, usage.inputTokens, usage.outputTokens) : estMicros;
-      await finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "succeeded", actualCostMicros: actual, billed: true, inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens });
-      await finalizeGlobalDailyCall(provider, estMicros, actual, now);
-      paidAiGuard.recordSuccess();
-      await cachePut(ctx.tenantId, { contentHash, modelKey, policyVersion: POLICY_VERSION, normalizedResult: paid as unknown });
-      return done(paid, "paid", "processed_paid");
+      paid = await callProviderWithRetry(input, cfg, provider, deps);
     } catch (e) {
-      // Timeout / thrown error → compensate BOTH, normalize the reason (never a raw error).
-      await finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "failed", billed: false });
-      await releaseGlobalDailyCall(provider, estMicros, now);
+      // Timeout / thrown error → the provider did not complete → compensate BOTH (unbilled), rules stands.
+      await bestEffort(() => finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "failed", billed: false }));
+      await bestEffort(() => releaseGlobalDailyCall(provider, estMicros, now));
       paidAiGuard.recordFailure(now);
       const reason = (e as Error)?.message === "paid_provider_timeout" ? "paid_provider_timeout" : "paid_provider_error";
       return done(rules, "rules", "failed", reason);
     }
+
+    const call = paid.providerCalls.find((c) => c.type === "ai_risk" && c.status !== "skipped");
+    if (!call) {
+      // Value-gate did not fire → provider not called → release both (unbilled). Surface the normalized
+      // skip reason (admin diagnostics) instead of the basic-unit reason, unless the basic cap was hit.
+      await bestEffort(() => releaseReservation(ctx.tenantId, tenant.eventId, "gate_not_fired"));
+      await bestEffort(() => releaseGlobalDailyCall(provider, estMicros, now));
+      return done(paid, "rules", baseStatus, basic.denied ? basic.reason : "gate_not_fired");
+    }
+    if (call.status === "failed" || call.status === "unavailable") {
+      await bestEffort(() => finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "failed", billed: false }));
+      await bestEffort(() => releaseGlobalDailyCall(provider, estMicros, now));
+      paidAiGuard.recordFailure(now);
+      return done(rules, "rules", "failed", "paid_provider_failed");
+    }
+    // Use the provider's REAL reported token usage for actual cost when available (never invented). For an
+    // unpriced model this equals the conservative estimate (fail-closed) until prices are set. Settlement is
+    // best-effort: a DB error settling a COMPLETED paid call must NOT refund it (would under-bill).
+    const usage = paid.aiUsage;
+    const actual = usage ? actualCostMicros(provider, modelKey, usage.inputTokens, usage.outputTokens) : estMicros;
+    await bestEffort(() => finalizePremiumCall(ctx.tenantId, tenant.eventId, { status: "succeeded", actualCostMicros: actual, billed: true, inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens }));
+    await bestEffort(() => finalizeGlobalDailyCall(provider, estMicros, actual, now));
+    paidAiGuard.recordSuccess();
+    await bestEffort(() => cachePut(ctx.tenantId, { contentHash, modelKey, policyVersion: POLICY_VERSION, normalizedResult: paid as unknown }));
+    return done(paid, "paid", "processed_paid");
   } finally {
     acq.release();
   }
