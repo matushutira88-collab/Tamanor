@@ -111,9 +111,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const locale = await getLocale();
   const c = COPY[locale];
   const realMode = await getRealModeFilter(session.tenantId);
-  // V1.66 — this member's OWN onboarding (auto-completes first when every required step is real).
-  // Fail-open inside loadOnboarding: onboarding must never be able to take the dashboard down.
-  const onboarding = await loadOnboarding(session.tenantId, session.userId);
   const dict = getDictionary(locale);
 
   const tfRaw = Number((await searchParams).tf);
@@ -124,7 +121,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const where = { tenantId: session.tenantId, ...realMode.brandWhere };
 
-  const [kpi, deltas, categories, watched, trendRows, activity] = await Promise.all([
+  // V1.67 — onboarding derivation (this member's OWN onboarding, ~a dozen counts) runs CONCURRENTLY with
+  // the dashboard batch instead of serially before it. Fail-open inside loadOnboarding: onboarding must
+  // never be able to take the dashboard down.
+  const [kpi, deltas, categories, watched, trendRows, activity, onboarding] = await Promise.all([
     getDashboardKpis(session.tenantId, since),
     getDashboardKpiDeltas(session.tenantId, prevSince, since),
     getRiskByCategory(session.tenantId, since),
@@ -137,6 +137,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       where: { tenantId: session.tenantId, event: { in: ACTIVITY_EVENTS } },
       orderBy: { createdAt: "desc" }, take: 6, select: { id: true, event: true, createdAt: true },
     })),
+    loadOnboarding(session.tenantId, session.userId),
   ]);
 
   const firstName = session.userName.split(" ")[0] ?? session.userName;
