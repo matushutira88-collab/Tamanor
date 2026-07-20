@@ -50,11 +50,32 @@ const KEYFRAMES = `
 .tmr-v2 details > summary { list-style: none; }
 .tmr-v2 details > summary::-webkit-details-marker { display: none; }
 .tmr-v2 details[open] .tmr-faq-sign { transform: rotate(45deg); }
-/* V1.58D.3 — mobile: stack multi-column sections; no horizontal overflow. */
+/* V1.58D.3 — mobile: stack multi-column sections; no horizontal overflow.
+   V1.67 — the stacking above used a plain 1fr, which means minmax(auto, 1fr): the auto minimum forbids
+   a column from shrinking below its content's min-content width. One column therefore still measured
+   its widest child (the risk orbit is sized min(420px, 100%)) and blew past a 320px viewport — the
+   section wrapper's overflow:hidden then CLIPPED the text instead of revealing the bug. Using
+   minmax(0, 1fr) removes that floor, and min-width:0 lets the grid children themselves wrap rather
+   than establish a rigid min-content width.
+   NOTE: this whole block is a JS template literal — never use backticks in these comments. */
 @media (max-width: 860px) {
-  .tmr-v2 .tmr-cols { grid-template-columns: 1fr !important; }
-  .tmr-v2 .tmr-kpi { grid-template-columns: repeat(2, 1fr) !important; }
+  .tmr-v2 .tmr-cols { grid-template-columns: minmax(0, 1fr) !important; }
+  .tmr-v2 .tmr-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .tmr-v2 .tmr-cols > *,
+  .tmr-v2 .tmr-kpi > * { min-width: 0; }
 }
+/* V1.67 — phones: card grids (coverage, pricing, checks) get a single column. Two columns below ~560px
+   leave ~150px per card, which crushes headings and pushes status badges out of their card. */
+@media (max-width: 560px) {
+  .tmr-v2 .tmr-cards { grid-template-columns: minmax(0, 1fr) !important; }
+  /* Radar labels are pinned at percentages with nowrap text; on a narrow radar they run past its edge.
+     Hide them there and reveal the legend below, which carries the identical actor list. */
+  .tmr-v2 .tmr-blip-label { display: none !important; }
+  .tmr-v2 .tmr-blip-legend { display: flex !important; }
+}
+/* V1.67 — long unbroken tokens (mono status text, URLs, German compounds) must break rather than
+   define an unshrinkable min-content width. */
+.tmr-v2 h1, .tmr-v2 h2, .tmr-v2 h3, .tmr-v2 p, .tmr-v2 li { overflow-wrap: anywhere; }
 /* V1.61 — narrow screens: hide the sim panel's top-left feed labels so they never
    collide with the clock on the right. */
 @media (max-width: 520px) {
@@ -482,9 +503,12 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
       {/* radar → "product" (unified header nav target) */}
       <section id="product" style={{ borderBottom: secBorder, background: C.panel }}>
         <div className="tmr-cols" style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "center", padding: "96px 24px" }}>
-          <div style={{ position: "relative", margin: "0 auto", height: 420, width: 420 }}>
+          {/* V1.67 — the radar was a hard 420x420 box, so on a phone it stuck ~150px past the viewport
+              and its absolutely-positioned labels were clipped. It now scales with its column and keeps
+              its square aspect; the ring insets scale with it too. Desktop still resolves to 420px. */}
+          <div style={{ position: "relative", margin: "0 auto", width: "min(420px, 100%)", aspectRatio: "1 / 1" }}>
             {[0, 52, 104, 156].map((inset) => (
-              <div key={inset} style={{ position: "absolute", inset, borderRadius: "50%", border: secBorder }} />
+              <div key={inset} style={{ position: "absolute", inset: `${(inset / 420) * 100}%`, borderRadius: "50%", border: secBorder }} />
             ))}
             <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: C.line }} />
             <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: C.line }} />
@@ -493,10 +517,21 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
             {BLIPS.map((b) => (
               <div key={b.label} style={{ position: "absolute", top: b.top, left: b.left, display: "flex", alignItems: "center", gap: 7, zIndex: 3 }}>
                 <span className="tmr-anim-blip" style={{ height: 9, width: 9, borderRadius: 9999, flexShrink: 0, background: b.danger ? C.red : C.amber }} />
-                <span style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", color: C.dim, whiteSpace: "nowrap", fontFamily: mono }}>{b.label}</span>
+                {/* Anchored at a percentage with nowrap text, these run off a narrow radar. Below 560px
+                    they are hidden and the legend underneath carries the same names — nothing is lost. */}
+                <span className="tmr-blip-label" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", color: C.dim, whiteSpace: "nowrap", fontFamily: mono }}>{b.label}</span>
               </div>
             ))}
           </div>
+          {/* Mobile-only legend: same actors, same colours, below the radar instead of inside it. */}
+          <ul className="tmr-blip-legend" style={{ display: "none", listStyle: "none", margin: "14px auto 0", padding: 0, flexWrap: "wrap", justifyContent: "center", gap: "8px 14px" }}>
+            {BLIPS.map((b) => (
+              <li key={b.label} style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                <span aria-hidden style={{ height: 9, width: 9, borderRadius: 9999, flexShrink: 0, background: b.danger ? C.red : C.amber }} />
+                <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", color: C.dim, fontFamily: mono }}>{b.label}</span>
+              </li>
+            ))}
+          </ul>
           <div>
             <p style={eyebrow}>{copy.actorEyebrow}</p>
             <h2 style={{ margin: "16px 0 0", fontSize: "clamp(26px, 3.6vw, 38px)", lineHeight: 1.08, fontWeight: 600, color: C.bright, fontFamily: disp, letterSpacing: "-0.03em" }}>
@@ -602,7 +637,7 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
             <p style={eyebrow}>{copy.coverageEyebrow}</p>
             <p style={{ margin: 0, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: C.faint, fontFamily: mono }}>{copy.covNote}</p>
           </div>
-          <div className="tmr-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
+          <div className="tmr-kpi tmr-cards" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
             {copy.platforms.map((p, i) => {
               const tagStyle: React.CSSProperties = i === 0 ? { background: C.mint, color: C.bg } : i === 1 ? { border: `1px solid ${C.amber}`, color: C.amber } : { border: secBorder, color: C.dim };
               const dim = i >= 2;
@@ -718,7 +753,7 @@ export function LandingV2({ copy, logIn, locale }: LandingV2Props) {
               })}
             </div>
           </div>
-          <div className="tmr-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
+          <div className="tmr-kpi tmr-cards" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.line, border: secBorder }}>
             {plans.map((p) => (
               <div key={p.name} style={p.pop ? { background: "#eff6ff", padding: "26px 24px", boxShadow: `inset 0 0 0 1px ${C.mint}` } : { background: C.bg, padding: "26px 24px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

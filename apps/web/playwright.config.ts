@@ -50,6 +50,9 @@ export default defineConfig({
     { name: "public-desktop", testMatch: /public\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
     { name: "public-mobile", testMatch: /public\.spec\.ts/, use: mobile(390, 844) },
     { name: "public-mobile-small", testMatch: /public\.spec\.ts/, use: mobile(375, 812) },
+    // V1.67 — landing overflow gate. The spec drives its own viewport matrix (320→430px × en/sk/de),
+    // so this project only needs a browser; the per-test setViewportSize calls do the rest.
+    { name: "public-landing-overflow", testMatch: /landing-overflow\.spec\.ts/, use: { browserName: "chromium", isMobile: true, hasTouch: true } },
     // Authenticated flows — reuse the bootstrapped storageState.
     { name: "auth-desktop", testMatch: /(authed|inbox|usage|danger-zone|account-danger-zone)(\.scale)?\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STORAGE } },
     { name: "auth-mobile", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { ...mobile(390, 844), storageState: STORAGE } },
