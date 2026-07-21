@@ -32,9 +32,14 @@ const COMPARE_ROWS: { key: keyof Copy["compareRows"]; cells: [Cell, Cell, Cell, 
   { key: "protectedBrands", cells: ["1", "3", "10", "custom"] },     // planEntitlements[*].maxBrands
   { key: "monthlyComments", cells: ["4,000", "13,000", "25,000", "custom"] }, // usage-policy basicUnitsPerPeriod
   { key: "connectedAccounts", cells: ["4", "12", "40", "custom"] },  // planEntitlements[*].maxConnectedAccounts (brands×4)
-  // V1.68 (Release A / A4) — "Team members / seats" removed from the compare table: invitations are NOT
-  // implemented (the team page invite is a disabled no-op) and maxTeamMembers is not enforced, so it must
-  // not be presented as a shipped, purchasable capability (see entitlements.ts NOTE (team)).
+  // V1.71 (Release B / B4) — Team seats restored: invites + seat enforcement are now implemented, so the
+  // numbers come from the AUTHORITATIVE entitlements (planEntitlements[*].maxTeamMembers), never hardcoded.
+  { key: "teamMembers", cells: [
+    String(planEntitlements("starter").maxTeamMembers),
+    String(planEntitlements("growth").maxTeamMembers),
+    String(planEntitlements("agency").maxTeamMembers),
+    planEntitlements("enterprise").maxTeamMembers === null ? "custom" : String(planEntitlements("enterprise").maxTeamMembers),
+  ] },
   { key: "facebookPages", cells: [true, true, true, true] },         // 1 Facebook Page per brand → all tiers
   { key: "instagram", cells: [true, true, true, true] },             // 1 Instagram per brand → all tiers
   { key: "googleBusiness", cells: [true, true, true, true] },        // 1 Google Business Profile per brand

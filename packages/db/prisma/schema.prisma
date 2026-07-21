@@ -419,6 +419,7 @@ model Tenant {
   // V1.45C1 — durable tenant link for matched raw webhook events (explicit purge on deletion).
   webhookEvents            WebhookEvent[]
   notifications            Notification[]
+  invites                  Invite[]
 
   @@map("tenants")
 }
@@ -1671,4 +1672,36 @@ model Notification {
   @@index([tenantId, userId, readAt, createdAt])
   @@index([tenantId, createdAt])
   @@map("notifications")
+}
+
+// V1.71 (Release B / B4) — tenant-scoped team invites. RLS-enforced (enable + FORCE + policy + grant in
+// the migration). The token is stored ONLY as a sha256 hash (plaintext lives solely in the emailed link).
+// A partial unique index (migration) forbids two PENDING invites for the same (tenant, email). Expired /
+// revoked invites free their reserved seat. Accept is transactional + single-use + idempotent.
+enum InviteStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+model Invite {
+  id              String       @id @default(cuid())
+  tenantId        String
+  emailNormalized String
+  role            Role         @default(viewer)
+  tokenHash       String       @unique
+  status          InviteStatus @default(pending)
+  invitedByUserId String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  lastSentAt      DateTime     @default(now())
+  createdAt       DateTime     @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, emailNormalized])
+  @@map("invites")
 }

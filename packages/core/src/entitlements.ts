@@ -54,9 +54,10 @@ export type PlanEntitlements = {
   dataRetentionDays: number | null;
 };
 
-// NOTE (team): production team invitations/member management are NOT implemented (the team page's
-// invite form is a disabled no-op). `maxTeamMembers` is kept future-ready but is NOT enforced and
-// MUST NOT be presented on pricing as a shipped "seats" capability.
+// NOTE (team): V1.71 (Release B / B4) — team invites + seat enforcement ARE now implemented. Seat usage
+// (owner + active members + pending invites) is enforced server-side + transactionally at invite time,
+// so `maxTeamMembers` is authoritative and IS presented on pricing (the billing compare table reads these
+// values directly). Enterprise (null) is unlimited (never a false numeric cap).
 
 // V1.64 — per-brand model. Each paid brand holds 1 of each platform (FB/IG/Google Business/YouTube),
 // so the tenant-total account ceiling = maxBrands × 4. Comment (monthlyProcessedItems) MUST equal the

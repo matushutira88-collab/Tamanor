@@ -102,6 +102,7 @@ export * from "./resource-limits";
 export * from "./export-repo";
 export * from "./notification-repo";
 export * from "./notification-email";
+export * from "./team-repo";
 export * from "./tenant-db";
 export * from "./repositories";
 export * from "./inbox-repo";
