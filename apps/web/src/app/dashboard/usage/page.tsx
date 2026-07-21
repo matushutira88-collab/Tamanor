@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/server/auth";
 import { withTenant, getUsageSummary, getUsageDiagnostic, getTenantResourceUsage, getTenantBilling, type UsageStatus } from "@guardora/db";
-import { planEntitlements } from "@guardora/core";
+import { planEntitlements, type TenantLifecycleState } from "@guardora/core";
 import { getPaidAiFuseConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { getLocale } from "@/i18n/locale-server";
@@ -30,6 +30,14 @@ const COPY: Record<Locale, {
   overLimit: string;
   paymentIssue: string;
   manageBilling: string;
+  planBillingTitle: string;
+  lifecycleLabel: Record<TenantLifecycleState, string>;
+  trialDaysLeft: (n: number) => string;
+  trialEndsToday: string;
+  nextPayment: string;
+  cancelsOn: string;
+  firstSyncPending: (n: number) => string;
+  monitoringDisabledByPlan: (n: number) => string;
   diagnosticTitle: string;
   adminOnly: string;
   dEffectivePlan: string;
@@ -63,6 +71,14 @@ const COPY: Record<Locale, {
     overLimit: "You're over your plan limit — no new items can be added until you upgrade or remove some. Existing data stays intact.",
     paymentIssue: "There's a problem with your billing. Restore full access to keep syncing and taking action.",
     manageBilling: "Manage billing",
+    planBillingTitle: "Plan & billing",
+    lifecycleLabel: { active_trial: "Trial", trial_expired: "Trial expired", active_paid: "Active", past_due: "Payment due", canceled: "Canceled", suspended: "Suspended" },
+    trialDaysLeft: (n) => `${n} day${n === 1 ? "" : "s"} left in your trial`,
+    trialEndsToday: "Your trial ends today",
+    nextPayment: "Next payment",
+    cancelsOn: "Cancels on",
+    firstSyncPending: (n) => `First sync pending for ${n} account${n === 1 ? "" : "s"} — results appear after the first read-only sync.`,
+    monitoringDisabledByPlan: (n) => `${n} account${n === 1 ? "" : "s"} ${n === 1 ? "has" : "have"} monitoring disabled by your plan limit. Upgrade to re-enable.`,
     diagnosticTitle: "Diagnostic",
     adminOnly: "· admin only",
     dEffectivePlan: "Effective plan",
@@ -96,6 +112,14 @@ const COPY: Record<Locale, {
     overLimit: "Prekročili ste limit plánu — kým neprejdete na vyšší plán alebo niečo neodstránite, nedajú sa pridať nové položky. Existujúce dáta zostávajú nedotknuté.",
     paymentIssue: "S vašou fakturáciou je problém. Obnovte plný prístup, aby synchronizácia a akcie pokračovali.",
     manageBilling: "Spravovať fakturáciu",
+    planBillingTitle: "Plán a fakturácia",
+    lifecycleLabel: { active_trial: "Skúšobné", trial_expired: "Skúšobné vypršalo", active_paid: "Aktívny", past_due: "Čaká sa platba", canceled: "Zrušený", suspended: "Pozastavený" },
+    trialDaysLeft: (n) => `${n} ${n === 1 ? "deň" : n >= 2 && n <= 4 ? "dni" : "dní"} do konca skúšobnej verzie`,
+    trialEndsToday: "Vaša skúšobná verzia končí dnes",
+    nextPayment: "Ďalšia platba",
+    cancelsOn: "Ruší sa dňa",
+    firstSyncPending: (n) => `Prvá synchronizácia čaká pre ${n} ${n === 1 ? "účet" : n >= 2 && n <= 4 ? "účty" : "účtov"} — výsledky sa zobrazia po prvej read-only synchronizácii.`,
+    monitoringDisabledByPlan: (n) => `${n} ${n === 1 ? "účet má" : n >= 2 && n <= 4 ? "účty majú" : "účtov má"} vypnutý monitoring kvôli limitu plánu. Prejdite na vyšší plán pre opätovné zapnutie.`,
     diagnosticTitle: "Diagnostika",
     adminOnly: "· len pre správcu",
     dEffectivePlan: "Efektívny plán",
@@ -129,6 +153,14 @@ const COPY: Record<Locale, {
     overLimit: "Sie haben Ihr Tariflimit überschritten — bis zu einem Upgrade oder Entfernen können keine neuen Einträge hinzugefügt werden. Vorhandene Daten bleiben erhalten.",
     paymentIssue: "Mit Ihrer Abrechnung stimmt etwas nicht. Stellen Sie den vollen Zugriff wieder her, damit Synchronisierung und Aktionen weiterlaufen.",
     manageBilling: "Abrechnung verwalten",
+    planBillingTitle: "Tarif & Abrechnung",
+    lifecycleLabel: { active_trial: "Testphase", trial_expired: "Testphase abgelaufen", active_paid: "Aktiv", past_due: "Zahlung fällig", canceled: "Gekündigt", suspended: "Gesperrt" },
+    trialDaysLeft: (n) => `Noch ${n} Tag${n === 1 ? "" : "e"} in Ihrer Testphase`,
+    trialEndsToday: "Ihre Testphase endet heute",
+    nextPayment: "Nächste Zahlung",
+    cancelsOn: "Kündigung zum",
+    firstSyncPending: (n) => `Erste Synchronisierung ausstehend für ${n} Konto${n === 1 ? "" : "s"} — Ergebnisse erscheinen nach der ersten schreibgeschützten Synchronisierung.`,
+    monitoringDisabledByPlan: (n) => `Bei ${n} Konto${n === 1 ? "" : "s"} ist das Monitoring durch Ihr Tariflimit deaktiviert. Upgraden Sie, um es wieder zu aktivieren.`,
     diagnosticTitle: "Diagnose",
     adminOnly: "· nur für Administratoren",
     dEffectivePlan: "Effektiver Tarif",
@@ -179,6 +211,15 @@ export default async function UsagePage() {
   const resources = await getTenantResourceUsage(session.tenantId);
   const planLimits = planEntitlements(plan);
   const billing = await getTenantBilling(session.tenantId);
+  // V1.68 (Release A / A6) — first-sync-pending + monitoring-disabled-by-plan visibility. Both are
+  // counted from the SAME account model the sync/enforcement paths use (non-disconnected accounts).
+  const accountStates = await withTenant(session.tenantId, async (db) => {
+    const [firstSyncPending, monitoringDisabled] = await Promise.all([
+      db.connectedAccount.count({ where: { tenantId: session.tenantId, status: { not: "disconnected" }, monitoringEnabled: true, lastSuccessfulSyncAt: null } }),
+      db.connectedAccount.count({ where: { tenantId: session.tenantId, status: { not: "disconnected" }, monitoringEnabled: false } }),
+    ]);
+    return { firstSyncPending, monitoringDisabled };
+  });
   const pct = (used: number, limit: number | null) => (limit === null || limit <= 0 ? (used > 0 ? 100 : 0) : Math.round((used / limit) * 100));
   const isOver = (used: number, limit: number | null) => limit !== null && used > limit;
   const overLimit = isOver(resources.connections, planLimits.maxConnectedAccounts) || isOver(resources.brands, planLimits.maxBrands);
@@ -248,6 +289,42 @@ export default async function UsagePage() {
         ) : null}
       </Card>
       </div>
+
+      {billing ? (
+        <div data-testid="usage-plan-billing" className="mt-4">
+        <Card className="p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">{c.planBillingTitle}</h3>
+            <span data-testid="usage-lifecycle" data-lifecycle={billing.lifecycle}>
+              <Badge tone={billing.lifecycle === "active_paid" || billing.lifecycle === "active_trial" ? "ok" : billing.lifecycle === "past_due" ? "warn" : "danger"}>{c.lifecycleLabel[billing.lifecycle]}</Badge>
+            </span>
+          </div>
+          <div className="flex flex-col gap-2 text-xs">
+            <div className="flex items-center gap-2"><span className="font-medium capitalize">{summary.plan} {c.planWord}</span></div>
+            {billing.lifecycle === "active_trial" && billing.trialDaysRemaining !== null ? (
+              <p data-testid="usage-trial-days">⏳ {billing.trialDaysRemaining === 0 ? c.trialEndsToday : c.trialDaysLeft(billing.trialDaysRemaining)}</p>
+            ) : null}
+            {billing.subscription?.currentPeriodEnd ? (
+              <p data-testid="usage-next-payment">
+                <span className="text-[var(--color-muted)]">{billing.subscription.cancelAtPeriodEnd ? c.cancelsOn : c.nextPayment}:</span>{" "}
+                <span className="font-medium tabular-nums">{fmtDate(billing.subscription.currentPeriodEnd)}</span>
+              </p>
+            ) : null}
+          </div>
+          {accountStates.firstSyncPending > 0 ? (
+            <p className="mt-3 rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-muted)]" data-testid="usage-first-sync-pending">
+              🕒 {c.firstSyncPending(accountStates.firstSyncPending)}
+            </p>
+          ) : null}
+          {accountStates.monitoringDisabled > 0 ? (
+            <p role="alert" className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-3 py-2 text-xs text-[var(--color-warn)]" data-testid="usage-monitoring-disabled">
+              <span>{c.monitoringDisabledByPlan(accountStates.monitoringDisabled)}</span>
+              <Link href="/dashboard/billing" className="font-semibold underline">{c.manageBilling}</Link>
+            </p>
+          ) : null}
+        </Card>
+        </div>
+      ) : null}
 
       {diag ? (
         <div data-testid="usage-diagnostic" className="mt-4">
