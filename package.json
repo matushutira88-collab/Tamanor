@@ -17,6 +17,7 @@
     "db:generate": "pnpm --filter @guardora/db generate",
     "db:migrate": "pnpm --filter @guardora/db migrate",
     "db:migrate:deploy": "pnpm --filter @guardora/db migrate:deploy",
+    "db:migrate:replay": "bash packages/db/scripts/migrate-local-replay.sh",
     "db:push": "pnpm --filter @guardora/db push",
     "db:seed": "pnpm --filter @guardora/db seed",
     "db:guard:test": "pnpm --filter @guardora/db assert-local-db:test",
