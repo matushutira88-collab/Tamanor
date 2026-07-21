@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { Permission, assertCan, EntitlementError, emitOpsEvent } from "@guardora/core";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
-import { checkAccountToken, linkMetaAssets } from "@guardora/sync";
+import { checkAccountToken, linkMetaAssets, runReadOnlySync } from "@guardora/sync";
 import { encryptToken, withTenant, assertTenantActive, enableAccountMonitoringWithinLimit, enforceMonitoringLimits } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
@@ -44,8 +45,9 @@ export async function confirmMetaSelection(
   }
 
   let connected = 0, monitored = 0, limited = 0, slotTaken = 0;
+  const monitoredIds: string[] = [];
   const activate = async (id: string) => {
-    try { await enableAccountMonitoringWithinLimit(session.tenantId, id); emitOpsEvent("account.monitoring_enabled", { operation: "connect" }); monitored++; }
+    try { await enableAccountMonitoringWithinLimit(session.tenantId, id); emitOpsEvent("account.monitoring_enabled", { operation: "connect" }); monitored++; monitoredIds.push(id); }
     catch (e) { if (e instanceof EntitlementError) { emitOpsEvent("subscription.account_limit_reached", { operation: "connect" }); limited++; } else throw e; }
   };
 
@@ -84,10 +86,23 @@ export async function confirmMetaSelection(
   // previously-monitored account (status→active) while `monitoringEnabled` is preserved, and the
   // enable no-ops when it is already true — so a disconnect→downgrade→reconnect could otherwise re-
   // exceed the cap. Reconcile keep-oldest so the monitored count can never exceed the current plan cap.
+  let disabledSet = new Set<string>();
   try {
     const r = await enforceMonitoringLimits(session.tenantId);
     if (r.disabledCount > 0) emitOpsEvent("subscription.monitoring_limit_enforced", { operation: "reconnect" });
+    disabledSet = new Set(r.disabledAccountIds);
   } catch { emitOpsEvent("worker.maintenance_failed", { operation: "reconnect_enforce_limits" }); }
+
+  // V1.69 (Release B / B1) — FIRST SYNC ON CONNECT. Kick off the first read-only sync for every account
+  // that stayed monitored, AFTER the response (next/server `after`) so the user never waits on the Meta
+  // HTTP cycle and doesn't depend on the next cron tick. The sync lease dedups, so a repeated confirmation
+  // can't launch duplicate parallel syncs; a sync error is swallowed here and never affects the
+  // already-committed connection (results simply surface as a "failed" first-sync state with a retry).
+  const toSync = monitoredIds.filter((id) => !disabledSet.has(id));
+  if (toSync.length > 0) {
+    const tid = session.tenantId;
+    after(async () => { await Promise.allSettled(toSync.map((id) => runReadOnlySync({ accountId: id, tenantId: tid }, "automatic"))); });
+  }
 
   await clearOnboarding(session, onboardingId);
   revalidatePath("/dashboard/accounts");

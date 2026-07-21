@@ -19,6 +19,17 @@ import { withTenantDb } from "./tenant-db";
 /** Default lease lifetime. A sync must finish (or heartbeat) within this window. */
 export const SYNC_LEASE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * V1.69 (Release B / B1) — the ids of a tenant's accounts with an ACTIVE (unexpired) sync lease, i.e.
+ * a sync currently in flight. Tenant-scoped (RLS). Drives the "syncing" first-sync state in the UI.
+ */
+export async function getActiveSyncLeaseAccountIds(tenantId: string, now: Date = new Date()): Promise<string[]> {
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.syncLease.findMany({ where: { tenantId, expiresAt: { gt: now } }, select: { connectedAccountId: true } }),
+  );
+  return rows.map((r) => r.connectedAccountId);
+}
+
 export interface LeaseHandle {
   id: string;
   connectedAccountId: string;

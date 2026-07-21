@@ -10,6 +10,9 @@ import {
   platformKeyFor,
   hideCapabilityState,
   platformSupportLevel,
+  deriveFirstSyncState,
+  firstSyncRetryable,
+  type FirstSyncState,
 } from "@guardora/core";
 import { getMetaConfig, getMetaSetupStatus, getAutoSyncConfig, getLiveActionsConfig, getGoogleBusinessConfig } from "@guardora/config";
 import { PageHeader, Badge, Card } from "@/components/dashboard/ui";
@@ -18,14 +21,14 @@ import { BrandIcon } from "@/components/dashboard/platform-icon";
 import { AccountsTable } from "@/components/dashboard/accounts-table";
 import { getLocale } from "@/i18n/locale-server";
 import { requireSession } from "@/server/auth";
-import { withTenant } from "@guardora/db";
+import { withTenant, getActiveSyncLeaseAccountIds } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
 import { tEnum } from "@/i18n/labels";
 import { formatDateTime } from "@/lib/format";
 import { CONNECTOR_TONE } from "@/lib/ui-maps";
-import { connectMock, disconnect } from "./actions";
+import { connectMock, disconnect, retryFirstSync } from "./actions";
 
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/accounts");
@@ -122,6 +125,13 @@ export default async function AccountsPage({
     db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "manual" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
   ]));
   const lastErrorAccount = connectedAccounts.find((a) => a.lastError);
+  // V1.69 (Release B / B1) — first-sync state: which accounts currently hold an active sync lease.
+  const activeLeaseIds = new Set(await getActiveSyncLeaseAccountIds(session.tenantId));
+  const canManageConnectors = can(session.role, Permission.ConnectorManage);
+  const firstSyncLabel = (s: FirstSyncState): string =>
+    s === "waiting_first_sync" ? hdrT.dash.firstSyncWaiting : s === "syncing" ? hdrT.dash.firstSyncSyncing : s === "synced" ? hdrT.dash.firstSyncSynced : hdrT.dash.firstSyncFailed;
+  const firstSyncTone = (s: FirstSyncState): "ok" | "warn" | "danger" | "neutral" =>
+    s === "synced" ? "ok" : s === "failed" ? "danger" : s === "syncing" ? "neutral" : "warn";
   const nextSyncEstimate = autoSync.enabled && lastAutoRow ? new Date(lastAutoRow.createdAt.getTime() + autoSync.intervalSeconds * 1000) : null;
 
   return (
@@ -216,6 +226,21 @@ export default async function AccountsPage({
                       {a.platform === Platform.FacebookPage ? (() => {
                         const cap = hideCapability(a.grantedPermissions);
                         return <Badge tone={cap.tone}>{hdrT.autoProtect.hideCapability}: {hdrT.autoProtect[cap.key as "capAvailable" | "capMissingPerms" | "capDisabledEnv"]}</Badge>;
+                      })() : null}
+                      {/* V1.69 (Release B / B1) — first-sync state + non-blocking retry (monitored accounts). */}
+                      {live && a.monitoringEnabled ? (() => {
+                        const st = deriveFirstSyncState({ lastSuccessfulSyncAt: a.lastSuccessfulSyncAt, syncAttempts: a.syncAttempts, hasActiveLease: activeLeaseIds.has(a.id) });
+                        return (
+                          <span className="inline-flex items-center gap-1.5" data-testid="first-sync-state" data-state={st}>
+                            <Badge tone={firstSyncTone(st)}>{firstSyncLabel(st)}</Badge>
+                            {canManageConnectors && firstSyncRetryable(st) ? (
+                              <form action={retryFirstSync}>
+                                <input type="hidden" name="accountId" value={a.id} />
+                                <button type="submit" className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs hover:border-[var(--color-border-strong)]">{hdrT.dash.firstSyncRetry}</button>
+                              </form>
+                            ) : null}
+                          </span>
+                        );
                       })() : null}
                     </div>
                     <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-[var(--color-muted)]">

@@ -142,6 +142,7 @@
     "meta-proof:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/meta-appsecret-proof.test.ts",
     "billing-mapping:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/billing-mapping.test.ts",
     "trial-lifecycle:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/trial-lifecycle.test.ts",
+    "first-sync-state:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/first-sync-state.test.ts",
     "monitoring-reconcile:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/monitoring-reconcile.test.ts",
     "webhook-ordering:test": "bash packages/db/scripts/run-webhook-ordering.sh",
     "rls-security:test": "bash packages/db/scripts/run-rls-security.sh",
