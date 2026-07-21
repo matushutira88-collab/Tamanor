@@ -236,6 +236,12 @@ export enum BrandProtectionStatus {
 // Declared here so the vocabulary is fixed from S0; the additive `Incident`
 // columns land in S3 (do not modify the working incidents module in S0).
 
+/**
+ * Incident DOMAIN discriminator (C3). Doubles as the `Incident.domain` value.
+ * `reputation` = brand-reputation (the existing/default domain). Extended in C3
+ * with `cyberbullying`. This is distinct from `Incident.category` (a free
+ * descriptive/harm category used by brand escalation) — do not conflate them.
+ */
 export enum IncidentCategory {
   Reputation = "reputation",
   AccountTakeover = "account_takeover",
@@ -243,14 +249,80 @@ export enum IncidentCategory {
   CoordinatedAttack = "coordinated_attack",
   ConnectorCompromise = "connector_compromise",
   DataExposure = "data_exposure",
+  // C3 — victim-centric cyberbullying case domain.
+  Cyberbullying = "cyberbullying",
 }
 
+/**
+ * C3 — the SINGLE canonical Incident lifecycle for the whole `Incident` ledger
+ * (ADR-0002). Supersedes the prior unused values; `open` and `resolved` are kept
+ * so existing brand incidents remain valid. `detected` is a DETECTION state, not
+ * an incident state. Detectors NEVER confirm — `confirmed` requires a human.
+ */
 export enum IncidentLifecycleStatus {
   Open = "open",
-  Investigating = "investigating",
-  Contained = "contained",
+  UnderReview = "under_review",
+  Acknowledged = "acknowledged",
+  Confirmed = "confirmed",
+  ActionRequired = "action_required",
   Resolved = "resolved",
-  PostMortem = "post_mortem",
+  Dismissed = "dismissed",
+  Archived = "archived",
+}
+
+/** Terminal incident states — no outgoing transition except an explicit reopen. */
+export const TERMINAL_INCIDENT_STATUSES: readonly IncidentLifecycleStatus[] = [
+  IncidentLifecycleStatus.Dismissed,
+  IncidentLifecycleStatus.Archived,
+];
+
+const I = IncidentLifecycleStatus;
+
+/**
+ * The canonical incident transition matrix (ADR-0002). Reopen is NOT here — it is
+ * an explicit, elevated, audited operation ({@link INCIDENT_REOPEN_TRANSITIONS}),
+ * never a raw backward write. An illegal transition is rejected.
+ */
+export const INCIDENT_STATUS_TRANSITIONS: Readonly<Record<IncidentLifecycleStatus, readonly IncidentLifecycleStatus[]>> = {
+  [I.Open]: [I.UnderReview, I.Dismissed],
+  [I.UnderReview]: [I.Acknowledged, I.Confirmed, I.Dismissed],
+  [I.Acknowledged]: [I.Confirmed, I.ActionRequired, I.Resolved, I.Dismissed],
+  [I.Confirmed]: [I.ActionRequired, I.Resolved],
+  [I.ActionRequired]: [I.Resolved],
+  [I.Resolved]: [I.Archived],
+  [I.Dismissed]: [], // terminal (reopen only)
+  [I.Archived]: [], // terminal (reopen only, elevated)
+};
+
+/** Explicit, elevated reopen transitions (require `manage` + a reason + audit). */
+export const INCIDENT_REOPEN_TRANSITIONS: Readonly<Record<string, IncidentLifecycleStatus>> = {
+  [I.Resolved]: I.UnderReview,
+  [I.Dismissed]: I.UnderReview,
+  [I.Archived]: I.UnderReview,
+};
+
+/** Statuses whose transition REQUIRES a mandatory reason. */
+export const INCIDENT_TRANSITION_REQUIRES_REASON: readonly IncidentLifecycleStatus[] = [
+  I.Confirmed,
+  I.ActionRequired,
+  I.Resolved,
+  I.Dismissed,
+  I.Archived,
+];
+
+/** True iff `to` is a legal forward transition from `from` (identity → false). */
+export function canTransitionIncident(from: IncidentLifecycleStatus, to: IncidentLifecycleStatus): boolean {
+  return INCIDENT_STATUS_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+/**
+ * True iff a FORWARD transition to `to` requires a mandatory reason. Reopen also
+ * requires a reason, but that is enforced separately in the reopen path (so a
+ * normal forward open→under_review is NOT forced to carry a reason just because
+ * under_review is also the reopen target).
+ */
+export function incidentTransitionRequiresReason(to: IncidentLifecycleStatus): boolean {
+  return INCIDENT_TRANSITION_REQUIRES_REASON.includes(to);
 }
 
 // --- Audit event names (dot-namespaced, append-only) -----------------------

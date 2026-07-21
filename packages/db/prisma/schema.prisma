@@ -432,6 +432,11 @@ model Tenant {
   incidentEvidence         IncidentEvidence[]
   evidenceContextItems     EvidenceContextItem[]
   evidenceCustodyEvents    EvidenceCustodyEvent[]
+  // C3 — Incident core (cyberbullying case graph over the single Incident ledger).
+  cyberbullyingIncidentDetails CyberbullyingIncidentDetail[]
+  incidentTimelineEvents       IncidentTimelineEvent[]
+  incidentParticipants         IncidentParticipant[]
+  incidentDetectionLinks       IncidentDetectionLink[]
 
   @@map("tenants")
 }
@@ -1257,11 +1262,20 @@ model ActionQueueItem {
 model Incident {
   id             String    @id @default(cuid())
   tenantId       String
-  brandId        String
+  // C3 (ADR-0001) — NULLABLE: a victim-centric cyberbullying incident may have no
+  // brand. Brand incidents still set it. Plain denormalized column (no Brand FK).
+  brandId        String?
   title          String
+  // C3 (ADR-0001) — DOMAIN discriminator (IncidentCategory value). Default
+  // `reputation` keeps every existing brand incident backward-compatible.
+  // Distinct from `category` (free harm/descriptive category used by brand escalation).
+  domain         String    @default("reputation")
   category       String
   severity       String    @default("medium") // low|medium|high|critical
-  status         String    @default("open") // open|resolved
+  // C3 — canonical lifecycle (ADR-0002): open|under_review|acknowledged|confirmed|
+  // action_required|resolved|dismissed|archived. `open`/`resolved` stay valid so
+  // existing brand incidents are unaffected.
+  status         String    @default("open")
   sourcePlatform String?
   // V1.37.5 — DENORMALIZED cache kept for compatibility. The referentially-integral
   // source of truth is `relatedItems` (IncidentRelatedItem join rows with real FKs).
@@ -1274,8 +1288,16 @@ model Incident {
   tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   relatedItems IncidentRelatedItem[]
 
+  // C3 — cyberbullying case extension (one-to-one detail) + case graph.
+  cyberbullyingDetail CyberbullyingIncidentDetail?
+  timelineEvents      IncidentTimelineEvent[]
+  participants        IncidentParticipant[]
+  detectionLinks      IncidentDetectionLink[]
+  evidence            IncidentEvidence[]
+
   @@unique([id, tenantId])
   @@index([tenantId, brandId, status])
+  @@index([tenantId, domain, status])
   @@map("incidents")
 }
 
@@ -1582,6 +1604,8 @@ model SecurityDetection {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand  Brand? @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  // C3 — links to reviewed cases (a detection may be linked to incidents but can also stand alone).
+  incidentLinks IncidentDetectionLink[]
 
   @@unique([id, tenantId])
   @@index([tenantId, status, detectedAt])
@@ -1642,6 +1666,9 @@ model ProtectedSubject {
 
   tenant        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   relationships ProtectedSubjectRelationship[]
+  // C3 — a protected subject may be the victim of cyberbullying incidents / a participant.
+  incidentDetails CyberbullyingIncidentDetail[]
+  participations  IncidentParticipant[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, publicIdentifier])
@@ -1725,6 +1752,11 @@ model IncidentEvidence {
 
   tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   storageObject StorageObject         @relation(fields: [storageObjectId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  // C3 — composite tenant FK to the case ledger. Nullable (evidence may exist
+  // before a case). Cascade: deleting an incident removes its linked evidence
+  // (cyberbullying incidents are archived, not deleted; a SetNull-preserving
+  // trigger is a future enhancement — composite SetNull can't null a required tenantId).
+  incident      Incident?             @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
   contextItems  EvidenceContextItem[]
   custodyEvents EvidenceCustodyEvent[]
 
@@ -1769,6 +1801,103 @@ model EvidenceCustodyEvent {
   @@unique([id, tenantId])
   @@index([tenantId, evidenceId, createdAt])
   @@map("evidence_custody_events")
+}
+
+// ===========================================================================
+// Cyberbullying Protection — C3 Incident Core & Detection Binding.
+// The Incident model above is the SINGLE case ledger; these are its cyberbullying
+// extension + case graph. SecurityDetection stays the SINGLE signal ledger.
+// All tenant-scoped, RLS ENABLE+FORCE, composite (id, tenantId) FKs.
+// ===========================================================================
+
+// One-to-one detail of an Incident (ADR-0001). NOT a second case ledger — it
+// cannot exist without its Incident. `summary` is CONFIDENTIAL (never logged).
+model CyberbullyingIncidentDetail {
+  id                            String   @id @default(cuid())
+  tenantId                      String
+  incidentId                    String
+  protectedSubjectId            String
+  reportSource                  String // manual_report | detection (IncidentReportSource)
+  summary                       String // CONFIDENTIAL — never written to logs
+  // Neutral, non-accusatory: an ALLEGED actor label, never a confirmed attacker.
+  allegedActorLabel             String?
+  allegedActorExternalReference String?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident         @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  subject  ProtectedSubject @relation(fields: [protectedSubjectId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([incidentId, tenantId]) // one-to-one: at most one detail per incident
+  @@index([tenantId, protectedSubjectId])
+  @@map("cyberbullying_incident_details")
+}
+
+// Append-only, human-readable case timeline (distinct from AuditLog + custody).
+model IncidentTimelineEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  incidentId  String
+  eventType   String // IncidentTimelineEventType
+  actorUserId String? // null only for system events
+  reason      String?
+  metadata    Json? // sanitized — no evidence content / secrets / PII
+  createdAt   DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, createdAt])
+  @@map("incident_timeline_events")
+}
+
+// A person's role in an incident. `alleged_actor` is neutral — never a confirmed
+// attacker without human review. No Tamanor account is required (externalReference).
+model IncidentParticipant {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  incidentId         String
+  role               String // protected_subject | reporter | alleged_actor | reviewer | trusted_contact (IncidentParticipantRole)
+  protectedSubjectId String?
+  userId             String? // opaque user reference (no FK)
+  externalReference  String? // sanitized external identifier
+  createdAt          DateTime @default(now())
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident          @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  // Cascade (not SetNull): a composite FK cannot null the required tenantId. A
+  // subject is normally anonymized, not deleted; deletion removes its participations.
+  subject  ProtectedSubject? @relation(fields: [protectedSubjectId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  // Prevent a duplicate participant with the SAME identity in one incident.
+  @@unique([incidentId, role, protectedSubjectId, userId, externalReference])
+  @@index([tenantId, incidentId])
+  @@map("incident_participants")
+}
+
+// Explicit many-to-many link between a reviewed case and security signals. A link
+// NEVER confirms the incident. Unique per (incident, detection).
+model IncidentDetectionLink {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  incidentId          String
+  securityDetectionId String
+  linkedByUserId      String? // null only for a trusted system actor
+  linkReason          String
+  createdAt           DateTime @default(now())
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident  Incident          @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  detection SecurityDetection @relation(fields: [securityDetectionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([incidentId, securityDetectionId]) // idempotent link; same-tenant guaranteed by composite FKs
+  @@index([tenantId, incidentId])
+  @@map("incident_detection_links")
 }
 
 enum LeadStatus {
