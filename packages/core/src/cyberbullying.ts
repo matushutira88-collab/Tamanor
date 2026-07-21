@@ -133,6 +133,13 @@ export const CYBERBULLYING_AUDIT_EVENTS = {
   incidentCreated: "cyberbullying.incident.created",
   detectionLinked: "cyberbullying.incident.detection_linked",
   detectionUnlinked: "cyberbullying.incident.detection_unlinked",
+  // C8 — detection triage (human triage of existing SecurityDetections; no AI, no
+  // automatic incidents). Sanitized payloads — ids/status only.
+  detectionReviewStarted: "cyberbullying.detection.review_started",
+  detectionIgnored: "cyberbullying.detection.ignored",
+  detectionFalsePositive: "cyberbullying.detection.false_positive",
+  detectionReopened: "cyberbullying.detection.reopened",
+  detectionLinkedToIncident: "cyberbullying.detection.linked_to_incident",
   evidenceLinked: "cyberbullying.incident.evidence_linked",
   participantAdded: "cyberbullying.incident.participant_added",
   participantRemoved: "cyberbullying.incident.participant_removed",

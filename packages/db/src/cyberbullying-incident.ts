@@ -126,23 +126,30 @@ export async function createIncidentFromManualReport(
   }
 }
 
+/** Create a cyberbullying incident from detection(s) inside an existing transaction.
+ *  Reused by the public wrapper AND by the C8 triage flow so linking is atomic. */
+export async function createIncidentFromDetectionsTx(
+  db: Tx, actor: IncidentActorContext,
+  input: { protectedSubjectId: string; summary: string; detectionIds: string[]; severity?: string; title?: string },
+): Promise<string> {
+  const id = await createIncident(db, actor, { ...input, reportSource: IncidentReportSource.Detection });
+  for (const detId of input.detectionIds) {
+    // RLS guarantees same tenant; verify existence explicitly (fail-closed).
+    const det = await db.securityDetection.findFirst({ where: { id: detId, tenantId: actor.tenantId }, select: { id: true } });
+    if (!det) throw new IncidentNotFoundError();
+    await db.incidentDetectionLink.create({ data: { tenantId: actor.tenantId, incidentId: id, securityDetectionId: detId, linkedByUserId: actor.userId, linkReason: "created_from_detection" } });
+    await timeline(db, actor, id, IncidentTimelineEventType.DetectionLinked, `detection:${detId}`);
+    await audit(db, actor, CYBERBULLYING_AUDIT_EVENTS.detectionLinked, id, { detectionId: detId });
+  }
+  return id;
+}
+
 export async function createIncidentFromDetections(
   actor: IncidentActorContext,
   input: { protectedSubjectId: string; summary: string; detectionIds: string[]; severity?: string; title?: string },
 ): Promise<{ incidentId: string }> {
   assertPerm(actor, Permission.CyberbullyingReview);
-  const incidentId = await withTenant(actor.tenantId, async (db) => {
-    const id = await createIncident(db, actor, { ...input, reportSource: IncidentReportSource.Detection });
-    for (const detId of input.detectionIds) {
-      // RLS guarantees same tenant; verify existence explicitly (fail-closed).
-      const det = await db.securityDetection.findFirst({ where: { id: detId, tenantId: actor.tenantId }, select: { id: true } });
-      if (!det) throw new IncidentNotFoundError();
-      await db.incidentDetectionLink.create({ data: { tenantId: actor.tenantId, incidentId: id, securityDetectionId: detId, linkedByUserId: actor.userId, linkReason: "created_from_detection" } });
-      await timeline(db, actor, id, IncidentTimelineEventType.DetectionLinked, `detection:${detId}`);
-      await audit(db, actor, CYBERBULLYING_AUDIT_EVENTS.detectionLinked, id, { detectionId: detId });
-    }
-    return id;
-  });
+  const incidentId = await withTenant(actor.tenantId, (db) => createIncidentFromDetectionsTx(db, actor, input));
   return { incidentId };
 }
 

@@ -70,6 +70,24 @@ export interface CbCopy {
     integrityLabel: Record<"unverified" | "verified" | "failed", string>;
     errors: Record<"type" | "size" | "empty" | "too_many" | "total_size" | "mismatch" | "filename" | "malformed" | "denied" | "locked" | "not_found" | "invalid_status" | "scan" | "error", string>;
   };
+  // C8 — detection triage.
+  det: {
+    cta: string; queueTitle: string; queueSubtitle: string;
+    col: Record<"id" | "time" | "source" | "kind" | "severity" | "target" | "status", string>;
+    status: Record<"new" | "under_review" | "false_positive" | "linked_to_incident" | "ignored", string>;
+    severity: Record<"low" | "medium" | "high" | "critical", string>;
+    filter: Record<"status" | "severity" | "kind" | "subject" | "search" | "all" | "reset" | "sort", string>;
+    sort: Record<"newest" | "oldest" | "severity" | "status", string>;
+    op: Record<"start_review" | "ignore" | "false_positive" | "reopen" | "create_incident", string>;
+    bulk: { selected: string; apply: string; startReview: string; ignore: string; falsePositive: string; none: string };
+    detailTitle: string; back: string; linked: string; linkedTo: string; viewIncident: string;
+    section: Record<"overview" | "timeline" | "createIncident" | "actions", string>;
+    meta: Record<"detectedAt" | "source" | "kind" | "severity" | "subject" | "occurrences" | "reasonCode" | "confidence" | "status", string>;
+    timelineEvent: Record<"detection_review_started" | "detection_ignored" | "detection_false_positive" | "detection_linked" | "detection_reopened", string>;
+    create: { subject: string; choose: string; summary: string; summaryHint: string; submit: string; note: string; noSubjects: string };
+    empty: { title: string; body: string; noTimeline: string };
+    banner: { ok: string } & Record<"forbidden" | "not_found" | "already_linked" | "invalid_transition" | "subject" | "summary" | "error" | "applied", string>;
+  };
 }
 
 const STATUS_EN = { open: "Open", under_review: "Under review", acknowledged: "Acknowledged", confirmed: "Confirmed after review", action_required: "Action required", resolved: "Resolved", dismissed: "Dismissed", archived: "Archived" };
@@ -132,6 +150,23 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       integrityLabel: { unverified: "Unverified", verified: "Verified", failed: "Integrity failed" },
       errors: { type: "File type not allowed.", size: "File is too large.", empty: "File is empty.", too_many: "Too many files (max 5).", total_size: "The upload is too large.", mismatch: "File content doesn't match its type.", filename: "File name isn't allowed.", malformed: "The upload was malformed.", denied: "You don't have permission to add evidence.", locked: "This feature isn't included in your plan.", not_found: "Incident not found.", invalid_status: "Evidence can't be added to this incident's current status.", scan: "A file was blocked by the security scan.", error: "The upload could not be completed. Please try again." },
     },
+    det: {
+      cta: "Detection queue", queueTitle: "Detection queue", queueSubtitle: "Existing security signals prepared for human triage. Nothing is decided automatically — a reviewer ignores, marks false positive, or opens an incident.",
+      col: { id: "Detection", time: "Detected", source: "Source", kind: "Category", severity: "Severity", target: "Target", status: "Status" },
+      status: { new: "New", under_review: "Under review", false_positive: "False positive", linked_to_incident: "Linked to incident", ignored: "Ignored" },
+      severity: { low: "Low", medium: "Medium", high: "High", critical: "Critical" },
+      filter: { status: "Status", severity: "Severity", kind: "Category", subject: "Subject type", search: "Search", all: "All", reset: "Reset", sort: "Sort" },
+      sort: { newest: "Newest", oldest: "Oldest", severity: "Severity", status: "Status" },
+      op: { start_review: "Start review", ignore: "Ignore", false_positive: "Mark false positive", reopen: "Reopen", create_incident: "Create incident" },
+      bulk: { selected: "selected", apply: "Apply", startReview: "Start review", ignore: "Ignore", falsePositive: "Mark false positive", none: "Select detections to act on them in bulk." },
+      detailTitle: "Detection", back: "Back to queue", linked: "Linked to incident", linkedTo: "Linked incident", viewIncident: "Open incident",
+      section: { overview: "Signal", timeline: "Triage history", createIncident: "Create incident", actions: "Triage actions" },
+      meta: { detectedAt: "Detected", source: "Source", kind: "Category", severity: "Severity", subject: "Target", occurrences: "Occurrences", reasonCode: "Reason code", confidence: "Confidence", status: "Status" },
+      timelineEvent: { detection_review_started: "Review started", detection_ignored: "Ignored", detection_false_positive: "Marked false positive", detection_linked: "Incident created & linked", detection_reopened: "Reopened" },
+      create: { subject: "Protected subject", choose: "Select a subject…", summary: "What happened", summaryHint: "Confidential summary for reviewers. Opens an incident for human review — no automatic action.", submit: "Create incident", note: "The detection will be linked to the new incident. It is not a confirmed incident until reviewed.", noSubjects: "No protected subjects are available. A protected subject must be created first." },
+      empty: { title: "No detections", body: "There are no security detections to triage in your workspace.", noTimeline: "No triage activity yet." },
+      banner: { ok: "Done.", forbidden: "You don't have permission for that action.", not_found: "Detection not found or out of scope.", already_linked: "This detection is already linked to an incident.", invalid_transition: "That action isn't allowed from the current status.", subject: "Choose a protected subject.", summary: "Add a summary (10–4000 characters).", error: "The action could not be completed.", applied: "Bulk action applied." },
+    },
   },
   sk: {
     moduleName: "Ochrana pred kyberšikanou", moduleDesc: "Posudzovanie incidentov zameraných na obeť — detegované signály a manuálne reporty, oddelené od brand moderácie.", available: "Dostupné",
@@ -179,6 +214,23 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       integrityLabel: { unverified: "Neoverené", verified: "Overené", failed: "Integrita zlyhala" },
       errors: { type: "Typ súboru nie je povolený.", size: "Súbor je príliš veľký.", empty: "Súbor je prázdny.", too_many: "Príliš veľa súborov (max. 5).", total_size: "Nahrávanie je príliš veľké.", mismatch: "Obsah súboru nezodpovedá jeho typu.", filename: "Názov súboru nie je povolený.", malformed: "Nahrávanie bolo poškodené.", denied: "Nemáte oprávnenie pridať dôkaz.", locked: "Táto funkcia nie je súčasťou vášho plánu.", not_found: "Incident sa nenašiel.", invalid_status: "K aktuálnemu stavu incidentu nie je možné pridať dôkaz.", scan: "Súbor bol zablokovaný bezpečnostným skenom.", error: "Nahrávanie sa nepodarilo dokončiť. Skúste to znova." },
     },
+    det: {
+      cta: "Fronta detekcií", queueTitle: "Fronta detekcií", queueSubtitle: "Existujúce bezpečnostné signály pripravené na ľudské posúdenie. Nič sa nerozhoduje automaticky — posudzovateľ ignoruje, označí ako false positive alebo otvorí incident.",
+      col: { id: "Detekcia", time: "Detegované", source: "Zdroj", kind: "Kategória", severity: "Závažnosť", target: "Cieľ", status: "Stav" },
+      status: { new: "Nové", under_review: "V posudzovaní", false_positive: "False positive", linked_to_incident: "Pripojené k incidentu", ignored: "Ignorované" },
+      severity: { low: "Nízka", medium: "Stredná", high: "Vysoká", critical: "Kritická" },
+      filter: { status: "Stav", severity: "Závažnosť", kind: "Kategória", subject: "Typ cieľa", search: "Hľadať", all: "Všetko", reset: "Zrušiť", sort: "Zoradiť" },
+      sort: { newest: "Najnovšie", oldest: "Najstaršie", severity: "Závažnosť", status: "Stav" },
+      op: { start_review: "Začať review", ignore: "Ignorovať", false_positive: "Označiť false positive", reopen: "Znovu otvoriť", create_incident: "Vytvoriť incident" },
+      bulk: { selected: "vybraných", apply: "Použiť", startReview: "Začať review", ignore: "Ignorovať", falsePositive: "Označiť false positive", none: "Vyberte detekcie pre hromadnú akciu." },
+      detailTitle: "Detekcia", back: "Späť do fronty", linked: "Pripojené k incidentu", linkedTo: "Pripojený incident", viewIncident: "Otvoriť incident",
+      section: { overview: "Signál", timeline: "História posudzovania", createIncident: "Vytvoriť incident", actions: "Akcie posudzovania" },
+      meta: { detectedAt: "Detegované", source: "Zdroj", kind: "Kategória", severity: "Závažnosť", subject: "Cieľ", occurrences: "Výskyty", reasonCode: "Kód dôvodu", confidence: "Istota", status: "Stav" },
+      timelineEvent: { detection_review_started: "Posudzovanie začaté", detection_ignored: "Ignorované", detection_false_positive: "Označené ako false positive", detection_linked: "Incident vytvorený a pripojený", detection_reopened: "Znovu otvorené" },
+      create: { subject: "Chránená osoba", choose: "Vyberte osobu…", summary: "Čo sa stalo", summaryHint: "Dôverné zhrnutie pre posudzovateľov. Otvorí incident na ľudské preskúmanie — žiadna automatická akcia.", submit: "Vytvoriť incident", note: "Detekcia bude pripojená k novému incidentu. Nie je to potvrdený incident, kým nebude preskúmaný.", noSubjects: "Nie sú dostupné žiadne chránené osoby. Najprv musí byť vytvorená chránená osoba." },
+      empty: { title: "Žiadne detekcie", body: "Vo vašom workspace nie sú žiadne bezpečnostné detekcie na posúdenie.", noTimeline: "Zatiaľ žiadna aktivita posudzovania." },
+      banner: { ok: "Hotovo.", forbidden: "Na túto akciu nemáte oprávnenie.", not_found: "Detekcia sa nenašla alebo je mimo rozsahu.", already_linked: "Táto detekcia je už pripojená k incidentu.", invalid_transition: "Táto akcia nie je z aktuálneho stavu povolená.", subject: "Vyberte chránenú osobu.", summary: "Pridajte zhrnutie (10–4000 znakov).", error: "Akciu sa nepodarilo dokončiť.", applied: "Hromadná akcia použitá." },
+    },
   },
   de: {
     moduleName: "Cybermobbing-Schutz", moduleDesc: "Opferzentrierte Vorfallprüfung — erkannte Signale und manuelle Meldungen, getrennt von der Markenmoderation.", available: "Verfügbar",
@@ -225,6 +277,23 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       scanLabel: { pending_scan: "Sicherheitsprüfung ausstehend", clean: "Geprüft — keine Bedrohungen", infected: "Blockiert — Bedrohung erkannt", scan_failed: "Prüfung fehlgeschlagen" },
       integrityLabel: { unverified: "Ungeprüft", verified: "Verifiziert", failed: "Integrität fehlgeschlagen" },
       errors: { type: "Dateityp nicht erlaubt.", size: "Datei ist zu groß.", empty: "Datei ist leer.", too_many: "Zu viele Dateien (max. 5).", total_size: "Der Upload ist zu groß.", mismatch: "Dateiinhalt passt nicht zum Typ.", filename: "Dateiname nicht erlaubt.", malformed: "Der Upload war fehlerhaft.", denied: "Sie haben keine Berechtigung, Nachweise hinzuzufügen.", locked: "Diese Funktion ist in Ihrem Tarif nicht enthalten.", not_found: "Vorfall nicht gefunden.", invalid_status: "Zum aktuellen Status des Vorfalls können keine Nachweise hinzugefügt werden.", scan: "Eine Datei wurde von der Sicherheitsprüfung blockiert.", error: "Der Upload konnte nicht abgeschlossen werden. Bitte erneut versuchen." },
+    },
+    det: {
+      cta: "Erkennungs-Queue", queueTitle: "Erkennungs-Queue", queueSubtitle: "Bestehende Sicherheitssignale zur menschlichen Prüfung vorbereitet. Nichts wird automatisch entschieden — ein Prüfer ignoriert, markiert als Fehlalarm oder eröffnet einen Vorfall.",
+      col: { id: "Erkennung", time: "Erkannt", source: "Quelle", kind: "Kategorie", severity: "Schweregrad", target: "Ziel", status: "Status" },
+      status: { new: "Neu", under_review: "In Prüfung", false_positive: "Fehlalarm", linked_to_incident: "Mit Vorfall verknüpft", ignored: "Ignoriert" },
+      severity: { low: "Niedrig", medium: "Mittel", high: "Hoch", critical: "Kritisch" },
+      filter: { status: "Status", severity: "Schweregrad", kind: "Kategorie", subject: "Zieltyp", search: "Suchen", all: "Alle", reset: "Zurücksetzen", sort: "Sortieren" },
+      sort: { newest: "Neueste", oldest: "Älteste", severity: "Schweregrad", status: "Status" },
+      op: { start_review: "Prüfung starten", ignore: "Ignorieren", false_positive: "Als Fehlalarm markieren", reopen: "Wiedereröffnen", create_incident: "Vorfall erstellen" },
+      bulk: { selected: "ausgewählt", apply: "Anwenden", startReview: "Prüfung starten", ignore: "Ignorieren", falsePositive: "Als Fehlalarm markieren", none: "Wählen Sie Erkennungen für Sammelaktionen." },
+      detailTitle: "Erkennung", back: "Zurück zur Queue", linked: "Mit Vorfall verknüpft", linkedTo: "Verknüpfter Vorfall", viewIncident: "Vorfall öffnen",
+      section: { overview: "Signal", timeline: "Prüfverlauf", createIncident: "Vorfall erstellen", actions: "Prüf-Aktionen" },
+      meta: { detectedAt: "Erkannt", source: "Quelle", kind: "Kategorie", severity: "Schweregrad", subject: "Ziel", occurrences: "Vorkommen", reasonCode: "Ursachencode", confidence: "Konfidenz", status: "Status" },
+      timelineEvent: { detection_review_started: "Prüfung gestartet", detection_ignored: "Ignoriert", detection_false_positive: "Als Fehlalarm markiert", detection_linked: "Vorfall erstellt & verknüpft", detection_reopened: "Wiedereröffnet" },
+      create: { subject: "Geschützte Person", choose: "Person auswählen…", summary: "Was ist passiert", summaryHint: "Vertrauliche Zusammenfassung für Prüfer. Eröffnet einen Vorfall zur menschlichen Prüfung — keine automatische Maßnahme.", submit: "Vorfall erstellen", note: "Die Erkennung wird mit dem neuen Vorfall verknüpft. Es ist kein bestätigter Vorfall, bis er geprüft wurde.", noSubjects: "Es sind keine geschützten Personen verfügbar. Zuerst muss eine geschützte Person angelegt werden." },
+      empty: { title: "Keine Erkennungen", body: "In Ihrem Workspace gibt es keine zu prüfenden Sicherheitserkennungen.", noTimeline: "Noch keine Prüfaktivität." },
+      banner: { ok: "Erledigt.", forbidden: "Sie haben keine Berechtigung für diese Aktion.", not_found: "Erkennung nicht gefunden oder außerhalb des Bereichs.", already_linked: "Diese Erkennung ist bereits mit einem Vorfall verknüpft.", invalid_transition: "Diese Aktion ist aus dem aktuellen Status nicht erlaubt.", subject: "Wählen Sie eine geschützte Person.", summary: "Fügen Sie eine Zusammenfassung hinzu (10–4000 Zeichen).", error: "Die Aktion konnte nicht abgeschlossen werden.", applied: "Sammelaktion angewendet." },
     },
   },
 };

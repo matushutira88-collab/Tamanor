@@ -107,6 +107,7 @@ export * from "./evidence-storage";
 export * from "./evidence-antivirus";
 export * from "./cyberbullying-incident";
 export * from "./cyberbullying-evidence-upload";
+export * from "./cyberbullying-detection-triage";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

@@ -8,6 +8,7 @@ import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { getLocale } from "@/i18n/locale-server";
 import { canViewCyberbullying, getCyberbullyingDashboardKpis, getCyberbullyingOperationalMetrics } from "@/server/cyberbullying-inbox";
 import { canReportCyberbullying } from "@/server/cyberbullying-report";
+import { canTriageDetections, countNewCyberbullyingDetections } from "@/server/cyberbullying-detections";
 import { CB_COPY } from "./cb-i18n";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +27,10 @@ export default async function CyberbullyingOverviewPage({ searchParams }: { sear
   const tfRaw = Number((await searchParams).tf);
   const tf: Tf = (TIMEFRAMES as readonly number[]).includes(tfRaw) ? (tfRaw as Tf) : 30;
   const actor = { tenantId: session.tenantId, userId: session.userId, role: session.role };
-  const [kpi, ops] = await Promise.all([
+  const [kpi, ops, newDetections] = await Promise.all([
     getCyberbullyingDashboardKpis(actor, tf),
     getCyberbullyingOperationalMetrics(actor),
+    canTriageDetections(session.role) ? countNewCyberbullyingDetections(actor) : Promise.resolve(0),
   ]);
 
   const inbox = (q: string) => `/dashboard/security/cyberbullying/incidents${q}` as const;
@@ -78,6 +80,20 @@ export default async function CyberbullyingOverviewPage({ searchParams }: { sear
           <KpiCard label={t.ops.avgReviewTime} value={ops.avgReviewTimeHours === null ? "—" : String(ops.avgReviewTimeHours)} tone="neutral" />
         </div>
       </div>
+
+      {/* C8 — Detection queue entry (human triage of existing security signals). */}
+      {canTriageDetections(session.role) ? (
+        <div className="mt-8">
+          <SectionHeader title={t.det.queueTitle} description={t.det.queueSubtitle}
+            action={<Link href="/dashboard/security/cyberbullying/detections" className="text-sm font-semibold text-[var(--color-brand)] hover:underline">{t.det.cta} →</Link>} />
+          <Card>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-[var(--color-muted)]">{t.det.status.new}</p>
+              <Link href="/dashboard/security/cyberbullying/detections?status=new" className="text-2xl font-semibold text-[var(--color-brand)] hover:underline">{newDetections}</Link>
+            </div>
+          </Card>
+        </div>
+      ) : null}
 
       <div className="mt-8">
         <SectionHeader title={t.inboxTitle} description={t.detectOnly} action={<Link href={inbox("")} className="text-sm font-semibold text-[var(--color-brand)] hover:underline">{t.openDashboard} →</Link>} />

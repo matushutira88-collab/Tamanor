@@ -167,6 +167,84 @@ export enum IncidentAssignmentAction {
   Unassigned = "unassigned",
 }
 
+// --- C8 Detection triage (human triage of existing SecurityDetections) ------
+
+/**
+ * Cyberbullying triage state of an existing SecurityDetection. A separate overlay
+ * from the security-domain `SecurityDetection.status` (never overloaded). Default
+ * (no triage row yet) is `New`. Append-only audited; a detection is never deleted.
+ */
+export enum CyberbullyingDetectionStatus {
+  New = "new",
+  UnderReview = "under_review",
+  FalsePositive = "false_positive",
+  LinkedToIncident = "linked_to_incident",
+  Ignored = "ignored",
+}
+
+/** Append-only detection-triage timeline event types (the detection's own history). */
+export enum CyberbullyingDetectionEventType {
+  ReviewStarted = "detection_review_started",
+  Ignored = "detection_ignored",
+  FalsePositive = "detection_false_positive",
+  Linked = "detection_linked",
+  Reopened = "detection_reopened",
+}
+
+/** Reviewer triage operations. `create_incident` links via the C3 contract. */
+export type CyberbullyingDetectionOp = "start_review" | "ignore" | "false_positive" | "reopen" | "create_incident";
+
+const DS = CyberbullyingDetectionStatus;
+
+/** Pure transition table. Returns the resulting status, or null if the op is illegal. */
+export function detectionTransitionTarget(from: CyberbullyingDetectionStatus, op: CyberbullyingDetectionOp): CyberbullyingDetectionStatus | null {
+  switch (op) {
+    case "start_review": return from === DS.New ? DS.UnderReview : null;
+    case "ignore": return from === DS.New || from === DS.UnderReview ? DS.Ignored : null;
+    case "false_positive": return from === DS.New || from === DS.UnderReview ? DS.FalsePositive : null;
+    case "create_incident": return from === DS.New || from === DS.UnderReview ? DS.LinkedToIncident : null;
+    case "reopen": return from === DS.FalsePositive || from === DS.Ignored ? DS.UnderReview : null;
+    default: return null;
+  }
+}
+
+/** The triage event a successful op appends to the detection timeline. */
+export function detectionEventForOp(op: CyberbullyingDetectionOp): CyberbullyingDetectionEventType {
+  switch (op) {
+    case "start_review": return CyberbullyingDetectionEventType.ReviewStarted;
+    case "ignore": return CyberbullyingDetectionEventType.Ignored;
+    case "false_positive": return CyberbullyingDetectionEventType.FalsePositive;
+    case "create_incident": return CyberbullyingDetectionEventType.Linked;
+    case "reopen": return CyberbullyingDetectionEventType.Reopened;
+  }
+}
+
+export interface AvailableDetectionActions {
+  startReview: boolean;
+  ignore: boolean;
+  falsePositive: boolean;
+  createIncident: boolean;
+  reopen: boolean;
+}
+
+/**
+ * Operations a reviewer may perform on a detection (permission × status). All
+ * triage requires `cyberbullying:review`; without it every action is false
+ * (read-only / denied). `create_incident` is hidden once already linked.
+ */
+export function availableDetectionActions(role: string, status: CyberbullyingDetectionStatus, alreadyLinked: boolean): AvailableDetectionActions {
+  const review = can(role as Role, Permission.CyberbullyingReview);
+  if (!review) return { startReview: false, ignore: false, falsePositive: false, createIncident: false, reopen: false };
+  const active = status === DS.New || status === DS.UnderReview;
+  return {
+    startReview: status === DS.New,
+    ignore: active,
+    falsePositive: active,
+    createIncident: active && !alreadyLinked,
+    reopen: status === DS.FalsePositive || status === DS.Ignored,
+  };
+}
+
 // --- Domain shapes (plain; NOT Prisma) -------------------------------------
 
 export interface CyberbullyingIncidentDetail {

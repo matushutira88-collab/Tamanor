@@ -442,6 +442,9 @@ model Tenant {
   incidentAssignmentEvents     IncidentAssignmentEvent[]
   // C6 — manual-report idempotency claims (double-submit protection).
   cyberbullyingReportSubmissions CyberbullyingReportSubmission[]
+  // C8 — detection triage overlay + append-only triage history.
+  cyberbullyingDetectionTriage       CyberbullyingDetectionTriage[]
+  cyberbullyingDetectionTriageEvents CyberbullyingDetectionTriageEvent[]
 
   @@map("tenants")
 }
@@ -1614,6 +1617,9 @@ model SecurityDetection {
   brand  Brand? @relation(fields: [brandId], references: [id], onDelete: Cascade)
   // C3 — links to reviewed cases (a detection may be linked to incidents but can also stand alone).
   incidentLinks IncidentDetectionLink[]
+  // C8 — cyberbullying triage overlay (separate from the security `status`; never overloaded).
+  cyberbullyingTriage       CyberbullyingDetectionTriage?
+  cyberbullyingTriageEvents CyberbullyingDetectionTriageEvent[]
 
   @@unique([id, tenantId])
   @@index([tenantId, status, detectedAt])
@@ -1976,6 +1982,49 @@ model CyberbullyingReportSubmission {
   @@unique([tenantId, userId, idempotencyKey])
   @@index([tenantId, incidentId])
   @@map("cyberbullying_report_submissions")
+}
+
+// C8 — cyberbullying TRIAGE state of an existing SecurityDetection. NOT a second
+// detection model: a 1:1 overlay that lets a human triage a security signal into
+// the cyberbullying workflow (new → under_review → false_positive | ignored |
+// linked_to_incident, reopenable from false_positive/ignored). The security-domain
+// `SecurityDetection.status` is never touched. Detections are never deleted.
+model CyberbullyingDetectionTriage {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  securityDetectionId String
+  status              String   @default("new") // CyberbullyingDetectionStatus
+  incidentId          String? // set when linked_to_incident (plain ref; the C3 link is the FK-backed source of truth)
+  reviewedByUserId    String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  detection SecurityDetection @relation(fields: [securityDetectionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([securityDetectionId, tenantId]) // one triage row per detection
+  @@index([tenantId, status])
+  @@map("cyberbullying_detection_triage")
+}
+
+// C8 — append-only detection-triage timeline / status history. No update/delete.
+model CyberbullyingDetectionTriageEvent {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  securityDetectionId String
+  eventType           String // CyberbullyingDetectionEventType
+  actorUserId         String?
+  reason              String?
+  metadata            Json? // sanitized — ids/status only, never signal evidence
+  createdAt           DateTime @default(now())
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  detection SecurityDetection @relation(fields: [securityDetectionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, securityDetectionId, createdAt])
+  @@map("cyberbullying_detection_triage_events")
 }
 
 enum LeadStatus {
