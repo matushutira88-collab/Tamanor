@@ -112,6 +112,7 @@ export * from "./cyberbullying-case-management";
 export * from "./cyberbullying-notifications";
 export * from "./cyberbullying-escalation";
 export * from "./cyberbullying-sla";
+export * from "./cyberbullying-compliance";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

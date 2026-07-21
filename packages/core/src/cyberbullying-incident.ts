@@ -170,6 +170,8 @@ export enum IncidentTimelineEventType {
   EscalationResolved = "escalation_resolved",
   EscalationCancelled = "escalation_cancelled",
   EscalationTargetChanged = "escalation_target_changed",
+  // C11 — an immutable compliance snapshot was created (metadata only in the timeline).
+  ComplianceReportCreated = "compliance_report_created",
 }
 
 /**

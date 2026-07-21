@@ -38,6 +38,7 @@ export * from "./cyberbullying";
 export * from "./cyberbullying-evidence";
 export * from "./cyberbullying-evidence-upload";
 export * from "./cyberbullying-notifications";
+export * from "./cyberbullying-compliance";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";

@@ -451,6 +451,8 @@ model Tenant {
   // C10 — notifications (general foundation) + manual escalations.
   notifications                      Notification[]
   cyberbullyingEscalations           CyberbullyingEscalation[]
+  // C11 — immutable compliance report snapshots.
+  complianceReportSnapshots          ComplianceReportSnapshot[]
 
   @@map("tenants")
 }
@@ -1316,6 +1318,8 @@ model Incident {
   caseTasks           CyberbullyingCaseTask[]
   // C10 — manual escalations on this incident.
   escalations         CyberbullyingEscalation[]
+  // C11 — immutable compliance report snapshots of this incident.
+  complianceReports   ComplianceReportSnapshot[]
 
   @@unique([id, tenantId])
   @@index([tenantId, brandId, status])
@@ -2160,6 +2164,44 @@ model CyberbullyingEscalation {
   @@unique([id, tenantId])
   @@index([tenantId, incidentId, status])
   @@map("cyberbullying_escalations")
+}
+
+// C11 — IMMUTABLE compliance report snapshot: an append-only, versioned, hashed
+// snapshot of an incident at a point in time. NOT a second case model — the incident
+// stays the canonical case. Immutability is enforced at the DB privilege level: the
+// app role is granted SELECT + INSERT only (no UPDATE/DELETE) in the migration, so a
+// snapshot can never be edited or deleted by the application. The payload holds only
+// SANITIZED metadata (never evidence content, notes, or subject PII). A general
+// foundation (reusable), used in C11 only for cyberbullying.
+model ComplianceReportSnapshot {
+  id                      String   @id @default(cuid())
+  tenantId                String
+  incidentId              String
+  reportType              String // ComplianceReportType
+  version                 Int
+  schemaVersion           String
+  status                  String   @default("ready") // ComplianceReportStatus (append-only)
+  redactionState          String   @default("unredacted_internal") // RedactionState
+  generatedByUserId       String
+  generatedAt             DateTime @default(now())
+  sourceIncidentUpdatedAt DateTime?
+  snapshotHash            String
+  previousSnapshotHash    String?
+  snapshotPayload         Json
+  idempotencyKey          String?
+  createdAt               DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId], map: "crs_id_tenant_key")
+  // Version is server-computed and unique per (tenant, incident, reportType).
+  @@unique([tenantId, incidentId, reportType, version], map: "crs_tenant_incident_type_version_key")
+  // Idempotency: one report per (tenant, user, incident, reportType, key). NULL keys
+  // are distinct in Postgres, so keyless creates never collide.
+  @@unique([tenantId, generatedByUserId, incidentId, reportType, idempotencyKey], map: "crs_tenant_user_incident_type_idem_key")
+  @@index([tenantId, incidentId, reportType, version], map: "crs_tenant_incident_type_version_idx")
+  @@map("compliance_report_snapshots")
 }
 
 enum LeadStatus {

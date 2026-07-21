@@ -159,6 +159,11 @@ export const CYBERBULLYING_AUDIT_EVENTS = {
   escalationResolved: "cyberbullying.escalation.resolved",
   escalationCancelled: "cyberbullying.escalation.cancelled",
   escalationTargetChanged: "cyberbullying.escalation.target_changed",
+  // C11 — compliance reporting. Sanitized — ids/type/version/hash/verification only;
+  // NEVER the snapshot payload, notes, summary, filenames, or subject PII.
+  complianceReportCreated: "cyberbullying.compliance_report.created",
+  complianceReportIdempotentReplay: "cyberbullying.compliance_report.idempotent_replay",
+  complianceReportVerificationFailed: "cyberbullying.compliance_report.verification_failed",
   evidenceLinked: "cyberbullying.incident.evidence_linked",
   participantAdded: "cyberbullying.incident.participant_added",
   participantRemoved: "cyberbullying.incident.participant_removed",
