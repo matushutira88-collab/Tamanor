@@ -35,5 +35,6 @@ export * from "./audit";
 export * from "./security";
 export * from "./detection-engine";
 export * from "./cyberbullying";
+export * from "./cyberbullying-evidence";
 export * from "./usage-policy";
 export * from "./usage-pricing";

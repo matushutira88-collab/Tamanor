@@ -427,6 +427,11 @@ model Tenant {
   // C1 — Cyberbullying Protection foundation (victim-centric; isolated from brand).
   protectedSubjects             ProtectedSubject[]
   protectedSubjectRelationships ProtectedSubjectRelationship[]
+  // C2 — Evidence Foundation (local-only storage; immutable original + custody).
+  storageObjects           StorageObject[]
+  incidentEvidence         IncidentEvidence[]
+  evidenceContextItems     EvidenceContextItem[]
+  evidenceCustodyEvents    EvidenceCustodyEvent[]
 
   @@map("tenants")
 }
@@ -1660,6 +1665,110 @@ model ProtectedSubjectRelationship {
   @@unique([id, tenantId])
   @@index([tenantId, protectedSubjectId])
   @@map("protected_subject_relationships")
+}
+
+// ===========================================================================
+// Cyberbullying Protection — C2 Evidence Foundation.
+// LOCAL storage only (no cloud). Binary content NEVER in the DB — only a
+// StorageObject reference. Original evidence is IMMUTABLE; only governance
+// metadata (integrity/scan status, retention, legal hold, deletion) mutates.
+// Custody is an append-only ledger, separate from AuditLog. String columns
+// mirror @guardora/core cyberbullying-evidence enums. RLS ENABLE+FORCE +
+// tenant_isolation added in the accompanying migration; composite (id, tenantId)
+// FKs keep cross-tenant references structurally impossible.
+// ===========================================================================
+
+model StorageObject {
+  id         String   @id @default(cuid())
+  tenantId   String
+  // Opaque LOCAL storage key (never a real path/PII; never a cloud URL).
+  storageKey String
+  sizeBytes  Int
+  mimeType   String?
+  createdAt  DateTime @default(now())
+
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evidence IncidentEvidence[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, createdAt])
+  @@map("storage_objects")
+}
+
+model IncidentEvidence {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  evidenceType       String // screenshot | message_text | file | link | other (EvidenceType)
+  sourceType         String // user_upload | owned_account | api | other (EvidenceSourceType)
+  captureMethod      String // user_upload | manual | api (EvidenceCaptureMethod)
+  createdAt          DateTime @default(now())
+  capturedAt         DateTime
+  // Opaque user reference (no FK — evidence may be system-captured; PII-minimal).
+  submittedByUserId  String?
+  // Reference columns (no FK yet): the composite (id, tenantId) FKs to Incident /
+  // ProtectedSubject are wired when the case/subject linkage ships (C3+). Nullable
+  // now; a plain column avoids a composite SetNull that cannot null a required tenantId.
+  incidentId         String?
+  protectedSubjectId String?
+  storageObjectId    String
+  mimeType           String?
+  sizeBytes          Int
+  // Immutable integrity facts.
+  contentHash        String
+  hashAlgorithm      String // sha256 (HashAlgorithm)
+  // Mutable governance metadata.
+  integrityStatus    String   @default("unverified") // unverified | verified | failed
+  scanStatus         String   @default("pending_scan") // pending_scan | clean | infected | scan_failed
+  retentionUntil     DateTime?
+  legalHold          Boolean  @default(false)
+  deletedAt          DateTime?
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  storageObject StorageObject         @relation(fields: [storageObjectId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  contextItems  EvidenceContextItem[]
+  custodyEvents EvidenceCustodyEvent[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId])
+  @@index([tenantId, protectedSubjectId])
+  @@map("incident_evidence")
+}
+
+model EvidenceContextItem {
+  id               String   @id @default(cuid())
+  tenantId         String
+  evidenceId       String
+  relation         String // before | primary | after (EvidenceContextRelation)
+  sequencePosition Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evidence IncidentEvidence @relation(fields: [evidenceId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, evidenceId])
+  @@map("evidence_context_items")
+}
+
+// Append-only forensic chain-of-custody. No update/delete path.
+model EvidenceCustodyEvent {
+  id           String   @id @default(cuid())
+  tenantId     String
+  evidenceId   String
+  eventType    String // captured | uploaded | verified | viewed_sensitive | redacted | deleted | retention_extended | legal_hold_enabled | legal_hold_removed (EvidenceCustodyEventType)
+  actorUserId  String?
+  actorRole    String?
+  reason       String?
+  previousHash String?
+  resultingHash String?
+  createdAt    DateTime @default(now())
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evidence IncidentEvidence @relation(fields: [evidenceId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, evidenceId, createdAt])
+  @@map("evidence_custody_events")
 }
 
 enum LeadStatus {

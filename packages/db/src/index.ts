@@ -102,6 +102,7 @@ export * from "./resource-limits";
 export * from "./tenant-db";
 export * from "./repositories";
 export * from "./security-detection";
+export * from "./evidence-integrity";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";
