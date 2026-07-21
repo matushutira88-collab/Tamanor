@@ -44,7 +44,7 @@ async function run() {
   const connect = readSrc("apps/web/src/app/api/connectors/google-business/connect/route.ts");
   const callback = readSrc("apps/web/src/app/api/connectors/google-business/callback/route.ts");
   const disconnect = readSrc("apps/web/src/app/dashboard/accounts/google-business/actions.ts");
-  const landing = readSrc("apps/web/src/components/landing/landing-content.tsx");
+  const landing = readSrc("apps/web/src/components/landing-v2/landing-v2.tsx");
   const readme = readSrc("README.md");
   const en = readSrc("apps/web/src/i18n/dictionaries/en.ts");
   const sk = readSrc("apps/web/src/i18n/dictionaries/sk.ts");
@@ -159,7 +159,20 @@ async function run() {
     && !disconnect.includes("accessToken: account") && disconnect.includes("no token"));
 
   // 35) Public copy does not claim live sync before verification.
-  check("35) public copy honest (not live)", en.includes("connector ready for approved API access") && landing.includes("t.beta.googleConnectorNote") && !/google[^\n]*\blive\b/i.test(en) && /connector implementation is complete/i.test(readme));
+  // Landing V2 (the current landing) is data-driven: the honest Google state now lives in the
+  // `landingV2` platforms copy ("Connector built — awaiting approved API access. Reviews stay
+  // read-only by design."), rendered by the landing via `copy.platforms` — this replaces the old
+  // landing-content.tsx `t.beta.googleConnectorNote` render, which the landing refactor removed.
+  // The "not live" guard is per-line and exempts approval-caveated copy: an honest line may
+  // legitimately pair "Google" + "live" when it explicitly gates live access on approval
+  // (e.g. the `state_awaiting_approval` status), while a dishonest "Google is live" claim would not.
+  const claimsGoogleLive = en.split("\n").some((ln) => /google[^\n]*\blive\b/i.test(ln) && !/(approv|pending|awaiting)/i.test(ln));
+  check("35) public copy honest (not live)",
+    en.includes("connector ready for approved API access")
+    && en.includes("awaiting approved API access")
+    && landing.includes("copy.platforms")
+    && !claimsGoogleLive
+    && /connector implementation is complete/i.test(readme));
 
   // Diagnostic sanity — never "ready" without verified locations.
   const diag = googleBusinessDiagnostic({ source: ENABLED, connected: true, tokenValid: true, accounts: [acc("1")], selectedAccountId: "1", locations: [unverifiedLoc] });
