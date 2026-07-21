@@ -453,6 +453,12 @@ model Tenant {
   cyberbullyingEscalations           CyberbullyingEscalation[]
   // C11 — immutable compliance report snapshots.
   complianceReportSnapshots          ComplianceReportSnapshot[]
+  // C12 — redaction / approval / export workflow.
+  complianceRedactionDrafts          ComplianceRedactionDraft[]
+  complianceRedactionRules           ComplianceRedactionRule[]
+  complianceExportAuthorizations     ComplianceExportAuthorization[]
+  complianceExportPackageManifests   ComplianceExportPackageManifest[]
+  complianceApprovalHistoryEvents    ComplianceApprovalHistoryEvent[]
 
   @@map("tenants")
 }
@@ -2189,6 +2195,14 @@ model ComplianceReportSnapshot {
   previousSnapshotHash    String?
   snapshotPayload         Json
   idempotencyKey          String?
+  // C12 — redaction provenance (set only on a REDACTED snapshot; null on originals).
+  sourceReportId          String?
+  sourceSnapshotHash      String?
+  redactionDraftId        String?
+  redactionRuleSetHash    String?
+  approvedByUserId        String?
+  approvedAt              DateTime?
+  redactionSummary        Json?
   createdAt               DateTime @default(now())
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2202,6 +2216,152 @@ model ComplianceReportSnapshot {
   @@unique([tenantId, generatedByUserId, incidentId, reportType, idempotencyKey], map: "crs_tenant_user_incident_type_idem_key")
   @@index([tenantId, incidentId, reportType, version], map: "crs_tenant_incident_type_version_idx")
   @@map("compliance_report_snapshots")
+}
+
+// C12 — Redaction draft (maker side of maker-checker). Editable ONLY in `draft`;
+// SUBMITTED is read-only; APPROVED/REJECTED/CANCELLED/SUPERSEDED are terminal.
+// Controlled status transitions are validated server-side and mirrored append-only
+// into compliance_approval_history_events. No source field values are stored here.
+model ComplianceRedactionDraft {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  incidentId          String
+  sourceReportId      String
+  status              String    @default("draft") // RedactionDraftStatus
+  revision            Int       @default(1)
+  createdByUserId     String
+  submittedByUserId   String?
+  submittedAt         DateTime?
+  approvedByUserId    String?
+  approvedAt          DateTime?
+  rejectedByUserId    String?
+  rejectedAt          DateTime?
+  rejectionReasonCode String?
+  producedReportId    String?
+  idempotencyKey      String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rules  ComplianceRedactionRule[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, createdByUserId, sourceReportId, idempotencyKey], map: "crd_tenant_user_source_idem_key")
+  @@index([tenantId, incidentId, status])
+  @@map("compliance_redaction_drafts")
+}
+
+// C12 — a single field-path redaction rule (registry-validated). Editable only while
+// the parent draft is `draft`. The confidential OTHER note is stored here but never
+// enters the snapshot, timeline, audit, or manifest.
+model ComplianceRedactionRule {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  draftId             String
+  fieldPath           String
+  action              String // RedactionAction
+  reasonCode          String // RedactionReasonCode
+  reasonNote          String? // CONFIDENTIAL (OTHER only) — never logged/exported
+  replacementMarkerKey String?
+  order               Int      @default(0)
+  createdByUserId     String
+  createdAt           DateTime @default(now())
+
+  tenant Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  draft  ComplianceRedactionDraft @relation(fields: [draftId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, draftId, order])
+  @@map("compliance_redaction_rules")
+}
+
+// C12 — export authorization request (dual control). The requester can never approve
+// their own request. `recipientLabel` is a sanitized internal description only —
+// never used to send anything.
+model ComplianceExportAuthorization {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  incidentId          String
+  reportId            String
+  status              String    @default("requested") // ExportAuthorizationStatus
+  purposeCode         String
+  purposeNote         String? // CONFIDENTIAL (OTHER only) — never in the manifest/audit
+  recipientType       String
+  recipientLabel      String? // sanitized internal label; no contact data
+  requestedByUserId   String
+  requestedAt         DateTime  @default(now())
+  approvedByUserId    String?
+  approvedAt          DateTime?
+  rejectedByUserId    String?
+  rejectedAt          DateTime?
+  rejectionReasonCode String?
+  expiresAt           DateTime
+  usedAt              DateTime?
+  cancelledAt         DateTime?
+  idempotencyKey      String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, requestedByUserId, reportId, idempotencyKey], map: "cea_tenant_user_report_idem_key")
+  @@index([tenantId, incidentId, status])
+  @@map("compliance_export_authorizations")
+}
+
+// C12 — IMMUTABLE internal export package manifest. Describes WHAT a future export
+// would contain — never a file, path, URL, or bytes. App role: SELECT + INSERT only
+// (UPDATE/DELETE revoked in the migration).
+model ComplianceExportPackageManifest {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  incidentId            String
+  reportId              String
+  authorizationId       String
+  packageVersion        Int
+  schemaVersion         String
+  status                String   @default("prepared") // ExportPackageStatus
+  purposeCode           String
+  recipientType         String
+  preparedByUserId      String
+  preparedAt            DateTime @default(now())
+  reportSnapshotHash    String
+  redactionRuleSetHash  String?
+  authorizationHash     String
+  manifestHash          String
+  previousManifestHash  String?
+  manifestPayload       Json
+  idempotencyKey        String?
+  createdAt             DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, incidentId, reportId, packageVersion], map: "cepm_tenant_incident_report_version_key")
+  @@unique([tenantId, preparedByUserId, authorizationId, idempotencyKey], map: "cepm_tenant_user_auth_idem_key")
+  @@index([tenantId, incidentId, packageVersion])
+  @@map("compliance_export_package_manifests")
+}
+
+// C12 — APPEND-ONLY approval / workflow history. App role: SELECT + INSERT only.
+// Records the decision trail; never source field values, notes, payloads, or PII.
+model ComplianceApprovalHistoryEvent {
+  id           String   @id @default(cuid())
+  tenantId     String
+  incidentId   String
+  entityType   String // draft | export_authorization | manifest
+  entityId     String
+  eventType    String
+  actorUserId  String?
+  metadata     Json? // sanitized ids/status/reasonCode only
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, entityType, entityId, createdAt])
+  @@map("compliance_approval_history_events")
 }
 
 enum LeadStatus {

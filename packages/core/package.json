@@ -11,7 +11,8 @@
     "./cyberbullying-incident": "./src/cyberbullying-incident.ts",
     "./cyberbullying-evidence-upload": "./src/cyberbullying-evidence-upload.ts",
     "./cyberbullying-notifications": "./src/cyberbullying-notifications.ts",
-    "./cyberbullying-compliance": "./src/cyberbullying-compliance.ts"
+    "./cyberbullying-compliance": "./src/cyberbullying-compliance.ts",
+    "./cyberbullying-redaction": "./src/cyberbullying-redaction.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

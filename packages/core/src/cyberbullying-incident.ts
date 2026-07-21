@@ -172,6 +172,17 @@ export enum IncidentTimelineEventType {
   EscalationTargetChanged = "escalation_target_changed",
   // C11 — an immutable compliance snapshot was created (metadata only in the timeline).
   ComplianceReportCreated = "compliance_report_created",
+  // C12 — redaction / four-eyes approval / export prep (metadata only in the timeline).
+  ComplianceRedactionDraftCreated = "compliance_redaction_draft_created",
+  ComplianceRedactionSubmitted = "compliance_redaction_submitted",
+  ComplianceRedactionRejected = "compliance_redaction_rejected",
+  ComplianceRedactionApproved = "compliance_redaction_approved",
+  ComplianceRedactedSnapshotCreated = "compliance_redacted_snapshot_created",
+  ComplianceExportAuthorizationRequested = "compliance_export_authorization_requested",
+  ComplianceExportAuthorizationApproved = "compliance_export_authorization_approved",
+  ComplianceExportAuthorizationRejected = "compliance_export_authorization_rejected",
+  ComplianceExportAuthorizationCancelled = "compliance_export_authorization_cancelled",
+  ComplianceExportPackagePrepared = "compliance_export_package_prepared",
 }
 
 /**

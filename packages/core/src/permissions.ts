@@ -57,6 +57,13 @@ export enum Permission {
   CyberbullyingManageRetention = "cyberbullying:manage_retention",
   CyberbullyingManageGuardianAccess = "cyberbullying:manage_guardian_access",
   CyberbullyingAudit = "cyberbullying:audit",
+  // C12 — compliance redaction / four-eyes approval / export authorization. `redact`
+  // is reviewer-level (author of a draft); `approve` and `export_authorize` are
+  // ELEVATED (Admin/Owner) so a reviewer can never approve their own draft — the
+  // author≠approver four-eyes rule is ALSO enforced server-side regardless of role.
+  CyberbullyingComplianceRedact = "cyberbullying:compliance_redact",
+  CyberbullyingComplianceApprove = "cyberbullying:compliance_approve",
+  CyberbullyingComplianceExportAuthorize = "cyberbullying:compliance_export_authorize",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -101,6 +108,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.CyberbullyingManageRetention,
     Permission.CyberbullyingManageGuardianAccess,
     Permission.CyberbullyingAudit,
+    // C12 — Admin can author, approve others' drafts, and authorize exports.
+    Permission.CyberbullyingComplianceRedact,
+    Permission.CyberbullyingComplianceApprove,
+    Permission.CyberbullyingComplianceExportAuthorize,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -133,6 +144,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.CyberbullyingViewOwn,
     Permission.CyberbullyingReport,
     Permission.CyberbullyingReview,
+    // C12 — Reviewer may author redaction drafts (but NOT approve them).
+    Permission.CyberbullyingComplianceRedact,
   ],
   [Role.Viewer]: [
     Permission.BrandView,

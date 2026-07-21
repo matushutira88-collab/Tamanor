@@ -6,8 +6,10 @@ import { CapabilityLockedState } from "@/components/dashboard/capability-locked"
 import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { getLocale } from "@/i18n/locale-server";
 import { canManageCase } from "@/server/cyberbullying-case";
-import { getComplianceReportDetail } from "@guardora/db";
+import { getComplianceReportDetail, listIncidentComplianceWorkflow } from "@guardora/db";
+import { can, Role, Permission } from "@guardora/core";
 import { CB_COPY } from "../../../../cb-i18n";
+import { RedactionExport } from "./redaction-export";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +47,7 @@ function KeyVals({ obj }: { obj: Record<string, unknown> }) {
   );
 }
 
-export default async function ComplianceReportDetailPage({ params }: { params: Promise<{ incidentId: string; reportId: string }> }) {
+export default async function ComplianceReportDetailPage({ params, searchParams }: { params: Promise<{ incidentId: string; reportId: string }>; searchParams: Promise<{ xok?: string; xerr?: string }> }) {
   const locale = await getLocale();
   const session = await requireVerifiedSession();
   if (!canManageCase(session.role)) return <AccessDeniedState locale={locale} />;
@@ -55,8 +57,13 @@ export default async function ComplianceReportDetailPage({ params }: { params: P
   const t = CB_COPY[locale];
   const c = t.comp;
   const { incidentId, reportId } = await params;
+  const sp = await searchParams;
   const actor = { tenantId: session.tenantId, userId: session.userId, role: session.role };
-  const report = await getComplianceReportDetail(actor, reportId).catch(() => null);
+  const canRedact = can(session.role as Role, Permission.CyberbullyingComplianceRedact);
+  const [report, workflow] = await Promise.all([
+    getComplianceReportDetail(actor, reportId).catch(() => null),
+    canRedact ? listIncidentComplianceWorkflow(actor, incidentId).catch(() => ({ drafts: [], authorizations: [], manifests: [] })) : Promise.resolve({ drafts: [], authorizations: [], manifests: [] }),
+  ]);
   const back = <Link href={`/dashboard/security/cyberbullying/incidents/${incidentId}#reports`} className="text-sm font-semibold text-[var(--color-brand)] hover:underline">← {c.back}</Link>;
 
   if (!report) return (<><PageHeader eyebrow="Security · Cyberbullying" title={c.section} action={back} /><EmptyState title={c.empty} body={t.error.body} /></>);
@@ -97,6 +104,13 @@ export default async function ComplianceReportDetailPage({ params }: { params: P
           )}
         </Card>
       </div>
+
+      {/* C12 — redaction / four-eyes approval / export preparation (redact-capable only). */}
+      {canRedact ? (
+        <RedactionExport locale={locale} incidentId={incidentId} reportId={reportId} isRedacted={report.redactionState === "redacted"}
+          canRedact={canRedact} canApprove={can(session.role as Role, Permission.CyberbullyingComplianceApprove)} canExport={can(session.role as Role, Permission.CyberbullyingComplianceExportAuthorize)}
+          workflow={workflow} banner={sp.xerr ? (t.red.banner[sp.xerr as keyof typeof t.red.banner] ?? t.red.banner.error) : sp.xok === "1" ? t.red.banner.ok : null} />
+      ) : null}
     </>
   );
 }
