@@ -8,17 +8,19 @@ import { getLocale } from "@/i18n/locale-server";
 import { canAttachEvidenceToStatus } from "@guardora/core";
 import { canViewCyberbullying, getCyberbullyingIncidentDetail } from "@/server/cyberbullying-inbox";
 import { canUploadEvidence } from "@/server/cyberbullying-evidence";
-import { getCaseManagementView } from "@/server/cyberbullying-case";
+import { getCaseManagementView, canManageCase } from "@/server/cyberbullying-case";
+import { getIncidentSlaView, getIncidentEscalationView } from "@guardora/db";
 import { CB_COPY, statusTone } from "../../cb-i18n";
 import { transitionIncidentAction, reopenIncidentAction, assignReviewerAction, unassignReviewerAction, addReviewerNoteAction } from "./actions";
 import { CaseManagement } from "./case-management";
+import { CaseSlaEscalation } from "./case-sla-escalation";
 
 export const dynamic = "force-dynamic";
 
 const BTN = "rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-xs font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-2)] disabled:opacity-50";
 const INPUT = "w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)]";
 
-export default async function CyberbullyingIncidentDetailPage({ params, searchParams }: { params: Promise<{ incidentId: string }>; searchParams: Promise<{ ok?: string; err?: string; cok?: string; cerr?: string }> }) {
+export default async function CyberbullyingIncidentDetailPage({ params, searchParams }: { params: Promise<{ incidentId: string }>; searchParams: Promise<{ ok?: string; err?: string; cok?: string; cerr?: string; eok?: string; eerr?: string }> }) {
   const locale = await getLocale();
   const session = await requireVerifiedSession();
   if (!canViewCyberbullying(session.role)) return <AccessDeniedState locale={locale} />;
@@ -27,11 +29,16 @@ export default async function CyberbullyingIncidentDetailPage({ params, searchPa
 
   const t = CB_COPY[locale];
   const { incidentId } = await params;
-  const { ok, err, cok, cerr } = await searchParams;
+  const { ok, err, cok, cerr, eok, eerr } = await searchParams;
   const actor = { tenantId: session.tenantId, userId: session.userId, role: session.role };
-  const [inc, caseView] = await Promise.all([
+  // SLA & escalation require review; only fetch for a review-capable actor (else the
+  // service fails closed). A view-only participant simply doesn't see the section.
+  const canSla = canManageCase(session.role);
+  const [inc, caseView, slaView, escalationView] = await Promise.all([
     getCyberbullyingIncidentDetail(actor, incidentId),
     getCaseManagementView(actor, incidentId),
+    canSla ? getIncidentSlaView(actor, incidentId).catch(() => null) : Promise.resolve(null),
+    canSla ? getIncidentEscalationView(actor, incidentId).catch(() => null) : Promise.resolve(null),
   ]);
 
   const back = <Link href="/dashboard/security/cyberbullying/incidents" className="text-sm font-semibold text-[var(--color-brand)] hover:underline">← {t.backToInbox}</Link>;
@@ -284,6 +291,9 @@ export default async function CyberbullyingIncidentDetailPage({ params, searchPa
 
       {/* C9 — Case management (a case IS the incident): protection, tasks, follow-up, milestones. */}
       {caseView ? <CaseManagement locale={locale} incidentId={inc.id} view={caseView} banner={{ ok: cok === "1", err: cerr ?? null }} /> : null}
+
+      {/* C10 — SLA & escalation (review-capable actors only; derived time status + manual escalation). */}
+      {slaView ? <CaseSlaEscalation locale={locale} incidentId={inc.id} role={session.role} sla={slaView} escalation={escalationView} banner={{ ok: eok === "1", err: eerr ?? null }} /> : null}
     </>
   );
 }

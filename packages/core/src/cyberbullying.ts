@@ -149,6 +149,16 @@ export const CYBERBULLYING_AUDIT_EVENTS = {
   caseTaskUpdated: "cyberbullying.case.task_updated",
   caseTaskCompleted: "cyberbullying.case.task_completed",
   caseTaskCancelled: "cyberbullying.case.task_cancelled",
+  // C10 — internal notifications, SLA, and manual escalation. Sanitized — type/
+  // severity/entity/state/reason only; NEVER note/summary/objective/description/text.
+  notificationCreated: "cyberbullying.notification.created",
+  notificationRead: "cyberbullying.notification.read",
+  notificationDismissed: "cyberbullying.notification.dismissed",
+  slaStateTransition: "cyberbullying.sla.state_transition",
+  escalationCreated: "cyberbullying.escalation.created",
+  escalationResolved: "cyberbullying.escalation.resolved",
+  escalationCancelled: "cyberbullying.escalation.cancelled",
+  escalationTargetChanged: "cyberbullying.escalation.target_changed",
   evidenceLinked: "cyberbullying.incident.evidence_linked",
   participantAdded: "cyberbullying.incident.participant_added",
   participantRemoved: "cyberbullying.incident.participant_removed",

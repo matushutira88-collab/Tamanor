@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./analytics": "./src/analytics.ts",
     "./cyberbullying-incident": "./src/cyberbullying-incident.ts",
-    "./cyberbullying-evidence-upload": "./src/cyberbullying-evidence-upload.ts"
+    "./cyberbullying-evidence-upload": "./src/cyberbullying-evidence-upload.ts",
+    "./cyberbullying-notifications": "./src/cyberbullying-notifications.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

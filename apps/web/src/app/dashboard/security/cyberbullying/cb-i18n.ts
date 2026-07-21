@@ -100,6 +100,27 @@ export interface CbCopy {
     taskStatus: Record<"todo" | "in_progress" | "done" | "cancelled", string>;
     banner: { ok: string } & Record<"forbidden" | "not_found" | "invalid_transition" | "validation" | "error", string>;
   };
+  // C10 — notifications, SLA & escalation.
+  notif: {
+    bell: string; center: string; subtitle: string; unread: string; all: string; markRead: string; markAllRead: string; dismiss: string; open: string; empty: string; unreadCountLabel: string;
+    severity: Record<"info" | "attention" | "urgent", string>;
+    type: Record<"incident_assigned" | "incident_reassigned" | "incident_unassigned" | "case_task_assigned" | "task_due_soon" | "task_overdue" | "follow_up_due_soon" | "follow_up_overdue" | "critical_risk_set" | "incident_escalated" | "escalation_resolved" | "incident_reopened" | "evidence_scan_pending_long", string>;
+    banner: { read: string; dismissed: string; allRead: string };
+  };
+  sla: {
+    title: string; overviewTitle: string; overviewSubtitle: string;
+    card: Record<"firstReviewOverdue" | "criticalOverdue" | "taskOverdue" | "followUpOverdue" | "activeEscalations", string>;
+    state: Record<"not_applicable" | "on_track" | "due_soon" | "overdue" | "satisfied", string>;
+    firstReview: string; criticalRisk: string; tasks: string; followUp: string; nextDeadline: string; oldestOverdue: string; none: string;
+  };
+  esc: {
+    title: string; add: string; severity: string; reason: string; target: string; targetNone: string; note: string; noteRequired: string; submit: string; resolve: string; cancel: string;
+    active: string; none: string; escalatedBy: string; escalatedAt: string; status: string;
+    severityLabel: Record<"attention" | "urgent", string>;
+    reasonLabel: Record<"sla_breach" | "critical_risk" | "no_reviewer_response" | "repeated_incident" | "safety_concern" | "other", string>;
+    statusLabel: Record<"active" | "resolved" | "cancelled", string>;
+    banner: { ok: string } & Record<"forbidden" | "not_found" | "invalid_transition" | "invalid_recipient" | "invalid_reason" | "missing_note" | "duplicate" | "error", string>;
+  };
 }
 
 const STATUS_EN = { open: "Open", under_review: "Under review", acknowledged: "Acknowledged", confirmed: "Confirmed after review", action_required: "Action required", resolved: "Resolved", dismissed: "Dismissed", archived: "Archived" };
@@ -111,9 +132,9 @@ const SOURCE_DE = { manual_report: "Manuelle Meldung", detection: "Aus Erkennung
 const ROLE_EN = { protected_subject: "Protected subject", reporter: "Reporter", alleged_actor: "Alleged actor", reviewer: "Reviewer", trusted_contact: "Trusted contact" };
 const ROLE_SK = { protected_subject: "Chránená osoba", reporter: "Nahlasovateľ", alleged_actor: "Údajný aktér", reviewer: "Posudzovateľ", trusted_contact: "Dôveryhodný kontakt" };
 const ROLE_DE = { protected_subject: "Geschützte Person", reporter: "Melder", alleged_actor: "Mutmaßlicher Akteur", reviewer: "Prüfer", trusted_contact: "Vertrauensperson" };
-const TL_EN = { created: "Incident created", review_started: "Review started", acknowledged: "Acknowledged", confirmed: "Confirmed after review", dismissed: "Dismissed", action_required: "Action required", resolved: "Resolved", archived: "Archived", reopened: "Reopened", detection_linked: "Detection linked", evidence_linked: "Evidence linked", participant_added: "Participant added", participant_removed: "Participant removed", reviewer_assigned: "Reviewer assigned", reviewer_reassigned: "Reviewer reassigned", reviewer_unassigned: "Reviewer unassigned", note_added: "Reviewer note added", protection_plan_updated: "Protection plan updated", task_created: "Task created", task_updated: "Task updated", task_completed: "Task completed", follow_up_updated: "Follow-up updated", milestone_changed: "Milestone changed" };
-const TL_SK = { created: "Incident vytvorený", review_started: "Posudzovanie začaté", acknowledged: "Prevzaté", confirmed: "Potvrdené po review", dismissed: "Zamietnuté", action_required: "Vyžaduje akciu", resolved: "Vyriešené", archived: "Archivované", reopened: "Znovu otvorené", detection_linked: "Pripojená detekcia", evidence_linked: "Pripojený dôkaz", participant_added: "Pridaný účastník", participant_removed: "Odobraný účastník", reviewer_assigned: "Priradený posudzovateľ", reviewer_reassigned: "Zmenený posudzovateľ", reviewer_unassigned: "Odobraný posudzovateľ", note_added: "Pridaná poznámka", protection_plan_updated: "Ochranný plán aktualizovaný", task_created: "Úloha vytvorená", task_updated: "Úloha aktualizovaná", task_completed: "Úloha dokončená", follow_up_updated: "Následné kroky aktualizované", milestone_changed: "Míľnik zmenený" };
-const TL_DE = { created: "Vorfall erstellt", review_started: "Prüfung gestartet", acknowledged: "Bestätigt erhalten", confirmed: "Nach Prüfung bestätigt", dismissed: "Abgewiesen", action_required: "Maßnahme erforderlich", resolved: "Gelöst", archived: "Archiviert", reopened: "Wiedereröffnet", detection_linked: "Erkennung verknüpft", evidence_linked: "Nachweis verknüpft", participant_added: "Teilnehmer hinzugefügt", participant_removed: "Teilnehmer entfernt", reviewer_assigned: "Prüfer zugewiesen", reviewer_reassigned: "Prüfer neu zugewiesen", reviewer_unassigned: "Prüfer entfernt", note_added: "Prüfernotiz hinzugefügt", protection_plan_updated: "Schutzplan aktualisiert", task_created: "Aufgabe erstellt", task_updated: "Aufgabe aktualisiert", task_completed: "Aufgabe abgeschlossen", follow_up_updated: "Nachverfolgung aktualisiert", milestone_changed: "Meilenstein geändert" };
+const TL_EN = { created: "Incident created", review_started: "Review started", acknowledged: "Acknowledged", confirmed: "Confirmed after review", dismissed: "Dismissed", action_required: "Action required", resolved: "Resolved", archived: "Archived", reopened: "Reopened", detection_linked: "Detection linked", evidence_linked: "Evidence linked", participant_added: "Participant added", participant_removed: "Participant removed", reviewer_assigned: "Reviewer assigned", reviewer_reassigned: "Reviewer reassigned", reviewer_unassigned: "Reviewer unassigned", note_added: "Reviewer note added", protection_plan_updated: "Protection plan updated", task_created: "Task created", task_updated: "Task updated", task_completed: "Task completed", follow_up_updated: "Follow-up updated", milestone_changed: "Milestone changed", sla_due_soon_detected: "SLA due soon", sla_overdue_detected: "SLA overdue", escalation_created: "Escalation created", escalation_resolved: "Escalation resolved", escalation_cancelled: "Escalation cancelled", escalation_target_changed: "Escalation target changed" };
+const TL_SK = { created: "Incident vytvorený", review_started: "Posudzovanie začaté", acknowledged: "Prevzaté", confirmed: "Potvrdené po review", dismissed: "Zamietnuté", action_required: "Vyžaduje akciu", resolved: "Vyriešené", archived: "Archivované", reopened: "Znovu otvorené", detection_linked: "Pripojená detekcia", evidence_linked: "Pripojený dôkaz", participant_added: "Pridaný účastník", participant_removed: "Odobraný účastník", reviewer_assigned: "Priradený posudzovateľ", reviewer_reassigned: "Zmenený posudzovateľ", reviewer_unassigned: "Odobraný posudzovateľ", note_added: "Pridaná poznámka", protection_plan_updated: "Ochranný plán aktualizovaný", task_created: "Úloha vytvorená", task_updated: "Úloha aktualizovaná", task_completed: "Úloha dokončená", follow_up_updated: "Následné kroky aktualizované", milestone_changed: "Míľnik zmenený", sla_due_soon_detected: "SLA sa blíži k termínu", sla_overdue_detected: "SLA po termíne", escalation_created: "Eskalácia vytvorená", escalation_resolved: "Eskalácia vyriešená", escalation_cancelled: "Eskalácia zrušená", escalation_target_changed: "Cieľ eskalácie zmenený" };
+const TL_DE = { created: "Vorfall erstellt", review_started: "Prüfung gestartet", acknowledged: "Bestätigt erhalten", confirmed: "Nach Prüfung bestätigt", dismissed: "Abgewiesen", action_required: "Maßnahme erforderlich", resolved: "Gelöst", archived: "Archiviert", reopened: "Wiedereröffnet", detection_linked: "Erkennung verknüpft", evidence_linked: "Nachweis verknüpft", participant_added: "Teilnehmer hinzugefügt", participant_removed: "Teilnehmer entfernt", reviewer_assigned: "Prüfer zugewiesen", reviewer_reassigned: "Prüfer neu zugewiesen", reviewer_unassigned: "Prüfer entfernt", note_added: "Prüfernotiz hinzugefügt", protection_plan_updated: "Schutzplan aktualisiert", task_created: "Aufgabe erstellt", task_updated: "Aufgabe aktualisiert", task_completed: "Aufgabe abgeschlossen", follow_up_updated: "Nachverfolgung aktualisiert", milestone_changed: "Meilenstein geändert", sla_due_soon_detected: "SLA bald fällig", sla_overdue_detected: "SLA überfällig", escalation_created: "Eskalation erstellt", escalation_resolved: "Eskalation gelöst", escalation_cancelled: "Eskalation abgebrochen", escalation_target_changed: "Eskalationsziel geändert" };
 
 export const CB_COPY: Record<Locale, CbCopy> = {
   en: {
@@ -190,6 +211,26 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       taskStatus: { todo: "To do", in_progress: "In progress", done: "Done", cancelled: "Cancelled" },
       banner: { ok: "Saved.", forbidden: "You don't have permission for that action.", not_found: "Not found or out of scope.", invalid_transition: "That change isn't allowed from the current status.", validation: "Please check the fields and try again.", error: "The action could not be completed." },
     },
+    notif: {
+      bell: "Notifications", center: "Notifications", subtitle: "Internal alerts about incidents you can act on. Opening one re-checks your access.", unread: "Unread", all: "All", markRead: "Mark read", markAllRead: "Mark all read", dismiss: "Dismiss", open: "Open", empty: "No notifications.", unreadCountLabel: "unread notifications",
+      severity: { info: "Info", attention: "Attention", urgent: "Urgent" },
+      type: { incident_assigned: "Incident assigned to you", incident_reassigned: "Incident reassigned to you", incident_unassigned: "You were unassigned", case_task_assigned: "Task assigned to you", task_due_soon: "Task due soon", task_overdue: "Task overdue", follow_up_due_soon: "Follow-up due soon", follow_up_overdue: "Follow-up overdue", critical_risk_set: "Critical risk set", incident_escalated: "Incident escalated", escalation_resolved: "Escalation resolved", incident_reopened: "Incident reopened", evidence_scan_pending_long: "Evidence scan pending" },
+      banner: { read: "Marked as read.", dismissed: "Dismissed.", allRead: "All marked as read." },
+    },
+    sla: {
+      title: "SLA & escalation", overviewTitle: "SLA overview", overviewSubtitle: "Time-based status derived from your incidents — nothing is decided automatically.",
+      card: { firstReviewOverdue: "Overdue for first review", criticalOverdue: "Critical risk overdue", taskOverdue: "Tasks overdue", followUpOverdue: "Follow-ups overdue", activeEscalations: "Active escalations" },
+      state: { not_applicable: "Not applicable", on_track: "On track", due_soon: "Due soon", overdue: "Overdue", satisfied: "Satisfied" },
+      firstReview: "First review", criticalRisk: "Critical-risk response", tasks: "Tasks", followUp: "Follow-up", nextDeadline: "Next deadline", oldestOverdue: "Oldest overdue", none: "—",
+    },
+    esc: {
+      title: "Escalation", add: "Add escalation", severity: "Severity", reason: "Reason", target: "Target reviewer", targetNone: "No specific target", note: "Confidential note", noteRequired: "Confidential note (required)", submit: "Escalate", resolve: "Resolve", cancel: "Cancel escalation",
+      active: "Active escalation", none: "No active escalation.", escalatedBy: "Escalated by", escalatedAt: "Escalated at", status: "Status",
+      severityLabel: { attention: "Attention", urgent: "Urgent" },
+      reasonLabel: { sla_breach: "SLA breach", critical_risk: "Critical risk", no_reviewer_response: "No reviewer response", repeated_incident: "Repeated incident", safety_concern: "Safety concern", other: "Other" },
+      statusLabel: { active: "Active", resolved: "Resolved", cancelled: "Cancelled" },
+      banner: { ok: "Done.", forbidden: "You don't have permission for that action.", not_found: "Not found or out of scope.", invalid_transition: "That change isn't allowed.", invalid_recipient: "That recipient can't receive this.", invalid_reason: "Invalid severity or reason.", missing_note: "A confidential note is required for “Other”.", duplicate: "There is already an active escalation.", error: "The action could not be completed." },
+    },
   },
   sk: {
     moduleName: "Ochrana pred kyberšikanou", moduleDesc: "Posudzovanie incidentov zameraných na obeť — detegované signály a manuálne reporty, oddelené od brand moderácie.", available: "Dostupné",
@@ -265,6 +306,26 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       taskStatus: { todo: "Na spracovanie", in_progress: "Prebieha", done: "Hotové", cancelled: "Zrušené" },
       banner: { ok: "Uložené.", forbidden: "Na túto akciu nemáte oprávnenie.", not_found: "Nenájdené alebo mimo rozsahu.", invalid_transition: "Táto zmena nie je z aktuálneho stavu povolená.", validation: "Skontrolujte polia a skúste znova.", error: "Akciu sa nepodarilo dokončiť." },
     },
+    notif: {
+      bell: "Upozornenia", center: "Upozornenia", subtitle: "Interné upozornenia o incidentoch, s ktorými môžete pracovať. Otvorenie znovu overí váš prístup.", unread: "Neprečítané", all: "Všetky", markRead: "Označiť prečítané", markAllRead: "Označiť všetky prečítané", dismiss: "Zavrieť", open: "Otvoriť", empty: "Žiadne upozornenia.", unreadCountLabel: "neprečítaných upozornení",
+      severity: { info: "Info", attention: "Pozornosť", urgent: "Naliehavé" },
+      type: { incident_assigned: "Incident vám bol priradený", incident_reassigned: "Incident vám bol prepísaný", incident_unassigned: "Priradenie vám bolo zrušené", case_task_assigned: "Úloha vám bola priradená", task_due_soon: "Úloha sa blíži k termínu", task_overdue: "Úloha po termíne", follow_up_due_soon: "Následný krok sa blíži", follow_up_overdue: "Následný krok po termíne", critical_risk_set: "Nastavené kritické riziko", incident_escalated: "Incident eskalovaný", escalation_resolved: "Eskalácia vyriešená", incident_reopened: "Incident znovu otvorený", evidence_scan_pending_long: "Sken dôkazu čaká" },
+      banner: { read: "Označené ako prečítané.", dismissed: "Zavreté.", allRead: "Všetky označené ako prečítané." },
+    },
+    sla: {
+      title: "SLA a eskalácia", overviewTitle: "Prehľad SLA", overviewSubtitle: "Časový stav odvodený z vašich incidentov — nič sa nerozhoduje automaticky.",
+      card: { firstReviewOverdue: "Po termíne prvého review", criticalOverdue: "Kritické riziko po termíne", taskOverdue: "Úlohy po termíne", followUpOverdue: "Následné kroky po termíne", activeEscalations: "Aktívne eskalácie" },
+      state: { not_applicable: "Neaplikovateľné", on_track: "V poriadku", due_soon: "Blíži sa termín", overdue: "Po termíne", satisfied: "Splnené" },
+      firstReview: "Prvé review", criticalRisk: "Reakcia na kritické riziko", tasks: "Úlohy", followUp: "Následné kroky", nextDeadline: "Najbližší termín", oldestOverdue: "Najstaršie po termíne", none: "—",
+    },
+    esc: {
+      title: "Eskalácia", add: "Pridať eskaláciu", severity: "Závažnosť", reason: "Dôvod", target: "Cieľový posudzovateľ", targetNone: "Bez konkrétneho cieľa", note: "Dôverná poznámka", noteRequired: "Dôverná poznámka (povinná)", submit: "Eskalovať", resolve: "Vyriešiť", cancel: "Zrušiť eskaláciu",
+      active: "Aktívna eskalácia", none: "Žiadna aktívna eskalácia.", escalatedBy: "Eskaloval", escalatedAt: "Eskalované", status: "Stav",
+      severityLabel: { attention: "Pozornosť", urgent: "Naliehavé" },
+      reasonLabel: { sla_breach: "Porušenie SLA", critical_risk: "Kritické riziko", no_reviewer_response: "Bez reakcie posudzovateľa", repeated_incident: "Opakovaný incident", safety_concern: "Bezpečnostná obava", other: "Iné" },
+      statusLabel: { active: "Aktívna", resolved: "Vyriešená", cancelled: "Zrušená" },
+      banner: { ok: "Hotovo.", forbidden: "Na túto akciu nemáte oprávnenie.", not_found: "Nenájdené alebo mimo rozsahu.", invalid_transition: "Táto zmena nie je povolená.", invalid_recipient: "Tento príjemca to nemôže dostať.", invalid_reason: "Neplatná závažnosť alebo dôvod.", missing_note: "Pre „Iné“ je povinná dôverná poznámka.", duplicate: "Už existuje aktívna eskalácia.", error: "Akciu sa nepodarilo dokončiť." },
+    },
   },
   de: {
     moduleName: "Cybermobbing-Schutz", moduleDesc: "Opferzentrierte Vorfallprüfung — erkannte Signale und manuelle Meldungen, getrennt von der Markenmoderation.", available: "Verfügbar",
@@ -339,6 +400,26 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       tasks: { title: "Aufgaben", add: "Aufgabe hinzufügen", titleLabel: "Titel", descLabel: "Beschreibung", assignee: "Zugewiesen", due: "Fällig am", create: "Aufgabe erstellen", empty: "Noch keine Aufgaben.", start: "Starten", complete: "Abschließen", cancel: "Abbrechen", reopen: "Wiedereröffnen" },
       taskStatus: { todo: "Zu erledigen", in_progress: "In Bearbeitung", done: "Erledigt", cancelled: "Abgebrochen" },
       banner: { ok: "Gespeichert.", forbidden: "Sie haben keine Berechtigung für diese Aktion.", not_found: "Nicht gefunden oder außerhalb des Bereichs.", invalid_transition: "Diese Änderung ist aus dem aktuellen Status nicht erlaubt.", validation: "Bitte prüfen Sie die Felder und versuchen Sie es erneut.", error: "Die Aktion konnte nicht abgeschlossen werden." },
+    },
+    notif: {
+      bell: "Benachrichtigungen", center: "Benachrichtigungen", subtitle: "Interne Hinweise zu Vorfällen, an denen Sie arbeiten können. Beim Öffnen wird Ihr Zugriff erneut geprüft.", unread: "Ungelesen", all: "Alle", markRead: "Als gelesen markieren", markAllRead: "Alle als gelesen markieren", dismiss: "Schließen", open: "Öffnen", empty: "Keine Benachrichtigungen.", unreadCountLabel: "ungelesene Benachrichtigungen",
+      severity: { info: "Info", attention: "Achtung", urgent: "Dringend" },
+      type: { incident_assigned: "Vorfall Ihnen zugewiesen", incident_reassigned: "Vorfall Ihnen neu zugewiesen", incident_unassigned: "Zuweisung aufgehoben", case_task_assigned: "Aufgabe Ihnen zugewiesen", task_due_soon: "Aufgabe bald fällig", task_overdue: "Aufgabe überfällig", follow_up_due_soon: "Nachverfolgung bald fällig", follow_up_overdue: "Nachverfolgung überfällig", critical_risk_set: "Kritisches Risiko gesetzt", incident_escalated: "Vorfall eskaliert", escalation_resolved: "Eskalation gelöst", incident_reopened: "Vorfall wiedereröffnet", evidence_scan_pending_long: "Nachweisprüfung ausstehend" },
+      banner: { read: "Als gelesen markiert.", dismissed: "Geschlossen.", allRead: "Alle als gelesen markiert." },
+    },
+    sla: {
+      title: "SLA & Eskalation", overviewTitle: "SLA-Übersicht", overviewSubtitle: "Zeitbasierter Status aus Ihren Vorfällen — nichts wird automatisch entschieden.",
+      card: { firstReviewOverdue: "Erstprüfung überfällig", criticalOverdue: "Kritisches Risiko überfällig", taskOverdue: "Aufgaben überfällig", followUpOverdue: "Nachverfolgungen überfällig", activeEscalations: "Aktive Eskalationen" },
+      state: { not_applicable: "Nicht zutreffend", on_track: "Im Plan", due_soon: "Bald fällig", overdue: "Überfällig", satisfied: "Erfüllt" },
+      firstReview: "Erstprüfung", criticalRisk: "Reaktion auf kritisches Risiko", tasks: "Aufgaben", followUp: "Nachverfolgung", nextDeadline: "Nächste Frist", oldestOverdue: "Älteste überfällig", none: "—",
+    },
+    esc: {
+      title: "Eskalation", add: "Eskalation hinzufügen", severity: "Schweregrad", reason: "Grund", target: "Ziel-Prüfer", targetNone: "Kein bestimmtes Ziel", note: "Vertrauliche Notiz", noteRequired: "Vertrauliche Notiz (erforderlich)", submit: "Eskalieren", resolve: "Lösen", cancel: "Eskalation abbrechen",
+      active: "Aktive Eskalation", none: "Keine aktive Eskalation.", escalatedBy: "Eskaliert von", escalatedAt: "Eskaliert am", status: "Status",
+      severityLabel: { attention: "Achtung", urgent: "Dringend" },
+      reasonLabel: { sla_breach: "SLA-Verstoß", critical_risk: "Kritisches Risiko", no_reviewer_response: "Keine Prüferreaktion", repeated_incident: "Wiederholter Vorfall", safety_concern: "Sicherheitsbedenken", other: "Sonstiges" },
+      statusLabel: { active: "Aktiv", resolved: "Gelöst", cancelled: "Abgebrochen" },
+      banner: { ok: "Erledigt.", forbidden: "Sie haben keine Berechtigung für diese Aktion.", not_found: "Nicht gefunden oder außerhalb des Bereichs.", invalid_transition: "Diese Änderung ist nicht erlaubt.", invalid_recipient: "Dieser Empfänger kann dies nicht erhalten.", invalid_reason: "Ungültiger Schweregrad oder Grund.", missing_note: "Für „Sonstiges“ ist eine vertrauliche Notiz erforderlich.", duplicate: "Es gibt bereits eine aktive Eskalation.", error: "Die Aktion konnte nicht abgeschlossen werden." },
     },
   },
 };

@@ -1,5 +1,6 @@
 import { ActorKind, Prisma } from "@prisma/client";
 import { withTenant } from "./repositories";
+import { notifyIncidentTx } from "./cyberbullying-notifications";
 import {
   Permission, Role, can,
   CYBERBULLYING_AUDIT_EVENTS,
@@ -13,6 +14,7 @@ import {
   IncidentReportSource,
   IncidentCategory,
   SubjectScope,
+  RecipientPurpose, NotificationType, NotificationEntityType,
   type IncidentActorContext,
   type IncidentTransitionResult,
 } from "@guardora/core";
@@ -245,8 +247,10 @@ export async function reopenIncident(actor: IncidentActorContext, incidentId: st
     const result = applyIncidentTransition(from, IncidentLifecycleStatus.UnderReview, { reopen: true, reason });
     if (!result.ok) throw new IncidentTransitionRejected(result);
     await db.incident.update({ where: { id: incidentId }, data: { status: IncidentLifecycleStatus.UnderReview, resolvedAt: null } });
-    await timeline(db, actor, incidentId, IncidentTimelineEventType.Reopened, reason);
+    const tl = await db.incidentTimelineEvent.create({ data: { tenantId: actor.tenantId, incidentId, eventType: IncidentTimelineEventType.Reopened, actorUserId: actor.userId, reason } });
     await audit(db, actor, CYBERBULLYING_AUDIT_EVENTS.incidentReopened, incidentId, { from });
+    // C10 — notify the assignee + participants (deduped by the reopen timeline event id).
+    await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.Reopen, { type: NotificationType.IncidentReopened, entityType: NotificationEntityType.Incident, entityId: incidentId, incidentId, discriminator: tl.id });
     return result;
   });
 }
@@ -285,9 +289,11 @@ export async function assignReviewer(actor: IncidentActorContext, incidentId: st
     const action = isReassign ? IncidentAssignmentAction.Reassigned : IncidentAssignmentAction.Assigned;
 
     await db.cyberbullyingIncidentDetail.update({ where: { id: detail.id }, data: { assignedReviewerUserId: assigneeUserId } });
-    await db.incidentAssignmentEvent.create({ data: { tenantId: actor.tenantId, incidentId, action, assigneeUserId, previousAssigneeUserId: previous, assignedByUserId: actor.userId, reason: reason ?? null } });
+    const evt = await db.incidentAssignmentEvent.create({ data: { tenantId: actor.tenantId, incidentId, action, assigneeUserId, previousAssigneeUserId: previous, assignedByUserId: actor.userId, reason: reason ?? null } });
     await timeline(db, actor, incidentId, isReassign ? IncidentTimelineEventType.ReviewerReassigned : IncidentTimelineEventType.ReviewerAssigned, reason ?? null);
     await audit(db, actor, isReassign ? CYBERBULLYING_AUDIT_EVENTS.incidentReassigned : CYBERBULLYING_AUDIT_EVENTS.incidentAssigned, incidentId, { action });
+    // C10 — notify the new assignee (deduped by the assignment event id). Same transaction.
+    await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.Assignment, { type: isReassign ? NotificationType.IncidentReassigned : NotificationType.IncidentAssigned, entityType: NotificationEntityType.Incident, entityId: incidentId, incidentId, discriminator: evt.id }, { targetUserId: assigneeUserId });
     return { action };
   });
 }
@@ -304,9 +310,12 @@ export async function unassignReviewer(actor: IncidentActorContext, incidentId: 
     const previous = detail.assignedReviewerUserId;
     if (previous == null) throw new IncidentAssignmentRejected("no_change");
     await db.cyberbullyingIncidentDetail.update({ where: { id: detail.id }, data: { assignedReviewerUserId: null } });
-    await db.incidentAssignmentEvent.create({ data: { tenantId: actor.tenantId, incidentId, action: IncidentAssignmentAction.Unassigned, assigneeUserId: null, previousAssigneeUserId: previous, assignedByUserId: actor.userId, reason: reason ?? null } });
+    const evt = await db.incidentAssignmentEvent.create({ data: { tenantId: actor.tenantId, incidentId, action: IncidentAssignmentAction.Unassigned, assigneeUserId: null, previousAssigneeUserId: previous, assignedByUserId: actor.userId, reason: reason ?? null } });
     await timeline(db, actor, incidentId, IncidentTimelineEventType.ReviewerUnassigned, reason ?? null);
     await audit(db, actor, CYBERBULLYING_AUDIT_EVENTS.incidentUnassigned, incidentId, { action: IncidentAssignmentAction.Unassigned });
+    // C10 — notify the removed reviewer ONLY if they remain in scope (participant); a
+    // user out of scope can't open the incident, so they are never notified.
+    await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.Assignment, { type: NotificationType.IncidentUnassigned, entityType: NotificationEntityType.Incident, entityId: incidentId, incidentId, discriminator: evt.id }, { targetUserId: previous });
   });
 }
 

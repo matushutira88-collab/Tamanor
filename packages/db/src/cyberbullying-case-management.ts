@@ -3,9 +3,12 @@ import {
   Permission, Role, can, CYBERBULLYING_AUDIT_EVENTS, IncidentCategory, IncidentTimelineEventType,
   isCaseRiskLevel, isCaseProtectionStatus, canTaskTransition, isCaseMilestoneKey,
   validateCaseTaskInput, parseCaseDueDate, CASE_LIMITS,
-  CaseTaskStatus, CaseMilestoneKey, type CaseFieldErrorCode, type CaseTaskField, type IncidentActorContext,
+  CaseRiskLevel, CaseTaskStatus, CaseMilestoneKey,
+  RecipientPurpose, NotificationType, NotificationEntityType,
+  type CaseFieldErrorCode, type CaseTaskField, type IncidentActorContext,
 } from "@guardora/core";
 import { withTenant } from "./repositories";
+import { notifyIncidentTx } from "./cyberbullying-notifications";
 
 /**
  * C9 — Case Management service. A case IS the incident (no second case model): this
@@ -51,12 +54,12 @@ async function caseAudit(db: Tx, actor: IncidentActorContext, event: string, inc
   await db.auditLog.create({ data: { tenantId: actor.tenantId, event, actorKind: ActorKind.human, actorUserId: actor.userId, targetType: "incident", targetId: incidentId, metadata: metadata as never } });
 }
 
-/** Ensure a protection plan row exists for the incident; returns its id. */
-async function ensurePlan(db: Tx, actor: IncidentActorContext, incidentId: string): Promise<string> {
-  const existing = await db.cyberbullyingProtectionPlan.findFirst({ where: { incidentId, tenantId: actor.tenantId }, select: { id: true } });
-  if (existing) return existing.id;
-  const created = await db.cyberbullyingProtectionPlan.create({ data: { tenantId: actor.tenantId, incidentId } });
-  return created.id;
+/** Ensure a protection plan row exists for the incident; returns its id + current risk. */
+async function ensurePlan(db: Tx, actor: IncidentActorContext, incidentId: string): Promise<{ id: string; riskLevel: string | null }> {
+  const existing = await db.cyberbullyingProtectionPlan.findFirst({ where: { incidentId, tenantId: actor.tenantId }, select: { id: true, riskLevel: true } });
+  if (existing) return existing;
+  const created = await db.cyberbullyingProtectionPlan.create({ data: { tenantId: actor.tenantId, incidentId }, select: { id: true, riskLevel: true } });
+  return created;
 }
 
 // --- Protection plan -------------------------------------------------------
@@ -74,18 +77,29 @@ export async function updateProtectionPlan(
 
   await withTenant(actor.tenantId, async (db) => {
     await authorizeIncident(db, actor, incidentId);
-    const id = await ensurePlan(db, actor, incidentId);
+    const plan = await ensurePlan(db, actor, incidentId);
     const data: Prisma.CyberbullyingProtectionPlanUpdateInput = {};
     if (patch.riskLevel !== undefined) data.riskLevel = patch.riskLevel === "" ? null : patch.riskLevel;
     if (patch.protectionStatus !== undefined) data.protectionStatus = patch.protectionStatus;
     if (patch.objective !== undefined) data.objective = patch.objective || null;
     if (patch.notes !== undefined) data.notes = patch.notes || null;
-    await db.cyberbullyingProtectionPlan.update({ where: { id }, data });
+
+    // C10 — maintain the critical-risk-response SLA start (manual, never automatic):
+    // set when risk BECOMES critical, clear when it leaves critical.
+    const newRisk = patch.riskLevel === undefined ? plan.riskLevel : (patch.riskLevel === "" ? null : patch.riskLevel);
+    const becameCritical = plan.riskLevel !== CaseRiskLevel.Critical && newRisk === CaseRiskLevel.Critical;
+    const leftCritical = plan.riskLevel === CaseRiskLevel.Critical && newRisk !== CaseRiskLevel.Critical;
+    if (becameCritical) data.criticalRiskSetAt = new Date();
+    else if (leftCritical) data.criticalRiskSetAt = null;
+
+    await db.cyberbullyingProtectionPlan.update({ where: { id: plan.id }, data });
     await caseTimeline(db, actor, incidentId, IncidentTimelineEventType.ProtectionPlanUpdated); // no content
     await caseAudit(db, actor, CYBERBULLYING_AUDIT_EVENTS.protectionPlanUpdated, incidentId, {
       ...(data.riskLevel !== undefined ? { riskLevel: String(data.riskLevel ?? "cleared") } : {}),
       ...(data.protectionStatus !== undefined ? { protectionStatus: String(data.protectionStatus) } : {}),
     });
+    // C10 — a NEW critical risk raises an urgent notification (deduped by set time).
+    if (becameCritical) await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.CriticalRisk, { type: NotificationType.CriticalRiskSet, entityType: NotificationEntityType.Incident, entityId: incidentId, incidentId, discriminator: `critical:${(data.criticalRiskSetAt as Date).getTime()}` });
   });
 }
 
@@ -101,7 +115,7 @@ export async function updateFollowUp(
 
   await withTenant(actor.tenantId, async (db) => {
     await authorizeIncident(db, actor, incidentId);
-    const id = await ensurePlan(db, actor, incidentId);
+    const { id } = await ensurePlan(db, actor, incidentId);
     const data: Prisma.CyberbullyingProtectionPlanUpdateInput = {};
     if (patch.nextReviewAt !== undefined) data.nextReviewAt = next as Date | null;
     if (patch.lastReviewAt !== undefined) data.lastReviewAt = last as Date | null;
@@ -125,7 +139,7 @@ export async function setCaseMilestone(actor: IncidentActorContext, incidentId: 
   if (!isCaseMilestoneKey(key)) throw new CaseError("validation");
   await withTenant(actor.tenantId, async (db) => {
     await authorizeIncident(db, actor, incidentId);
-    const id = await ensurePlan(db, actor, incidentId);
+    const { id } = await ensurePlan(db, actor, incidentId);
     const column = MILESTONE_COLUMN[key];
     await db.cyberbullyingProtectionPlan.update({ where: { id }, data: { [column]: achieved ? new Date() : null } as Prisma.CyberbullyingProtectionPlanUpdateInput });
     await caseTimeline(db, actor, incidentId, IncidentTimelineEventType.MilestoneChanged, `${key}:${achieved ? "achieved" : "cleared"}`);
@@ -152,6 +166,8 @@ export async function createCaseTask(
     } });
     await caseTimeline(db, actor, incidentId, IncidentTimelineEventType.TaskCreated, `task:${task.id}`); // id only, no title
     await caseAudit(db, actor, CYBERBULLYING_AUDIT_EVENTS.caseTaskCreated, incidentId, { taskId: task.id, status: CaseTaskStatus.Todo });
+    // C10 — notify the task assignee (if any, in scope).
+    if (task.assigneeUserId) await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.TaskAssignment, { type: NotificationType.CaseTaskAssigned, entityType: NotificationEntityType.CaseTask, entityId: task.id, incidentId, discriminator: `assigned:${task.id}:${task.assigneeUserId}` }, { targetUserId: task.assigneeUserId });
     return { taskId: task.id };
   });
 }
@@ -167,7 +183,7 @@ export async function updateCaseTask(
 
   await withTenant(actor.tenantId, async (db) => {
     await authorizeIncident(db, actor, incidentId);
-    const task = await db.cyberbullyingCaseTask.findFirst({ where: { id: taskId, incidentId, tenantId: actor.tenantId }, select: { id: true, status: true } });
+    const task = await db.cyberbullyingCaseTask.findFirst({ where: { id: taskId, incidentId, tenantId: actor.tenantId }, select: { id: true, status: true, assigneeUserId: true } });
     if (!task) throw new CaseError("not_found");
 
     const data: Prisma.CyberbullyingCaseTaskUpdateInput = {};
@@ -190,5 +206,8 @@ export async function updateCaseTask(
     await db.cyberbullyingCaseTask.update({ where: { id: taskId }, data });
     await caseTimeline(db, actor, incidentId, event, `task:${taskId}`);
     await caseAudit(db, actor, auditEvent, incidentId, { taskId, ...(data.status !== undefined ? { status: String(data.status) } : {}) });
+    // C10 — notify a NEW task assignee (only when the assignee actually changes).
+    const newAssignee = patch.assigneeUserId !== undefined ? (patch.assigneeUserId || null) : undefined;
+    if (newAssignee && newAssignee !== task.assigneeUserId) await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.TaskAssignment, { type: NotificationType.CaseTaskAssigned, entityType: NotificationEntityType.CaseTask, entityId: taskId, incidentId, discriminator: `assigned:${taskId}:${newAssignee}` }, { targetUserId: newAssignee });
   });
 }

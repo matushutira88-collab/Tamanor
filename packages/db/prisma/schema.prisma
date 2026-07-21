@@ -448,6 +448,9 @@ model Tenant {
   // C9 — case management (protection plans + tasks).
   cyberbullyingProtectionPlans       CyberbullyingProtectionPlan[]
   cyberbullyingCaseTasks             CyberbullyingCaseTask[]
+  // C10 — notifications (general foundation) + manual escalations.
+  notifications                      Notification[]
+  cyberbullyingEscalations           CyberbullyingEscalation[]
 
   @@map("tenants")
 }
@@ -1311,6 +1314,8 @@ model Incident {
   // C9 — case management (a case IS the incident): 1:1 protection plan + tasks.
   caseProtectionPlan  CyberbullyingProtectionPlan?
   caseTasks           CyberbullyingCaseTask[]
+  // C10 — manual escalations on this incident.
+  escalations         CyberbullyingEscalation[]
 
   @@unique([id, tenantId])
   @@index([tenantId, brandId, status])
@@ -2043,6 +2048,9 @@ model CyberbullyingProtectionPlan {
   tenantId         String
   incidentId       String
   riskLevel        String? // CaseRiskLevel (low|medium|high|critical) — null until set
+  // C10 — when riskLevel became CRITICAL (start of the critical-risk-response SLA);
+  // null unless currently critical. Set/cleared by the manual protection-plan update.
+  criticalRiskSetAt DateTime?
   protectionStatus String    @default("not_started") // CaseProtectionStatus
   objective        String?
   notes            String?
@@ -2090,6 +2098,68 @@ model CyberbullyingCaseTask {
   @@unique([id, tenantId])
   @@index([tenantId, incidentId, status])
   @@map("cyberbullying_case_tasks")
+}
+
+// C10 — GENERAL internal, in-app notification (tenant-scoped, recipient-based).
+// Designed for reuse by future modules; C10 uses it only for cyberbullying. The DB
+// stores a `type` (translation-key mapping happens in the UI — NEVER a rendered
+// localized string) + SANITIZED metadata only: never notes/summary/filename/actor
+// reference. The recipient MUST be a member of the same tenant. `deduplicationKey`
+// makes a repeated evaluation idempotent while a new relevant state creates a new row.
+model Notification {
+  id               String    @id @default(cuid())
+  tenantId         String
+  recipientUserId  String
+  type             String
+  severity         String // info | attention | urgent (NotificationSeverity)
+  entityType       String // NotificationEntityType
+  entityId         String
+  incidentId       String? // plain ref (general model): the safe CTA target when set
+  deduplicationKey String
+  metadata         Json? // sanitized — ids/enum values only
+  createdAt        DateTime  @default(now())
+  readAt           DateTime?
+  dismissedAt      DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  // Dedup: one live notification per (tenant, recipient, key). A changed due date ⇒
+  // a different key ⇒ a new notification; cross-tenant collision is impossible.
+  @@unique([tenantId, recipientUserId, deduplicationKey])
+  @@index([tenantId, recipientUserId, readAt, createdAt])
+  @@index([tenantId, incidentId])
+  @@map("notifications")
+}
+
+// C10 — Manual incident escalation. An explicit, auditable human step marking an
+// incident as needing higher attention. It NEVER changes the incident lifecycle,
+// the manual risk level, milestones, tasks, or assignments. The confidential `note`
+// is never written to the timeline, audit, or a notification payload.
+model CyberbullyingEscalation {
+  id               String    @id @default(cuid())
+  tenantId         String
+  incidentId       String
+  status           String    @default("active") // active | resolved | cancelled (EscalationStatus)
+  severity         String // attention | urgent (EscalationSeverity)
+  reasonCode       String // EscalationReason (enum allowlist)
+  note             String? // CONFIDENTIAL — never logged / never in a notification
+  escalatedByUserId String
+  escalatedAt      DateTime  @default(now())
+  targetUserId     String?
+  targetRole       String?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolutionCode   String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, status])
+  @@map("cyberbullying_escalations")
 }
 
 enum LeadStatus {

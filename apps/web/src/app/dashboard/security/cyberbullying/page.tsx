@@ -9,6 +9,8 @@ import { getLocale } from "@/i18n/locale-server";
 import { canViewCyberbullying, getCyberbullyingDashboardKpis, getCyberbullyingOperationalMetrics } from "@/server/cyberbullying-inbox";
 import { canReportCyberbullying } from "@/server/cyberbullying-report";
 import { canTriageDetections, countNewCyberbullyingDetections } from "@/server/cyberbullying-detections";
+import { canManageCase } from "@/server/cyberbullying-case";
+import { getCyberbullyingSlaOverview, countUnreadNotifications } from "@guardora/db";
 import { CB_COPY } from "./cb-i18n";
 
 export const dynamic = "force-dynamic";
@@ -27,10 +29,13 @@ export default async function CyberbullyingOverviewPage({ searchParams }: { sear
   const tfRaw = Number((await searchParams).tf);
   const tf: Tf = (TIMEFRAMES as readonly number[]).includes(tfRaw) ? (tfRaw as Tf) : 30;
   const actor = { tenantId: session.tenantId, userId: session.userId, role: session.role };
-  const [kpi, ops, newDetections] = await Promise.all([
+  const canSla = canManageCase(session.role);
+  const [kpi, ops, newDetections, slaOverview, unread] = await Promise.all([
     getCyberbullyingDashboardKpis(actor, tf),
     getCyberbullyingOperationalMetrics(actor),
     canTriageDetections(session.role) ? countNewCyberbullyingDetections(actor) : Promise.resolve(0),
+    canSla ? getCyberbullyingSlaOverview(actor).catch(() => null) : Promise.resolve(null),
+    countUnreadNotifications(actor).catch(() => 0),
   ]);
 
   const inbox = (q: string) => `/dashboard/security/cyberbullying/incidents${q}` as const;
@@ -54,6 +59,10 @@ export default async function CyberbullyingOverviewPage({ searchParams }: { sear
             {canReportCyberbullying(session.role) ? (
               <Link href="/dashboard/security/cyberbullying/report" className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{t.report.cta}</Link>
             ) : null}
+            {/* C10 — notifications bell (unread count announced, not colour-only). */}
+            <Link href="/dashboard/security/cyberbullying/notifications" aria-label={`${t.notif.bell}: ${unread} ${t.notif.unreadCountLabel}`} className="relative rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-2)]">
+              {t.notif.bell}{unread > 0 ? <span className="ml-1 rounded-full bg-[var(--color-danger)] px-1.5 py-0.5 text-[10px] text-white">{unread}</span> : null}
+            </Link>
           </div>
         }
       />
@@ -80,6 +89,20 @@ export default async function CyberbullyingOverviewPage({ searchParams }: { sear
           <KpiCard label={t.ops.avgReviewTime} value={ops.avgReviewTimeHours === null ? "—" : String(ops.avgReviewTimeHours)} tone="neutral" />
         </div>
       </div>
+
+      {/* C10 — SLA overview (derived time status; nothing automatic). */}
+      {slaOverview ? (
+        <div className="mt-8">
+          <SectionHeader title={t.sla.overviewTitle} description={t.sla.overviewSubtitle} />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <KpiCard label={t.sla.card.firstReviewOverdue} value={String(slaOverview.firstReviewOverdue)} tone={slaOverview.firstReviewOverdue ? "danger" : "neutral"} href="/dashboard/security/cyberbullying/incidents?status=open" />
+            <KpiCard label={t.sla.card.criticalOverdue} value={String(slaOverview.criticalOverdue)} tone={slaOverview.criticalOverdue ? "danger" : "neutral"} />
+            <KpiCard label={t.sla.card.taskOverdue} value={String(slaOverview.taskOverdue)} tone={slaOverview.taskOverdue ? "danger" : "neutral"} />
+            <KpiCard label={t.sla.card.followUpOverdue} value={String(slaOverview.followUpOverdue)} tone={slaOverview.followUpOverdue ? "warn" : "neutral"} />
+            <KpiCard label={t.sla.card.activeEscalations} value={String(slaOverview.activeEscalations)} tone={slaOverview.activeEscalations ? "warn" : "neutral"} />
+          </div>
+        </div>
+      ) : null}
 
       {/* C8 — Detection queue entry (human triage of existing security signals). */}
       {canTriageDetections(session.role) ? (

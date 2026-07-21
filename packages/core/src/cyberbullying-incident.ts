@@ -162,6 +162,14 @@ export enum IncidentTimelineEventType {
   TaskCompleted = "task_completed",
   FollowUpUpdated = "follow_up_updated",
   MilestoneChanged = "milestone_changed",
+  // C10 — SLA transitions (only on state CHANGE, never per evaluation run) +
+  // manual escalation. No confidential text in metadata.
+  SlaDueSoonDetected = "sla_due_soon_detected",
+  SlaOverdueDetected = "sla_overdue_detected",
+  EscalationCreated = "escalation_created",
+  EscalationResolved = "escalation_resolved",
+  EscalationCancelled = "escalation_cancelled",
+  EscalationTargetChanged = "escalation_target_changed",
 }
 
 /**
