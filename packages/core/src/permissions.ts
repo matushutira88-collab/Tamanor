@@ -42,6 +42,21 @@ export enum Permission {
   IncidentView = "incident:view",
   /** Manage incident lifecycle (assign, transition, resolve). */
   IncidentManage = "incident:manage",
+  // Cyberbullying Protection (C1 foundation). Server-enforced; subject-scope filter
+  // runs ABOVE tenant RLS. The two most sensitive — viewing unredacted sensitive
+  // evidence and exporting evidence — are OWNER-EXCLUSIVE (granted only via
+  // OWNER_ALL, absent from every role list below), because an admin must NOT get
+  // sensitive-evidence access automatically.
+  CyberbullyingViewOwn = "cyberbullying:view_own",
+  CyberbullyingReport = "cyberbullying:report",
+  CyberbullyingReview = "cyberbullying:review",
+  CyberbullyingManage = "cyberbullying:manage",
+  CyberbullyingEscalate = "cyberbullying:escalate",
+  CyberbullyingViewSensitiveEvidence = "cyberbullying:view_sensitive_evidence",
+  CyberbullyingExportEvidence = "cyberbullying:export_evidence",
+  CyberbullyingManageRetention = "cyberbullying:manage_retention",
+  CyberbullyingManageGuardianAccess = "cyberbullying:manage_guardian_access",
+  CyberbullyingAudit = "cyberbullying:audit",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -76,6 +91,16 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.SecurityManage,
     Permission.IncidentView,
     Permission.IncidentManage,
+    // Cyberbullying — Admin gets the operational set, NOT sensitive-evidence view
+    // or export (those stay owner-exclusive via OWNER_ALL).
+    Permission.CyberbullyingViewOwn,
+    Permission.CyberbullyingReport,
+    Permission.CyberbullyingReview,
+    Permission.CyberbullyingManage,
+    Permission.CyberbullyingEscalate,
+    Permission.CyberbullyingManageRetention,
+    Permission.CyberbullyingManageGuardianAccess,
+    Permission.CyberbullyingAudit,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -104,6 +129,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ReportView,
     Permission.SecurityView,
     Permission.IncidentView,
+    // Cyberbullying — Reviewer may see own, report, and review.
+    Permission.CyberbullyingViewOwn,
+    Permission.CyberbullyingReport,
+    Permission.CyberbullyingReview,
   ],
   [Role.Viewer]: [
     Permission.BrandView,

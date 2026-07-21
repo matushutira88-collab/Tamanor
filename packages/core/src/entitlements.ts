@@ -43,6 +43,8 @@ export type PlanEntitlements = {
   // Incident Center). Same tier as `incidents` (which Incident Center extends):
   // growth+ = true, free_trial/starter = false → truthful CapabilityLockedState.
   securitySuite: boolean;       // /dashboard/security
+  // C1 — Cyberbullying Protection module. OFF on free/trial/starter; growth+.
+  cyberbullyingProtection: boolean;
   prioritySupport: boolean;     // support tier (operational commitment, not a gated code path)
   // NOT shipped today → false for every plan (never advertised as available):
   multiWorkspace: boolean;
@@ -75,7 +77,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 1, maxConnectedAccounts: 1, maxFacebookPages: 1, maxInstagramAccounts: 1, ...PER_BRAND_ONE, maxTeamMembers: 2,
     monthlyProcessedItems: 500, monthlyAiActions: 10,
     reputationAnalytics: false, riskProfiles: false, incidents: false, controlCenter: false, advancedRules: false,
-    auditLog: true, securitySuite: false, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, securitySuite: false, cyberbullyingProtection: false, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 30,
   },
   starter: {
@@ -83,7 +85,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 1, maxConnectedAccounts: 4, maxFacebookPages: 1, maxInstagramAccounts: 1, ...PER_BRAND_ONE, maxTeamMembers: 3,
     monthlyProcessedItems: 4_000, monthlyAiActions: 200,
     reputationAnalytics: false, riskProfiles: false, incidents: false, controlCenter: false, advancedRules: false,
-    auditLog: true, securitySuite: false, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, securitySuite: false, cyberbullyingProtection: false, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 90,
   },
   growth: {
@@ -91,7 +93,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 3, maxConnectedAccounts: 12, maxFacebookPages: 3, maxInstagramAccounts: 3, ...PER_BRAND_ONE, maxTeamMembers: 8,
     monthlyProcessedItems: 13_000, monthlyAiActions: 1_000,
     reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
-    auditLog: true, securitySuite: true, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, securitySuite: true, cyberbullyingProtection: true, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 180,
   },
   // NOTE (V1.64): the `agency` id is the STABLE internal key for the plan marketed as "Business".
@@ -103,7 +105,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 10, maxConnectedAccounts: 40, maxFacebookPages: 10, maxInstagramAccounts: 10, ...PER_BRAND_ONE, maxTeamMembers: 25,
     monthlyProcessedItems: 25_000, monthlyAiActions: 5_000,
     reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
-    auditLog: true, securitySuite: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, securitySuite: true, cyberbullyingProtection: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: false,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 365,
   },
   enterprise: {
@@ -112,7 +114,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxFacebookPerBrand: null, maxInstagramPerBrand: null, maxGoogleBusinessPerBrand: null, maxYouTubePerBrand: null, maxTeamMembers: null,
     monthlyProcessedItems: null, monthlyAiActions: null,
     reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
-    auditLog: true, securitySuite: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, securitySuite: true, cyberbullyingProtection: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: false,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: null,
   },
 };
@@ -125,7 +127,7 @@ const MINIMAL: PlanEntitlements = {
   monthlyProcessedItems: 0, monthlyAiActions: 0,
   providerSync: false, moderationExecution: false, paidAi: false,
   reputationAnalytics: false, riskProfiles: false, incidents: false, controlCenter: false, advancedRules: false,
-  securitySuite: false,
+  securitySuite: false, cyberbullyingProtection: false,
   billingAccess: true, deletionAccess: true,
 };
 
@@ -181,7 +183,7 @@ export class EntitlementError extends Error {
 
 export type BooleanFeature = keyof Pick<PlanEntitlements,
   "reputationAnalytics" | "riskProfiles" | "incidents" | "controlCenter" | "advancedRules" |
-  "auditLog" | "securitySuite" | "export" | "multiWorkspace" | "agencyClientManagement" | "prioritySupport" |
+  "auditLog" | "securitySuite" | "cyberbullyingProtection" | "export" | "multiWorkspace" | "agencyClientManagement" | "prioritySupport" |
   "providerSync" | "moderationExecution" | "paidAi" | "billingAccess" | "deletionAccess">;
 
 export function hasEntitlement(ent: PlanEntitlements, feature: BooleanFeature): boolean {

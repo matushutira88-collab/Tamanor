@@ -424,6 +424,10 @@ model Tenant {
   securityDetections       SecurityDetection[]
   brandProtectionCases     BrandProtectionCase[]
 
+  // C1 — Cyberbullying Protection foundation (victim-centric; isolated from brand).
+  protectedSubjects             ProtectedSubject[]
+  protectedSubjectRelationships ProtectedSubjectRelationship[]
+
   @@map("tenants")
 }
 
@@ -1608,6 +1612,54 @@ model BrandProtectionCase {
   @@unique([id, tenantId])
   @@index([tenantId, status, createdAt])
   @@map("brand_protection_cases")
+}
+
+// ===========================================================================
+// Cyberbullying Protection — C1 Protected Subject & Access Foundation.
+// Victim-centric, tenant-scoped, ISOLATED from brand-reputation models (no
+// brandId, no ContentItem/ReputationItem coupling). Minimal, NON-SENSITIVE
+// foundation only: NO date-of-birth, address, phone, email, health, photos, or
+// guardian data. String columns mirror @guardora/core enums. RLS ENABLE+FORCE +
+// tenant_isolation added in the accompanying migration. Composite (id, tenantId)
+// keys keep cross-tenant references structurally impossible.
+// ===========================================================================
+
+model ProtectedSubject {
+  id               String   @id @default(cuid())
+  tenantId         String
+  // Opaque, tenant-scoped public identifier (never a real-world PII value).
+  publicIdentifier String
+  displayLabel     String
+  subjectType      String // individual | other (ProtectedSubjectType)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  relationships ProtectedSubjectRelationship[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, publicIdentifier])
+  @@index([tenantId, active])
+  @@map("protected_subjects")
+}
+
+model ProtectedSubjectRelationship {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  protectedSubjectId String
+  relationshipType   String // trusted_contact | guardian | school | company (ProtectedSubjectRelationshipType)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Composite (id, tenantId) FK — cross-tenant references are structurally impossible.
+  subject ProtectedSubject @relation(fields: [protectedSubjectId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, protectedSubjectId])
+  @@map("protected_subject_relationships")
 }
 
 enum LeadStatus {
