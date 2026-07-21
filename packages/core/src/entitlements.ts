@@ -43,7 +43,7 @@ export type PlanEntitlements = {
   // NOT shipped today → false for every plan (never advertised as available):
   multiWorkspace: boolean;
   agencyClientManagement: boolean;
-  export: boolean;              // /dashboard/reports export is "coming soon" — not implemented
+  export: boolean;              // V1.69 (B3): tenant-scoped CSV export — a PAID feature (all paid plans)
   // Operation gates (turned OFF by restricted/suspended access — see resolveEntitlements).
   providerSync: boolean;
   moderationExecution: boolean;
@@ -79,7 +79,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 1, maxConnectedAccounts: 4, maxFacebookPages: 1, maxInstagramAccounts: 1, ...PER_BRAND_ONE, maxTeamMembers: 3,
     monthlyProcessedItems: 4_000, monthlyAiActions: 200,
     reputationAnalytics: false, riskProfiles: false, incidents: false, controlCenter: false, advancedRules: false,
-    auditLog: true, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: true,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 90,
   },
   growth: {
@@ -87,7 +87,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 3, maxConnectedAccounts: 12, maxFacebookPages: 3, maxInstagramAccounts: 3, ...PER_BRAND_ONE, maxTeamMembers: 8,
     monthlyProcessedItems: 13_000, monthlyAiActions: 1_000,
     reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
-    auditLog: true, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: true,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 180,
   },
   // NOTE (V1.64): the `agency` id is the STABLE internal key for the plan marketed as "Business".
@@ -99,7 +99,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 10, maxConnectedAccounts: 40, maxFacebookPages: 10, maxInstagramAccounts: 10, ...PER_BRAND_ONE, maxTeamMembers: 25,
     monthlyProcessedItems: 25_000, monthlyAiActions: 5_000,
     reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
-    auditLog: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: true,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 365,
   },
   enterprise: {
@@ -108,7 +108,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxFacebookPerBrand: null, maxInstagramPerBrand: null, maxGoogleBusinessPerBrand: null, maxYouTubePerBrand: null, maxTeamMembers: null,
     monthlyProcessedItems: null, monthlyAiActions: null,
     reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
-    auditLog: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: true,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: null,
   },
 };
