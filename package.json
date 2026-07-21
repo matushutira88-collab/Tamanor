@@ -27,6 +27,7 @@
     "protected-subject:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/protected-subject.test.ts",
     "evidence-foundation:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/evidence-foundation.test.ts",
     "incident-core:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/incident-core.test.ts",
+    "cyberbullying-inbox:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/cyberbullying-inbox.test.ts",
     "detection-engine:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/detection-engine.test.ts",
     "security-access:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/security-access.test.ts",
     "security-score-facts:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/security-score-facts.test.ts",

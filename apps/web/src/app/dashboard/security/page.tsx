@@ -9,6 +9,8 @@ import { getLocale } from "@/i18n/locale-server";
 import { type Locale } from "@/i18n/config";
 import { loadSecurityScore } from "@/server/security-score";
 import { loadAtoDetections } from "@/server/security-detections";
+import { canViewCyberbullying, countOpenCyberbullyingIncidents } from "@/server/cyberbullying-inbox";
+import { CB_COPY } from "./cyberbullying/cb-i18n";
 import { SecurityScoreView } from "./security-score-view";
 import { AtoDetectionsView } from "./ato-detections-view";
 import { saveSecurityScoreSnapshotAction } from "./actions";
@@ -131,6 +133,11 @@ export default async function SecurityCenterPage({ searchParams }: { searchParam
   const score = await loadSecurityScore(session.tenantId);
   // S2 — Potential Account Takeover detections (foundation: empty until detectors ship).
   const atoDetections = await loadAtoDetections(session.tenantId);
+  // C4 — Cyberbullying Protection entry (entitlement-gated, subject-scoped count).
+  const cb = CB_COPY[locale];
+  const cbCanView = canViewCyberbullying(session.role);
+  const cbEntitled = cap.ent.cyberbullyingProtection;
+  const cbOpen = cbCanView && cbEntitled ? await countOpenCyberbullyingIncidents({ tenantId: session.tenantId, userId: session.userId, role: session.role }) : null;
 
   return (
     <>
@@ -165,6 +172,17 @@ export default async function SecurityCenterPage({ searchParams }: { searchParam
       <div className="mt-10">
         <SectionHeader title={t.modulesTitle} description={t.detectOnly} />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ModuleTile
+            title={cb.moduleName}
+            body={cb.moduleDesc}
+            badge={cbEntitled ? cb.available : t.soon}
+            tone={cbEntitled ? "ok" : "neutral"}
+            action={
+              <Link href="/dashboard/security/cyberbullying" className="text-sm font-semibold text-[var(--color-brand)] hover:underline">
+                {cbOpen != null ? `${cb.openIncidents(cbOpen)} · ` : ""}{cb.openDashboard} →
+              </Link>
+            }
+          />
           <ModuleTile title={t.detections.title} body={t.detections.body} badge={t.active} tone="ok" />
           <ModuleTile title={t.brand.title} body={t.brand.body} badge={t.soon} tone="neutral" />
           <ModuleTile
