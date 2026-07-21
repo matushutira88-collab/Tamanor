@@ -22,7 +22,7 @@ export type ProcessingStatus =
   | "processed_rules" | "processed_local" | "processed_paid" | "cached"
   | "basic_limit_reached" | "premium_limit_reached" | "paid_ai_disabled" | "failed";
 
-export interface MeteredCtx { tenantId: string; plan: string; accessState?: string; reputationItemId?: string; contentItemId?: string; correlationId?: string }
+export interface MeteredCtx { tenantId: string; plan: string; accessState?: string; internalAccess?: boolean; reputationItemId?: string; contentItemId?: string; correlationId?: string }
 export interface MeteredDeps {
   /** TEST-ONLY provider injection. Production uses the internal classifyHybrid (paid) path. */
   callProvider?: (input: ClassificationInput, cfg: HybridConfig) => Promise<HybridResult>;
@@ -51,7 +51,7 @@ export async function classifyWithUsagePolicy(
 ): Promise<MeteredResult> {
   const now = deps.now ?? new Date();
   // V1.50D — billing-aware policy: a restricted/suspended tenant gets NO paid AI regardless of plan.
-  const policy = resolveEffectiveUsagePolicy(ctx.plan, ctx.accessState);
+  const policy = resolveEffectiveUsagePolicy(ctx.plan, ctx.accessState, { internalAccess: ctx.internalAccess });
   const provider = cfg.aiRisk.provider || "none";
   // Model-specific key for openai (the real OPENAI_MODEL) so pricing + cache + reservation are per-model;
   // an unpriced model then fails closed to SAFE_FALLBACK. Other providers key by provider name.
@@ -72,7 +72,7 @@ export async function classifyWithUsagePolicy(
 
   // 2) RULES (+ local) — always free, deterministic. Consume ONE basic unit (deduped by content).
   const rules = await classifyHybrid(input, { ...cfg, aiRisk: { enabled: false, provider: "none", minConfidence: cfg.aiRisk.minConfidence, callMode: cfg.aiRisk.callMode } });
-  const basic = await consumeBasicUnit(ctx.tenantId, ctx.plan, { idempotencyKey: `basic:${contentHash}`, tier: "rules", ...evRefs }, now);
+  const basic = await consumeBasicUnit(ctx.tenantId, ctx.plan, { idempotencyKey: `basic:${contentHash}`, tier: "rules", internalAccess: ctx.internalAccess, ...evRefs }, now);
   const baseStatus: ProcessingStatus = basic.denied ? "basic_limit_reached" : "processed_rules";
 
   // 3) PAID fallback — policy → canary allowlist → per-instance fuses → GLOBAL reserve → TENANT reserve.
@@ -101,7 +101,7 @@ export async function classifyWithUsagePolicy(
     // (there is no stale-recovery for the global counter). If it denies or is an idempotent retry, likewise.
     let tenant: Awaited<ReturnType<typeof reservePremiumCall>>;
     try {
-      tenant = await reservePremiumCall(ctx.tenantId, ctx.plan, { provider, modelKey, estMicros, idempotencyKey: `prem:${contentHash}:${modelKey}`, ...evRefs }, now);
+      tenant = await reservePremiumCall(ctx.tenantId, ctx.plan, { provider, modelKey, estMicros, idempotencyKey: `prem:${contentHash}:${modelKey}`, internalAccess: ctx.internalAccess, ...evRefs }, now);
     } catch {
       await bestEffort(() => releaseGlobalDailyCall(provider, estMicros, now));
       return done(rules, "rules", "failed", "paid_provider_error");

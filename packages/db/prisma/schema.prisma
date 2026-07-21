@@ -366,6 +366,11 @@ model Tenant {
   // application access decision. Defaults keep a trial-only tenant on full access.
   billingStatus         String    @default("no_subscription")
   accessState           String    @default("full_access")
+  // V1.73 — INTERNAL Tamanor admin tenant. Authoritative, operator-set flag (never user-settable): when
+  // true, the central resolvers grant unlimited access (no trial/billing block, unlimited usage/seats/
+  // monitoring, export on) for sync, billing, usage, team and export alike. Set only by the internal-
+  // tenant admin script / migration matching the exact internal email — never by registration.
+  internalAccess        Boolean   @default(false)
 
   // V1.59 — tenant-level DEFAULT protection policy applied to accounts that do not override it.
   // Auto-hide defaults OFF (matches current production: no automatic Meta action unless enabled).

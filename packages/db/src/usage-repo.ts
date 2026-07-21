@@ -8,7 +8,7 @@
  */
 import { ActorKind, Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
-import { resolveUsagePolicy, type UsagePolicy, type UsagePlan } from "@guardora/core";
+import { resolveUsagePolicy, resolveEffectiveUsagePolicy, type UsagePolicy, type UsagePlan } from "@guardora/core";
 import { withTenantDb, type TenantTx } from "./tenant-db";
 
 function isUnique(e: unknown) { return (e as { code?: string })?.code === "P2002"; }
@@ -62,10 +62,11 @@ export type BasicResult = { consumed: boolean; reused?: boolean; denied?: boolea
  * the (honest, rules-based) result with a truthful status.
  */
 export async function consumeBasicUnit(
-  tenantId: string, plan: string, args: { idempotencyKey: string; tier: "rules" | "local"; reputationItemId?: string; contentItemId?: string; correlationId?: string },
+  tenantId: string, plan: string, args: { idempotencyKey: string; tier: "rules" | "local"; reputationItemId?: string; contentItemId?: string; correlationId?: string; internalAccess?: boolean },
   now: Date = new Date(),
 ): Promise<BasicResult> {
-  const policy = resolveUsagePolicy(plan);
+  // V1.73 — internal admin tenant → unlimited processed usage (ENTERPRISE policy, null caps = no guard).
+  const policy = resolveEffectiveUsagePolicy(plan, undefined, { internalAccess: args.internalAccess });
   const period = await getOrCreateCurrentPeriod(tenantId, plan, now);
   return withTenantDb(tenantId, async (db) => {
     const existing = await db.usageEvent.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: args.idempotencyKey } } });
@@ -96,7 +97,7 @@ export type ReserveResult =
 
 export interface ReserveArgs {
   provider: string; modelKey: string; estMicros: bigint; idempotencyKey: string;
-  reputationItemId?: string; contentItemId?: string; correlationId?: string;
+  reputationItemId?: string; contentItemId?: string; correlationId?: string; internalAccess?: boolean;
 }
 
 async function reserveOnce(tenantId: string, policy: UsagePolicy, args: ReserveArgs, now: Date): Promise<ReserveResult> {
@@ -137,7 +138,8 @@ async function reserveOnce(tenantId: string, policy: UsagePolicy, args: ReserveA
  * transaction rolls back, undoing its increment).
  */
 export async function reservePremiumCall(tenantId: string, plan: string, args: ReserveArgs, now: Date = new Date()): Promise<ReserveResult> {
-  const policy = resolveUsagePolicy(plan);
+  // V1.73 — internal admin tenant → unlimited paid AI (ENTERPRISE policy).
+  const policy = resolveEffectiveUsagePolicy(plan, undefined, { internalAccess: args.internalAccess });
   try {
     return await reserveOnce(tenantId, policy, args, now);
   } catch (e) {
@@ -284,8 +286,9 @@ export async function getUsageDiagnostic(tenantId: string, plan: string, now: Da
 }
 
 /** Read (creating if needed) the current period and derive the UI summary. Counters are the truth. */
-export async function getUsageSummary(tenantId: string, plan: string, now: Date = new Date()): Promise<UsageSummary> {
-  const policy = resolveUsagePolicy(plan);
+export async function getUsageSummary(tenantId: string, plan: string, now: Date = new Date(), internalAccess = false): Promise<UsageSummary> {
+  // V1.73 — internal admin tenant → unlimited usage display (ENTERPRISE policy).
+  const policy = resolveEffectiveUsagePolicy(plan, undefined, { internalAccess });
   const period = await getOrCreateCurrentPeriod(tenantId, policy.plan, now);
   const basicPct = pct(period.basicUnitsUsed, policy.basicUnitsPerPeriod);
   const callPct = pct(period.premiumCallsUsed, policy.premiumCallsPerPeriod);

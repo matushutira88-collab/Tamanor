@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/server/auth";
-import { withTenant, getUsageSummary, getUsageDiagnostic, getTenantResourceUsage, getTenantBilling, type UsageStatus } from "@guardora/db";
-import { planEntitlements, type TenantLifecycleState } from "@guardora/core";
+import { withTenant, getUsageSummary, getUsageDiagnostic, getTenantResourceUsage, getTenantBilling, getTenantEntitlements, type UsageStatus } from "@guardora/db";
+import { type TenantLifecycleState } from "@guardora/core";
 import { getPaidAiFuseConfig } from "@guardora/config";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { getLocale } from "@/i18n/locale-server";
@@ -198,18 +198,21 @@ function Meter({ label, used, limit, percent, testid, suffix }: { label: string;
 
 export default async function UsagePage() {
   const session = await requireSession();
-  const tenant = await withTenant(session.tenantId, (db) => db.tenant.findUnique({ where: { id: session.tenantId }, select: { plan: true } }));
+  const tenant = await withTenant(session.tenantId, (db) => db.tenant.findUnique({ where: { id: session.tenantId }, select: { plan: true, internalAccess: true } }));
   const plan = tenant?.plan ?? "free";
-  const summary = await getUsageSummary(session.tenantId, plan);
+  const internalAccess = tenant?.internalAccess ?? false;
+  // V1.73 — internal admin tenant displays as unlimited (matching enforcement).
+  const summary = await getUsageSummary(session.tenantId, plan, new Date(), internalAccess);
   const fuse = getPaidAiFuseConfig();
   const isAdmin = session.role === "owner" || session.role === "admin";
   const diag = isAdmin ? await getUsageDiagnostic(session.tenantId, plan) : null;
   const locale = await getLocale();
   const c = COPY[locale];
 
-  // Canonical resource usage — the SAME counting helpers + plan limits the server enforces at create time.
+  // Canonical resource usage — the SAME counting helpers + effective (internal-aware) entitlements the
+  // server enforces at create time. getTenantEntitlements reflects unlimited for an internal admin tenant.
   const resources = await getTenantResourceUsage(session.tenantId);
-  const planLimits = planEntitlements(plan);
+  const planLimits = await getTenantEntitlements(session.tenantId);
   const billing = await getTenantBilling(session.tenantId);
   // V1.68 (Release A / A6) — first-sync-pending + monitoring-disabled-by-plan visibility. Both are
   // counted from the SAME account model the sync/enforcement paths use (non-disconnected accounts).

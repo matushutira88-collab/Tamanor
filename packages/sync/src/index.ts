@@ -721,11 +721,12 @@ async function persistNewItem(
   hooks?: SyncPhaseHooks,
 ): Promise<IngestOutcome> {
   // Phase P1 — tenant reads (short tx): plan + brand locale + brand memory rules.
-  const { plan, accessState, brand, memoryRules, tenantDefaults } = await withTenantDb(tenantId, async (db) => {
+  const { plan, accessState, internalAccess, brand, memoryRules, tenantDefaults } = await withTenantDb(tenantId, async (db) => {
     // V1.50D — read the billing access state alongside the plan so paid AI is refused for a
     // restricted (trial-expired / lapsed) tenant, regardless of the stored plan.
+    // V1.73 — also read internalAccess so an internal admin tenant meters as unlimited.
     const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: {
-      plan: true, accessState: true,
+      plan: true, accessState: true, internalAccess: true,
       // V1.59 — tenant protection defaults, for resolving the effective per-account auto-hide config.
       defaultAutoHideEnabled: true, defaultAutoHideMode: true, defaultAutoHideRiskThreshold: true,
       defaultAutoHideCategories: true, defaultRequireManualApproval: true,
@@ -736,7 +737,7 @@ async function persistNewItem(
       select: { type: true, normalizedPhrase: true, language: true, severity: true, isActive: true },
     });
     return {
-      plan: tenant?.plan ?? "free", accessState: tenant?.accessState ?? "full_access", brand, memoryRules,
+      plan: tenant?.plan ?? "free", accessState: tenant?.accessState ?? "full_access", internalAccess: tenant?.internalAccess ?? false, brand, memoryRules,
       tenantDefaults: {
         defaultAutoHideEnabled: tenant?.defaultAutoHideEnabled ?? false,
         defaultAutoHideMode: tenant?.defaultAutoHideMode ?? "recommend",
@@ -759,7 +760,7 @@ async function persistNewItem(
   // cache). The ReputationItem does not exist yet, so we link the UsageEvents to it by this id AFTER create.
   const usageCorrelationId = randomUUID();
   const hybrid = await classifyWithUsagePolicy(
-    { tenantId, plan, accessState, correlationId: usageCorrelationId },
+    { tenantId, plan, accessState, internalAccess, correlationId: usageCorrelationId },
     { text: item.text, platform: item.platform, locale: item.author.locale, rating: item.rating, rules },
     {
       workspaceLocale: brand?.defaultLocale ?? "en",

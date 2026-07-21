@@ -47,7 +47,7 @@ export async function getTenantBilling(tenantId: string, now: Date = new Date())
   const t = await systemDb.tenant.findUnique({
     where: { id: tenantId },
     select: {
-      id: true, plan: true, billingStatus: true, accessState: true, trialStartsAt: true, trialEndsAt: true,
+      id: true, plan: true, billingStatus: true, accessState: true, trialStartsAt: true, trialEndsAt: true, internalAccess: true,
       subscription: {
         select: {
           plan: true, status: true, billingInterval: true, currentPeriodEnd: true,
@@ -59,12 +59,14 @@ export async function getTenantBilling(tenantId: string, now: Date = new Date())
   if (!t) return null;
   // V1.68 — derive access + lifecycle from billing fields at READ time (not the persisted cache), so a
   // lapsed trial reads as expired immediately, independent of the daily sweep.
+  // V1.73 — internalAccess overrides to full_access / active for an internal admin tenant.
   const lifecycleInput = {
     status: t.billingStatus,
     trialEndsAt: t.trialEndsAt,
     currentPeriodEnd: t.subscription?.currentPeriodEnd ?? null,
     cancelAtPeriodEnd: t.subscription?.cancelAtPeriodEnd,
     persistedAccessState: t.accessState,
+    internalAccess: t.internalAccess,
     now,
   };
   return {
@@ -93,22 +95,24 @@ export async function getTenantEntitlements(tenantId: string, now: Date = new Da
   const t = await systemDb.tenant.findUnique({
     where: { id: tenantId },
     select: {
-      plan: true, accessState: true, deletionState: true, billingStatus: true, trialEndsAt: true,
+      plan: true, accessState: true, deletionState: true, billingStatus: true, trialEndsAt: true, internalAccess: true,
       subscription: { select: { currentPeriodEnd: true, cancelAtPeriodEnd: true } },
     },
   });
   if (!t) return resolveEntitlements(null, null);
   // V1.68 — read-time access authority: recompute from billing fields so an expired trial (or any
   // billing state) is enforced on THIS request, not only after the daily sweep. Removes the SPOF.
+  // V1.73 — the internalAccess flag is passed through to the central resolver (unlimited for internal).
   const effective = resolveEffectiveAccessState({
     status: t.billingStatus,
     trialEndsAt: t.trialEndsAt,
     currentPeriodEnd: t.subscription?.currentPeriodEnd ?? null,
     cancelAtPeriodEnd: t.subscription?.cancelAtPeriodEnd,
     persistedAccessState: t.accessState,
+    internalAccess: t.internalAccess,
     now,
   });
-  return resolveEntitlements(t.plan, effective, { deletingTenant: t.deletionState !== "active" });
+  return resolveEntitlements(t.plan, effective, { deletingTenant: t.deletionState !== "active", internalAccess: t.internalAccess });
 }
 
 /** Whether NEW operations (sync, moderation execution, provider actions) may run for this tenant. */
@@ -127,7 +131,7 @@ export async function getTenantOperationGate(tenantId: string, now: Date = new D
   const t = await systemDb.tenant.findUnique({
     where: { id: tenantId },
     select: {
-      accessState: true, deletionState: true, billingStatus: true, trialEndsAt: true,
+      accessState: true, deletionState: true, billingStatus: true, trialEndsAt: true, internalAccess: true,
       subscription: { select: { currentPeriodEnd: true, cancelAtPeriodEnd: true } },
     },
   });
@@ -135,12 +139,14 @@ export async function getTenantOperationGate(tenantId: string, now: Date = new D
   if (t.deletionState !== "active") return { allowed: false, reason: "tenant_deleting" };
   // V1.68 — recompute effective access at read time (removes the trial-expiry SPOF): a lapsed trial
   // blocks operations on the next request, not only after the daily sweep persists "restricted".
+  // V1.73 — an internal admin tenant resolves to full_access → always allowed (no billing_restricted).
   const effective = resolveEffectiveAccessState({
     status: t.billingStatus,
     trialEndsAt: t.trialEndsAt,
     currentPeriodEnd: t.subscription?.currentPeriodEnd ?? null,
     cancelAtPeriodEnd: t.subscription?.cancelAtPeriodEnd,
     persistedAccessState: t.accessState,
+    internalAccess: t.internalAccess,
     now,
   });
   if (effective === "suspended") return { allowed: false, reason: "suspended" };

@@ -125,6 +125,23 @@ const MINIMAL: PlanEntitlements = {
   billingAccess: true, deletionAccess: true,
 };
 
+/**
+ * V1.73 — INTERNAL Tamanor admin tenant entitlements: fully unlimited, every capability + operation gate
+ * ON, export ON. Applied ONLY when the authoritative `Tenant.internalAccess` flag is true (operator-set,
+ * never user-settable). Deletion still wins over it; no billing state (trial expiry / restricted /
+ * suspended) applies. multiWorkspace/agencyClientManagement stay false (not shipped for anyone).
+ */
+const INTERNAL: PlanEntitlements = {
+  ...BASE.enterprise,
+  maxBrands: null, maxConnectedAccounts: null, maxFacebookPages: null, maxInstagramAccounts: null,
+  maxFacebookPerBrand: null, maxInstagramPerBrand: null, maxGoogleBusinessPerBrand: null, maxYouTubePerBrand: null,
+  maxTeamMembers: null, monthlyProcessedItems: null, monthlyAiActions: null,
+  reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
+  auditLog: true, prioritySupport: true, export: true,
+  providerSync: true, moderationExecution: true, paidAi: true,
+  billingAccess: true, deletionAccess: true, dataRetentionDays: null,
+};
+
 function isKnownBillingPlan(plan: unknown): plan is BillingPlanId {
   return typeof plan === "string" && plan in BASE;
 }
@@ -146,13 +163,11 @@ export type EntAccessState = "full_access" | "grace_period" | "restricted" | "su
 export function resolveEntitlements(
   plan: string | null | undefined,
   accessState: EntAccessState | null | undefined,
-  opts: { deletingTenant?: boolean } = {},
+  opts: { deletingTenant?: boolean; internalAccess?: boolean } = {},
 ): PlanEntitlements {
   const base = planEntitlements(plan);
-  const locked = opts.deletingTenant || accessState === "suspended" || accessState === "restricted";
-  if (!locked) return base;
   // Restricted/suspended/deleting: preserve viewing + billing + deletion, block all operations + creation.
-  return {
+  const lockedEnt: PlanEntitlements = {
     ...base,
     maxConnectedAccounts: 0, maxFacebookPages: 0, maxInstagramAccounts: 0, maxBrands: 0,
     maxFacebookPerBrand: 0, maxInstagramPerBrand: 0, maxGoogleBusinessPerBrand: 0, maxYouTubePerBrand: 0,
@@ -160,6 +175,13 @@ export function resolveEntitlements(
     providerSync: false, moderationExecution: false, paidAi: false,
     billingAccess: true, deletionAccess: true,
   };
+  // Precedence: deletion > internal admin > billing-lock > plan.
+  // Deletion wins over everything (a deleting tenant is being removed — even an internal one).
+  if (opts.deletingTenant) return lockedEnt;
+  // V1.73 — internal Tamanor admin tenant: fully unlimited, ignoring plan + billing access-state.
+  if (opts.internalAccess) return INTERNAL;
+  const locked = accessState === "suspended" || accessState === "restricted";
+  return locked ? lockedEnt : base;
 }
 
 // ---- typed, normalized denials -------------------------------------------

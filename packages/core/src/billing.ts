@@ -326,7 +326,11 @@ export function accessAllowsOperations(state: AccessState): boolean {
  * manual/admin override the billing mapping never emits on its own; every other access decision is
  * derived from the billing fields.
  */
-export type EffectiveAccessInput = AccessInput & { persistedAccessState?: AccessState | string | null };
+export type EffectiveAccessInput = AccessInput & {
+  persistedAccessState?: AccessState | string | null;
+  /** V1.73 — internal Tamanor admin tenant flag (operator-set). Forces full access, never billing-blocked. */
+  internalAccess?: boolean;
+};
 
 /**
  * The read-time AUTHORITY for a tenant's access state — the single function every entitlement- and
@@ -337,6 +341,8 @@ export type EffectiveAccessInput = AccessInput & { persistedAccessState?: Access
  * read on every request, no cron is on the critical path for enforcing trial expiry.
  */
 export function resolveEffectiveAccessState(input: EffectiveAccessInput): AccessState {
+  // V1.73 — internal Tamanor admin tenant is never trial/billing-blocked → always full access.
+  if (input.internalAccess) return "full_access";
   if (input.persistedAccessState === "suspended") return "suspended";
   if (input.status === "unpaid" || input.status === "paused") return "suspended";
   return resolveAccessState(input);
@@ -364,6 +370,8 @@ export function resolveTenantLifecycle(input: EffectiveAccessInput): TenantLifec
   const now = input.now ?? new Date();
   const trialActive = !!input.trialEndsAt && input.trialEndsAt.getTime() > now.getTime();
   const periodActive = !!input.currentPeriodEnd && input.currentPeriodEnd.getTime() > now.getTime();
+  // V1.73 — an internal admin tenant is always effectively active (never trial/billing state).
+  if (input.internalAccess) return "active_paid";
   if (input.persistedAccessState === "suspended") return "suspended";
   switch (input.status) {
     case "active":
