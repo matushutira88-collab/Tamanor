@@ -931,6 +931,8 @@ export const en = {
     safeLiveMode: "Live mode",
     safeLiveEnabled: "Enabled",
     safeLiveDisabled: "Disabled",
+    liveAutoHideComingSoon: "Live auto-hide — coming soon",
+    liveAutoHideComingSoonNote: "Autonomous live auto-hide is not active yet. You can set rules and approve actions; nothing is hidden automatically until this ships.",
     killSwitch: "Kill switch",
     killSwitchOn: "Stopped",
     killSwitchOff: "Clear",

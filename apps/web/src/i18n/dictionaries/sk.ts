@@ -901,6 +901,8 @@ export const sk: Dictionary = {
     safeLiveMode: "Živý režim",
     safeLiveEnabled: "Zapnuté",
     safeLiveDisabled: "Vypnuté",
+    liveAutoHideComingSoon: "Živé automatické skrytie — čoskoro",
+    liveAutoHideComingSoonNote: "Autonómne živé automatické skrytie zatiaľ nie je aktívne. Môžete nastaviť pravidlá a schvaľovať akcie; kým to nespustíme, nič sa neskryje automaticky.",
     killSwitch: "Núdzový vypínač",
     killSwitchOn: "Zastavené",
     killSwitchOff: "V poriadku",

@@ -901,6 +901,8 @@ export const de: Dictionary = {
     safeLiveMode: "Live-Modus",
     safeLiveEnabled: "Aktiviert",
     safeLiveDisabled: "Deaktiviert",
+    liveAutoHideComingSoon: "Live-Auto-Ausblenden — in Kürze",
+    liveAutoHideComingSoonNote: "Autonomes Live-Auto-Ausblenden ist noch nicht aktiv. Sie können Regeln festlegen und Aktionen freigeben; bis zum Start wird nichts automatisch ausgeblendet.",
     killSwitch: "Not-Aus",
     killSwitchOn: "Gestoppt",
     killSwitchOff: "In Ordnung",

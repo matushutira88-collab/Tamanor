@@ -1,6 +1,6 @@
 import { Permission, can, getPlatformConnector, platformKeyFor } from "@guardora/core";
 import { CONTROL_CATEGORIES, CONTROL_MODES, NEVER_AUTONOMOUS } from "@guardora/ai";
-import { getLiveActionsConfig } from "@guardora/config";
+import { getLiveActionsConfig, metaCommentHideFeatureEnabled } from "@guardora/config";
 import { ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { Notice } from "@/components/dashboard/notice";
@@ -44,6 +44,10 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
   // V1.27 — per-brand live safety settings for the "Autonomous Safe Live" section.
   const safetyRows = await withTenant(session.tenantId, (db) => db.brandLiveSafetySettings.findMany({ where: { tenantId: session.tenantId } }));
   const safetyFor = (brandId: string) => safetyRows.find((s) => s.brandId === brandId);
+  // V1.68 (Release A / A3) — UI truth: autonomous live auto-hide can only execute when BOTH the
+  // platform feature flag and live execution are on. When it can't, the "autonomous" control mode and
+  // the per-brand opt-in are surfaced as "coming soon" and cannot be turned on (server also refuses).
+  const liveAutoHideAvailable = metaCommentHideFeatureEnabled() && getLiveActionsConfig().canExecuteLive;
 
   return (
     <>
@@ -109,14 +113,13 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
 
               {(() => {
                 const s = safetyFor(brand.id);
-                const live = getLiveActionsConfig();
                 const enabled = !!s?.liveModeEnabled && !!s?.autonomousHideEnabled;
                 return (
                   <Card className="mb-3 border-[var(--color-danger)]">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <h3 className="text-sm font-semibold text-[var(--color-danger)]">🔴 {t.cc.autonomousSafeLive}</h3>
                       <div className="flex items-center gap-2">
-                        <Badge tone={brand.killSwitch ? "danger" : enabled && live.canExecuteLive ? "danger" : "ok"}>{brand.killSwitch ? t.cc.killSwitchOn : enabled && live.canExecuteLive ? t.cc.safeLiveEnabled : t.cc.safeLiveDisabled}</Badge>
+                        <Badge tone={brand.killSwitch ? "danger" : !liveAutoHideAvailable ? "warn" : enabled ? "danger" : "ok"}>{brand.killSwitch ? t.cc.killSwitchOn : !liveAutoHideAvailable ? t.cc.liveAutoHideComingSoon : enabled ? t.cc.safeLiveEnabled : t.cc.safeLiveDisabled}</Badge>
                         {manage ? (
                           <form action={toggleBrandKillSwitch}>
                             <input type="hidden" name="brandId" value={brand.id} />
@@ -140,7 +143,16 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
                     <p className="mt-2 text-[11px] text-[var(--color-muted)]">🛡️ {t.cc.autoHideLimitsNote}</p>
                     {manage ? (
                       <div className="mt-2">
-                        <AutoHideOptIn brandId={brand.id} enabled={enabled} ackLabel={t.cc.autoHideAck} enableLabel={t.cc.enableAutoHide} disableLabel={t.cc.disableAutoHide} />
+                        {liveAutoHideAvailable ? (
+                          <AutoHideOptIn brandId={brand.id} enabled={enabled} ackLabel={t.cc.autoHideAck} enableLabel={t.cc.enableAutoHide} disableLabel={t.cc.disableAutoHide} />
+                        ) : (
+                          <>
+                            <p className="rounded-lg border border-[var(--color-warn)] p-2 text-xs">🕒 {t.cc.liveAutoHideComingSoonNote}</p>
+                            {enabled ? (
+                              <div className="mt-2"><AutoHideOptIn brandId={brand.id} enabled={enabled} ackLabel={t.cc.autoHideAck} enableLabel={t.cc.enableAutoHide} disableLabel={t.cc.disableAutoHide} /></div>
+                            ) : null}
+                          </>
+                        )}
                       </div>
                     ) : null}
                   </Card>
@@ -173,7 +185,7 @@ export default async function ControlCenterPage({ searchParams }: { searchParams
                                 <input type="hidden" name="brandId" value={brand.id} />
                                 <input type="hidden" name="category" value={cat} />
                                 <select name="mode" defaultValue={mode} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs">
-                                  {(CONTROL_MODES.filter((m) => m !== "autonomous" || !neverAuto)).map((m) => (
+                                  {(CONTROL_MODES.filter((m) => m !== "autonomous" || (!neverAuto && liveAutoHideAvailable))).map((m) => (
                                     <option key={m} value={m}>{tEnum(t, "controlMode", m)}</option>
                                   ))}
                                 </select>

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
-import { getLiveActionsConfig } from "@guardora/config";
+import { getLiveActionsConfig, metaCommentHideFeatureEnabled } from "@guardora/config";
 import { rollbackHide } from "@guardora/sync";
 import { withTenant, decryptToken } from "@guardora/db";
 import { requireSession } from "@/server/auth";
@@ -46,6 +46,13 @@ export async function setBrandAutoHide(formData: FormData): Promise<void> {
 
   const brand = await withTenant(session.tenantId, (db) => db.brand.findFirst({ where: { id: brandId, tenantId: session.tenantId }, select: { id: true } }));
   if (!brand) throw new Error("Brand not found");
+  // V1.68 (Release A / A3) — UI truth: autonomous live auto-hide can only execute when BOTH the
+  // platform feature flag and live execution are enabled. When it can't, refuse to ENABLE the opt-in
+  // so the user never persists an inert flag they believe is active (disabling is always allowed).
+  const liveAutoHideAvailable = metaCommentHideFeatureEnabled() && getLiveActionsConfig().canExecuteLive;
+  if (on && !liveAutoHideAvailable) {
+    redirect(`/dashboard/control-center?kind=error&notice=${encodeURIComponent("Live auto-hide is coming soon and is not active yet. Nothing was changed.")}`);
+  }
   if (on && !acknowledged) {
     redirect(`/dashboard/control-center?kind=error&notice=${encodeURIComponent("Please confirm you understand comments will be hidden automatically.")}`);
   }
