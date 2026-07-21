@@ -120,13 +120,17 @@ export default async function AccountsPage({
       : grantedPermissions.includes("pages_manage_engagement")
         ? { key: "capAvailable", tone: "ok" }
         : { key: "capMissingPerms", tone: "warn" };
-  const [lastAutoRow, lastManualRow] = await withTenant(session.tenantId, (db) => Promise.all([
-    db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "automatic" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "manual" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-  ]));
+  // V1.69 (Release B / B6) — parallelize the two independent tenant reads (last-sync audit rows + the
+  // active-lease ids for first-sync state) instead of awaiting them serially.
+  const [[lastAutoRow, lastManualRow], activeLeaseIdList] = await Promise.all([
+    withTenant(session.tenantId, (db) => Promise.all([
+      db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "automatic" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+      db.auditLog.findFirst({ where: { tenantId: session.tenantId, event: "sync.completed", metadata: { path: ["trigger"], equals: "manual" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    ])),
+    getActiveSyncLeaseAccountIds(session.tenantId),
+  ]);
   const lastErrorAccount = connectedAccounts.find((a) => a.lastError);
-  // V1.69 (Release B / B1) — first-sync state: which accounts currently hold an active sync lease.
-  const activeLeaseIds = new Set(await getActiveSyncLeaseAccountIds(session.tenantId));
+  const activeLeaseIds = new Set(activeLeaseIdList);
   const canManageConnectors = can(session.role, Permission.ConnectorManage);
   const firstSyncLabel = (s: FirstSyncState): string =>
     s === "waiting_first_sync" ? hdrT.dash.firstSyncWaiting : s === "syncing" ? hdrT.dash.firstSyncSyncing : s === "synced" ? hdrT.dash.firstSyncSynced : hdrT.dash.firstSyncFailed;
