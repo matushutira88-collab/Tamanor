@@ -140,6 +140,15 @@ export const CYBERBULLYING_AUDIT_EVENTS = {
   detectionFalsePositive: "cyberbullying.detection.false_positive",
   detectionReopened: "cyberbullying.detection.reopened",
   detectionLinkedToIncident: "cyberbullying.detection.linked_to_incident",
+  // C9 — case management (a case IS the incident). Sanitized — never note/objective/
+  // description CONTENT, only ids and enum values.
+  protectionPlanUpdated: "cyberbullying.case.protection_updated",
+  followUpUpdated: "cyberbullying.case.follow_up_updated",
+  milestoneUpdated: "cyberbullying.case.milestone_updated",
+  caseTaskCreated: "cyberbullying.case.task_created",
+  caseTaskUpdated: "cyberbullying.case.task_updated",
+  caseTaskCompleted: "cyberbullying.case.task_completed",
+  caseTaskCancelled: "cyberbullying.case.task_cancelled",
   evidenceLinked: "cyberbullying.incident.evidence_linked",
   participantAdded: "cyberbullying.incident.participant_added",
   participantRemoved: "cyberbullying.incident.participant_removed",

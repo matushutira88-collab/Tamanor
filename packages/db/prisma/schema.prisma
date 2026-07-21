@@ -445,6 +445,9 @@ model Tenant {
   // C8 — detection triage overlay + append-only triage history.
   cyberbullyingDetectionTriage       CyberbullyingDetectionTriage[]
   cyberbullyingDetectionTriageEvents CyberbullyingDetectionTriageEvent[]
+  // C9 — case management (protection plans + tasks).
+  cyberbullyingProtectionPlans       CyberbullyingProtectionPlan[]
+  cyberbullyingCaseTasks             CyberbullyingCaseTask[]
 
   @@map("tenants")
 }
@@ -1305,6 +1308,9 @@ model Incident {
   reviewerNotes       IncidentReviewerNote[]
   assignmentEvents    IncidentAssignmentEvent[]
   reportSubmissions   CyberbullyingReportSubmission[]
+  // C9 — case management (a case IS the incident): 1:1 protection plan + tasks.
+  caseProtectionPlan  CyberbullyingProtectionPlan?
+  caseTasks           CyberbullyingCaseTask[]
 
   @@unique([id, tenantId])
   @@index([tenantId, brandId, status])
@@ -2025,6 +2031,65 @@ model CyberbullyingDetectionTriageEvent {
   @@unique([id, tenantId])
   @@index([tenantId, securityDetectionId, createdAt])
   @@map("cyberbullying_detection_triage_events")
+}
+
+// C9 — Protection Plan. A 1:1 case-management extension of an Incident (a case IS
+// the incident — NOT a second case model). All fields are set MANUALLY by a human
+// reviewer; nothing here is inferred or automatic. Milestones are nullable
+// timestamps toggled by hand. Free-text (objective/notes) is CONFIDENTIAL — never
+// written to the timeline or audit.
+model CyberbullyingProtectionPlan {
+  id               String    @id @default(cuid())
+  tenantId         String
+  incidentId       String
+  riskLevel        String? // CaseRiskLevel (low|medium|high|critical) — null until set
+  protectionStatus String    @default("not_started") // CaseProtectionStatus
+  objective        String?
+  notes            String?
+  nextReviewAt     DateTime?
+  lastReviewAt     DateTime?
+  followUpNotes    String?
+  // Manually-toggled milestones (null = not achieved).
+  milestoneInitialReviewAt     DateTime?
+  milestoneEvidenceCollectedAt DateTime?
+  milestoneVictimContactedAt   DateTime?
+  milestoneProtectionActiveAt  DateTime?
+  milestoneResolvedAt          DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([incidentId, tenantId]) // one protection plan per incident
+  @@index([tenantId, protectionStatus])
+  @@map("cyberbullying_protection_plans")
+}
+
+// C9 — Case Task. Belongs to an Incident (no standalone task centre). Status
+// transitions are validated server-side. Title/description CONTENT never enters the
+// audit/timeline.
+model CyberbullyingCaseTask {
+  id              String    @id @default(cuid())
+  tenantId        String
+  incidentId      String
+  title           String
+  description     String?
+  status          String    @default("todo") // CaseTaskStatus (todo|in_progress|done|cancelled)
+  assigneeUserId  String? // opaque user reference (no FK)
+  dueDate         DateTime?
+  createdByUserId String
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, status])
+  @@map("cyberbullying_case_tasks")
 }
 
 enum LeadStatus {

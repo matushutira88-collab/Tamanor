@@ -32,6 +32,7 @@
     "cyberbullying-manual-report:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/cyberbullying-manual-report.test.ts",
     "cyberbullying-evidence-upload:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/cyberbullying-evidence-upload.test.ts",
     "cyberbullying-detection-triage:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/cyberbullying-detection-triage.test.ts",
+    "cyberbullying-case-management:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/cyberbullying-case-management.test.ts",
     "detection-engine:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/detection-engine.test.ts",
     "security-access:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/security-access.test.ts",
     "security-score-facts:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/security-score-facts.test.ts",

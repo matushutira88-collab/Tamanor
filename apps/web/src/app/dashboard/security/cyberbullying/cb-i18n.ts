@@ -88,6 +88,18 @@ export interface CbCopy {
     empty: { title: string; body: string; noTimeline: string };
     banner: { ok: string } & Record<"forbidden" | "not_found" | "already_linked" | "invalid_transition" | "subject" | "summary" | "error" | "applied", string>;
   };
+  // C9 — case management.
+  case: {
+    title: string; readOnly: string;
+    protection: { title: string; riskLevel: string; status: string; objective: string; notes: string; save: string; noRisk: string };
+    risk: Record<"low" | "medium" | "high" | "critical", string>;
+    protStatus: Record<"not_started" | "monitoring" | "active" | "resolved", string>;
+    followUp: { title: string; next: string; last: string; notes: string; save: string };
+    milestones: { title: string; mark: string; unmark: string; label: Record<"initial_review" | "evidence_collected" | "victim_contacted" | "protection_active" | "resolved", string> };
+    tasks: { title: string; add: string; titleLabel: string; descLabel: string; assignee: string; due: string; create: string; empty: string; start: string; complete: string; cancel: string; reopen: string };
+    taskStatus: Record<"todo" | "in_progress" | "done" | "cancelled", string>;
+    banner: { ok: string } & Record<"forbidden" | "not_found" | "invalid_transition" | "validation" | "error", string>;
+  };
 }
 
 const STATUS_EN = { open: "Open", under_review: "Under review", acknowledged: "Acknowledged", confirmed: "Confirmed after review", action_required: "Action required", resolved: "Resolved", dismissed: "Dismissed", archived: "Archived" };
@@ -99,9 +111,9 @@ const SOURCE_DE = { manual_report: "Manuelle Meldung", detection: "Aus Erkennung
 const ROLE_EN = { protected_subject: "Protected subject", reporter: "Reporter", alleged_actor: "Alleged actor", reviewer: "Reviewer", trusted_contact: "Trusted contact" };
 const ROLE_SK = { protected_subject: "Chránená osoba", reporter: "Nahlasovateľ", alleged_actor: "Údajný aktér", reviewer: "Posudzovateľ", trusted_contact: "Dôveryhodný kontakt" };
 const ROLE_DE = { protected_subject: "Geschützte Person", reporter: "Melder", alleged_actor: "Mutmaßlicher Akteur", reviewer: "Prüfer", trusted_contact: "Vertrauensperson" };
-const TL_EN = { created: "Incident created", review_started: "Review started", acknowledged: "Acknowledged", confirmed: "Confirmed after review", dismissed: "Dismissed", action_required: "Action required", resolved: "Resolved", archived: "Archived", reopened: "Reopened", detection_linked: "Detection linked", evidence_linked: "Evidence linked", participant_added: "Participant added", participant_removed: "Participant removed", reviewer_assigned: "Reviewer assigned", reviewer_reassigned: "Reviewer reassigned", reviewer_unassigned: "Reviewer unassigned", note_added: "Reviewer note added" };
-const TL_SK = { created: "Incident vytvorený", review_started: "Posudzovanie začaté", acknowledged: "Prevzaté", confirmed: "Potvrdené po review", dismissed: "Zamietnuté", action_required: "Vyžaduje akciu", resolved: "Vyriešené", archived: "Archivované", reopened: "Znovu otvorené", detection_linked: "Pripojená detekcia", evidence_linked: "Pripojený dôkaz", participant_added: "Pridaný účastník", participant_removed: "Odobraný účastník", reviewer_assigned: "Priradený posudzovateľ", reviewer_reassigned: "Zmenený posudzovateľ", reviewer_unassigned: "Odobraný posudzovateľ", note_added: "Pridaná poznámka" };
-const TL_DE = { created: "Vorfall erstellt", review_started: "Prüfung gestartet", acknowledged: "Bestätigt erhalten", confirmed: "Nach Prüfung bestätigt", dismissed: "Abgewiesen", action_required: "Maßnahme erforderlich", resolved: "Gelöst", archived: "Archiviert", reopened: "Wiedereröffnet", detection_linked: "Erkennung verknüpft", evidence_linked: "Nachweis verknüpft", participant_added: "Teilnehmer hinzugefügt", participant_removed: "Teilnehmer entfernt", reviewer_assigned: "Prüfer zugewiesen", reviewer_reassigned: "Prüfer neu zugewiesen", reviewer_unassigned: "Prüfer entfernt", note_added: "Prüfernotiz hinzugefügt" };
+const TL_EN = { created: "Incident created", review_started: "Review started", acknowledged: "Acknowledged", confirmed: "Confirmed after review", dismissed: "Dismissed", action_required: "Action required", resolved: "Resolved", archived: "Archived", reopened: "Reopened", detection_linked: "Detection linked", evidence_linked: "Evidence linked", participant_added: "Participant added", participant_removed: "Participant removed", reviewer_assigned: "Reviewer assigned", reviewer_reassigned: "Reviewer reassigned", reviewer_unassigned: "Reviewer unassigned", note_added: "Reviewer note added", protection_plan_updated: "Protection plan updated", task_created: "Task created", task_updated: "Task updated", task_completed: "Task completed", follow_up_updated: "Follow-up updated", milestone_changed: "Milestone changed" };
+const TL_SK = { created: "Incident vytvorený", review_started: "Posudzovanie začaté", acknowledged: "Prevzaté", confirmed: "Potvrdené po review", dismissed: "Zamietnuté", action_required: "Vyžaduje akciu", resolved: "Vyriešené", archived: "Archivované", reopened: "Znovu otvorené", detection_linked: "Pripojená detekcia", evidence_linked: "Pripojený dôkaz", participant_added: "Pridaný účastník", participant_removed: "Odobraný účastník", reviewer_assigned: "Priradený posudzovateľ", reviewer_reassigned: "Zmenený posudzovateľ", reviewer_unassigned: "Odobraný posudzovateľ", note_added: "Pridaná poznámka", protection_plan_updated: "Ochranný plán aktualizovaný", task_created: "Úloha vytvorená", task_updated: "Úloha aktualizovaná", task_completed: "Úloha dokončená", follow_up_updated: "Následné kroky aktualizované", milestone_changed: "Míľnik zmenený" };
+const TL_DE = { created: "Vorfall erstellt", review_started: "Prüfung gestartet", acknowledged: "Bestätigt erhalten", confirmed: "Nach Prüfung bestätigt", dismissed: "Abgewiesen", action_required: "Maßnahme erforderlich", resolved: "Gelöst", archived: "Archiviert", reopened: "Wiedereröffnet", detection_linked: "Erkennung verknüpft", evidence_linked: "Nachweis verknüpft", participant_added: "Teilnehmer hinzugefügt", participant_removed: "Teilnehmer entfernt", reviewer_assigned: "Prüfer zugewiesen", reviewer_reassigned: "Prüfer neu zugewiesen", reviewer_unassigned: "Prüfer entfernt", note_added: "Prüfernotiz hinzugefügt", protection_plan_updated: "Schutzplan aktualisiert", task_created: "Aufgabe erstellt", task_updated: "Aufgabe aktualisiert", task_completed: "Aufgabe abgeschlossen", follow_up_updated: "Nachverfolgung aktualisiert", milestone_changed: "Meilenstein geändert" };
 
 export const CB_COPY: Record<Locale, CbCopy> = {
   en: {
@@ -167,6 +179,17 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       empty: { title: "No detections", body: "There are no security detections to triage in your workspace.", noTimeline: "No triage activity yet." },
       banner: { ok: "Done.", forbidden: "You don't have permission for that action.", not_found: "Detection not found or out of scope.", already_linked: "This detection is already linked to an incident.", invalid_transition: "That action isn't allowed from the current status.", subject: "Choose a protected subject.", summary: "Add a summary (10–4000 characters).", error: "The action could not be completed.", applied: "Bulk action applied." },
     },
+    case: {
+      title: "Case management", readOnly: "You have read-only access to this case.",
+      protection: { title: "Protection plan", riskLevel: "Manual risk level", status: "Protection status", objective: "Protection objective", notes: "Notes", save: "Save plan", noRisk: "Not set" },
+      risk: { low: "Low", medium: "Medium", high: "High", critical: "Critical" },
+      protStatus: { not_started: "Not started", monitoring: "Monitoring", active: "Active", resolved: "Resolved" },
+      followUp: { title: "Follow-up", next: "Next review date", last: "Last review date", notes: "Follow-up notes", save: "Save follow-up" },
+      milestones: { title: "Milestones", mark: "Mark done", unmark: "Undo", label: { initial_review: "Initial review", evidence_collected: "Evidence collected", victim_contacted: "Victim contacted", protection_active: "Protection active", resolved: "Resolved" } },
+      tasks: { title: "Tasks", add: "Add task", titleLabel: "Title", descLabel: "Description", assignee: "Assignee", due: "Due date", create: "Create task", empty: "No tasks yet.", start: "Start", complete: "Complete", cancel: "Cancel", reopen: "Reopen" },
+      taskStatus: { todo: "To do", in_progress: "In progress", done: "Done", cancelled: "Cancelled" },
+      banner: { ok: "Saved.", forbidden: "You don't have permission for that action.", not_found: "Not found or out of scope.", invalid_transition: "That change isn't allowed from the current status.", validation: "Please check the fields and try again.", error: "The action could not be completed." },
+    },
   },
   sk: {
     moduleName: "Ochrana pred kyberšikanou", moduleDesc: "Posudzovanie incidentov zameraných na obeť — detegované signály a manuálne reporty, oddelené od brand moderácie.", available: "Dostupné",
@@ -231,6 +254,17 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       empty: { title: "Žiadne detekcie", body: "Vo vašom workspace nie sú žiadne bezpečnostné detekcie na posúdenie.", noTimeline: "Zatiaľ žiadna aktivita posudzovania." },
       banner: { ok: "Hotovo.", forbidden: "Na túto akciu nemáte oprávnenie.", not_found: "Detekcia sa nenašla alebo je mimo rozsahu.", already_linked: "Táto detekcia je už pripojená k incidentu.", invalid_transition: "Táto akcia nie je z aktuálneho stavu povolená.", subject: "Vyberte chránenú osobu.", summary: "Pridajte zhrnutie (10–4000 znakov).", error: "Akciu sa nepodarilo dokončiť.", applied: "Hromadná akcia použitá." },
     },
+    case: {
+      title: "Správa prípadu", readOnly: "K tomuto prípadu máte iba čitateľský prístup.",
+      protection: { title: "Ochranný plán", riskLevel: "Manuálna úroveň rizika", status: "Stav ochrany", objective: "Cieľ ochrany", notes: "Poznámky", save: "Uložiť plán", noRisk: "Nenastavené" },
+      risk: { low: "Nízke", medium: "Stredné", high: "Vysoké", critical: "Kritické" },
+      protStatus: { not_started: "Nezačaté", monitoring: "Monitorovanie", active: "Aktívne", resolved: "Vyriešené" },
+      followUp: { title: "Následné kroky", next: "Dátum ďalšieho review", last: "Dátum posledného review", notes: "Poznámky k následným krokom", save: "Uložiť následné kroky" },
+      milestones: { title: "Míľniky", mark: "Označiť splnené", unmark: "Vrátiť", label: { initial_review: "Prvotné posúdenie", evidence_collected: "Dôkazy zozbierané", victim_contacted: "Obeť kontaktovaná", protection_active: "Ochrana aktívna", resolved: "Vyriešené" } },
+      tasks: { title: "Úlohy", add: "Pridať úlohu", titleLabel: "Názov", descLabel: "Popis", assignee: "Pridelené", due: "Termín", create: "Vytvoriť úlohu", empty: "Zatiaľ žiadne úlohy.", start: "Začať", complete: "Dokončiť", cancel: "Zrušiť", reopen: "Znovu otvoriť" },
+      taskStatus: { todo: "Na spracovanie", in_progress: "Prebieha", done: "Hotové", cancelled: "Zrušené" },
+      banner: { ok: "Uložené.", forbidden: "Na túto akciu nemáte oprávnenie.", not_found: "Nenájdené alebo mimo rozsahu.", invalid_transition: "Táto zmena nie je z aktuálneho stavu povolená.", validation: "Skontrolujte polia a skúste znova.", error: "Akciu sa nepodarilo dokončiť." },
+    },
   },
   de: {
     moduleName: "Cybermobbing-Schutz", moduleDesc: "Opferzentrierte Vorfallprüfung — erkannte Signale und manuelle Meldungen, getrennt von der Markenmoderation.", available: "Verfügbar",
@@ -294,6 +328,17 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       create: { subject: "Geschützte Person", choose: "Person auswählen…", summary: "Was ist passiert", summaryHint: "Vertrauliche Zusammenfassung für Prüfer. Eröffnet einen Vorfall zur menschlichen Prüfung — keine automatische Maßnahme.", submit: "Vorfall erstellen", note: "Die Erkennung wird mit dem neuen Vorfall verknüpft. Es ist kein bestätigter Vorfall, bis er geprüft wurde.", noSubjects: "Es sind keine geschützten Personen verfügbar. Zuerst muss eine geschützte Person angelegt werden." },
       empty: { title: "Keine Erkennungen", body: "In Ihrem Workspace gibt es keine zu prüfenden Sicherheitserkennungen.", noTimeline: "Noch keine Prüfaktivität." },
       banner: { ok: "Erledigt.", forbidden: "Sie haben keine Berechtigung für diese Aktion.", not_found: "Erkennung nicht gefunden oder außerhalb des Bereichs.", already_linked: "Diese Erkennung ist bereits mit einem Vorfall verknüpft.", invalid_transition: "Diese Aktion ist aus dem aktuellen Status nicht erlaubt.", subject: "Wählen Sie eine geschützte Person.", summary: "Fügen Sie eine Zusammenfassung hinzu (10–4000 Zeichen).", error: "Die Aktion konnte nicht abgeschlossen werden.", applied: "Sammelaktion angewendet." },
+    },
+    case: {
+      title: "Fallmanagement", readOnly: "Sie haben nur Lesezugriff auf diesen Fall.",
+      protection: { title: "Schutzplan", riskLevel: "Manuelle Risikostufe", status: "Schutzstatus", objective: "Schutzziel", notes: "Notizen", save: "Plan speichern", noRisk: "Nicht gesetzt" },
+      risk: { low: "Niedrig", medium: "Mittel", high: "Hoch", critical: "Kritisch" },
+      protStatus: { not_started: "Nicht begonnen", monitoring: "Überwachung", active: "Aktiv", resolved: "Gelöst" },
+      followUp: { title: "Nachverfolgung", next: "Nächster Prüftermin", last: "Letzter Prüftermin", notes: "Nachverfolgungsnotizen", save: "Nachverfolgung speichern" },
+      milestones: { title: "Meilensteine", mark: "Als erledigt markieren", unmark: "Rückgängig", label: { initial_review: "Erstprüfung", evidence_collected: "Nachweise gesammelt", victim_contacted: "Opfer kontaktiert", protection_active: "Schutz aktiv", resolved: "Gelöst" } },
+      tasks: { title: "Aufgaben", add: "Aufgabe hinzufügen", titleLabel: "Titel", descLabel: "Beschreibung", assignee: "Zugewiesen", due: "Fällig am", create: "Aufgabe erstellen", empty: "Noch keine Aufgaben.", start: "Starten", complete: "Abschließen", cancel: "Abbrechen", reopen: "Wiedereröffnen" },
+      taskStatus: { todo: "Zu erledigen", in_progress: "In Bearbeitung", done: "Erledigt", cancelled: "Abgebrochen" },
+      banner: { ok: "Gespeichert.", forbidden: "Sie haben keine Berechtigung für diese Aktion.", not_found: "Nicht gefunden oder außerhalb des Bereichs.", invalid_transition: "Diese Änderung ist aus dem aktuellen Status nicht erlaubt.", validation: "Bitte prüfen Sie die Felder und versuchen Sie es erneut.", error: "Die Aktion konnte nicht abgeschlossen werden." },
     },
   },
 };

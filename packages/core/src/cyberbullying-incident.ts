@@ -154,6 +154,14 @@ export enum IncidentTimelineEventType {
   ReviewerReassigned = "reviewer_reassigned",
   ReviewerUnassigned = "reviewer_unassigned",
   NoteAdded = "note_added",
+  // C9 — case management (a case IS the incident). Append-only, sanitized (note/
+  // objective/description CONTENT is never written to the timeline).
+  ProtectionPlanUpdated = "protection_plan_updated",
+  TaskCreated = "task_created",
+  TaskUpdated = "task_updated",
+  TaskCompleted = "task_completed",
+  FollowUpUpdated = "follow_up_updated",
+  MilestoneChanged = "milestone_changed",
 }
 
 /**
@@ -243,6 +251,103 @@ export function availableDetectionActions(role: string, status: CyberbullyingDet
     createIncident: active && !alreadyLinked,
     reopen: status === DS.FalsePositive || status === DS.Ignored,
   };
+}
+
+// --- C9 Case management (Case = Incident; all decisions are human) ----------
+
+/** Manual case risk level — set ONLY by a human reviewer. Never inferred. */
+export enum CaseRiskLevel {
+  Low = "low",
+  Medium = "medium",
+  High = "high",
+  Critical = "critical",
+}
+export const CASE_RISK_LEVELS: readonly CaseRiskLevel[] = Object.values(CaseRiskLevel);
+export function isCaseRiskLevel(x: unknown): x is CaseRiskLevel {
+  return typeof x === "string" && (CASE_RISK_LEVELS as readonly string[]).includes(x);
+}
+
+/** Current protection status of the case. Manual. */
+export enum CaseProtectionStatus {
+  NotStarted = "not_started",
+  Monitoring = "monitoring",
+  Active = "active",
+  Resolved = "resolved",
+}
+export const CASE_PROTECTION_STATUSES: readonly CaseProtectionStatus[] = Object.values(CaseProtectionStatus);
+export function isCaseProtectionStatus(x: unknown): x is CaseProtectionStatus {
+  return typeof x === "string" && (CASE_PROTECTION_STATUSES as readonly string[]).includes(x);
+}
+
+/** Case task status. */
+export enum CaseTaskStatus {
+  Todo = "todo",
+  InProgress = "in_progress",
+  Done = "done",
+  Cancelled = "cancelled",
+}
+export const CASE_TASK_STATUSES: readonly CaseTaskStatus[] = Object.values(CaseTaskStatus);
+export function isCaseTaskStatus(x: unknown): x is CaseTaskStatus {
+  return typeof x === "string" && (CASE_TASK_STATUSES as readonly string[]).includes(x);
+}
+
+const CT = CaseTaskStatus;
+/** Legal task status transitions (identity is not a transition). */
+export const CASE_TASK_TRANSITIONS: Readonly<Record<CaseTaskStatus, readonly CaseTaskStatus[]>> = {
+  [CT.Todo]: [CT.InProgress, CT.Done, CT.Cancelled],
+  [CT.InProgress]: [CT.Todo, CT.Done, CT.Cancelled],
+  [CT.Done]: [CT.InProgress, CT.Cancelled], // reopen / cancel a completed task
+  [CT.Cancelled]: [CT.Todo], // reopen a cancelled task
+};
+export function canTaskTransition(from: CaseTaskStatus, to: CaseTaskStatus): boolean {
+  return from !== to && (CASE_TASK_TRANSITIONS[from]?.includes(to) ?? false);
+}
+
+/** The fixed, manually-toggled case milestones (never automatic). */
+export enum CaseMilestoneKey {
+  InitialReview = "initial_review",
+  EvidenceCollected = "evidence_collected",
+  VictimContacted = "victim_contacted",
+  ProtectionActive = "protection_active",
+  Resolved = "resolved",
+}
+export const CASE_MILESTONE_KEYS: readonly CaseMilestoneKey[] = Object.values(CaseMilestoneKey);
+export function isCaseMilestoneKey(x: unknown): x is CaseMilestoneKey {
+  return typeof x === "string" && (CASE_MILESTONE_KEYS as readonly string[]).includes(x);
+}
+
+/** Bounds for case-management free text (server-authoritative). */
+export const CASE_LIMITS = {
+  taskTitleMin: 1,
+  taskTitleMax: 200,
+  taskDescriptionMax: 4000,
+  objectiveMax: 500,
+  notesMax: 4000,
+  followUpNotesMax: 4000,
+} as const;
+
+export type CaseTaskField = "title" | "description" | "status" | "dueDate";
+export type CaseFieldErrorCode = "required" | "too_long" | "invalid";
+
+/** Validate a due date string (ISO or empty). Returns a Date, null (empty), or "invalid". */
+export function parseCaseDueDate(value: string | null | undefined): Date | null | "invalid" {
+  if (value == null || value.trim() === "") return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "invalid" : d;
+}
+
+/** Validate task create/update input. Pure + fail-closed. Returns per-field codes. */
+export function validateCaseTaskInput(input: { title?: string; description?: string | null; status?: string; dueDate?: string | null }, opts: { requireTitle?: boolean } = {}): Partial<Record<CaseTaskField, CaseFieldErrorCode>> {
+  const errors: Partial<Record<CaseTaskField, CaseFieldErrorCode>> = {};
+  const title = (input.title ?? "").trim();
+  if (opts.requireTitle || input.title !== undefined) {
+    if (!title) errors.title = "required";
+    else if (title.length > CASE_LIMITS.taskTitleMax) errors.title = "too_long";
+  }
+  if (input.description != null && input.description.length > CASE_LIMITS.taskDescriptionMax) errors.description = "too_long";
+  if (input.status !== undefined && !isCaseTaskStatus(input.status)) errors.status = "invalid";
+  if (parseCaseDueDate(input.dueDate) === "invalid") errors.dueDate = "invalid";
+  return errors;
 }
 
 // --- Domain shapes (plain; NOT Prisma) -------------------------------------
