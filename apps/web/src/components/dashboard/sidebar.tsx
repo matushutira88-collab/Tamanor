@@ -20,6 +20,7 @@ export function Sidebar({
   accountsUsed = 0,
   accountsLimit = null,
   pendingCount = 0,
+  unreadNotifications = 0,
   demo = false,
   locale = defaultLocale,
   navLabels,
@@ -38,6 +39,8 @@ export function Sidebar({
   accountsLimit?: number | null;
   /** V1.60 — red badge on the Alerts nav item (pending decisions). */
   pendingCount?: number;
+  /** V1.70 (B2) — unread product-notification count for the header bell badge. */
+  unreadNotifications?: number;
   demo?: boolean;
   locale?: Locale;
   navLabels?: Record<string, string>;
@@ -56,11 +59,22 @@ export function Sidebar({
         <Link href="/">
           <Logo />
         </Link>
-        {demo ? (
-          <span className="rounded-full bg-[var(--color-brand-soft)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-brand-strong)] ring-1 ring-inset ring-current/20">
-            Demo
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {demo ? (
+            <span className="rounded-full bg-[var(--color-brand-soft)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-brand-strong)] ring-1 ring-inset ring-current/20">
+              Demo
+            </span>
+          ) : null}
+          {/* V1.70 (B2) — notification bell with unread badge. */}
+          <Link href="/dashboard/notifications" onClick={onNavigate} aria-label={s.notifications ?? "Notifications"} title={s.notifications ?? "Notifications"} className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]">
+            <span aria-hidden className="text-base">🔔</span>
+            {unreadNotifications > 0 ? (
+              <span data-testid="notif-badge" className="absolute -right-0.5 -top-0.5 inline-flex min-w-[16px] items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[10px] font-semibold text-white">
+                {unreadNotifications > 99 ? "99+" : unreadNotifications}
+              </span>
+            ) : null}
+          </Link>
+        </div>
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">

@@ -6,12 +6,13 @@
  * Every read/write is tenant-scoped through withTenant (RLS), so a foreign tenant can neither see nor
  * change another tenant's account protection. No token/secret is ever read or logged here.
  */
-import { EntitlementError, isWithinLimit, planEntitlements, selectMonitoringToDisable } from "@guardora/core";
+import { EntitlementError, isWithinLimit, planEntitlements, selectMonitoringToDisable, notificationDedupeKey, dayBucket } from "@guardora/core";
 import { ActorKind } from "@prisma/client";
 import type { TenantTx } from "./tenant-db";
 import { withTenant } from "./repositories";
 import { getTenantEntitlements } from "./billing-repo";
 import { acquireTenantResourceLock } from "./resource-limits";
+import { createNotification } from "./notification-repo";
 
 export type AutoHideMode = "recommend" | "manual_approval" | "automatic";
 export type RiskThreshold = "medium" | "high" | "critical";
@@ -190,7 +191,7 @@ export interface MonitoringEnforcementResult {
  * a concurrent enable. Returns the ids it disabled (for observability); a within-cap tenant is a no-op.
  */
 export async function enforceMonitoringLimits(tenantId: string): Promise<MonitoringEnforcementResult> {
-  return withTenant(tenantId, async (tx) => {
+  const result = await withTenant(tenantId, async (tx) => {
     await acquireTenantResourceLock(tx, tenantId, "connections");
     const t = await tx.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
     if (!t) return { plan: "", disabledAccountIds: [], disabledCount: 0 };
@@ -217,6 +218,17 @@ export async function enforceMonitoringLimits(tenantId: string): Promise<Monitor
     });
     return { plan: t.plan, disabledAccountIds: toDisable, disabledCount: toDisable.length };
   });
+  // V1.70 (Release B / B2) — notify the tenant when the plan disabled monitoring (best-effort; a
+  // notification failure must never break enforcement). Dedupe per plan per day so it can't spam.
+  if (result.disabledCount > 0) {
+    await createNotification({
+      tenantId, type: "monitoring_disabled_by_plan",
+      titleKey: "notif.monitoring_disabled_by_plan.title", messageKey: "notif.monitoring_disabled_by_plan.body",
+      dedupeKey: notificationDedupeKey("monitoring_disabled_by_plan", result.plan, dayBucket(new Date())),
+      metadata: { disabled: result.disabledCount, plan: result.plan },
+    }).catch(() => {});
+  }
+  return result;
 }
 
 /**

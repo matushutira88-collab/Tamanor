@@ -7,7 +7,8 @@ import {
   completeCheckoutAttemptBySession, expireCheckoutAttemptBySession, completeLiveCheckoutAttemptsForTenant,
   type StripeSubStateInput,
 } from "@guardora/db";
-import { emitOpsEvent, metrics } from "@guardora/core";
+import { emitOpsEvent, metrics, notificationDedupeKey, dayBucket } from "@guardora/core";
+import { createNotification, sendCriticalNotificationEmail } from "@guardora/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,7 +107,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         await enforceMonitoringLimits(res.tenantId).catch(() => {});
       }
       if (event.type === "customer.subscription.deleted") emitOpsEvent("billing.subscription_canceled", {});
-      else if (event.type === "invoice.payment_failed" || event.type === "invoice.finalization_failed") emitOpsEvent("billing.payment_failed", {});
+      else if (event.type === "invoice.payment_failed" || event.type === "invoice.finalization_failed") {
+        emitOpsEvent("billing.payment_failed", {});
+        // V1.70 (Release B / B2) — in-app payment-failed notification (best-effort; must never fail the
+        // webhook). Deduped per tenant per day. The critical email is sent by the notification email path.
+        if (res.tenantId) {
+          const n = await createNotification({
+            tenantId: res.tenantId, type: "payment_failed",
+            titleKey: "notif.payment_failed.title", messageKey: "notif.payment_failed.body",
+            dedupeKey: notificationDedupeKey("payment_failed", res.tenantId, dayBucket(new Date())),
+          }).catch(() => ({ created: false, id: null }));
+          if (n.created && n.id) await sendCriticalNotificationEmail(res.tenantId, n.id, "payment_failed").catch(() => {});
+        }
+      }
       else if (event.type === "checkout.session.completed" || event.type === "invoice.paid") emitOpsEvent("billing.subscription_activated", {});
       if (res.accessState === "restricted") emitOpsEvent("billing.access_restricted", {});
     }

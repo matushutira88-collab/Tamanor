@@ -1330,6 +1330,7 @@ export const sk: Dictionary = {
   },
 
   sidebar: {
+    notifications: "Notifikácie",
     freeTrial: "Skúšobná verzia",
     beta: "Beta",
     itemsProcessed: "Spracované položky",
@@ -1835,5 +1836,23 @@ export const sk: Dictionary = {
       ],
     },
     tags: { threat: ["SPAM", "PODVOD", "PHISHING", "HROZBA", "FALOŠNÉ"], clean: ["OTÁZKA", "RECENZIA", "NÁZOR", "PODPORA"] },
+  },
+  notifications: {
+    title: "Notifikácie",
+    subtitle: "Upozornenia o vašom účte, synchronizáciách a fakturácii.",
+    empty: "Máte všetko prečítané — žiadne notifikácie.",
+    markAllRead: "Označiť všetky ako prečítané",
+    markRead: "Označiť ako prečítané",
+    unread: "Neprečítané",
+  },
+  notif: {
+    first_sync_completed: { title: "Prvá synchronizácia dokončená", body: "Váš účet dokončil prvú read-only synchronizáciu." },
+    sync_failed: { title: "Synchronizácia zlyhala", body: "Read-only synchronizáciu sa nepodarilo dokončiť. Skúsime to znova." },
+    risk_comment_detected: { title: "Zistené rizikové komentáre", body: "Našli sa nové vysoko rizikové komentáre na kontrolu." },
+    monitoring_disabled_by_plan: { title: "Monitoring vypnutý kvôli plánu", body: "Niektorým účtom bol vypnutý monitoring podľa limitu plánu." },
+    trial_ending: { title: "Skúšobná verzia čoskoro končí", body: "Vaša skúšobná verzia čoskoro končí — pridajte fakturáciu pre plný prístup." },
+    trial_expired: { title: "Skúšobná verzia skončila", body: "Vaša skúšobná verzia skončila. Prejdite na vyšší plán pre obnovenie prístupu." },
+    payment_failed: { title: "Platba zlyhala", body: "Platbu sa nepodarilo spracovať. Aktualizujte fakturáciu, aby nedošlo k prerušeniu." },
+    account_reconnect_required: { title: "Vyžaduje sa opätovné pripojenie", body: "Účet je potrebné znovu pripojiť, aby synchronizácia pokračovala." },
   },
 };

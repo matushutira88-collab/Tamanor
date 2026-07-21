@@ -224,12 +224,12 @@ enum DecisionStatus {
 // --- Identity & tenancy ------------------------------------------------------
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  name         String?
+  id                String       @id @default(cuid())
+  email             String       @unique
+  name              String?
   // V1.50A — self-service credential auth. Argon2id PHC string (never plaintext).
   // Nullable: dev-seed/E2E/future-OAuth users may have no local password.
-  passwordHash String?
+  passwordHash      String?
   // V1.50C — email verification + password lifecycle.
   //   emailVerifiedAt: null until the email is verified (email/password) or set at creation
   //     for an OAuth provider-verified email. Gates verification-required product access.
@@ -237,23 +237,23 @@ model User {
   //     (defense-in-depth backstop in session hydrate, on top of explicit session revocation).
   emailVerifiedAt   DateTime?
   passwordChangedAt DateTime?
-  locale       String       @default("en")
+  locale            String       @default("en")
   // V1.45A — global platform-admin role (default least-privilege; independent of tenant Role).
-  platformRole PlatformRole @default(none)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  platformRole      PlatformRole @default(none)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   memberships             Membership[]
   oauthAccounts           OAuthAccount[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
-  proposed           ModerationDecision[] @relation("DecisionProposer")
-  reviewed           ModerationDecision[] @relation("DecisionReviewer")
-  auditLogs          AuditLog[]
-  sessions           UserSession[]
+  proposed                ModerationDecision[]     @relation("DecisionProposer")
+  reviewed                ModerationDecision[]     @relation("DecisionReviewer")
+  auditLogs               AuditLog[]
+  sessions                UserSession[]
   // V1.42 — inbox assignment + note authorship (both SetNull on user delete).
-  assignedInboxItems ReputationItem[]     @relation("InboxAssignee")
-  inboxNotes         InboxNote[]          @relation("InboxNoteAuthor")
+  assignedInboxItems      ReputationItem[]         @relation("InboxAssignee")
+  inboxNotes              InboxNote[]              @relation("InboxNoteAuthor")
 
   @@map("users")
 }
@@ -267,8 +267,8 @@ model User {
 model OAuthAccount {
   id                String   @id @default(cuid())
   userId            String
-  provider          String   // "google" | "facebook" (USER login providers only)
-  providerAccountId String   // the provider's stable subject/user id (e.g. Google `sub`)
+  provider          String // "google" | "facebook" (USER login providers only)
+  providerAccountId String // the provider's stable subject/user id (e.g. Google `sub`)
   createdAt         DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -321,22 +321,22 @@ model PasswordResetToken {
 // its SHA-256 hash is stored here. A raw token is NEVER persisted. Sessions are
 // fail-closed: expired/revoked/membership-missing → rejected.
 model UserSession {
-  id             String    @id @default(cuid())
-  tokenHash      String    @unique
-  userId         String
-  activeTenantId String
-  createdAt      DateTime  @default(now())
-  expiresAt      DateTime
+  id                String    @id @default(cuid())
+  tokenHash         String    @unique
+  userId            String
+  activeTenantId    String
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
   // V1.58.9 — hard ceiling a session can live regardless of activity (idle sliding never passes it).
   // NULLABLE for backward compatibility: pre-migration sessions have NULL and keep their `expiresAt`.
   absoluteExpiresAt DateTime?
   // V1.58.9 — persistent ("remember me") login → the longer absolute ceiling (SESSION_REMEMBER_ME_DAYS).
-  rememberMe     Boolean   @default(false)
+  rememberMe        Boolean   @default(false)
   // V1.58.9 — coarse device label for the "Active sessions" UI (never a token / raw IP / fingerprint).
-  userAgentSummary String?
-  lastSeenAt     DateTime  @default(now())
-  revokedAt      DateTime?
-  rotatedFromId  String?
+  userAgentSummary  String?
+  lastSeenAt        DateTime  @default(now())
+  revokedAt         DateTime?
+  rotatedFromId     String?
 
   user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   activeTenant Tenant @relation(fields: [activeTenantId], references: [id], onDelete: Cascade)
@@ -348,30 +348,30 @@ model UserSession {
 }
 
 model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  plan      String   @default("free")
+  id                    String    @id @default(cuid())
+  name                  String
+  slug                  String    @unique
+  plan                  String    @default("free")
   // V1.50A — self-service Free Trial. On registration: plan="free_trial" with a
   // 14-day window. Billing is out of scope (V1.50B+); these are informational only.
-  trialStartsAt DateTime?
-  trialEndsAt   DateTime?
+  trialStartsAt         DateTime?
+  trialEndsAt           DateTime?
   // Optional company country captured at registration (no downstream logic yet).
-  country       String?
+  country               String?
   // V1.50B — onboarding state. NULL = onboarding pending (new workspace); set when the
   // owner finishes or skips the onboarding wizard, so it is shown once, not on every login.
   onboardingCompletedAt DateTime?
   // V1.50D — billing state (derived from Stripe via the webhook; the Subscription row holds the
   // detail). `billingStatus` is the truthful Stripe-aligned status; `accessState` is the central
   // application access decision. Defaults keep a trial-only tenant on full access.
-  billingStatus String @default("no_subscription")
-  accessState   String @default("full_access")
+  billingStatus         String    @default("no_subscription")
+  accessState           String    @default("full_access")
 
   // V1.59 — tenant-level DEFAULT protection policy applied to accounts that do not override it.
   // Auto-hide defaults OFF (matches current production: no automatic Meta action unless enabled).
   defaultAutoHideEnabled       Boolean  @default(false)
   defaultAutoHideMode          String   @default("recommend") // recommend | manual_approval | automatic
-  defaultAutoHideRiskThreshold String   @default("high")      // medium | high | critical
+  defaultAutoHideRiskThreshold String   @default("high") // medium | high | critical
   defaultAutoHideCategories    String[] @default([])
   defaultRequireManualApproval Boolean  @default(false)
 
@@ -418,6 +418,7 @@ model Tenant {
   providerCalls            ProviderCall[]
   // V1.45C1 — durable tenant link for matched raw webhook events (explicit purge on deletion).
   webhookEvents            WebhookEvent[]
+  notifications            Notification[]
 
   @@map("tenants")
 }
@@ -426,26 +427,26 @@ model Tenant {
 // card numbers, CVC, payment methods, or raw payloads. One subscription per tenant (the active
 // billing relationship). Written ONLY by the Stripe webhook processor from trusted Stripe data.
 model Subscription {
-  id                   String    @id @default(cuid())
-  tenantId             String    @unique
-  stripeCustomerId     String    @unique
-  stripeSubscriptionId String?   @unique
-  stripePriceId        String?
-  plan                 String    // billing plan id (starter|growth|agency|enterprise|free_trial)
-  billingInterval      String?   // "monthly" | "yearly"
-  status               String    // Stripe-aligned status
-  currentPeriodStart   DateTime?
-  currentPeriodEnd     DateTime?
-  cancelAtPeriodEnd    Boolean   @default(false)
-  canceledAt           DateTime?
-  trialEndsAt          DateTime?
-  latestInvoiceStatus  String?
+  id                      String    @id @default(cuid())
+  tenantId                String    @unique
+  stripeCustomerId        String    @unique
+  stripeSubscriptionId    String?   @unique
+  stripePriceId           String?
+  plan                    String // billing plan id (starter|growth|agency|enterprise|free_trial)
+  billingInterval         String? // "monthly" | "yearly"
+  status                  String // Stripe-aligned status
+  currentPeriodStart      DateTime?
+  currentPeriodEnd        DateTime?
+  cancelAtPeriodEnd       Boolean   @default(false)
+  canceledAt              DateTime?
+  trialEndsAt             DateTime?
+  latestInvoiceStatus     String?
   // V1.58.4 — out-of-order webhook guard: `created` time + terminality of the last APPLIED Stripe
   // billing event for this subscription aggregate. An older event must never overwrite newer state.
   lastStripeEventAt       DateTime?
-  lastStripeEventTerminal Boolean  @default(false)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  lastStripeEventTerminal Boolean   @default(false)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -492,12 +493,12 @@ model StripeCheckoutAttempt {
 // the full payment payload, card data, email, or Stripe response body. Old rows are purged on a
 // bounded retention schedule (like webhook_events).
 model StripeWebhookEvent {
-  id          String    @id @default(cuid())
-  stripeEventId String  @unique
-  eventType   String
-  result      String    // "processed" | "ignored" | "failed"
-  processedAt DateTime?
-  createdAt   DateTime  @default(now())
+  id            String    @id @default(cuid())
+  stripeEventId String    @unique
+  eventType     String
+  result        String // "processed" | "ignored" | "failed"
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
 
   @@index([createdAt])
   @@map("stripe_webhook_events")
@@ -614,13 +615,13 @@ model ConnectedAccount {
   // today's behaviour) gates whether Guardora watches it. Protection is resolved as: tenant defaults
   // UNLESS `protectionOverridden` is set, in which case the per-account fields below win. Auto-hide
   // defaults OFF; the global feature flag META_COMMENT_HIDE_FEATURE_ENABLED must also be on to ever act.
-  monitoringEnabled     Boolean  @default(true)
-  protectionOverridden  Boolean  @default(false)
-  autoHideEnabled       Boolean  @default(false)
-  autoHideMode          String   @default("recommend") // recommend | manual_approval | automatic
-  autoHideRiskThreshold String   @default("high")      // medium | high | critical
-  autoHideCategories    String[] @default([])
-  requireManualApproval Boolean  @default(false)
+  monitoringEnabled      Boolean   @default(true)
+  protectionOverridden   Boolean   @default(false)
+  autoHideEnabled        Boolean   @default(false)
+  autoHideMode           String    @default("recommend") // recommend | manual_approval | automatic
+  autoHideRiskThreshold  String    @default("high") // medium | high | critical
+  autoHideCategories     String[]  @default([])
+  requireManualApproval  Boolean   @default(false)
   protectionConfiguredAt DateTime?
 
   // V1.27C Persistent Connection Manager — token/connection health, separate from
@@ -775,23 +776,23 @@ model MetaOnboardingSession {
 /// Raw inbound platform webhook events. Global (may not map to a tenant yet).
 /// Stored for auditing; NO automatic moderation actions are taken from these.
 model WebhookEvent {
-  id             String   @id @default(cuid())
-  platform       Platform
-  eventType      String?
-  signatureValid Boolean  @default(false)
+  id                 String   @id @default(cuid())
+  platform           Platform
+  eventType          String?
+  signatureValid     Boolean  @default(false)
   // V1.45C3 — the raw provider body (may contain personal data). NULLABLE so retention can MINIMIZE
   // it (set to NULL) once it is no longer operationally required: a processed row is never re-read,
   // a signature-invalid row never enters the processor, and any row older than the hard max-payload
   // age is minimized even if still pending. Bounded/security metadata (dedupeKey, signatureValid,
   // timestamps, links) is retained until the whole row is deleted by the global TTL purge.
-  payload        Json?
-  processed      Boolean  @default(false)
+  payload            Json?
+  processed          Boolean  @default(false)
   // Whether the event mapped to a connected account (false = ignored/unmatched).
-  matched        Boolean  @default(false)
-  error          String?
+  matched            Boolean  @default(false)
+  error              String?
   // V1.38.1 — stable dedup/replay key (the X-Hub-Signature-256 over the raw body).
   // A redelivered event has the same signature → the unique index rejects the replay.
-  dedupeKey      String?  @unique
+  dedupeKey          String?  @unique
   // V1.45C1 — durable tenant/account linkage populated at PROCESSING time (never inferred from the
   // untrusted payload at deletion time). The tenant is resolved from the matched, active connected
   // account. `tenantId` is the purge key for tenant deletion (explicit purge before the tenant row
@@ -1534,26 +1535,26 @@ model Lead {
 // `failureClass` is a NORMALIZED allowlisted classification, never a raw error string.
 // ===========================================================================================
 model TenantDeletionReceipt {
-  id                   String               @id @default(cuid())
+  id                    String               @id @default(cuid())
   // Server-generated, unique — the idempotency key for the whole lifecycle. Two concurrent
   // requests converge on one operationId; a retry re-uses it; a stale one affects nothing.
-  operationId          String               @unique
-  deletedTenantId      String
-  requestedByUserId    String?
+  operationId           String               @unique
+  deletedTenantId       String
+  requestedByUserId     String?
   // "tenant_owner" | "platform_admin" — the authority that initiated deletion (never a tenant name).
-  initiatedAuthority   String
-  status               TenantDeletionStatus @default(requested)
-  requestedAt          DateTime             @default(now())
-  completedAt          DateTime?
-  providerAccountCount Int                  @default(0)
+  initiatedAuthority    String
+  status                TenantDeletionStatus @default(requested)
+  requestedAt           DateTime             @default(now())
+  completedAt           DateTime?
+  providerAccountCount  Int                  @default(0)
   // Safe aggregate, e.g. { "revoked_provider": 0, "revoke_unsupported": 2, "clustersInvalidated": 1 }.
   providerResultSummary Json?
-  webhookEventsPurged  Int                  @default(0)
-  tenantRowDeleted     Boolean              @default(false)
+  webhookEventsPurged   Int                  @default(0)
+  tenantRowDeleted      Boolean              @default(false)
   // Normalized failure classification (e.g. "provider_cleanup_failed", "cascade_failed"); never PII.
-  failureClass         String?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
+  failureClass          String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
   @@index([deletedTenantId])
   @@index([status])
@@ -1626,4 +1627,48 @@ model LeadErasureReceipt {
   updatedAt         DateTime        @updatedAt
 
   @@map("lead_erasure_receipts")
+}
+
+// V1.70 (Release B / B2) — tenant-scoped product notifications. RLS-enforced (enable + FORCE + policy
+// + grant to tamanor_app in the migration). userId = null means tenant-wide (every member sees it);
+// a specific userId targets one member. dedupeKey (unique per tenant) prevents spam on recurring sync
+// cycles — recurrence granularity is encoded by the caller into the key (e.g. a day bucket). metadata
+// is safe JSON only (NEVER tokens / provider payloads).
+enum NotificationType {
+  first_sync_completed
+  sync_failed
+  risk_comment_detected
+  monitoring_disabled_by_plan
+  trial_ending
+  trial_expired
+  payment_failed
+  account_reconnect_required
+}
+
+enum NotificationSeverity {
+  info
+  warning
+  critical
+}
+
+model Notification {
+  id          String               @id @default(cuid())
+  tenantId    String
+  userId      String?
+  type        NotificationType
+  severity    NotificationSeverity @default(info)
+  titleKey    String
+  messageKey  String
+  metadata    Json                 @default("{}")
+  dedupeKey   String
+  createdAt   DateTime             @default(now())
+  readAt      DateTime?
+  emailSentAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, userId, readAt, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("notifications")
 }

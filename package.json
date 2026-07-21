@@ -144,6 +144,8 @@
     "trial-lifecycle:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/trial-lifecycle.test.ts",
     "first-sync-state:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/first-sync-state.test.ts",
     "csv-export:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/csv-export.test.ts",
+    "notification-repo:test": "pnpm --filter @guardora/db exec tsx scripts/notification-repo.test.ts",
+    "notifications:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/notifications.test.ts",
     "monitoring-reconcile:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/monitoring-reconcile.test.ts",
     "webhook-ordering:test": "bash packages/db/scripts/run-webhook-ordering.sh",
     "rls-security:test": "bash packages/db/scripts/run-rls-security.sh",

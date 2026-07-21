@@ -1363,6 +1363,7 @@ export const en = {
 
   // Sidebar trial / user card.
   sidebar: {
+    notifications: "Notifications",
     freeTrial: "Free trial",
     beta: "Beta",
     itemsProcessed: "Items processed",
@@ -1888,6 +1889,24 @@ export const en = {
       ],
     },
     tags: { threat: ["SPAM", "SCAM", "PHISHING", "THREAT", "FRAUD"], clean: ["QUESTION", "REVIEW", "FEEDBACK", "SUPPORT"] },
+  },
+  notifications: {
+    title: "Notifications",
+    subtitle: "Alerts about your account, syncs and billing.",
+    empty: "You're all caught up — no notifications.",
+    markAllRead: "Mark all as read",
+    markRead: "Mark as read",
+    unread: "Unread",
+  },
+  notif: {
+    first_sync_completed: { title: "First sync completed", body: "Your account finished its first read-only sync." },
+    sync_failed: { title: "Sync failed", body: "A read-only sync could not complete. We'll keep retrying." },
+    risk_comment_detected: { title: "Risky comments detected", body: "New high-risk comments were found and need review." },
+    monitoring_disabled_by_plan: { title: "Monitoring disabled by plan", body: "Some accounts had monitoring disabled to fit your plan limit." },
+    trial_ending: { title: "Trial ending soon", body: "Your free trial ends soon — add billing to keep full access." },
+    trial_expired: { title: "Trial expired", body: "Your free trial has ended. Upgrade to restore full access." },
+    payment_failed: { title: "Payment failed", body: "A payment could not be processed. Update your billing to avoid interruption." },
+    account_reconnect_required: { title: "Reconnect required", body: "An account needs to be reconnected to keep syncing." },
   },
 };
 

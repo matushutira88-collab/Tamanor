@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import {
   resolveEffectiveAccessState, resolveEntitlements, accessAllowsOperations, evaluateCheckoutGuard,
-  resolveTenantLifecycle, trialDaysRemaining,
+  resolveTenantLifecycle, trialDaysRemaining, notificationDedupeKey, dayBucket,
   type AccessState, type BillingStatus, type PlanEntitlements, type CheckoutGuardReason,
   type TenantLifecycleState,
 } from "@guardora/core";
 import { systemDb } from "./index";
+import { createNotification } from "./notification-repo";
+import { sendCriticalNotificationEmail } from "./notification-email";
 
 /**
  * V1.50D — billing persistence. All writes are SYSTEM-scoped and driven ONLY by trusted Stripe
@@ -478,8 +480,43 @@ export async function sweepTrialExpirations(now: Date = new Date(), batchSize = 
       data: { accessState: "restricted" },
     });
     restricted += r.count;
+    // V1.70 (Release B / B2) — notify on trial expiry (best-effort; only when we actually restricted).
+    if (r.count > 0) {
+      const n = await createNotification({
+        tenantId: c.id, type: "trial_expired",
+        titleKey: "notif.trial_expired.title", messageKey: "notif.trial_expired.body",
+        dedupeKey: notificationDedupeKey("trial_expired", c.id),
+      }).catch(() => ({ created: false, id: null }));
+      if (n.created && n.id) await sendCriticalNotificationEmail(c.id, n.id, "trial_expired").catch(() => {});
+    }
   }
   return restricted;
+}
+
+/**
+ * V1.70 (Release B / B2) — notify tenants whose trial ENDS SOON (within `daysAhead`, default 3) and who
+ * have no paid subscription yet. Dedupe per tenant per trial-end day, so it fires at most once. Best-
+ * effort, bounded. Returns the number of trial-ending notifications created this pass.
+ */
+export async function sweepTrialEndingNotifications(now: Date = new Date(), daysAhead = 3, batchSize = 500): Promise<number> {
+  const soon = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+  const candidates = await systemDb.tenant.findMany({
+    where: { billingStatus: "no_subscription", accessState: "full_access", trialEndsAt: { gt: now, lte: soon } },
+    select: { id: true, trialEndsAt: true },
+    take: Math.min(Math.max(batchSize, 1), 5000),
+  });
+  let created = 0;
+  for (const c of candidates) {
+    const days = trialDaysRemaining(c.trialEndsAt, now);
+    const r = await createNotification({
+      tenantId: c.id, type: "trial_ending",
+      titleKey: "notif.trial_ending.title", messageKey: "notif.trial_ending.body",
+      dedupeKey: notificationDedupeKey("trial_ending", c.id, c.trialEndsAt ? dayBucket(c.trialEndsAt) : ""),
+      metadata: { daysRemaining: days ?? 0 },
+    }).catch(() => ({ created: false, id: null }));
+    if (r.created) created++;
+  }
+  return created;
 }
 
 /** Bounded, index-backed purge of old Stripe webhook audit rows (retention). Id-scoped deletes. */

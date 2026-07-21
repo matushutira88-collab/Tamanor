@@ -15,6 +15,7 @@ export * from "./connector-mode";
 export * from "./connector-account";
 export * from "./sync-state";
 export * from "./csv";
+export * from "./notifications";
 export * from "./reputation";
 export * from "./observability";
 export * from "./analytics";

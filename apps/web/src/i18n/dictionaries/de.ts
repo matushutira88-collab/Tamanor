@@ -1330,6 +1330,7 @@ export const de: Dictionary = {
   },
 
   sidebar: {
+    notifications: "Benachrichtigungen",
     freeTrial: "Kostenlose Testphase",
     beta: "Beta",
     itemsProcessed: "Verarbeitete Elemente",
@@ -1835,5 +1836,23 @@ export const de: Dictionary = {
       ],
     },
     tags: { threat: ["SPAM", "BETRUG", "PHISHING", "DROHUNG", "FÄLSCHUNG"], clean: ["FRAGE", "REZENSION", "FEEDBACK", "SUPPORT"] },
+  },
+  notifications: {
+    title: "Benachrichtigungen",
+    subtitle: "Hinweise zu Ihrem Konto, Synchronisierungen und Abrechnung.",
+    empty: "Alles erledigt — keine Benachrichtigungen.",
+    markAllRead: "Alle als gelesen markieren",
+    markRead: "Als gelesen markieren",
+    unread: "Ungelesen",
+  },
+  notif: {
+    first_sync_completed: { title: "Erste Synchronisierung abgeschlossen", body: "Ihr Konto hat die erste schreibgeschützte Synchronisierung abgeschlossen." },
+    sync_failed: { title: "Synchronisierung fehlgeschlagen", body: "Eine schreibgeschützte Synchronisierung konnte nicht abgeschlossen werden. Wir versuchen es erneut." },
+    risk_comment_detected: { title: "Riskante Kommentare erkannt", body: "Neue risikoreiche Kommentare wurden gefunden und müssen geprüft werden." },
+    monitoring_disabled_by_plan: { title: "Monitoring durch Tarif deaktiviert", body: "Bei einigen Konten wurde das Monitoring an Ihr Tariflimit angepasst." },
+    trial_ending: { title: "Testphase endet bald", body: "Ihre Testphase endet bald — fügen Sie eine Zahlung hinzu, um den vollen Zugriff zu behalten." },
+    trial_expired: { title: "Testphase abgelaufen", body: "Ihre Testphase ist abgelaufen. Upgraden Sie, um den vollen Zugriff wiederherzustellen." },
+    payment_failed: { title: "Zahlung fehlgeschlagen", body: "Eine Zahlung konnte nicht verarbeitet werden. Aktualisieren Sie Ihre Abrechnung, um Unterbrechungen zu vermeiden." },
+    account_reconnect_required: { title: "Erneute Verbindung erforderlich", body: "Ein Konto muss neu verbunden werden, damit die Synchronisierung fortgesetzt wird." },
   },
 };
