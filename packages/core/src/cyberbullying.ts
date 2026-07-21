@@ -144,6 +144,12 @@ export const CYBERBULLYING_AUDIT_EVENTS = {
   incidentResolved: "cyberbullying.incident.resolved",
   incidentArchived: "cyberbullying.incident.archived",
   incidentReopened: "cyberbullying.incident.reopened",
+  // C5 — incident operations (assignment + confidential reviewer notes). The note
+  // body is NEVER part of the audit payload.
+  incidentAssigned: "cyberbullying.incident.assigned",
+  incidentReassigned: "cyberbullying.incident.reassigned",
+  incidentUnassigned: "cyberbullying.incident.unassigned",
+  reviewerNoteAdded: "cyberbullying.incident.reviewer_note_added",
   evidenceCaptured: "cyberbullying.evidence.captured",
   evidenceUploaded: "cyberbullying.evidence.uploaded",
   evidenceVerified: "cyberbullying.evidence.verified",

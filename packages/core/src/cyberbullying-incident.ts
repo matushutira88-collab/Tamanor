@@ -11,9 +11,12 @@ import {
   IncidentLifecycleStatus,
   canTransitionIncident,
   incidentTransitionRequiresReason,
+  INCIDENT_STATUS_TRANSITIONS,
   INCIDENT_REOPEN_TRANSITIONS,
   TERMINAL_INCIDENT_STATUSES,
 } from "./security";
+import { Permission, can } from "./permissions";
+import { Role } from "./tenant";
 
 // --- Enums -----------------------------------------------------------------
 
@@ -50,6 +53,23 @@ export enum IncidentTimelineEventType {
   EvidenceLinked = "evidence_linked",
   ParticipantAdded = "participant_added",
   ParticipantRemoved = "participant_removed",
+  // C5 — operations. Reviewer assignment + internal notes. The note BODY is never
+  // written to the timeline (confidential); only that a note was added.
+  ReviewerAssigned = "reviewer_assigned",
+  ReviewerReassigned = "reviewer_reassigned",
+  ReviewerUnassigned = "reviewer_unassigned",
+  NoteAdded = "note_added",
+}
+
+/**
+ * C5 — the kind of an append-only assignment-history event. One primary reviewer
+ * per incident; every assign/reassign/unassign records who acted on whom, when,
+ * and why.
+ */
+export enum IncidentAssignmentAction {
+  Assigned = "assigned",
+  Reassigned = "reassigned",
+  Unassigned = "unassigned",
 }
 
 // --- Domain shapes (plain; NOT Prisma) -------------------------------------
@@ -95,6 +115,37 @@ export interface IncidentTimelineEvent {
   incidentId: string;
   eventType: IncidentTimelineEventType;
   actorUserId: string | null;
+  reason: string | null;
+  createdAt: Date;
+}
+
+/**
+ * C5 — an append-only internal reviewer note. CONFIDENTIAL: the body is never
+ * logged (audit records only that a note exists) and is never shown to a protected
+ * subject. No edit, no delete — the record is immutable once written.
+ */
+export interface IncidentReviewerNote {
+  id: string;
+  tenantId: string;
+  incidentId: string;
+  authorUserId: string;
+  /** Confidential free text. Not evidence, not stored as a blob, never in logs. */
+  body: string;
+  createdAt: Date;
+}
+
+/**
+ * C5 — an append-only assignment-history record. `assigneeUserId` is null for an
+ * `unassigned` action; `previousAssigneeUserId` is null for the first assignment.
+ */
+export interface IncidentAssignmentEvent {
+  id: string;
+  tenantId: string;
+  incidentId: string;
+  action: IncidentAssignmentAction;
+  assigneeUserId: string | null;
+  previousAssigneeUserId: string | null;
+  assignedByUserId: string;
   reason: string | null;
   createdAt: Date;
 }
@@ -145,6 +196,61 @@ export function applyIncidentTransition(
   return { ...base, ok: true };
 }
 
+// --- Permission mapping + available actions (pure) -------------------------
+
+/**
+ * Which RBAC permission a lifecycle target requires. Review-level moves
+ * (under_review/acknowledged/dismissed) need `cyberbullying:review`; the weightier
+ * outcomes (confirmed/action_required/resolved/archived) need `cyberbullying:manage`.
+ * Single source of truth shared by the service and the read model.
+ */
+export function permissionForIncidentTransition(to: IncidentLifecycleStatus): Permission {
+  switch (to) {
+    case IncidentLifecycleStatus.UnderReview:
+    case IncidentLifecycleStatus.Acknowledged:
+    case IncidentLifecycleStatus.Dismissed:
+      return Permission.CyberbullyingReview;
+    default: // confirmed | action_required | resolved | archived
+      return Permission.CyberbullyingManage;
+  }
+}
+
+/** Whether `status` is a terminal/resolved state that only an elevated reopen can leave. */
+export function isReopenableStatus(status: IncidentLifecycleStatus): boolean {
+  return status in INCIDENT_REOPEN_TRANSITIONS;
+}
+
+/**
+ * Compute the operations an actor may perform on an incident, from
+ * permission × lifecycle × assignment. Pure and deterministic — the UI renders
+ * exactly this and the service re-validates each action server-side. A role with
+ * no cyberbullying write permission (e.g. a protected subject on view_own) gets an
+ * empty/all-false result: read-only.
+ */
+export function availableIncidentActions(
+  role: string,
+  status: IncidentLifecycleStatus,
+  ctx: { assigned: boolean } = { assigned: false },
+): AvailableIncidentActions {
+  const r = role as Role;
+  const review = can(r, Permission.CyberbullyingReview);
+  const manage = can(r, Permission.CyberbullyingManage);
+
+  const transitions = (INCIDENT_STATUS_TRANSITIONS[status] ?? [])
+    .filter((to) => can(r, permissionForIncidentTransition(to)))
+    .map((to) => ({ to, requiresReason: incidentTransitionRequiresReason(to) }));
+
+  return {
+    transitions,
+    canReopen: manage && isReopenableStatus(status),
+    // Claim an unassigned case = review. Reassign/unassign an assigned case = manage.
+    canAssign: review && !ctx.assigned,
+    canReassign: manage && ctx.assigned,
+    canUnassign: manage && ctx.assigned,
+    canAddNote: review,
+  };
+}
+
 // --- Server CONTRACT (interface) -------------------------------------------
 
 /** Actor context for a write. Role drives RBAC; userId is the audit actor. */
@@ -167,4 +273,26 @@ export interface CyberbullyingIncidentService {
   removeParticipant(actor: IncidentActorContext, incidentId: string, participantId: string): Promise<void>;
   transition(actor: IncidentActorContext, incidentId: string, to: IncidentLifecycleStatus, reason?: string): Promise<IncidentTransitionResult>;
   reopen(actor: IncidentActorContext, incidentId: string, reason: string): Promise<IncidentTransitionResult>;
+  // C5 — operations. Assign is claim-level (review); reassign/unassign are elevated
+  // (manage). Notes are append-only and confidential.
+  assignReviewer(actor: IncidentActorContext, incidentId: string, assigneeUserId: string, reason?: string): Promise<{ action: IncidentAssignmentAction }>;
+  unassignReviewer(actor: IncidentActorContext, incidentId: string, reason?: string): Promise<void>;
+  addReviewerNote(actor: IncidentActorContext, incidentId: string, body: string): Promise<{ noteId: string }>;
+}
+
+/**
+ * C5 — the set of operations an actor may perform on an incident, computed from
+ * permission × lifecycle × assignment. The UI renders ONLY what appears here; the
+ * service re-checks every one server-side (defence in depth). Read-only actors
+ * (e.g. a protected subject) get an all-false/empty result.
+ */
+export interface AvailableIncidentActions {
+  /** Legal forward transitions the actor is permitted to perform. */
+  transitions: { to: IncidentLifecycleStatus; requiresReason: boolean }[];
+  /** Elevated reopen out of a terminal/resolved state (reason mandatory). */
+  canReopen: boolean;
+  canAssign: boolean;
+  canReassign: boolean;
+  canUnassign: boolean;
+  canAddNote: boolean;
 }

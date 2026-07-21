@@ -6,8 +6,10 @@ import {
   IncidentLifecycleStatus,
   applyIncidentTransition,
   incidentTransitionRequiresReason,
+  permissionForIncidentTransition,
   IncidentTimelineEventType,
   IncidentParticipantRole,
+  IncidentAssignmentAction,
   IncidentReportSource,
   IncidentCategory,
   SubjectScope,
@@ -42,16 +44,9 @@ function assertPerm(actor: IncidentActorContext, perm: Permission): void {
   if (!can(actor.role as Role, perm)) throw new IncidentForbiddenError(perm);
 }
 
-/** Which permission a lifecycle target requires. review-level vs manage-level. */
-function permissionForTransition(to: IncidentLifecycleStatus): Permission {
-  switch (to) {
-    case IncidentLifecycleStatus.UnderReview:
-    case IncidentLifecycleStatus.Acknowledged:
-    case IncidentLifecycleStatus.Dismissed:
-      return Permission.CyberbullyingReview;
-    default: // confirmed | action_required | resolved | archived
-      return Permission.CyberbullyingManage;
-  }
+export class IncidentAssignmentRejected extends Error {
+  readonly code = "ASSIGNMENT_REJECTED";
+  constructor(public readonly reasonCode: "no_change" | "invalid_target") { super(`assignment rejected: ${reasonCode}`); this.name = "IncidentAssignmentRejected"; }
 }
 
 const TIMELINE_FOR_STATUS: Record<string, IncidentTimelineEventType> = {
@@ -197,7 +192,7 @@ export async function removeIncidentParticipant(actor: IncidentActorContext, inc
 // --- Lifecycle -------------------------------------------------------------
 
 export async function transitionIncident(actor: IncidentActorContext, incidentId: string, to: IncidentLifecycleStatus, reason?: string): Promise<IncidentTransitionResult> {
-  assertPerm(actor, permissionForTransition(to));
+  assertPerm(actor, permissionForIncidentTransition(to));
   return withTenant(actor.tenantId, async (db) => {
     const inc = await db.incident.findFirst({ where: { id: incidentId, tenantId: actor.tenantId }, select: { status: true } });
     if (!inc) throw new IncidentNotFoundError();
@@ -236,6 +231,94 @@ export async function getCyberbullyingIncidentById(actor: IncidentActorContext, 
 export async function listCyberbullyingIncidents(actor: IncidentActorContext, opts: { limit?: number } = {}) {
   assertPerm(actor, Permission.CyberbullyingReview);
   return withTenant(actor.tenantId, (db) => db.incident.findMany({ where: { tenantId: actor.tenantId, domain: DOMAIN_CYBERBULLYING }, orderBy: { createdAt: "desc" }, take: opts.limit ?? 100, select: { id: true, status: true, severity: true, createdAt: true } }));
+}
+
+// --- C5: Assignment (one primary reviewer; append-only history) ------------
+
+/**
+ * Assign the single primary reviewer, or reassign it to a different reviewer.
+ * Claiming an UNASSIGNED case needs `cyberbullying:review`; taking a case that is
+ * already assigned to someone else (reassign) needs the elevated
+ * `cyberbullying:manage`. Assigning to the current assignee is a no-change reject.
+ * Transactional: detail update + append-only assignment event + timeline + audit.
+ */
+export async function assignReviewer(actor: IncidentActorContext, incidentId: string, assigneeUserId: string, reason?: string): Promise<{ action: IncidentAssignmentAction }> {
+  if (!assigneeUserId || !assigneeUserId.trim()) throw new IncidentAssignmentRejected("invalid_target");
+  return withTenant(actor.tenantId, async (db) => {
+    const detail = await db.cyberbullyingIncidentDetail.findFirst({ where: { incidentId, tenantId: actor.tenantId }, select: { id: true, assignedReviewerUserId: true } });
+    if (!detail) throw new IncidentNotFoundError();
+    const previous = detail.assignedReviewerUserId;
+    if (previous === assigneeUserId) throw new IncidentAssignmentRejected("no_change");
+    // Claim (unassigned → assigned) is review-level; reassign (someone → someone else) is manage-level.
+    const isReassign = previous != null;
+    assertPerm(actor, isReassign ? Permission.CyberbullyingManage : Permission.CyberbullyingReview);
+    const action = isReassign ? IncidentAssignmentAction.Reassigned : IncidentAssignmentAction.Assigned;
+
+    await db.cyberbullyingIncidentDetail.update({ where: { id: detail.id }, data: { assignedReviewerUserId: assigneeUserId } });
+    await db.incidentAssignmentEvent.create({ data: { tenantId: actor.tenantId, incidentId, action, assigneeUserId, previousAssigneeUserId: previous, assignedByUserId: actor.userId, reason: reason ?? null } });
+    await timeline(db, actor, incidentId, isReassign ? IncidentTimelineEventType.ReviewerReassigned : IncidentTimelineEventType.ReviewerAssigned, reason ?? null);
+    await audit(db, actor, isReassign ? CYBERBULLYING_AUDIT_EVENTS.incidentReassigned : CYBERBULLYING_AUDIT_EVENTS.incidentAssigned, incidentId, { action });
+    return { action };
+  });
+}
+
+/**
+ * Remove the primary reviewer. Elevated (`cyberbullying:manage`). No-op reject if
+ * already unassigned. Transactional: detail clear + append-only event + timeline + audit.
+ */
+export async function unassignReviewer(actor: IncidentActorContext, incidentId: string, reason?: string): Promise<void> {
+  assertPerm(actor, Permission.CyberbullyingManage);
+  await withTenant(actor.tenantId, async (db) => {
+    const detail = await db.cyberbullyingIncidentDetail.findFirst({ where: { incidentId, tenantId: actor.tenantId }, select: { id: true, assignedReviewerUserId: true } });
+    if (!detail) throw new IncidentNotFoundError();
+    const previous = detail.assignedReviewerUserId;
+    if (previous == null) throw new IncidentAssignmentRejected("no_change");
+    await db.cyberbullyingIncidentDetail.update({ where: { id: detail.id }, data: { assignedReviewerUserId: null } });
+    await db.incidentAssignmentEvent.create({ data: { tenantId: actor.tenantId, incidentId, action: IncidentAssignmentAction.Unassigned, assigneeUserId: null, previousAssigneeUserId: previous, assignedByUserId: actor.userId, reason: reason ?? null } });
+    await timeline(db, actor, incidentId, IncidentTimelineEventType.ReviewerUnassigned, reason ?? null);
+    await audit(db, actor, CYBERBULLYING_AUDIT_EVENTS.incidentUnassigned, incidentId, { action: IncidentAssignmentAction.Unassigned });
+  });
+}
+
+// --- C5: Confidential reviewer notes (append-only; never shown to a subject) --
+
+/**
+ * Add an append-only, CONFIDENTIAL reviewer note. Requires `cyberbullying:review`
+ * (a protected subject on `view_own` can never write — nor read — notes). The body
+ * is persisted but NEVER written to the audit log or timeline. No edit, no delete.
+ */
+export async function addReviewerNote(actor: IncidentActorContext, incidentId: string, body: string): Promise<{ noteId: string }> {
+  assertPerm(actor, Permission.CyberbullyingReview);
+  const text = (body ?? "").trim();
+  if (!text) throw new IncidentAssignmentRejected("invalid_target");
+  return withTenant(actor.tenantId, async (db) => {
+    const inc = await db.incident.findFirst({ where: { id: incidentId, tenantId: actor.tenantId, domain: DOMAIN_CYBERBULLYING }, select: { id: true } });
+    if (!inc) throw new IncidentNotFoundError();
+    const note = await db.incidentReviewerNote.create({ data: { tenantId: actor.tenantId, incidentId, authorUserId: actor.userId, body: text } });
+    await timeline(db, actor, incidentId, IncidentTimelineEventType.NoteAdded, null); // body NEVER on the timeline
+    await audit(db, actor, CYBERBULLYING_AUDIT_EVENTS.reviewerNoteAdded, incidentId, {}); // body NEVER in audit
+    return { noteId: note.id };
+  });
+}
+
+/** List confidential reviewer notes. Requires `cyberbullying:review` — a protected subject cannot read them. */
+export async function listReviewerNotes(actor: IncidentActorContext, incidentId: string) {
+  assertPerm(actor, Permission.CyberbullyingReview);
+  return withTenant(actor.tenantId, async (db) => {
+    const inc = await db.incident.findFirst({ where: { id: incidentId, tenantId: actor.tenantId, domain: DOMAIN_CYBERBULLYING }, select: { id: true } });
+    if (!inc) throw new IncidentNotFoundError();
+    return db.incidentReviewerNote.findMany({ where: { incidentId, tenantId: actor.tenantId }, orderBy: { createdAt: "asc" }, select: { id: true, authorUserId: true, body: true, createdAt: true } });
+  });
+}
+
+/** List the append-only assignment history. Requires `cyberbullying:review`. */
+export async function listAssignmentHistory(actor: IncidentActorContext, incidentId: string) {
+  assertPerm(actor, Permission.CyberbullyingReview);
+  return withTenant(actor.tenantId, async (db) => {
+    const inc = await db.incident.findFirst({ where: { id: incidentId, tenantId: actor.tenantId, domain: DOMAIN_CYBERBULLYING }, select: { id: true } });
+    if (!inc) throw new IncidentNotFoundError();
+    return db.incidentAssignmentEvent.findMany({ where: { incidentId, tenantId: actor.tenantId }, orderBy: { createdAt: "asc" }, select: { id: true, action: true, assigneeUserId: true, previousAssigneeUserId: true, assignedByUserId: true, reason: true, createdAt: true } });
+  });
 }
 
 // --- Subject scope (ABOVE tenant RLS; fail-closed) -------------------------

@@ -1,6 +1,6 @@
 import "server-only";
 import { withTenant } from "@guardora/db";
-import { Permission, Role, can, IncidentCategory, IncidentLifecycleStatus } from "@guardora/core";
+import { Permission, Role, can, IncidentCategory, IncidentLifecycleStatus, IncidentTimelineEventType, availableIncidentActions, type AvailableIncidentActions } from "@guardora/core";
 
 /**
  * C4 — server-side READ MODEL for the Cyberbullying dashboard + incident inbox.
@@ -43,7 +43,14 @@ function scopeWhere(actor: Actor) {
   const scope = resolveInboxScope(actor);
   if (scope === "deny") throw new CyberbullyingAccessDenied();
   const base = { tenantId: actor.tenantId, domain: DOMAIN } as Record<string, unknown>;
-  if (scope === "participant") base.participants = { some: { userId: actor.userId } };
+  // Participant scope: a case they take part in OR one they are the assigned
+  // primary reviewer for. C5 — assignment grants case visibility.
+  if (scope === "participant") {
+    base.OR = [
+      { participants: { some: { userId: actor.userId } } },
+      { cyberbullyingDetail: { is: { assignedReviewerUserId: actor.userId } } },
+    ];
+  }
   return base;
 }
 
@@ -77,6 +84,41 @@ export async function getCyberbullyingDashboardKpis(actor: Actor, tfDays: number
     const now = Date.now();
     const avgOpenAgeHours = openRows.length === 0 ? null : Math.round(openRows.reduce((s, r) => s + (now - r.createdAt.getTime()), 0) / openRows.length / 3_600_000);
     return { open, underReview, actionRequired, resolved, withoutEvidence, createdInWindow, linkedDetections, avgOpenAgeHours };
+  });
+}
+
+// --- Operational metrics (C5 — reviewer workflow; server-computed) ---------
+
+export interface CyberbullyingOpsMetrics {
+  /** Active cases where the caller is the assigned primary reviewer. */
+  assignedToMe: number;
+  /** Open cases not yet moved into review. */
+  waitingReview: number;
+  /** Cases in `action_required`. */
+  awaitingAction: number;
+  /** Mean hours from first `review_started` to `resolved` over resolved cases (null if none). */
+  avgReviewTimeHours: number | null;
+}
+
+export async function getCyberbullyingOperationalMetrics(actor: Actor): Promise<CyberbullyingOpsMetrics> {
+  const where = scopeWhere(actor);
+  return withTenant(actor.tenantId, async (db) => {
+    const [assignedToMe, waitingReview, awaitingAction, resolvedRows] = await Promise.all([
+      db.incident.count({ where: { ...where, status: { in: ACTIVE_OPEN }, cyberbullyingDetail: { is: { assignedReviewerUserId: actor.userId } } } }),
+      db.incident.count({ where: { ...where, status: IncidentLifecycleStatus.Open } }),
+      db.incident.count({ where: { ...where, status: IncidentLifecycleStatus.ActionRequired } }),
+      db.incident.findMany({
+        where: { ...where, status: IncidentLifecycleStatus.Resolved, resolvedAt: { not: null } },
+        select: { resolvedAt: true, timelineEvents: { where: { eventType: IncidentTimelineEventType.ReviewStarted }, orderBy: { createdAt: "asc" }, take: 1, select: { createdAt: true } } },
+        take: 500,
+      }),
+    ]);
+    const spans = resolvedRows
+      .filter((r) => r.resolvedAt && r.timelineEvents[0])
+      .map((r) => r.resolvedAt!.getTime() - r.timelineEvents[0]!.createdAt.getTime())
+      .filter((ms) => ms >= 0);
+    const avgReviewTimeHours = spans.length === 0 ? null : Math.round(spans.reduce((s, ms) => s + ms, 0) / spans.length / 3_600_000);
+    return { assignedToMe, waitingReview, awaitingAction, avgReviewTimeHours };
   });
 }
 
@@ -137,7 +179,8 @@ export async function listCyberbullyingIncidentInbox(actor: Actor, opts: { filte
   if (f.tfDays) where.createdAt = { gte: new Date(Date.now() - f.tfDays * 86_400_000) };
   if (f.search && f.search.trim()) {
     const q = f.search.trim();
-    where.OR = [{ id: { contains: q } }, { cyberbullyingDetail: { is: { subject: { is: { displayLabel: { contains: q, mode: "insensitive" } } } } } }];
+    // Nested under AND so it composes with (never overwrites) the scope OR clause.
+    where.AND = [{ OR: [{ id: { contains: q } }, { cyberbullyingDetail: { is: { subject: { is: { displayLabel: { contains: q, mode: "insensitive" } } } } } }] }];
   }
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, opts.pageSize ?? PAGE_SIZE));
@@ -202,16 +245,27 @@ export interface IncidentDetailVM {
   detections: { id: string; kind: string; severity: string; status: string; detectionStatus: string; linkedAt: string }[];
   evidence: DetailEvidenceMeta[];
   timeline: { id: string; eventType: string; hasActor: boolean; reason: string | null; createdAt: string }[];
+  // C5 — operations.
+  assignedReviewerUserId: string | null;
+  assignedToMe: boolean;
+  /** True when the caller may read confidential reviewer notes / assignment history. */
+  canSeeNotes: boolean;
+  notes: { id: string; authorUserId: string; isMine: boolean; body: string; createdAt: string }[];
+  assignmentHistory: { id: string; action: string; assigneeUserId: string | null; previousAssigneeUserId: string | null; assignedByUserId: string; reason: string | null; createdAt: string }[];
+  /** The operations THIS actor may perform. The UI renders only these. */
+  actions: AvailableIncidentActions;
 }
 
 export async function getCyberbullyingIncidentDetail(actor: Actor, incidentId: string): Promise<IncidentDetailVM | null> {
   const base = scopeWhere(actor);
+  // Confidential reviewer notes + assignment history are readable only with review+.
+  const canSeeNotes = can(actor.role as Role, Permission.CyberbullyingReview);
   return withTenant(actor.tenantId, async (db) => {
     const inc = await db.incident.findFirst({
       where: { ...base, id: incidentId },
       select: {
         id: true, status: true, category: true, createdAt: true,
-        cyberbullyingDetail: { select: { reportSource: true, summary: true, allegedActorLabel: true, updatedAt: true, subject: { select: { displayLabel: true } } } },
+        cyberbullyingDetail: { select: { reportSource: true, summary: true, allegedActorLabel: true, updatedAt: true, assignedReviewerUserId: true, subject: { select: { displayLabel: true } } } },
         participants: { select: { id: true, role: true, externalReference: true, subject: { select: { displayLabel: true } } } },
         detectionLinks: { select: { id: true, createdAt: true, detection: { select: { kind: true, severity: true, status: true } } } },
         evidence: { select: { id: true, evidenceType: true, sourceType: true, captureMethod: true, capturedAt: true, mimeType: true, sizeBytes: true, integrityStatus: true, scanStatus: true, legalHold: true, retentionUntil: true } },
@@ -219,6 +273,17 @@ export async function getCyberbullyingIncidentDetail(actor: Actor, incidentId: s
       },
     });
     if (!inc) return null;
+
+    const assignedReviewerUserId = inc.cyberbullyingDetail?.assignedReviewerUserId ?? null;
+    // Notes/history only fetched (and only returned) for authorized reviewers.
+    const [noteRows, historyRows] = canSeeNotes
+      ? await Promise.all([
+          db.incidentReviewerNote.findMany({ where: { incidentId, tenantId: actor.tenantId }, orderBy: { createdAt: "asc" }, select: { id: true, authorUserId: true, body: true, createdAt: true } }),
+          db.incidentAssignmentEvent.findMany({ where: { incidentId, tenantId: actor.tenantId }, orderBy: { createdAt: "asc" }, select: { id: true, action: true, assigneeUserId: true, previousAssigneeUserId: true, assignedByUserId: true, reason: true, createdAt: true } }),
+        ])
+      : [[], []];
+
+    const actions = availableIncidentActions(actor.role, inc.status as IncidentLifecycleStatus, { assigned: assignedReviewerUserId != null });
     // Sanitized view-model — NO storageKey / contentHash / hash / binary / raw payload.
     return {
       id: inc.id,
@@ -234,6 +299,12 @@ export async function getCyberbullyingIncidentDetail(actor: Actor, incidentId: s
       detections: inc.detectionLinks.map((l) => ({ id: l.id, kind: l.detection.kind, severity: String(l.detection.severity), status: l.detection.status, detectionStatus: l.detection.status, linkedAt: l.createdAt.toISOString() })),
       evidence: inc.evidence.map((e) => ({ id: e.id, evidenceType: e.evidenceType, sourceType: e.sourceType, captureMethod: e.captureMethod, capturedAt: e.capturedAt.toISOString(), mimeType: e.mimeType, sizeBytes: e.sizeBytes, integrityStatus: e.integrityStatus, scanStatus: e.scanStatus, legalHold: e.legalHold, retentionUntil: e.retentionUntil?.toISOString() ?? null })),
       timeline: inc.timelineEvents.map((t) => ({ id: t.id, eventType: t.eventType, hasActor: !!t.actorUserId, reason: t.reason, createdAt: t.createdAt.toISOString() })),
+      assignedReviewerUserId,
+      assignedToMe: assignedReviewerUserId != null && assignedReviewerUserId === actor.userId,
+      canSeeNotes,
+      notes: noteRows.map((n) => ({ id: n.id, authorUserId: n.authorUserId, isMine: n.authorUserId === actor.userId, body: n.body, createdAt: n.createdAt.toISOString() })),
+      assignmentHistory: historyRows.map((h) => ({ id: h.id, action: h.action, assigneeUserId: h.assigneeUserId, previousAssigneeUserId: h.previousAssigneeUserId, assignedByUserId: h.assignedByUserId, reason: h.reason, createdAt: h.createdAt.toISOString() })),
+      actions,
     };
   });
 }

@@ -38,6 +38,13 @@ export interface CbCopy {
   pageOf: (p: number, total: number) => string;
   prev: string;
   next: string;
+  // C5 — operations (metrics, actions, assignment, notes).
+  ops: { title: string; subtitle: string } & Record<"assignedToMe" | "waitingReview" | "awaitingAction" | "avgReviewTime", string>;
+  actionsPanel: { title: string; none: string; changeStatus: string; reason: string; reasonRequired: string; reasonOptional: string; submit: string };
+  act: Record<"under_review" | "acknowledged" | "confirmed" | "action_required" | "resolved" | "dismissed" | "archived" | "reopen", string>;
+  assign: { title: string; unassigned: string; assignedTo: string; you: string; claim: string; reassign: string; unassign: string; historyTitle: string; historyEmpty: string; by: string; actionLabel: Record<"assigned" | "reassigned" | "unassigned", string> };
+  notes: { title: string; subtitle: string; empty: string; you: string; placeholder: string; add: string; confidential: string };
+  banner: { ok: string } & Record<"forbidden" | "not_found" | "transition" | "assignment" | "error", string>;
 }
 
 const STATUS_EN = { open: "Open", under_review: "Under review", acknowledged: "Acknowledged", confirmed: "Confirmed after review", action_required: "Action required", resolved: "Resolved", dismissed: "Dismissed", archived: "Archived" };
@@ -49,9 +56,9 @@ const SOURCE_DE = { manual_report: "Manuelle Meldung", detection: "Aus Erkennung
 const ROLE_EN = { protected_subject: "Protected subject", reporter: "Reporter", alleged_actor: "Alleged actor", reviewer: "Reviewer", trusted_contact: "Trusted contact" };
 const ROLE_SK = { protected_subject: "Chránená osoba", reporter: "Nahlasovateľ", alleged_actor: "Údajný aktér", reviewer: "Posudzovateľ", trusted_contact: "Dôveryhodný kontakt" };
 const ROLE_DE = { protected_subject: "Geschützte Person", reporter: "Melder", alleged_actor: "Mutmaßlicher Akteur", reviewer: "Prüfer", trusted_contact: "Vertrauensperson" };
-const TL_EN = { created: "Incident created", review_started: "Review started", acknowledged: "Acknowledged", confirmed: "Confirmed after review", dismissed: "Dismissed", action_required: "Action required", resolved: "Resolved", archived: "Archived", reopened: "Reopened", detection_linked: "Detection linked", evidence_linked: "Evidence linked", participant_added: "Participant added", participant_removed: "Participant removed" };
-const TL_SK = { created: "Incident vytvorený", review_started: "Posudzovanie začaté", acknowledged: "Prevzaté", confirmed: "Potvrdené po review", dismissed: "Zamietnuté", action_required: "Vyžaduje akciu", resolved: "Vyriešené", archived: "Archivované", reopened: "Znovu otvorené", detection_linked: "Pripojená detekcia", evidence_linked: "Pripojený dôkaz", participant_added: "Pridaný účastník", participant_removed: "Odobraný účastník" };
-const TL_DE = { created: "Vorfall erstellt", review_started: "Prüfung gestartet", acknowledged: "Bestätigt erhalten", confirmed: "Nach Prüfung bestätigt", dismissed: "Abgewiesen", action_required: "Maßnahme erforderlich", resolved: "Gelöst", archived: "Archiviert", reopened: "Wiedereröffnet", detection_linked: "Erkennung verknüpft", evidence_linked: "Nachweis verknüpft", participant_added: "Teilnehmer hinzugefügt", participant_removed: "Teilnehmer entfernt" };
+const TL_EN = { created: "Incident created", review_started: "Review started", acknowledged: "Acknowledged", confirmed: "Confirmed after review", dismissed: "Dismissed", action_required: "Action required", resolved: "Resolved", archived: "Archived", reopened: "Reopened", detection_linked: "Detection linked", evidence_linked: "Evidence linked", participant_added: "Participant added", participant_removed: "Participant removed", reviewer_assigned: "Reviewer assigned", reviewer_reassigned: "Reviewer reassigned", reviewer_unassigned: "Reviewer unassigned", note_added: "Reviewer note added" };
+const TL_SK = { created: "Incident vytvorený", review_started: "Posudzovanie začaté", acknowledged: "Prevzaté", confirmed: "Potvrdené po review", dismissed: "Zamietnuté", action_required: "Vyžaduje akciu", resolved: "Vyriešené", archived: "Archivované", reopened: "Znovu otvorené", detection_linked: "Pripojená detekcia", evidence_linked: "Pripojený dôkaz", participant_added: "Pridaný účastník", participant_removed: "Odobraný účastník", reviewer_assigned: "Priradený posudzovateľ", reviewer_reassigned: "Zmenený posudzovateľ", reviewer_unassigned: "Odobraný posudzovateľ", note_added: "Pridaná poznámka" };
+const TL_DE = { created: "Vorfall erstellt", review_started: "Prüfung gestartet", acknowledged: "Bestätigt erhalten", confirmed: "Nach Prüfung bestätigt", dismissed: "Abgewiesen", action_required: "Maßnahme erforderlich", resolved: "Gelöst", archived: "Archiviert", reopened: "Wiedereröffnet", detection_linked: "Erkennung verknüpft", evidence_linked: "Nachweis verknüpft", participant_added: "Teilnehmer hinzugefügt", participant_removed: "Teilnehmer entfernt", reviewer_assigned: "Prüfer zugewiesen", reviewer_reassigned: "Prüfer neu zugewiesen", reviewer_unassigned: "Prüfer entfernt", note_added: "Prüfernotiz hinzugefügt" };
 
 export const CB_COPY: Record<Locale, CbCopy> = {
   en: {
@@ -71,6 +78,12 @@ export const CB_COPY: Record<Locale, CbCopy> = {
     empty: { noIncidentsTitle: "No incidents yet", noIncidentsBody: "There are no reviewed cyberbullying incidents in your workspace yet.", filterTitle: "No matching incidents", filterBody: "No incidents match these filters.", noDetections: "No linked detections — this may have been opened by a manual report.", noEvidence: "No linked evidence.", noTimeline: "No activity beyond creation yet." },
     error: { title: "Something went wrong", body: "This section could not be loaded. Please try again.", notFound: "Incident not found or you don't have access to it." },
     pageOf: (p, total) => `Page ${p} · ${total} total`, prev: "Previous", next: "Next",
+    ops: { title: "Review workload", subtitle: "Your operational queue — server-computed, subject-scoped.", assignedToMe: "Assigned to me", waitingReview: "Waiting review", awaitingAction: "Awaiting action", avgReviewTime: "Avg review time (h)" },
+    actionsPanel: { title: "Review actions", none: "You have read-only access to this incident.", changeStatus: "Change status", reason: "Reason", reasonRequired: "Reason (required)", reasonOptional: "Reason (optional)", submit: "Apply" },
+    act: { under_review: "Start review", acknowledged: "Acknowledge", confirmed: "Confirm", action_required: "Mark action required", resolved: "Resolve", dismissed: "Dismiss", archived: "Archive", reopen: "Reopen" },
+    assign: { title: "Assignment", unassigned: "Unassigned", assignedTo: "Assigned to", you: "you", claim: "Assign to me", reassign: "Reassign to me", unassign: "Unassign", historyTitle: "Assignment history", historyEmpty: "No assignment activity yet.", by: "by", actionLabel: { assigned: "Assigned", reassigned: "Reassigned", unassigned: "Unassigned" } },
+    notes: { title: "Reviewer notes", subtitle: "Internal & confidential — never shown to the protected subject. Append-only.", empty: "No reviewer notes yet.", you: "you", placeholder: "Add an internal note (not evidence)…", add: "Add note", confidential: "Confidential" },
+    banner: { ok: "Done.", forbidden: "You don't have permission for that action.", not_found: "Incident not found or out of scope.", transition: "That status change isn't allowed from the current state.", assignment: "That assignment change isn't allowed.", error: "The action could not be completed." },
   },
   sk: {
     moduleName: "Ochrana pred kyberšikanou", moduleDesc: "Posudzovanie incidentov zameraných na obeť — detegované signály a manuálne reporty, oddelené od brand moderácie.", available: "Dostupné",
@@ -89,6 +102,12 @@ export const CB_COPY: Record<Locale, CbCopy> = {
     empty: { noIncidentsTitle: "Zatiaľ žiadne incidenty", noIncidentsBody: "Vo vašom workspace zatiaľ nie sú žiadne preskúmané incidenty kyberšikany.", filterTitle: "Žiadne zodpovedajúce incidenty", filterBody: "Žiadne incidenty nezodpovedajú týmto filtrom.", noDetections: "Žiadne pripojené detekcie — mohol vzniknúť manuálnym reportom.", noEvidence: "Žiadne pripojené dôkazy.", noTimeline: "Zatiaľ žiadna aktivita nad rámec vytvorenia." },
     error: { title: "Niečo sa pokazilo", body: "Túto sekciu sa nepodarilo načítať. Skúste to znova.", notFound: "Incident sa nenašiel alebo k nemu nemáte prístup." },
     pageOf: (p, total) => `Strana ${p} · celkom ${total}`, prev: "Predchádzajúce", next: "Ďalšie",
+    ops: { title: "Vyťaženie review", subtitle: "Vaša operačná fronta — počítané na serveri, v rozsahu vašich osôb.", assignedToMe: "Priradené mne", waitingReview: "Čaká na review", awaitingAction: "Čaká na akciu", avgReviewTime: "Priem. čas review (h)" },
+    actionsPanel: { title: "Akcie review", none: "K tomuto incidentu máte iba čitateľský prístup.", changeStatus: "Zmeniť stav", reason: "Dôvod", reasonRequired: "Dôvod (povinný)", reasonOptional: "Dôvod (voliteľný)", submit: "Použiť" },
+    act: { under_review: "Začať review", acknowledged: "Prevziať", confirmed: "Potvrdiť", action_required: "Označiť akciu potrebnú", resolved: "Vyriešiť", dismissed: "Zamietnuť", archived: "Archivovať", reopen: "Znovu otvoriť" },
+    assign: { title: "Priradenie", unassigned: "Nepriradené", assignedTo: "Priradené", you: "vy", claim: "Priradiť mne", reassign: "Prepísať na mňa", unassign: "Zrušiť priradenie", historyTitle: "História priradení", historyEmpty: "Zatiaľ žiadna aktivita priradení.", by: "vykonal", actionLabel: { assigned: "Priradené", reassigned: "Prepísané", unassigned: "Zrušené" } },
+    notes: { title: "Poznámky posudzovateľa", subtitle: "Interné a dôverné — nikdy sa nezobrazia chránenej osobe. Len pridávanie.", empty: "Zatiaľ žiadne poznámky.", you: "vy", placeholder: "Pridať internú poznámku (nie dôkaz)…", add: "Pridať poznámku", confidential: "Dôverné" },
+    banner: { ok: "Hotovo.", forbidden: "Na túto akciu nemáte oprávnenie.", not_found: "Incident sa nenašiel alebo je mimo rozsahu.", transition: "Táto zmena stavu nie je z aktuálneho stavu povolená.", assignment: "Táto zmena priradenia nie je povolená.", error: "Akciu sa nepodarilo dokončiť." },
   },
   de: {
     moduleName: "Cybermobbing-Schutz", moduleDesc: "Opferzentrierte Vorfallprüfung — erkannte Signale und manuelle Meldungen, getrennt von der Markenmoderation.", available: "Verfügbar",
@@ -107,6 +126,12 @@ export const CB_COPY: Record<Locale, CbCopy> = {
     empty: { noIncidentsTitle: "Noch keine Vorfälle", noIncidentsBody: "In Ihrem Workspace gibt es noch keine geprüften Cybermobbing-Vorfälle.", filterTitle: "Keine passenden Vorfälle", filterBody: "Keine Vorfälle entsprechen diesen Filtern.", noDetections: "Keine verknüpften Erkennungen — evtl. durch eine manuelle Meldung eröffnet.", noEvidence: "Keine verknüpften Nachweise.", noTimeline: "Noch keine Aktivität über die Erstellung hinaus." },
     error: { title: "Etwas ist schiefgelaufen", body: "Dieser Bereich konnte nicht geladen werden. Bitte erneut versuchen.", notFound: "Vorfall nicht gefunden oder kein Zugriff." },
     pageOf: (p, total) => `Seite ${p} · ${total} gesamt`, prev: "Zurück", next: "Weiter",
+    ops: { title: "Prüf-Auslastung", subtitle: "Ihre operative Warteschlange — serverseitig berechnet, personenbezogen.", assignedToMe: "Mir zugewiesen", waitingReview: "Wartet auf Prüfung", awaitingAction: "Wartet auf Maßnahme", avgReviewTime: "Ø Prüfzeit (h)" },
+    actionsPanel: { title: "Prüf-Aktionen", none: "Sie haben nur Lesezugriff auf diesen Vorfall.", changeStatus: "Status ändern", reason: "Grund", reasonRequired: "Grund (erforderlich)", reasonOptional: "Grund (optional)", submit: "Anwenden" },
+    act: { under_review: "Prüfung starten", acknowledged: "Bestätigen", confirmed: "Nach Prüfung bestätigen", action_required: "Maßnahme markieren", resolved: "Lösen", dismissed: "Abweisen", archived: "Archivieren", reopen: "Wiedereröffnen" },
+    assign: { title: "Zuweisung", unassigned: "Nicht zugewiesen", assignedTo: "Zugewiesen an", you: "Sie", claim: "Mir zuweisen", reassign: "Auf mich übertragen", unassign: "Zuweisung aufheben", historyTitle: "Zuweisungsverlauf", historyEmpty: "Noch keine Zuweisungsaktivität.", by: "von", actionLabel: { assigned: "Zugewiesen", reassigned: "Neu zugewiesen", unassigned: "Aufgehoben" } },
+    notes: { title: "Prüfernotizen", subtitle: "Intern & vertraulich — nie für die geschützte Person sichtbar. Nur Anfügen.", empty: "Noch keine Prüfernotizen.", you: "Sie", placeholder: "Interne Notiz hinzufügen (kein Nachweis)…", add: "Notiz hinzufügen", confidential: "Vertraulich" },
+    banner: { ok: "Erledigt.", forbidden: "Sie haben keine Berechtigung für diese Aktion.", not_found: "Vorfall nicht gefunden oder außerhalb des Bereichs.", transition: "Diese Statusänderung ist aus dem aktuellen Zustand nicht erlaubt.", assignment: "Diese Zuweisungsänderung ist nicht erlaubt.", error: "Die Aktion konnte nicht abgeschlossen werden." },
   },
 };
 

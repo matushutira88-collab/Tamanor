@@ -6,7 +6,7 @@ import { requireDashboardCapability } from "@/server/route-guard";
 import { CapabilityLockedState } from "@/components/dashboard/capability-locked";
 import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { getLocale } from "@/i18n/locale-server";
-import { canViewCyberbullying, getCyberbullyingDashboardKpis } from "@/server/cyberbullying-inbox";
+import { canViewCyberbullying, getCyberbullyingDashboardKpis, getCyberbullyingOperationalMetrics } from "@/server/cyberbullying-inbox";
 import { CB_COPY } from "./cb-i18n";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,10 @@ export default async function CyberbullyingOverviewPage({ searchParams }: { sear
   const tfRaw = Number((await searchParams).tf);
   const tf: Tf = (TIMEFRAMES as readonly number[]).includes(tfRaw) ? (tfRaw as Tf) : 30;
   const actor = { tenantId: session.tenantId, userId: session.userId, role: session.role };
-  const kpi = await getCyberbullyingDashboardKpis(actor, tf);
+  const [kpi, ops] = await Promise.all([
+    getCyberbullyingDashboardKpis(actor, tf),
+    getCyberbullyingOperationalMetrics(actor),
+  ]);
 
   const inbox = (q: string) => `/dashboard/security/cyberbullying/incidents${q}` as const;
   const tfHref = (d: Tf) => (`/dashboard/security/cyberbullying?tf=${d}` as const);
@@ -57,6 +60,17 @@ export default async function CyberbullyingOverviewPage({ searchParams }: { sear
         <KpiCard label={t.kpi.createdInWindow} value={String(kpi.createdInWindow)} tone="neutral" href={inbox(`?tf=${tf}`)} />
         <KpiCard label={t.kpi.linkedDetections} value={String(kpi.linkedDetections)} tone="neutral" href={inbox("?detections=has")} />
         <KpiCard label={t.kpi.avgOpenAge} value={kpi.avgOpenAgeHours === null ? "—" : String(kpi.avgOpenAgeHours)} tone="neutral" />
+      </div>
+
+      {/* C5 — operational review workload (server-computed, subject-scoped). */}
+      <div className="mt-8">
+        <SectionHeader title={t.ops.title} description={t.ops.subtitle} />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard label={t.ops.assignedToMe} value={String(ops.assignedToMe)} tone="brand" />
+          <KpiCard label={t.ops.waitingReview} value={String(ops.waitingReview)} tone="warn" href={inbox("?status=open")} />
+          <KpiCard label={t.ops.awaitingAction} value={String(ops.awaitingAction)} tone="danger" href={inbox("?status=action_required")} />
+          <KpiCard label={t.ops.avgReviewTime} value={ops.avgReviewTimeHours === null ? "—" : String(ops.avgReviewTimeHours)} tone="neutral" />
+        </div>
       </div>
 
       <div className="mt-8">

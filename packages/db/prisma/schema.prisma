@@ -437,6 +437,9 @@ model Tenant {
   incidentTimelineEvents       IncidentTimelineEvent[]
   incidentParticipants         IncidentParticipant[]
   incidentDetectionLinks       IncidentDetectionLink[]
+  // C5 — incident operations (assignment history + confidential reviewer notes).
+  incidentReviewerNotes        IncidentReviewerNote[]
+  incidentAssignmentEvents     IncidentAssignmentEvent[]
 
   @@map("tenants")
 }
@@ -1294,6 +1297,8 @@ model Incident {
   participants        IncidentParticipant[]
   detectionLinks      IncidentDetectionLink[]
   evidence            IncidentEvidence[]
+  reviewerNotes       IncidentReviewerNote[]
+  assignmentEvents    IncidentAssignmentEvent[]
 
   @@unique([id, tenantId])
   @@index([tenantId, brandId, status])
@@ -1822,6 +1827,9 @@ model CyberbullyingIncidentDetail {
   // Neutral, non-accusatory: an ALLEGED actor label, never a confirmed attacker.
   allegedActorLabel             String?
   allegedActorExternalReference String?
+  // C5 — the ONE primary reviewer currently assigned (opaque user reference, no FK).
+  // The append-only IncidentAssignmentEvent log is the who/when/why history.
+  assignedReviewerUserId        String?
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 
@@ -1898,6 +1906,48 @@ model IncidentDetectionLink {
   @@unique([incidentId, securityDetectionId]) // idempotent link; same-tenant guaranteed by composite FKs
   @@index([tenantId, incidentId])
   @@map("incident_detection_links")
+}
+
+// C5 — append-only, CONFIDENTIAL internal reviewer note. No edit, no delete: the
+// record is immutable once written. The body is never logged and is never shown to
+// a protected subject (read requires cyberbullying:review). Not evidence — plain
+// text, never a blob / storage object.
+model IncidentReviewerNote {
+  id           String   @id @default(cuid())
+  tenantId     String
+  incidentId   String
+  authorUserId String // opaque user reference (no FK); the note's author
+  body         String // CONFIDENTIAL — never written to logs / audit / timeline
+  createdAt    DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, createdAt])
+  @@map("incident_reviewer_notes")
+}
+
+// C5 — append-only assignment history for the single primary reviewer. Records who
+// assigned whom, when, and why. `assigneeUserId` is null for an unassign;
+// `previousAssigneeUserId` is null for the first assignment. Immutable.
+model IncidentAssignmentEvent {
+  id                     String   @id @default(cuid())
+  tenantId               String
+  incidentId             String
+  action                 String // assigned | reassigned | unassigned (IncidentAssignmentAction)
+  assigneeUserId         String? // null for unassign
+  previousAssigneeUserId String? // null for the first assignment
+  assignedByUserId       String // the actor who performed the assignment
+  reason                 String?
+  createdAt              DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, createdAt])
+  @@map("incident_assignment_events")
 }
 
 enum LeadStatus {
