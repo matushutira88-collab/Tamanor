@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { DASHBOARD_NAV } from "@/lib/nav";
-import { can, Role, WorkspaceKind, isWorkspaceKind } from "@guardora/core";
+import { computeDeniedNavHrefs } from "@/server/nav-access";
 import { requireVerifiedSession } from "@/server/auth";
 import { withTenant, getTenantBilling, getTenantEntitlements, unreadNotificationCount } from "@guardora/db";
 import { getLocale } from "@/i18n/locale-server";
@@ -78,18 +77,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const planKey = billing?.subscription?.plan ?? (billing?.billingStatus === "no_subscription" ? null : billing?.plan) ?? null;
   const planName = planKey ? planKey.charAt(0).toUpperCase() + planKey.slice(1) : undefined;
 
-  // S0 — RBAC nav gate computed server-side (keeps permission logic + @guardora/core
-  // out of the client bundle). Items whose requiredPermission the role lacks are
-  // hidden from the sidebar; the page still enforces access authoritatively.
-  const deniedNavHrefs = DASHBOARD_NAV
-    .filter((n) => n.requiredPermission && !can(session.role as Role, n.requiredPermission))
-    .map((n) => n.href);
-  // CS-C0 — the BUSINESS navigation is shown ONLY in a BUSINESS workspace. A Family /
-  // Child-Safety-Organization / Internal workspace never renders business nav (its own
-  // nav ships in a later sprint). No-op for every existing tenant (all are business).
-  const workspaceKind = isWorkspaceKind(session.workspaceKind) ? session.workspaceKind : WorkspaceKind.Business;
-  const businessNavDenied = workspaceKind === WorkspaceKind.Business ? [] : DASHBOARD_NAV.map((n) => n.href);
-  const allDeniedNavHrefs = [...new Set([...deniedNavHrefs, ...businessNavDenied])];
+  // Nav gate computed server-side (keeps permission logic + @guardora/core out of the client
+  // bundle): S0 RBAC (requiredPermission) + CS-C0 workspace separation (business nav only in a
+  // BUSINESS workspace). Plan NEVER gates nav — see computeDeniedNavHrefs. The page still
+  // enforces access authoritatively; hiding is only a UX affordance.
+  const allDeniedNavHrefs = computeDeniedNavHrefs({ role: session.role, workspaceKind: session.workspaceKind });
 
   logPhase({ traceId, phase: "SHELL_RENDER_STARTED", success: true, userId: session.userId, tenantId: session.tenantId });
   // Server data bootstrap is done; the client mount marker (DASHBOARD_CLIENT_MOUNTED) confirms hydration.

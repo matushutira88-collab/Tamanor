@@ -116,6 +116,18 @@ export const DASHBOARD_NAV: NavItem[] = [
     description: "Workspace profile, automations, webhooks, and security.",
     icon: "settings",
   },
+  // V1.71 — team & seat management. Nav shown to OWNER/Admin (member:manage); other
+  // roles never see it (they still can't manage). CS-C0: this is BUSINESS nav — the
+  // layout denies all business nav outside a BUSINESS workspace, so Family / Child-Safety
+  // never render it. Plan does NOT gate the nav item: free_trial keeps Team visible; the
+  // seat cap (maxTeamMembers) is enforced inside the page, not by hiding the link.
+  {
+    href: "/dashboard/team",
+    label: "Team",
+    description: "Members and roles across your workspace.",
+    icon: "team",
+    requiredPermission: "member:manage" as Permission,
+  },
   {
     href: "/dashboard/command-center",
     label: "Command Center",
@@ -171,5 +183,4 @@ export const DASHBOARD_NAV: NavItem[] = [
   { href: "/dashboard/insights", label: "Insights", description: "Sentiment, emotions, topics, and risk trends over time.", icon: "insights", hidden: true },
   { href: "/dashboard/reports", label: "Reports", description: "Reputation trends and moderation metrics over time.", icon: "reports", hidden: true },
   { href: "/dashboard/leads", label: "Leads", description: "Platform-level prospect administration (platform staff only). Hidden in nav; access is enforced server-side, not by hiding.", icon: "leads", hidden: true },
-  { href: "/dashboard/team", label: "Team", description: "Members and roles across your workspace.", icon: "team", hidden: true },
 ];
