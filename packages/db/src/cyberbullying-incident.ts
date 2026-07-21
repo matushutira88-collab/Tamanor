@@ -164,18 +164,25 @@ export async function linkDetectionToIncident(actor: IncidentActorContext, incid
   });
 }
 
+/**
+ * The C3 evidence→incident link, composable inside an existing transaction. Only
+ * sets the incident link — NEVER touches immutable origin fields (hash/capturedAt/…)
+ * — and appends the timeline + audit events. Reused by the public wrapper AND by the
+ * C7 upload flow so a batch attaches atomically through the SAME contract.
+ */
+export async function linkEvidenceToIncidentTx(db: Tx, actor: IncidentActorContext, incidentId: string, evidenceId: string): Promise<void> {
+  const inc = await db.incident.findFirst({ where: { id: incidentId, tenantId: actor.tenantId }, select: { id: true } });
+  if (!inc) throw new IncidentNotFoundError();
+  const ev = await db.incidentEvidence.findFirst({ where: { id: evidenceId, tenantId: actor.tenantId }, select: { id: true } });
+  if (!ev) throw new IncidentNotFoundError();
+  await db.incidentEvidence.update({ where: { id: evidenceId }, data: { incidentId } });
+  await timeline(db, actor, incidentId, IncidentTimelineEventType.EvidenceLinked, `evidence:${evidenceId}`);
+  await audit(db, actor, CYBERBULLYING_AUDIT_EVENTS.evidenceLinked, incidentId, { evidenceId });
+}
+
 export async function linkEvidenceToIncident(actor: IncidentActorContext, incidentId: string, evidenceId: string): Promise<void> {
   assertPerm(actor, Permission.CyberbullyingReview);
-  await withTenant(actor.tenantId, async (db) => {
-    const inc = await db.incident.findFirst({ where: { id: incidentId, tenantId: actor.tenantId }, select: { id: true } });
-    if (!inc) throw new IncidentNotFoundError();
-    const ev = await db.incidentEvidence.findFirst({ where: { id: evidenceId, tenantId: actor.tenantId }, select: { id: true } });
-    if (!ev) throw new IncidentNotFoundError();
-    // Only set the incident link — NEVER touch immutable origin fields (hash/capturedAt/…).
-    await db.incidentEvidence.update({ where: { id: evidenceId }, data: { incidentId } });
-    await timeline(db, actor, incidentId, IncidentTimelineEventType.EvidenceLinked, `evidence:${evidenceId}`);
-    await audit(db, actor, CYBERBULLYING_AUDIT_EVENTS.evidenceLinked, incidentId, { evidenceId });
-  });
+  await withTenant(actor.tenantId, (db) => linkEvidenceToIncidentTx(db, actor, incidentId, evidenceId));
 }
 
 // --- Participants ----------------------------------------------------------

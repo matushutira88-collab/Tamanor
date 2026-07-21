@@ -2,6 +2,11 @@
 node_modules/
 .pnpm-store/
 
+# C7 — local evidence blob store (bytes must NEVER be committed). Default store is
+# ~/.tamanor/evidence-store (outside the repo); this guards a repo-local override.
+.evidence-store/
+evidence-store/
+
 # build output
 dist/
 build/

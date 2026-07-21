@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./analytics": "./src/analytics.ts",
-    "./cyberbullying-incident": "./src/cyberbullying-incident.ts"
+    "./cyberbullying-incident": "./src/cyberbullying-incident.ts",
+    "./cyberbullying-evidence-upload": "./src/cyberbullying-evidence-upload.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

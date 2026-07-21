@@ -5,7 +5,9 @@ import { requireDashboardCapability } from "@/server/route-guard";
 import { CapabilityLockedState } from "@/components/dashboard/capability-locked";
 import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { getLocale } from "@/i18n/locale-server";
+import { canAttachEvidenceToStatus } from "@guardora/core";
 import { canViewCyberbullying, getCyberbullyingIncidentDetail } from "@/server/cyberbullying-inbox";
+import { canUploadEvidence } from "@/server/cyberbullying-evidence";
 import { CB_COPY, statusTone } from "../../cb-i18n";
 import { transitionIncidentAction, reopenIncidentAction, assignReviewerAction, unassignReviewerAction, addReviewerNoteAction } from "./actions";
 
@@ -47,6 +49,8 @@ export default async function CyberbullyingIncidentDetailPage({ params, searchPa
 
   const a = inc.actions;
   const hasReviewActions = a.transitions.length > 0 || a.canReopen || a.canAssign || a.canReassign || a.canUnassign;
+  // C7 — evidence CTA: review permission + an attachable lifecycle status.
+  const canAddEvidence = canUploadEvidence(session.role) && canAttachEvidenceToStatus(inc.status);
   const errMsg = err ? (t.banner[err as keyof typeof t.banner] ?? t.banner.error) : null;
 
   return (
@@ -166,7 +170,8 @@ export default async function CyberbullyingIncidentDetailPage({ params, searchPa
 
           {/* Linked evidence — METADATA ONLY (no content, no hash, no storage key) */}
           <Card>
-            <SectionHeader title={t.section.evidence} />
+            <SectionHeader title={t.section.evidence}
+              action={canAddEvidence ? <Link href={`/dashboard/security/cyberbullying/incidents/${inc.id}/evidence/add`} className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{t.evUpload.addCta}</Link> : undefined} />
             {inc.evidence.length === 0 ? (
               <p className="text-sm text-[var(--color-muted)]">{t.empty.noEvidence}</p>
             ) : (
@@ -175,8 +180,8 @@ export default async function CyberbullyingIncidentDetailPage({ params, searchPa
                   <div key={e.id} className="rounded-lg border border-[var(--color-border)] p-3">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <Badge tone="neutral">{e.evidenceType}</Badge>
-                      <Badge tone={e.scanStatus === "clean" ? "ok" : e.scanStatus === "infected" ? "danger" : "warn"}>{t.evidenceMeta.scan}: {e.scanStatus}</Badge>
-                      <Badge tone={e.integrityStatus === "verified" ? "ok" : "neutral"}>{t.evidenceMeta.integrity}: {e.integrityStatus}</Badge>
+                      <Badge tone={e.scanStatus === "clean" ? "ok" : e.scanStatus === "infected" ? "danger" : e.scanStatus === "scan_failed" ? "danger" : "warn"}>{t.evUpload.scanLabel[e.scanStatus as keyof typeof t.evUpload.scanLabel] ?? e.scanStatus}</Badge>
+                      <Badge tone={e.integrityStatus === "verified" ? "ok" : e.integrityStatus === "failed" ? "danger" : "neutral"}>{t.evUpload.integrityLabel[e.integrityStatus as keyof typeof t.evUpload.integrityLabel] ?? e.integrityStatus}</Badge>
                       {e.legalHold ? <Badge tone="warn">{t.evidenceMeta.legalHold}</Badge> : null}
                     </div>
                     <div className="mt-2 grid gap-x-6 gap-y-0.5 sm:grid-cols-2">

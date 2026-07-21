@@ -57,6 +57,19 @@ export interface CbCopy {
     errors: Record<"required" | "too_short" | "too_long" | "invalid" | "denied" | "locked" | "error", string>;
     category: Record<"harassment" | "threats" | "impersonation" | "doxxing" | "exclusion" | "other", string>;
   };
+  // C7 — secure evidence upload.
+  evUpload: {
+    addCta: string; title: string; subtitle: string;
+    dropTitle: string; dropHint: string; browse: string; selected: string; remove: string; noFiles: string;
+    allowed: string; perFile: string; maxFiles: string;
+    contentNotice: string; scanNotice: string;
+    submit: string; submitting: string; cancel: string;
+    successTitle: string; successBody: string; backToIncident: string;
+    lockedTitle: string; deniedTitle: string; notFoundTitle: string; closedTitle: string; closedBody: string;
+    scanLabel: Record<"pending_scan" | "clean" | "infected" | "scan_failed", string>;
+    integrityLabel: Record<"unverified" | "verified" | "failed", string>;
+    errors: Record<"type" | "size" | "empty" | "too_many" | "total_size" | "mismatch" | "filename" | "malformed" | "denied" | "locked" | "not_found" | "invalid_status" | "scan" | "error", string>;
+  };
 }
 
 const STATUS_EN = { open: "Open", under_review: "Under review", acknowledged: "Acknowledged", confirmed: "Confirmed after review", action_required: "Action required", resolved: "Resolved", dismissed: "Dismissed", archived: "Archived" };
@@ -107,6 +120,18 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       errors: { required: "This field is required.", too_short: "This is too short.", too_long: "This is too long.", invalid: "This value isn't valid.", denied: "You don't have permission to file a report.", locked: "This feature isn't included in your plan.", error: "The report could not be submitted. Please try again." },
       category: { harassment: "Harassment", threats: "Threats", impersonation: "Impersonation", doxxing: "Doxxing", exclusion: "Exclusion", other: "Other" },
     },
+    evUpload: {
+      addCta: "Add evidence", title: "Add evidence", subtitle: "Upload local files as evidence for this incident. Files are stored securely and scanned; their content is not viewable in this release.",
+      dropTitle: "Drop files here or browse", dropHint: "Images (JPEG/PNG/WebP), PDF, or plain text.", browse: "Choose files", selected: "Selected files", remove: "Remove", noFiles: "No files selected yet.",
+      allowed: "Allowed: JPEG, PNG, WebP, PDF, plain text.", perFile: "Max 10 MB per image, 15 MB per PDF/text.", maxFiles: "Up to 5 files per upload.",
+      contentNotice: "Evidence content is not displayed in this release — only safe metadata is shown.", scanNotice: "Each file is scanned. Until a scan completes it shows as “security scan pending”.",
+      submit: "Upload evidence", submitting: "Uploading…", cancel: "Cancel",
+      successTitle: "Evidence attached", successBody: "The files were stored and linked to this incident.", backToIncident: "Back to incident",
+      lockedTitle: "Not included in your plan", deniedTitle: "You don't have access", notFoundTitle: "Incident not found", closedTitle: "This incident is closed", closedBody: "Evidence can't be added to a resolved, dismissed or archived incident.",
+      scanLabel: { pending_scan: "Security scan pending", clean: "Scanned — no threats", infected: "Blocked — threat detected", scan_failed: "Scan failed" },
+      integrityLabel: { unverified: "Unverified", verified: "Verified", failed: "Integrity failed" },
+      errors: { type: "File type not allowed.", size: "File is too large.", empty: "File is empty.", too_many: "Too many files (max 5).", total_size: "The upload is too large.", mismatch: "File content doesn't match its type.", filename: "File name isn't allowed.", malformed: "The upload was malformed.", denied: "You don't have permission to add evidence.", locked: "This feature isn't included in your plan.", not_found: "Incident not found.", invalid_status: "Evidence can't be added to this incident's current status.", scan: "A file was blocked by the security scan.", error: "The upload could not be completed. Please try again." },
+    },
   },
   sk: {
     moduleName: "Ochrana pred kyberšikanou", moduleDesc: "Posudzovanie incidentov zameraných na obeť — detegované signály a manuálne reporty, oddelené od brand moderácie.", available: "Dostupné",
@@ -142,6 +167,18 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       errors: { required: "Toto pole je povinné.", too_short: "Toto je príliš krátke.", too_long: "Toto je príliš dlhé.", invalid: "Táto hodnota nie je platná.", denied: "Nemáte oprávnenie podať hlásenie.", locked: "Táto funkcia nie je súčasťou vášho plánu.", error: "Hlásenie sa nepodarilo odoslať. Skúste to znova." },
       category: { harassment: "Obťažovanie", threats: "Vyhrážky", impersonation: "Zneužitie identity", doxxing: "Doxxing", exclusion: "Vylučovanie", other: "Iné" },
     },
+    evUpload: {
+      addCta: "Pridať dôkaz", title: "Pridať dôkaz", subtitle: "Nahrajte lokálne súbory ako dôkaz k tomuto incidentu. Súbory sa bezpečne uložia a skenujú; ich obsah nie je v tomto vydaní zobraziteľný.",
+      dropTitle: "Presuňte súbory sem alebo prehľadávajte", dropHint: "Obrázky (JPEG/PNG/WebP), PDF alebo obyčajný text.", browse: "Vybrať súbory", selected: "Vybrané súbory", remove: "Odstrániť", noFiles: "Zatiaľ nie sú vybrané žiadne súbory.",
+      allowed: "Povolené: JPEG, PNG, WebP, PDF, obyčajný text.", perFile: "Max. 10 MB na obrázok, 15 MB na PDF/text.", maxFiles: "Najviac 5 súborov na jedno nahranie.",
+      contentNotice: "Obsah dôkazu sa v tomto vydaní nezobrazuje — zobrazujú sa iba bezpečné metadata.", scanNotice: "Každý súbor sa skenuje. Kým sken neprebehne, zobrazuje sa „bezpečnostný sken prebieha“.",
+      submit: "Nahrať dôkaz", submitting: "Nahráva sa…", cancel: "Zrušiť",
+      successTitle: "Dôkaz pripojený", successBody: "Súbory boli uložené a pripojené k tomuto incidentu.", backToIncident: "Späť na incident",
+      lockedTitle: "Nie je súčasťou vášho plánu", deniedTitle: "Nemáte prístup", notFoundTitle: "Incident sa nenašiel", closedTitle: "Tento incident je uzavretý", closedBody: "K vyriešenému, zamietnutému ani archivovanému incidentu nie je možné pridať dôkaz.",
+      scanLabel: { pending_scan: "Bezpečnostný sken prebieha", clean: "Preskenované — bez hrozieb", infected: "Zablokované — zistená hrozba", scan_failed: "Sken zlyhal" },
+      integrityLabel: { unverified: "Neoverené", verified: "Overené", failed: "Integrita zlyhala" },
+      errors: { type: "Typ súboru nie je povolený.", size: "Súbor je príliš veľký.", empty: "Súbor je prázdny.", too_many: "Príliš veľa súborov (max. 5).", total_size: "Nahrávanie je príliš veľké.", mismatch: "Obsah súboru nezodpovedá jeho typu.", filename: "Názov súboru nie je povolený.", malformed: "Nahrávanie bolo poškodené.", denied: "Nemáte oprávnenie pridať dôkaz.", locked: "Táto funkcia nie je súčasťou vášho plánu.", not_found: "Incident sa nenašiel.", invalid_status: "K aktuálnemu stavu incidentu nie je možné pridať dôkaz.", scan: "Súbor bol zablokovaný bezpečnostným skenom.", error: "Nahrávanie sa nepodarilo dokončiť. Skúste to znova." },
+    },
   },
   de: {
     moduleName: "Cybermobbing-Schutz", moduleDesc: "Opferzentrierte Vorfallprüfung — erkannte Signale und manuelle Meldungen, getrennt von der Markenmoderation.", available: "Verfügbar",
@@ -176,6 +213,18 @@ export const CB_COPY: Record<Locale, CbCopy> = {
       success: { title: "Meldung erhalten", body: "Der Vorfall wurde erstellt und wartet auf Prüfung.", incident: "Vorfall", status: "Status", pending: "Wartet auf Prüfung", openDetail: "Vorfall öffnen", backToInbox: "Zurück zum Posteingang", newReport: "Weitere Meldung erstellen" },
       errors: { required: "Dieses Feld ist erforderlich.", too_short: "Dies ist zu kurz.", too_long: "Dies ist zu lang.", invalid: "Dieser Wert ist ungültig.", denied: "Sie haben keine Berechtigung, eine Meldung zu erstellen.", locked: "Diese Funktion ist in Ihrem Tarif nicht enthalten.", error: "Die Meldung konnte nicht gesendet werden. Bitte erneut versuchen." },
       category: { harassment: "Belästigung", threats: "Drohungen", impersonation: "Identitätsmissbrauch", doxxing: "Doxxing", exclusion: "Ausgrenzung", other: "Sonstiges" },
+    },
+    evUpload: {
+      addCta: "Nachweis hinzufügen", title: "Nachweis hinzufügen", subtitle: "Laden Sie lokale Dateien als Nachweis für diesen Vorfall hoch. Dateien werden sicher gespeichert und geprüft; ihr Inhalt ist in dieser Version nicht einsehbar.",
+      dropTitle: "Dateien hierher ziehen oder durchsuchen", dropHint: "Bilder (JPEG/PNG/WebP), PDF oder Klartext.", browse: "Dateien wählen", selected: "Ausgewählte Dateien", remove: "Entfernen", noFiles: "Noch keine Dateien ausgewählt.",
+      allowed: "Erlaubt: JPEG, PNG, WebP, PDF, Klartext.", perFile: "Max. 10 MB pro Bild, 15 MB pro PDF/Text.", maxFiles: "Bis zu 5 Dateien pro Upload.",
+      contentNotice: "Der Nachweisinhalt wird in dieser Version nicht angezeigt — nur sichere Metadaten.", scanNotice: "Jede Datei wird geprüft. Bis eine Prüfung abgeschlossen ist, erscheint „Sicherheitsprüfung ausstehend“.",
+      submit: "Nachweis hochladen", submitting: "Wird hochgeladen…", cancel: "Abbrechen",
+      successTitle: "Nachweis angehängt", successBody: "Die Dateien wurden gespeichert und mit diesem Vorfall verknüpft.", backToIncident: "Zurück zum Vorfall",
+      lockedTitle: "In Ihrem Tarif nicht enthalten", deniedTitle: "Kein Zugriff", notFoundTitle: "Vorfall nicht gefunden", closedTitle: "Dieser Vorfall ist abgeschlossen", closedBody: "Zu einem gelösten, abgewiesenen oder archivierten Vorfall können keine Nachweise hinzugefügt werden.",
+      scanLabel: { pending_scan: "Sicherheitsprüfung ausstehend", clean: "Geprüft — keine Bedrohungen", infected: "Blockiert — Bedrohung erkannt", scan_failed: "Prüfung fehlgeschlagen" },
+      integrityLabel: { unverified: "Ungeprüft", verified: "Verifiziert", failed: "Integrität fehlgeschlagen" },
+      errors: { type: "Dateityp nicht erlaubt.", size: "Datei ist zu groß.", empty: "Datei ist leer.", too_many: "Zu viele Dateien (max. 5).", total_size: "Der Upload ist zu groß.", mismatch: "Dateiinhalt passt nicht zum Typ.", filename: "Dateiname nicht erlaubt.", malformed: "Der Upload war fehlerhaft.", denied: "Sie haben keine Berechtigung, Nachweise hinzuzufügen.", locked: "Diese Funktion ist in Ihrem Tarif nicht enthalten.", not_found: "Vorfall nicht gefunden.", invalid_status: "Zum aktuellen Status des Vorfalls können keine Nachweise hinzugefügt werden.", scan: "Eine Datei wurde von der Sicherheitsprüfung blockiert.", error: "Der Upload konnte nicht abgeschlossen werden. Bitte erneut versuchen." },
     },
   },
 };
