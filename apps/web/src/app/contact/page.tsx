@@ -23,7 +23,7 @@ const META: Record<Locale, { title: string; description: string }> = {
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
-  return META[locale];
+  return { ...META[locale], alternates: { canonical: "/contact" } };
 }
 
 export const dynamic = "force-dynamic";

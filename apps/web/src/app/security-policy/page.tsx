@@ -6,7 +6,7 @@ import { securityPolicy } from "@/content/legal-compliance";
 
 export async function generateMetadata(): Promise<Metadata> {
   const doc = securityPolicy[await getLocale()];
-  return { title: doc.metaTitle, description: doc.metaDescription };
+  return { title: doc.metaTitle, description: doc.metaDescription, alternates: { canonical: "/security-policy" } };
 }
 
 export default async function Page() {

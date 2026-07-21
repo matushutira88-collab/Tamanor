@@ -6,7 +6,7 @@ import { dataRetention } from "@/content/legal-compliance";
 
 export async function generateMetadata(): Promise<Metadata> {
   const doc = dataRetention[await getLocale()];
-  return { title: doc.metaTitle, description: doc.metaDescription };
+  return { title: doc.metaTitle, description: doc.metaDescription, alternates: { canonical: "/data-retention" } };
 }
 
 export default async function Page() {

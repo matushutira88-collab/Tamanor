@@ -6,7 +6,7 @@ import { aiTransparency } from "@/content/legal-compliance";
 
 export async function generateMetadata(): Promise<Metadata> {
   const doc = aiTransparency[await getLocale()];
-  return { title: doc.metaTitle, description: doc.metaDescription };
+  return { title: doc.metaTitle, description: doc.metaDescription, alternates: { canonical: "/ai-transparency" } };
 }
 
 export default async function Page() {
