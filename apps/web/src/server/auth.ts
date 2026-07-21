@@ -24,6 +24,8 @@ export interface AppSession {
   emailVerified: boolean;
   tenantId: string;
   tenantName: string;
+  /** CS-C0 — the active workspace's immutable kind (gates domain capabilities above RLS). */
+  workspaceKind: string;
   role: Role;
 }
 
@@ -39,6 +41,7 @@ export async function getSession(): Promise<AppSession | null> {
     emailVerified: s.emailVerified,
     tenantId: s.tenantId,
     tenantName: s.tenantName,
+    workspaceKind: s.workspaceKind,
     role: s.role as Role,
   };
 }

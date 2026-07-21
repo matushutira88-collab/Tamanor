@@ -1,10 +1,12 @@
 import type { Route } from "next";
+import type { Permission } from "@guardora/core";
 
 export type NavIcon =
   | "command"
   | "control"
   | "queue"
   | "incidents"
+  | "security"
   | "timeline"
   | "dashboard"
   | "inbox"
@@ -35,6 +37,15 @@ export interface NavItem {
   hidden?: boolean;
   /** V1.30 — override the dashboardNav dictionary key (defaults to `icon`). */
   navKey?: string;
+  /**
+   * S0 — RBAC nav gate. When set, the sidebar hides this item unless the current
+   * role holds the permission. This is a UX affordance layered on top of the
+   * authoritative server-side page checks (a hidden item's route is still
+   * enforced by the page). Distinct from plan gating: an item stays visible when
+   * the role has the permission but the plan lacks the entitlement, so the page
+   * can show a truthful CapabilityLockedState.
+   */
+  requiredPermission?: Permission;
 }
 
 /** Look up a nav item by href (avoids brittle positional indexing). */
@@ -140,6 +151,17 @@ export const DASHBOARD_NAV: NavItem[] = [
     description: "An append-only record of every automated and manual action.",
     icon: "audit",
     group: "More",
+  },
+  // S0 — Security Suite. Detection & response only. Nav hidden unless the role
+  // holds security:view; page additionally plan-gates by `securitySuite`.
+  {
+    href: "/dashboard/security",
+    label: "Security Center",
+    description: "Your security posture at a glance — score, detections, and incidents.",
+    icon: "security",
+    navKey: "securityCenter",
+    group: "Security",
+    requiredPermission: "security:view" as Permission,
   },
   // --- Hidden from the sidebar (routes stay available) ---
   { href: "/dashboard/inbox", label: "Inbox", description: "Triage comments, reviews, and mentions in one unified place.", icon: "inbox", hidden: true },

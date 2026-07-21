@@ -25,6 +25,7 @@ export function Sidebar({
   locale = defaultLocale,
   navLabels,
   sidebarStrings,
+  deniedNavHrefs,
   onNavigate,
 }: {
   tenantName: string;
@@ -45,10 +46,20 @@ export function Sidebar({
   locale?: Locale;
   navLabels?: Record<string, string>;
   sidebarStrings?: Record<string, string>;
+  /**
+   * S0 — hrefs the current role may NOT access (computed server-side via `can()`
+   * in the dashboard layout, so RBAC/permission logic never enters the client
+   * bundle). The page still enforces access authoritatively; this only hides the
+   * link. NOT plan-based: an item stays visible when the role has the permission
+   * but the plan lacks the entitlement (page shows CapabilityLockedState).
+   */
+  deniedNavHrefs?: string[];
   onNavigate?: () => void;
 }) {
   const s = sidebarStrings ?? {};
   const pathname = usePathname();
+  const denied = new Set(deniedNavHrefs ?? []);
+  const visibleNav = DASHBOARD_NAV.filter((n) => !n.hidden && !denied.has(n.href));
   const cleanTenant = tenantName.replace(/\[MOCK\]\s*/i, "");
   const pct = Math.min(100, Math.round((trialUsed / trialLimit) * 100));
   const accountsPct = accountsLimit ? Math.min(100, Math.round((accountsUsed / accountsLimit) * 100)) : 0;
@@ -78,8 +89,9 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">
-        {/* V1.28B — production nav: hidden entries are filtered out (routes remain). */}
-        {DASHBOARD_NAV.filter((n) => !n.hidden).map((item, i, visible) => {
+        {/* V1.28B — production nav: hidden entries are filtered out (routes remain).
+            S0 — plus RBAC-gated entries the role can't access. */}
+        {visibleNav.map((item, i, visible) => {
           const active =
             item.href === "/dashboard"
               ? pathname === "/dashboard"

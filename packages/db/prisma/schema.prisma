@@ -352,6 +352,10 @@ model Tenant {
   name                  String
   slug                  String    @unique
   plan                  String    @default("free")
+  // CS-C0 — IMMUTABLE workspace kind. Every existing tenant is `business`. BUSINESS and
+  // FAMILY data never share a tenant; capabilities are gated by kind on top of RLS.
+  // Changed only via an internal migration procedure, never a client API call.
+  workspaceKind         String    @default("business") // WorkspaceKind (business|family|child_safety_organization|internal)
   // V1.50A — self-service Free Trial. On registration: plan="free_trial" with a
   // 14-day window. Billing is out of scope (V1.50B+); these are informational only.
   trialStartsAt         DateTime?
@@ -425,6 +429,48 @@ model Tenant {
   webhookEvents            WebhookEvent[]
   notifications            Notification[]
   invites                  Invite[]
+
+  // S0 — Security Suite (detection & response only; no new platform-mutation power).
+  securityScoreSnapshots SecurityScoreSnapshot[]
+  securityDetections     SecurityDetection[]
+  brandProtectionCases   BrandProtectionCase[]
+
+  // C1 — Cyberbullying Protection foundation (victim-centric; isolated from brand).
+  protectedSubjects                  ProtectedSubject[]
+  protectedSubjectRelationships      ProtectedSubjectRelationship[]
+  // C2 — Evidence Foundation (local-only storage; immutable original + custody).
+  storageObjects                     StorageObject[]
+  incidentEvidence                   IncidentEvidence[]
+  evidenceContextItems               EvidenceContextItem[]
+  evidenceCustodyEvents              EvidenceCustodyEvent[]
+  // C3 — Incident core (cyberbullying case graph over the single Incident ledger).
+  cyberbullyingIncidentDetails       CyberbullyingIncidentDetail[]
+  incidentTimelineEvents             IncidentTimelineEvent[]
+  incidentParticipants               IncidentParticipant[]
+  incidentDetectionLinks             IncidentDetectionLink[]
+  // C5 — incident operations (assignment history + confidential reviewer notes).
+  incidentReviewerNotes              IncidentReviewerNote[]
+  incidentAssignmentEvents           IncidentAssignmentEvent[]
+  // C6 — manual-report idempotency claims (double-submit protection).
+  cyberbullyingReportSubmissions     CyberbullyingReportSubmission[]
+  // C8 — detection triage overlay + append-only triage history.
+  cyberbullyingDetectionTriage       CyberbullyingDetectionTriage[]
+  cyberbullyingDetectionTriageEvents CyberbullyingDetectionTriageEvent[]
+  // C9 — case management (protection plans + tasks).
+  cyberbullyingProtectionPlans       CyberbullyingProtectionPlan[]
+  cyberbullyingCaseTasks             CyberbullyingCaseTask[]
+  // C10 — cyberbullying notifications + manual escalations. (Renamed from `notifications`
+  // during the origin/main merge; the general product `notifications` relation lives above.)
+  cyberbullyingNotifications         CyberbullyingNotification[]
+  cyberbullyingEscalations           CyberbullyingEscalation[]
+  // C11 — immutable compliance report snapshots.
+  complianceReportSnapshots          ComplianceReportSnapshot[]
+  // C12 — redaction / approval / export workflow.
+  complianceRedactionDrafts          ComplianceRedactionDraft[]
+  complianceRedactionRules           ComplianceRedactionRule[]
+  complianceExportAuthorizations     ComplianceExportAuthorization[]
+  complianceExportPackageManifests   ComplianceExportPackageManifest[]
+  complianceApprovalHistoryEvents    ComplianceApprovalHistoryEvent[]
 
   @@map("tenants")
 }
@@ -563,6 +609,11 @@ model Brand {
   brandRules        BrandRule[]
   reportSnapshots   ReportSnapshot[]
   liveSafety        BrandLiveSafetySettings?
+
+  // S0 — Security Suite (per-brand security signals; cascade with the brand).
+  securityScoreSnapshots SecurityScoreSnapshot[]
+  securityDetections     SecurityDetection[]
+  brandProtectionCases   BrandProtectionCase[]
 
   @@index([tenantId])
   @@map("brands")
@@ -1248,11 +1299,20 @@ model ActionQueueItem {
 model Incident {
   id             String    @id @default(cuid())
   tenantId       String
-  brandId        String
+  // C3 (ADR-0001) — NULLABLE: a victim-centric cyberbullying incident may have no
+  // brand. Brand incidents still set it. Plain denormalized column (no Brand FK).
+  brandId        String?
   title          String
+  // C3 (ADR-0001) — DOMAIN discriminator (IncidentCategory value). Default
+  // `reputation` keeps every existing brand incident backward-compatible.
+  // Distinct from `category` (free harm/descriptive category used by brand escalation).
+  domain         String    @default("reputation")
   category       String
   severity       String    @default("medium") // low|medium|high|critical
-  status         String    @default("open") // open|resolved
+  // C3 — canonical lifecycle (ADR-0002): open|under_review|acknowledged|confirmed|
+  // action_required|resolved|dismissed|archived. `open`/`resolved` stay valid so
+  // existing brand incidents are unaffected.
+  status         String    @default("open")
   sourcePlatform String?
   // V1.37.5 — DENORMALIZED cache kept for compatibility. The referentially-integral
   // source of truth is `relatedItems` (IncidentRelatedItem join rows with real FKs).
@@ -1265,8 +1325,26 @@ model Incident {
   tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   relatedItems IncidentRelatedItem[]
 
+  // C3 — cyberbullying case extension (one-to-one detail) + case graph.
+  cyberbullyingDetail CyberbullyingIncidentDetail?
+  timelineEvents      IncidentTimelineEvent[]
+  participants        IncidentParticipant[]
+  detectionLinks      IncidentDetectionLink[]
+  evidence            IncidentEvidence[]
+  reviewerNotes       IncidentReviewerNote[]
+  assignmentEvents    IncidentAssignmentEvent[]
+  reportSubmissions   CyberbullyingReportSubmission[]
+  // C9 — case management (a case IS the incident): 1:1 protection plan + tasks.
+  caseProtectionPlan  CyberbullyingProtectionPlan?
+  caseTasks           CyberbullyingCaseTask[]
+  // C10 — manual escalations on this incident.
+  escalations         CyberbullyingEscalation[]
+  // C11 — immutable compliance report snapshots of this incident.
+  complianceReports   ComplianceReportSnapshot[]
+
   @@unique([id, tenantId])
   @@index([tenantId, brandId, status])
+  @@index([tenantId, domain, status])
   @@map("incidents")
 }
 
@@ -1499,6 +1577,814 @@ model ReportSnapshot {
   @@index([tenantId])
   @@index([brandId, periodEnd])
   @@map("report_snapshots")
+}
+
+// ===========================================================================
+// Security Suite (S0 foundations) — detection & response only. No model here
+// grants a new platform-mutation capability. Every table is tenant-scoped and
+// added to the RLS strict-table policy in the accompanying migration. String
+// columns (scope/kind/subjectType/status/source) mirror TS enums in
+// @guardora/core `security.ts` (documented allowed values), matching the
+// Incident model's pragmatic string convention; reused Prisma enums (RiskLevel,
+// Platform) keep severity/platform type-safe.
+// ===========================================================================
+
+// Composite (append-only) posture score history, per tenant / brand / account.
+// Live score is computed on demand; the worker persists periodic snapshots so
+// trends survive. `subscores`/`inputs` carry the explainable breakdown.
+model SecurityScoreSnapshot {
+  id         String   @id @default(cuid())
+  tenantId   String
+  brandId    String?
+  scope      String // tenant | brand | account (SecurityScoreScope)
+  subjectId  String? // brandId or connectedAccountId when scope != tenant
+  // S1 — score is NULLABLE: when coverage is below the minimum measurable
+  // dimensions the composite is `insufficient_data` (null), never a fabricated 0.
+  score      Int? // 0..100 composite, or null when insufficient_data
+  status     String   @default("insufficient_data") // measured | insufficient_data
+  subscores  Json // full breakdown: dimensions[], level, coverage, weightsRenormalized
+  inputs     Json? // aggregated input snapshot for explainability (PII-minimal, no raw content)
+  computedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand  Brand? @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, scope, computedAt])
+  @@map("security_score_snapshots")
+}
+
+// Shared detection ledger for Account Takeover (S2) and Brand Protection (S4).
+// INVARIANT: a detection never asserts a confirmed compromise. `severity` is a
+// RiskLevel and the item is phrased as "possible account takeover"; detectors
+// only ever create rows in `open`. Only a human review moves status to
+// `confirmed`/`dismissed`/`resolved`.
+model SecurityDetection {
+  id               String    @id @default(cuid())
+  tenantId         String
+  brandId          String?
+  subjectType      String // user | connected_account | brand (SecurityDetectionSubjectType)
+  subjectId        String
+  kind             String // SecurityDetectionKind (new_device, breach_exposure, mfa_disabled, ...)
+  severity         RiskLevel @default(low)
+  status           String    @default("open") // open | acknowledged | dismissed | confirmed | resolved
+  // S2 — 0..100 deterministic strength of evidence (NOT a probability model). Null until a detector sets it.
+  confidence       Int?
+  // S2 — DetectionSource: auth | session | connector | action | manual. Null on legacy rows.
+  source           String?
+  // S2 — DEDUPLICATION. `dedupeKey` is the stable idempotency key (core detectionDedupeKey). A PARTIAL
+  // UNIQUE index (raw SQL, in the migration) enforces at most ONE ACTIVE (open/acknowledged/confirmed)
+  // detection per (tenantId, dedupeKey) — a recurring signal increments occurrenceCount + lastObservedAt
+  // instead of piling up duplicate open rows. Terminal rows (dismissed/resolved) do NOT block a new one.
+  dedupeKey        String? // null on legacy rows; excluded from the partial-unique guard
+  // detectedAt IS the first-observed timestamp (set on create, never updated). lastObservedAt bumps on
+  // each re-observation of the same active detection.
+  lastObservedAt   DateTime  @default(now())
+  occurrenceCount  Int       @default(1)
+  // S2 — stable machine reason code for localized display (mirrors the score's issueCode pattern).
+  reasonCode       String?
+  // S2 — human note captured on dismiss/resolve (bounded + sanitized at the action layer; never a secret).
+  resolutionNote   String?
+  evidence         Json? // PII-minimal, sanitized signal evidence (never tokens/secrets/keys)
+  detectedByEngine String? // detector/engine version for auditability
+  detectedAt       DateTime  @default(now())
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  resolvedAt       DateTime?
+
+  tenant                    Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand                     Brand?                              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  // C3 — links to reviewed cases (a detection may be linked to incidents but can also stand alone).
+  incidentLinks             IncidentDetectionLink[]
+  // C8 — cyberbullying triage overlay (separate from the security `status`; never overloaded).
+  cyberbullyingTriage       CyberbullyingDetectionTriage?
+  cyberbullyingTriageEvents CyberbullyingDetectionTriageEvent[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, status, detectedAt])
+  @@index([tenantId, subjectType, subjectId])
+  @@index([tenantId, kind, status])
+  @@map("security_detections")
+}
+
+// Brand-abuse / impersonation case register (S4). Sources are sanctioned only:
+// inbound classified content, manual reporting, or an official API signal — no
+// scraping. Escalatable to an Incident (S3).
+model BrandProtectionCase {
+  id                String    @id @default(cuid())
+  tenantId          String
+  brandId           String
+  kind              String // impersonation | handle_squat | counterfeit | phishing | brand_attack (BrandProtectionKind)
+  platform          Platform?
+  subjectHandle     String?
+  evidenceUrl       String?
+  evidence          Json?
+  source            String // detected | user_reported | api (BrandProtectionSource)
+  severity          RiskLevel @default(medium)
+  status            String    @default("open") // open | investigating | reported_to_platform | resolved | dismissed
+  linkedDetectionId String?
+  linkedIncidentId  String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  resolvedAt        DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand  Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, status, createdAt])
+  @@map("brand_protection_cases")
+}
+
+// ===========================================================================
+// Cyberbullying Protection — C1 Protected Subject & Access Foundation.
+// Victim-centric, tenant-scoped, ISOLATED from brand-reputation models (no
+// brandId, no ContentItem/ReputationItem coupling). Minimal, NON-SENSITIVE
+// foundation only: NO date-of-birth, address, phone, email, health, photos, or
+// guardian data. String columns mirror @guardora/core enums. RLS ENABLE+FORCE +
+// tenant_isolation added in the accompanying migration. Composite (id, tenantId)
+// keys keep cross-tenant references structurally impossible.
+// ===========================================================================
+
+model ProtectedSubject {
+  id               String   @id @default(cuid())
+  tenantId         String
+  // Opaque, tenant-scoped public identifier (never a real-world PII value).
+  publicIdentifier String
+  displayLabel     String
+  subjectType      String // individual | other (ProtectedSubjectType)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant          Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  relationships   ProtectedSubjectRelationship[]
+  // C3 — a protected subject may be the victim of cyberbullying incidents / a participant.
+  incidentDetails CyberbullyingIncidentDetail[]
+  participations  IncidentParticipant[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, publicIdentifier])
+  @@index([tenantId, active])
+  @@map("protected_subjects")
+}
+
+model ProtectedSubjectRelationship {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  protectedSubjectId String
+  relationshipType   String // trusted_contact | guardian | school | company (ProtectedSubjectRelationshipType)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Composite (id, tenantId) FK — cross-tenant references are structurally impossible.
+  subject ProtectedSubject @relation(fields: [protectedSubjectId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, protectedSubjectId])
+  @@map("protected_subject_relationships")
+}
+
+// ===========================================================================
+// Cyberbullying Protection — C2 Evidence Foundation.
+// LOCAL storage only (no cloud). Binary content NEVER in the DB — only a
+// StorageObject reference. Original evidence is IMMUTABLE; only governance
+// metadata (integrity/scan status, retention, legal hold, deletion) mutates.
+// Custody is an append-only ledger, separate from AuditLog. String columns
+// mirror @guardora/core cyberbullying-evidence enums. RLS ENABLE+FORCE +
+// tenant_isolation added in the accompanying migration; composite (id, tenantId)
+// FKs keep cross-tenant references structurally impossible.
+// ===========================================================================
+
+model StorageObject {
+  id         String   @id @default(cuid())
+  tenantId   String
+  // Opaque LOCAL storage key (never a real path/PII; never a cloud URL).
+  storageKey String
+  sizeBytes  Int
+  mimeType   String?
+  createdAt  DateTime @default(now())
+
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evidence IncidentEvidence[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, createdAt])
+  @@map("storage_objects")
+}
+
+model IncidentEvidence {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  evidenceType       String // screenshot | message_text | file | link | other (EvidenceType)
+  sourceType         String // user_upload | owned_account | api | other (EvidenceSourceType)
+  captureMethod      String // user_upload | manual | api (EvidenceCaptureMethod)
+  createdAt          DateTime  @default(now())
+  capturedAt         DateTime
+  // Opaque user reference (no FK — evidence may be system-captured; PII-minimal).
+  submittedByUserId  String?
+  // Reference columns (no FK yet): the composite (id, tenantId) FKs to Incident /
+  // ProtectedSubject are wired when the case/subject linkage ships (C3+). Nullable
+  // now; a plain column avoids a composite SetNull that cannot null a required tenantId.
+  incidentId         String?
+  protectedSubjectId String?
+  storageObjectId    String
+  mimeType           String?
+  sizeBytes          Int
+  // Immutable integrity facts.
+  contentHash        String
+  hashAlgorithm      String // sha256 (HashAlgorithm)
+  // Mutable governance metadata.
+  integrityStatus    String    @default("unverified") // unverified | verified | failed
+  scanStatus         String    @default("pending_scan") // pending_scan | clean | infected | scan_failed
+  retentionUntil     DateTime?
+  legalHold          Boolean   @default(false)
+  deletedAt          DateTime?
+
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  storageObject StorageObject          @relation(fields: [storageObjectId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  // C3 — composite tenant FK to the case ledger. Nullable (evidence may exist
+  // before a case). Cascade: deleting an incident removes its linked evidence
+  // (cyberbullying incidents are archived, not deleted; a SetNull-preserving
+  // trigger is a future enhancement — composite SetNull can't null a required tenantId).
+  incident      Incident?              @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  contextItems  EvidenceContextItem[]
+  custodyEvents EvidenceCustodyEvent[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId])
+  @@index([tenantId, protectedSubjectId])
+  @@map("incident_evidence")
+}
+
+model EvidenceContextItem {
+  id               String   @id @default(cuid())
+  tenantId         String
+  evidenceId       String
+  relation         String // before | primary | after (EvidenceContextRelation)
+  sequencePosition Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evidence IncidentEvidence @relation(fields: [evidenceId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, evidenceId])
+  @@map("evidence_context_items")
+}
+
+// Append-only forensic chain-of-custody. No update/delete path.
+model EvidenceCustodyEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  evidenceId    String
+  eventType     String // captured | uploaded | verified | viewed_sensitive | redacted | deleted | retention_extended | legal_hold_enabled | legal_hold_removed (EvidenceCustodyEventType)
+  actorUserId   String?
+  actorRole     String?
+  reason        String?
+  previousHash  String?
+  resultingHash String?
+  createdAt     DateTime @default(now())
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evidence IncidentEvidence @relation(fields: [evidenceId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, evidenceId, createdAt])
+  @@map("evidence_custody_events")
+}
+
+// ===========================================================================
+// Cyberbullying Protection — C3 Incident Core & Detection Binding.
+// The Incident model above is the SINGLE case ledger; these are its cyberbullying
+// extension + case graph. SecurityDetection stays the SINGLE signal ledger.
+// All tenant-scoped, RLS ENABLE+FORCE, composite (id, tenantId) FKs.
+// ===========================================================================
+
+// One-to-one detail of an Incident (ADR-0001). NOT a second case ledger — it
+// cannot exist without its Incident. `summary` is CONFIDENTIAL (never logged).
+model CyberbullyingIncidentDetail {
+  id                            String   @id @default(cuid())
+  tenantId                      String
+  incidentId                    String
+  protectedSubjectId            String
+  reportSource                  String // manual_report | detection (IncidentReportSource)
+  summary                       String // CONFIDENTIAL — never written to logs
+  // Neutral, non-accusatory: an ALLEGED actor label, never a confirmed attacker.
+  allegedActorLabel             String?
+  allegedActorExternalReference String?
+  // C5 — the ONE primary reviewer currently assigned (opaque user reference, no FK).
+  // The append-only IncidentAssignmentEvent log is the who/when/why history.
+  assignedReviewerUserId        String?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident         @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  subject  ProtectedSubject @relation(fields: [protectedSubjectId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([incidentId, tenantId]) // one-to-one: at most one detail per incident
+  @@index([tenantId, protectedSubjectId])
+  @@map("cyberbullying_incident_details")
+}
+
+// Append-only, human-readable case timeline (distinct from AuditLog + custody).
+model IncidentTimelineEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  incidentId  String
+  eventType   String // IncidentTimelineEventType
+  actorUserId String? // null only for system events
+  reason      String?
+  metadata    Json? // sanitized — no evidence content / secrets / PII
+  createdAt   DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, createdAt])
+  @@map("incident_timeline_events")
+}
+
+// A person's role in an incident. `alleged_actor` is neutral — never a confirmed
+// attacker without human review. No Tamanor account is required (externalReference).
+model IncidentParticipant {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  incidentId         String
+  role               String // protected_subject | reporter | alleged_actor | reviewer | trusted_contact (IncidentParticipantRole)
+  protectedSubjectId String?
+  userId             String? // opaque user reference (no FK)
+  externalReference  String? // sanitized external identifier
+  createdAt          DateTime @default(now())
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident          @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  // Cascade (not SetNull): a composite FK cannot null the required tenantId. A
+  // subject is normally anonymized, not deleted; deletion removes its participations.
+  subject  ProtectedSubject? @relation(fields: [protectedSubjectId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  // Prevent a duplicate participant with the SAME identity in one incident.
+  @@unique([incidentId, role, protectedSubjectId, userId, externalReference])
+  @@index([tenantId, incidentId])
+  @@map("incident_participants")
+}
+
+// Explicit many-to-many link between a reviewed case and security signals. A link
+// NEVER confirms the incident. Unique per (incident, detection).
+model IncidentDetectionLink {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  incidentId          String
+  securityDetectionId String
+  linkedByUserId      String? // null only for a trusted system actor
+  linkReason          String
+  createdAt           DateTime @default(now())
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident  Incident          @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  detection SecurityDetection @relation(fields: [securityDetectionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([incidentId, securityDetectionId]) // idempotent link; same-tenant guaranteed by composite FKs
+  @@index([tenantId, incidentId])
+  @@map("incident_detection_links")
+}
+
+// C5 — append-only, CONFIDENTIAL internal reviewer note. No edit, no delete: the
+// record is immutable once written. The body is never logged and is never shown to
+// a protected subject (read requires cyberbullying:review). Not evidence — plain
+// text, never a blob / storage object.
+model IncidentReviewerNote {
+  id           String   @id @default(cuid())
+  tenantId     String
+  incidentId   String
+  authorUserId String // opaque user reference (no FK); the note's author
+  body         String // CONFIDENTIAL — never written to logs / audit / timeline
+  createdAt    DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, createdAt])
+  @@map("incident_reviewer_notes")
+}
+
+// C5 — append-only assignment history for the single primary reviewer. Records who
+// assigned whom, when, and why. `assigneeUserId` is null for an unassign;
+// `previousAssigneeUserId` is null for the first assignment. Immutable.
+model IncidentAssignmentEvent {
+  id                     String   @id @default(cuid())
+  tenantId               String
+  incidentId             String
+  action                 String // assigned | reassigned | unassigned (IncidentAssignmentAction)
+  assigneeUserId         String? // null for unassign
+  previousAssigneeUserId String? // null for the first assignment
+  assignedByUserId       String // the actor who performed the assignment
+  reason                 String?
+  createdAt              DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, createdAt])
+  @@map("incident_assignment_events")
+}
+
+// C6 — manual-report idempotency claim. Guarantees one browser submit creates at
+// most one incident: the claim is inserted as the LAST write of the create
+// transaction, so a duplicate key (double-click / resubmit) hits the unique index
+// and rolls the whole creation back — no orphan incident. Tenant + user scoped;
+// the raw key is server/client-only and never shown in the UI. Not the incident
+// itself — just a durable dedup marker mapping key → created incident.
+model CyberbullyingReportSubmission {
+  id             String   @id @default(cuid())
+  tenantId       String
+  userId         String // the reporter (opaque reference, no FK)
+  idempotencyKey String
+  incidentId     String
+  createdAt      DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  // One incident per (tenant, user, key) — the double-submit guard. Tenant-scoped
+  // so a key can never collide across tenants.
+  @@unique([tenantId, userId, idempotencyKey])
+  @@index([tenantId, incidentId])
+  @@map("cyberbullying_report_submissions")
+}
+
+// C8 — cyberbullying TRIAGE state of an existing SecurityDetection. NOT a second
+// detection model: a 1:1 overlay that lets a human triage a security signal into
+// the cyberbullying workflow (new → under_review → false_positive | ignored |
+// linked_to_incident, reopenable from false_positive/ignored). The security-domain
+// `SecurityDetection.status` is never touched. Detections are never deleted.
+model CyberbullyingDetectionTriage {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  securityDetectionId String
+  status              String   @default("new") // CyberbullyingDetectionStatus
+  incidentId          String? // set when linked_to_incident (plain ref; the C3 link is the FK-backed source of truth)
+  reviewedByUserId    String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  detection SecurityDetection @relation(fields: [securityDetectionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([securityDetectionId, tenantId]) // one triage row per detection
+  @@index([tenantId, status])
+  @@map("cyberbullying_detection_triage")
+}
+
+// C8 — append-only detection-triage timeline / status history. No update/delete.
+model CyberbullyingDetectionTriageEvent {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  securityDetectionId String
+  eventType           String // CyberbullyingDetectionEventType
+  actorUserId         String?
+  reason              String?
+  metadata            Json? // sanitized — ids/status only, never signal evidence
+  createdAt           DateTime @default(now())
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  detection SecurityDetection @relation(fields: [securityDetectionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, securityDetectionId, createdAt])
+  @@map("cyberbullying_detection_triage_events")
+}
+
+// C9 — Protection Plan. A 1:1 case-management extension of an Incident (a case IS
+// the incident — NOT a second case model). All fields are set MANUALLY by a human
+// reviewer; nothing here is inferred or automatic. Milestones are nullable
+// timestamps toggled by hand. Free-text (objective/notes) is CONFIDENTIAL — never
+// written to the timeline or audit.
+model CyberbullyingProtectionPlan {
+  id                           String    @id @default(cuid())
+  tenantId                     String
+  incidentId                   String
+  riskLevel                    String? // CaseRiskLevel (low|medium|high|critical) — null until set
+  // C10 — when riskLevel became CRITICAL (start of the critical-risk-response SLA);
+  // null unless currently critical. Set/cleared by the manual protection-plan update.
+  criticalRiskSetAt            DateTime?
+  protectionStatus             String    @default("not_started") // CaseProtectionStatus
+  objective                    String?
+  notes                        String?
+  nextReviewAt                 DateTime?
+  lastReviewAt                 DateTime?
+  followUpNotes                String?
+  // Manually-toggled milestones (null = not achieved).
+  milestoneInitialReviewAt     DateTime?
+  milestoneEvidenceCollectedAt DateTime?
+  milestoneVictimContactedAt   DateTime?
+  milestoneProtectionActiveAt  DateTime?
+  milestoneResolvedAt          DateTime?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([incidentId, tenantId]) // one protection plan per incident
+  @@index([tenantId, protectionStatus])
+  @@map("cyberbullying_protection_plans")
+}
+
+// C9 — Case Task. Belongs to an Incident (no standalone task centre). Status
+// transitions are validated server-side. Title/description CONTENT never enters the
+// audit/timeline.
+model CyberbullyingCaseTask {
+  id              String    @id @default(cuid())
+  tenantId        String
+  incidentId      String
+  title           String
+  description     String?
+  status          String    @default("todo") // CaseTaskStatus (todo|in_progress|done|cancelled)
+  assigneeUserId  String? // opaque user reference (no FK)
+  dueDate         DateTime?
+  createdByUserId String
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, status])
+  @@map("cyberbullying_case_tasks")
+}
+
+// C10 — cyberbullying-scoped internal, in-app notification (tenant-scoped, recipient-based).
+// Renamed from `Notification` (table `notifications`) to `CyberbullyingNotification`
+// (table `cyberbullying_notifications`) during the origin/main merge: origin/main's V1.70
+// introduced its OWN general product `Notification` (table `notifications`) with a different
+// shape, so the two coexist as distinct domains. The DB stores a `type` (translation-key
+// mapping happens in the UI — NEVER a rendered localized string) + SANITIZED metadata only:
+// never notes/summary/filename/actor reference. The recipient MUST be a member of the same
+// tenant. `deduplicationKey` makes a repeated evaluation idempotent while a new relevant
+// state creates a new row.
+model CyberbullyingNotification {
+  id               String    @id @default(cuid())
+  tenantId         String
+  recipientUserId  String
+  type             String
+  severity         String // info | attention | urgent (NotificationSeverity)
+  entityType       String // NotificationEntityType
+  entityId         String
+  incidentId       String? // plain ref (general model): the safe CTA target when set
+  deduplicationKey String
+  metadata         Json? // sanitized — ids/enum values only
+  createdAt        DateTime  @default(now())
+  readAt           DateTime?
+  dismissedAt      DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  // Dedup: one live notification per (tenant, recipient, key). A changed due date ⇒
+  // a different key ⇒ a new notification; cross-tenant collision is impossible.
+  // Explicit `map:` names: the default names exceed Postgres's 63-char identifier
+  // limit once the table is `cyberbullying_notifications`, so name them deterministically.
+  @@unique([tenantId, recipientUserId, deduplicationKey], map: "cyberbullying_notifications_dedup_key")
+  @@index([tenantId, recipientUserId, readAt, createdAt], map: "cyberbullying_notifications_unread_idx")
+  @@index([tenantId, incidentId])
+  @@map("cyberbullying_notifications")
+}
+
+// C10 — Manual incident escalation. An explicit, auditable human step marking an
+// incident as needing higher attention. It NEVER changes the incident lifecycle,
+// the manual risk level, milestones, tasks, or assignments. The confidential `note`
+// is never written to the timeline, audit, or a notification payload.
+model CyberbullyingEscalation {
+  id                String    @id @default(cuid())
+  tenantId          String
+  incidentId        String
+  status            String    @default("active") // active | resolved | cancelled (EscalationStatus)
+  severity          String // attention | urgent (EscalationSeverity)
+  reasonCode        String // EscalationReason (enum allowlist)
+  note              String? // CONFIDENTIAL — never logged / never in a notification
+  escalatedByUserId String
+  escalatedAt       DateTime  @default(now())
+  targetUserId      String?
+  targetRole        String?
+  resolvedAt        DateTime?
+  resolvedByUserId  String?
+  resolutionCode    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, status])
+  @@map("cyberbullying_escalations")
+}
+
+// C11 — IMMUTABLE compliance report snapshot: an append-only, versioned, hashed
+// snapshot of an incident at a point in time. NOT a second case model — the incident
+// stays the canonical case. Immutability is enforced at the DB privilege level: the
+// app role is granted SELECT + INSERT only (no UPDATE/DELETE) in the migration, so a
+// snapshot can never be edited or deleted by the application. The payload holds only
+// SANITIZED metadata (never evidence content, notes, or subject PII). A general
+// foundation (reusable), used in C11 only for cyberbullying.
+model ComplianceReportSnapshot {
+  id                      String    @id @default(cuid())
+  tenantId                String
+  incidentId              String
+  reportType              String // ComplianceReportType
+  version                 Int
+  schemaVersion           String
+  status                  String    @default("ready") // ComplianceReportStatus (append-only)
+  redactionState          String    @default("unredacted_internal") // RedactionState
+  generatedByUserId       String
+  generatedAt             DateTime  @default(now())
+  sourceIncidentUpdatedAt DateTime?
+  snapshotHash            String
+  previousSnapshotHash    String?
+  snapshotPayload         Json
+  idempotencyKey          String?
+  // C12 — redaction provenance (set only on a REDACTED snapshot; null on originals).
+  sourceReportId          String?
+  sourceSnapshotHash      String?
+  redactionDraftId        String?
+  redactionRuleSetHash    String?
+  approvedByUserId        String?
+  approvedAt              DateTime?
+  redactionSummary        Json?
+  createdAt               DateTime  @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId], map: "crs_id_tenant_key")
+  // Version is server-computed and unique per (tenant, incident, reportType).
+  @@unique([tenantId, incidentId, reportType, version], map: "crs_tenant_incident_type_version_key")
+  // Idempotency: one report per (tenant, user, incident, reportType, key). NULL keys
+  // are distinct in Postgres, so keyless creates never collide.
+  @@unique([tenantId, generatedByUserId, incidentId, reportType, idempotencyKey], map: "crs_tenant_user_incident_type_idem_key")
+  @@index([tenantId, incidentId, reportType, version], map: "crs_tenant_incident_type_version_idx")
+  @@map("compliance_report_snapshots")
+}
+
+// C12 — Redaction draft (maker side of maker-checker). Editable ONLY in `draft`;
+// SUBMITTED is read-only; APPROVED/REJECTED/CANCELLED/SUPERSEDED are terminal.
+// Controlled status transitions are validated server-side and mirrored append-only
+// into compliance_approval_history_events. No source field values are stored here.
+model ComplianceRedactionDraft {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  incidentId          String
+  sourceReportId      String
+  status              String    @default("draft") // RedactionDraftStatus
+  revision            Int       @default(1)
+  createdByUserId     String
+  submittedByUserId   String?
+  submittedAt         DateTime?
+  approvedByUserId    String?
+  approvedAt          DateTime?
+  rejectedByUserId    String?
+  rejectedAt          DateTime?
+  rejectionReasonCode String?
+  producedReportId    String?
+  idempotencyKey      String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rules  ComplianceRedactionRule[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, createdByUserId, sourceReportId, idempotencyKey], map: "crd_tenant_user_source_idem_key")
+  @@index([tenantId, incidentId, status])
+  @@map("compliance_redaction_drafts")
+}
+
+// C12 — a single field-path redaction rule (registry-validated). Editable only while
+// the parent draft is `draft`. The confidential OTHER note is stored here but never
+// enters the snapshot, timeline, audit, or manifest.
+model ComplianceRedactionRule {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  draftId              String
+  fieldPath            String
+  action               String // RedactionAction
+  reasonCode           String // RedactionReasonCode
+  reasonNote           String? // CONFIDENTIAL (OTHER only) — never logged/exported
+  replacementMarkerKey String?
+  order                Int      @default(0)
+  createdByUserId      String
+  createdAt            DateTime @default(now())
+
+  tenant Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  draft  ComplianceRedactionDraft @relation(fields: [draftId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, draftId, order])
+  @@map("compliance_redaction_rules")
+}
+
+// C12 — export authorization request (dual control). The requester can never approve
+// their own request. `recipientLabel` is a sanitized internal description only —
+// never used to send anything.
+model ComplianceExportAuthorization {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  incidentId          String
+  reportId            String
+  status              String    @default("requested") // ExportAuthorizationStatus
+  purposeCode         String
+  purposeNote         String? // CONFIDENTIAL (OTHER only) — never in the manifest/audit
+  recipientType       String
+  recipientLabel      String? // sanitized internal label; no contact data
+  requestedByUserId   String
+  requestedAt         DateTime  @default(now())
+  approvedByUserId    String?
+  approvedAt          DateTime?
+  rejectedByUserId    String?
+  rejectedAt          DateTime?
+  rejectionReasonCode String?
+  expiresAt           DateTime
+  usedAt              DateTime?
+  cancelledAt         DateTime?
+  idempotencyKey      String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, requestedByUserId, reportId, idempotencyKey], map: "cea_tenant_user_report_idem_key")
+  @@index([tenantId, incidentId, status])
+  @@map("compliance_export_authorizations")
+}
+
+// C12 — IMMUTABLE internal export package manifest. Describes WHAT a future export
+// would contain — never a file, path, URL, or bytes. App role: SELECT + INSERT only
+// (UPDATE/DELETE revoked in the migration).
+model ComplianceExportPackageManifest {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  incidentId           String
+  reportId             String
+  authorizationId      String
+  packageVersion       Int
+  schemaVersion        String
+  status               String   @default("prepared") // ExportPackageStatus
+  purposeCode          String
+  recipientType        String
+  preparedByUserId     String
+  preparedAt           DateTime @default(now())
+  reportSnapshotHash   String
+  redactionRuleSetHash String?
+  authorizationHash    String
+  manifestHash         String
+  previousManifestHash String?
+  manifestPayload      Json
+  idempotencyKey       String?
+  createdAt            DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, incidentId, reportId, packageVersion], map: "cepm_tenant_incident_report_version_key")
+  @@unique([tenantId, preparedByUserId, authorizationId, idempotencyKey], map: "cepm_tenant_user_auth_idem_key")
+  @@index([tenantId, incidentId, packageVersion])
+  @@map("compliance_export_package_manifests")
+}
+
+// C12 — APPEND-ONLY approval / workflow history. App role: SELECT + INSERT only.
+// Records the decision trail; never source field values, notes, payloads, or PII.
+model ComplianceApprovalHistoryEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  incidentId  String
+  entityType  String // draft | export_authorization | manifest
+  entityId    String
+  eventType   String
+  actorUserId String?
+  metadata    Json? // sanitized ids/status/reasonCode only
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, entityType, entityId, createdAt])
+  @@map("compliance_approval_history_events")
 }
 
 enum LeadStatus {

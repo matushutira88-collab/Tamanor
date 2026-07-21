@@ -73,6 +73,8 @@ export interface ResolvedSession {
   emailVerified: boolean;
   tenantId: string;
   tenantName: string;
+  /** CS-C0 — the active workspace's immutable kind (business|family|child_safety_organization|internal). */
+  workspaceKind: string;
   role: string;
   expiresAt: Date;
   /** V1.58.9 — hard ceiling regardless of activity (null for pre-migration sessions). */
@@ -186,6 +188,7 @@ async function hydrate(
       emailVerified: membership.user.emailVerifiedAt !== null,
       tenantId: membership.tenant.id,
       tenantName: membership.tenant.name,
+      workspaceKind: membership.tenant.workspaceKind,
       role: membership.role as string,
       expiresAt,
       absoluteExpiresAt,

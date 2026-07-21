@@ -31,6 +31,39 @@ export enum Permission {
   // Audit & reports
   AuditView = "audit:view",
   ReportView = "report:view",
+  // Security Suite (S0) — read = Analyst+; manage = Admin+/Owner. Plan-gated
+  // separately by the `security_suite` entitlement. Detection & response only:
+  // these never grant new platform-mutation power.
+  /** View Security Center, Security Score, and detections. */
+  SecurityView = "security:view",
+  /** Acknowledge/dismiss/confirm detections, manage brand-protection cases. */
+  SecurityManage = "security:manage",
+  /** View security incidents and their timeline. */
+  IncidentView = "incident:view",
+  /** Manage incident lifecycle (assign, transition, resolve). */
+  IncidentManage = "incident:manage",
+  // Cyberbullying Protection (C1 foundation). Server-enforced; subject-scope filter
+  // runs ABOVE tenant RLS. The two most sensitive — viewing unredacted sensitive
+  // evidence and exporting evidence — are OWNER-EXCLUSIVE (granted only via
+  // OWNER_ALL, absent from every role list below), because an admin must NOT get
+  // sensitive-evidence access automatically.
+  CyberbullyingViewOwn = "cyberbullying:view_own",
+  CyberbullyingReport = "cyberbullying:report",
+  CyberbullyingReview = "cyberbullying:review",
+  CyberbullyingManage = "cyberbullying:manage",
+  CyberbullyingEscalate = "cyberbullying:escalate",
+  CyberbullyingViewSensitiveEvidence = "cyberbullying:view_sensitive_evidence",
+  CyberbullyingExportEvidence = "cyberbullying:export_evidence",
+  CyberbullyingManageRetention = "cyberbullying:manage_retention",
+  CyberbullyingManageGuardianAccess = "cyberbullying:manage_guardian_access",
+  CyberbullyingAudit = "cyberbullying:audit",
+  // C12 — compliance redaction / four-eyes approval / export authorization. `redact`
+  // is reviewer-level (author of a draft); `approve` and `export_authorize` are
+  // ELEVATED (Admin/Owner) so a reviewer can never approve their own draft — the
+  // author≠approver four-eyes rule is ALSO enforced server-side regardless of role.
+  CyberbullyingComplianceRedact = "cyberbullying:compliance_redact",
+  CyberbullyingComplianceApprove = "cyberbullying:compliance_approve",
+  CyberbullyingComplianceExportAuthorize = "cyberbullying:compliance_export_authorize",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -61,6 +94,24 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.RuleManage,
     Permission.AuditView,
     Permission.ReportView,
+    Permission.SecurityView,
+    Permission.SecurityManage,
+    Permission.IncidentView,
+    Permission.IncidentManage,
+    // Cyberbullying — Admin gets the operational set, NOT sensitive-evidence view
+    // or export (those stay owner-exclusive via OWNER_ALL).
+    Permission.CyberbullyingViewOwn,
+    Permission.CyberbullyingReport,
+    Permission.CyberbullyingReview,
+    Permission.CyberbullyingManage,
+    Permission.CyberbullyingEscalate,
+    Permission.CyberbullyingManageRetention,
+    Permission.CyberbullyingManageGuardianAccess,
+    Permission.CyberbullyingAudit,
+    // C12 — Admin can author, approve others' drafts, and authorize exports.
+    Permission.CyberbullyingComplianceRedact,
+    Permission.CyberbullyingComplianceApprove,
+    Permission.CyberbullyingComplianceExportAuthorize,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -73,6 +124,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.RuleManage,
     Permission.AuditView,
     Permission.ReportView,
+    Permission.SecurityView,
+    Permission.IncidentView,
   ],
   [Role.Reviewer]: [
     Permission.BrandView,
@@ -85,6 +138,14 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.RuleView,
     Permission.AuditView,
     Permission.ReportView,
+    Permission.SecurityView,
+    Permission.IncidentView,
+    // Cyberbullying — Reviewer may see own, report, and review.
+    Permission.CyberbullyingViewOwn,
+    Permission.CyberbullyingReport,
+    Permission.CyberbullyingReview,
+    // C12 — Reviewer may author redaction drafts (but NOT approve them).
+    Permission.CyberbullyingComplianceRedact,
   ],
   [Role.Viewer]: [
     Permission.BrandView,
