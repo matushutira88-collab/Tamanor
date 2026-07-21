@@ -125,8 +125,8 @@ export default async function AboutPage() {
             {c.startFree}
           </Link>{" "}
           {c.reachUsPre}{" "}
-          <a href="mailto:hello@guardora.ai" className="text-[var(--color-brand)] hover:underline">
-            hello@guardora.ai
+          <a href="mailto:hello@tamanor.com" className="text-[var(--color-brand)] hover:underline">
+            hello@tamanor.com
           </a>
           {c.reachUsPost}
         </p>

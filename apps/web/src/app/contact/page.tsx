@@ -143,9 +143,9 @@ export default async function ContactPage({
         <div className="space-y-4">
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
             <p className="text-sm font-semibold">{c.emailLabel}</p>
-            <a href="mailto:hello@guardora.ai" className="mt-1 block text-[var(--color-brand)] hover:underline">hello@guardora.ai</a>
+            <a href="mailto:hello@tamanor.com" className="mt-1 block text-[var(--color-brand)] hover:underline">hello@tamanor.com</a>
             <p className="mt-4 text-sm font-semibold">{c.securityLabel}</p>
-            <a href="mailto:security@guardora.ai" className="mt-1 block text-[var(--color-brand)] hover:underline">security@guardora.ai</a>
+            <a href="mailto:security@tamanor.com" className="mt-1 block text-[var(--color-brand)] hover:underline">security@tamanor.com</a>
           </div>
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
             <p className="text-sm font-semibold">{c.liveWalkthroughTitle}</p>
