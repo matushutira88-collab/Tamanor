@@ -14,8 +14,9 @@
 import { ActorKind } from "@prisma/client";
 import { systemDb, withTenant } from "@guardora/db";
 
-/** The authoritative internal-tenant emails. A CODE constant (not user-controlled input). */
-export const INTERNAL_TENANT_EMAILS: readonly string[] = ["info@tamanor.sk"];
+/** The authoritative internal-tenant emails. A CODE constant (not user-controlled input). The registered
+ *  internal owner is info@tamanor.com; .sk is kept for safety in case that variant is ever used. */
+export const INTERNAL_TENANT_EMAILS: readonly string[] = ["info@tamanor.com", "info@tamanor.sk"];
 
 function argValue(name: string): string | null {
   const i = process.argv.indexOf(`--${name}`);
