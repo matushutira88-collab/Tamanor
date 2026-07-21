@@ -27,6 +27,101 @@ export enum IncidentReportSource {
 }
 
 /**
+ * C6 — neutral cyberbullying harm categories. The single source of truth for
+ * validating, localizing and rendering a manual report's category; persisted to
+ * the free `Incident.category` string column (not a new DB field). Values are
+ * descriptive and non-accusatory — never a guilt/verdict label.
+ */
+export enum CyberbullyingCategory {
+  Harassment = "harassment",
+  Threats = "threats",
+  Impersonation = "impersonation",
+  Doxxing = "doxxing",
+  Exclusion = "exclusion",
+  Other = "other",
+}
+export const CYBERBULLYING_CATEGORIES: readonly CyberbullyingCategory[] = Object.values(CyberbullyingCategory);
+export function isCyberbullyingCategory(x: unknown): x is CyberbullyingCategory {
+  return typeof x === "string" && (CYBERBULLYING_CATEGORIES as readonly string[]).includes(x);
+}
+export function isIncidentReportSource(x: unknown): x is IncidentReportSource {
+  return x === IncidentReportSource.ManualReport || x === IncidentReportSource.Detection;
+}
+
+// --- C6 Manual report input + validation (pure; server-authoritative) -------
+
+/** Bounds for a manual report. Enforced server-side regardless of client checks. */
+export const MANUAL_REPORT_LIMITS = {
+  summaryMin: 10,
+  summaryMax: 4000,
+  actorLabelMax: 200,
+  actorRefMax: 200,
+  subjectIdMax: 64,
+  idempotencyKeyMax: 100,
+} as const;
+
+export type ManualReportField =
+  | "protectedSubjectId" | "reportSource" | "category" | "summary"
+  | "allegedActorLabel" | "allegedActorExternalReference" | "idempotencyKey";
+export type ManualReportErrorCode = "required" | "too_short" | "too_long" | "invalid";
+
+/** Raw (client-supplied) manual report input, before trust-sensitive server values. */
+export interface ManualReportInput {
+  protectedSubjectId: string;
+  reportSource: string;
+  category: string;
+  summary: string;
+  allegedActorLabel?: string | null;
+  allegedActorExternalReference?: string | null;
+  idempotencyKey: string;
+}
+
+export interface ManualReportValidation {
+  ok: boolean;
+  errors: Partial<Record<ManualReportField, ManualReportErrorCode>>;
+}
+
+const SAFE_ID = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Validate a manual report. PURE and fail-closed — the same function guards the
+ * client (UX) and the server (authority). Returns per-field error CODES only
+ * (the UI localizes them); never a raw message that could leak internals. The
+ * confidential `summary` value is validated but never returned in errors.
+ */
+export function validateManualReportInput(input: ManualReportInput): ManualReportValidation {
+  const errors: Partial<Record<ManualReportField, ManualReportErrorCode>> = {};
+  const L = MANUAL_REPORT_LIMITS;
+
+  const subject = (input.protectedSubjectId ?? "").trim();
+  if (!subject) errors.protectedSubjectId = "required";
+  else if (subject.length > L.subjectIdMax || !SAFE_ID.test(subject)) errors.protectedSubjectId = "invalid";
+
+  // Manual flow: the ONLY valid source is manual_report (fail-closed on anything else).
+  if (input.reportSource !== IncidentReportSource.ManualReport) errors.reportSource = "invalid";
+
+  if (!input.category) errors.category = "required";
+  else if (!isCyberbullyingCategory(input.category)) errors.category = "invalid";
+
+  const summary = (input.summary ?? "").trim();
+  if (!summary) errors.summary = "required";
+  else if (summary.length < L.summaryMin) errors.summary = "too_short";
+  else if (summary.length > L.summaryMax) errors.summary = "too_long";
+
+  const label = (input.allegedActorLabel ?? "").trim();
+  if (label.length > L.actorLabelMax) errors.allegedActorLabel = "too_long";
+
+  const ref = (input.allegedActorExternalReference ?? "").trim();
+  if (ref.length > L.actorRefMax) errors.allegedActorExternalReference = "too_long";
+
+  const key = (input.idempotencyKey ?? "").trim();
+  if (!key) errors.idempotencyKey = "required";
+  else if (key.length > L.idempotencyKeyMax || !SAFE_ID.test(key)) errors.idempotencyKey = "invalid";
+
+  return { ok: Object.keys(errors).length === 0, errors };
+}
+
+/**
  * A person's role in an incident. `alleged_actor` is deliberate — the system
  * NEVER labels a person a confirmed/guilty attacker without human review.
  */
@@ -265,7 +360,7 @@ export interface IncidentActorContext {
  * tenant-scoped, permission-checked, transactional, audited, and fail-closed.
  */
 export interface CyberbullyingIncidentService {
-  createFromManualReport(actor: IncidentActorContext, input: { protectedSubjectId: string; summary: string; severity?: string; title?: string; allegedActorLabel?: string | null; allegedActorExternalReference?: string | null }): Promise<{ incidentId: string }>;
+  createFromManualReport(actor: IncidentActorContext, input: { protectedSubjectId: string; summary: string; category?: string; severity?: string; title?: string; allegedActorLabel?: string | null; allegedActorExternalReference?: string | null; idempotencyKey?: string }): Promise<{ incidentId: string; duplicate?: boolean }>;
   createFromDetections(actor: IncidentActorContext, input: { protectedSubjectId: string; summary: string; detectionIds: string[]; severity?: string; title?: string }): Promise<{ incidentId: string }>;
   linkDetection(actor: IncidentActorContext, incidentId: string, securityDetectionId: string, linkReason: string): Promise<{ linkId: string; created: boolean }>;
   linkEvidence(actor: IncidentActorContext, incidentId: string, evidenceId: string): Promise<void>;

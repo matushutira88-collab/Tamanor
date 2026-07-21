@@ -45,6 +45,18 @@ export interface CbCopy {
   assign: { title: string; unassigned: string; assignedTo: string; you: string; claim: string; reassign: string; unassign: string; historyTitle: string; historyEmpty: string; by: string; actionLabel: Record<"assigned" | "reassigned" | "unassigned", string> };
   notes: { title: string; subtitle: string; empty: string; you: string; placeholder: string; add: string; confidential: string };
   banner: { ok: string } & Record<"forbidden" | "not_found" | "transition" | "assignment" | "error", string>;
+  // C6 — manual report flow.
+  report: {
+    cta: string; title: string; subtitle: string;
+    steps: { subject: string; details: string; review: string };
+    subjectStep: { label: string; helper: string; emptyTitle: string; emptyBody: string; type: string; choose: string };
+    fields: { reportSource: string; category: string; summary: string; summaryHelper: string; actorLabel: string; actorLabelHelper: string; actorRef: string; actorRefHelper: string; optional: string };
+    reviewStep: { title: string; notConfirmed: string; humanReview: string; allegedNeutral: string };
+    buttons: { next: string; back: string; cancel: string; submit: string; submitting: string };
+    success: { title: string; body: string; incident: string; status: string; pending: string; openDetail: string; backToInbox: string; newReport: string };
+    errors: Record<"required" | "too_short" | "too_long" | "invalid" | "denied" | "locked" | "error", string>;
+    category: Record<"harassment" | "threats" | "impersonation" | "doxxing" | "exclusion" | "other", string>;
+  };
 }
 
 const STATUS_EN = { open: "Open", under_review: "Under review", acknowledged: "Acknowledged", confirmed: "Confirmed after review", action_required: "Action required", resolved: "Resolved", dismissed: "Dismissed", archived: "Archived" };
@@ -84,6 +96,17 @@ export const CB_COPY: Record<Locale, CbCopy> = {
     assign: { title: "Assignment", unassigned: "Unassigned", assignedTo: "Assigned to", you: "you", claim: "Assign to me", reassign: "Reassign to me", unassign: "Unassign", historyTitle: "Assignment history", historyEmpty: "No assignment activity yet.", by: "by", actionLabel: { assigned: "Assigned", reassigned: "Reassigned", unassigned: "Unassigned" } },
     notes: { title: "Reviewer notes", subtitle: "Internal & confidential — never shown to the protected subject. Append-only.", empty: "No reviewer notes yet.", you: "you", placeholder: "Add an internal note (not evidence)…", add: "Add note", confidential: "Confidential" },
     banner: { ok: "Done.", forbidden: "You don't have permission for that action.", not_found: "Incident not found or out of scope.", transition: "That status change isn't allowed from the current state.", assignment: "That assignment change isn't allowed.", error: "The action could not be completed." },
+    report: {
+      cta: "Report incident", title: "Report a cyberbullying incident", subtitle: "File a manual report for an existing protected subject. It opens an incident for human review — no automatic action is taken.",
+      steps: { subject: "Protected subject", details: "Incident details", review: "Review & submit" },
+      subjectStep: { label: "Protected subject", helper: "Choose the person this report is about. Only subjects you may report for are shown.", emptyTitle: "No protected subjects available", emptyBody: "There are no protected subjects you can report for yet. A protected subject must be created first before a report can be filed.", type: "Type", choose: "Select a subject…" },
+      fields: { reportSource: "Report source", category: "Category", summary: "What happened", summaryHelper: "Confidential summary for reviewers. Don't paste passwords or unrelated personal data.", actorLabel: "Alleged actor label", actorLabelHelper: "Optional. A neutral label for the reported person or account — not a verdict.", actorRef: "Alleged actor reference", actorRefHelper: "Optional. A handle, profile link or account reference.", optional: "optional" },
+      reviewStep: { title: "Review before submitting", notConfirmed: "This incident is not confirmed. Submitting sends it for human review.", humanReview: "The details below will be reviewed by an authorized person.", allegedNeutral: "The alleged actor is only a reported person or account — never a confirmed attacker." },
+      buttons: { next: "Continue", back: "Back", cancel: "Cancel", submit: "Submit report", submitting: "Submitting…" },
+      success: { title: "Report received", body: "The incident has been created and is waiting for review.", incident: "Incident", status: "Status", pending: "Waiting for review", openDetail: "Open incident", backToInbox: "Back to inbox", newReport: "File another report" },
+      errors: { required: "This field is required.", too_short: "This is too short.", too_long: "This is too long.", invalid: "This value isn't valid.", denied: "You don't have permission to file a report.", locked: "This feature isn't included in your plan.", error: "The report could not be submitted. Please try again." },
+      category: { harassment: "Harassment", threats: "Threats", impersonation: "Impersonation", doxxing: "Doxxing", exclusion: "Exclusion", other: "Other" },
+    },
   },
   sk: {
     moduleName: "Ochrana pred kyberšikanou", moduleDesc: "Posudzovanie incidentov zameraných na obeť — detegované signály a manuálne reporty, oddelené od brand moderácie.", available: "Dostupné",
@@ -108,6 +131,17 @@ export const CB_COPY: Record<Locale, CbCopy> = {
     assign: { title: "Priradenie", unassigned: "Nepriradené", assignedTo: "Priradené", you: "vy", claim: "Priradiť mne", reassign: "Prepísať na mňa", unassign: "Zrušiť priradenie", historyTitle: "História priradení", historyEmpty: "Zatiaľ žiadna aktivita priradení.", by: "vykonal", actionLabel: { assigned: "Priradené", reassigned: "Prepísané", unassigned: "Zrušené" } },
     notes: { title: "Poznámky posudzovateľa", subtitle: "Interné a dôverné — nikdy sa nezobrazia chránenej osobe. Len pridávanie.", empty: "Zatiaľ žiadne poznámky.", you: "vy", placeholder: "Pridať internú poznámku (nie dôkaz)…", add: "Pridať poznámku", confidential: "Dôverné" },
     banner: { ok: "Hotovo.", forbidden: "Na túto akciu nemáte oprávnenie.", not_found: "Incident sa nenašiel alebo je mimo rozsahu.", transition: "Táto zmena stavu nie je z aktuálneho stavu povolená.", assignment: "Táto zmena priradenia nie je povolená.", error: "Akciu sa nepodarilo dokončiť." },
+    report: {
+      cta: "Nahlásiť incident", title: "Nahlásiť incident kyberšikany", subtitle: "Podajte manuálne hlásenie pre existujúcu chránenú osobu. Otvorí sa incident na ľudské preskúmanie — nevykoná sa žiadna automatická akcia.",
+      steps: { subject: "Chránená osoba", details: "Údaje incidentu", review: "Kontrola a odoslanie" },
+      subjectStep: { label: "Chránená osoba", helper: "Vyberte osobu, ktorej sa hlásenie týka. Zobrazujú sa iba osoby, ktoré môžete nahlásiť.", emptyTitle: "Žiadne dostupné chránené osoby", emptyBody: "Zatiaľ nie sú žiadne chránené osoby, ktoré môžete nahlásiť. Najprv musí byť vytvorená chránená osoba, až potom je možné podať hlásenie.", type: "Typ", choose: "Vyberte osobu…" },
+      fields: { reportSource: "Zdroj hlásenia", category: "Kategória", summary: "Čo sa stalo", summaryHelper: "Dôverné zhrnutie pre posudzovateľov. Nevkladajte heslá ani nesúvisiace osobné údaje.", actorLabel: "Označenie údajného aktéra", actorLabelHelper: "Voliteľné. Neutrálne označenie nahlásenej osoby alebo účtu — nie je to verdikt.", actorRef: "Odkaz na údajného aktéra", actorRefHelper: "Voliteľné. Prezývka, odkaz na profil alebo referencia účtu.", optional: "voliteľné" },
+      reviewStep: { title: "Skontrolujte pred odoslaním", notConfirmed: "Tento incident nie je potvrdený. Odoslaním ho posielate na ľudské preskúmanie.", humanReview: "Nižšie uvedené údaje preskúma oprávnená osoba.", allegedNeutral: "Údajný aktér je iba nahlásená osoba alebo účet — nikdy nie potvrdený útočník." },
+      buttons: { next: "Pokračovať", back: "Späť", cancel: "Zrušiť", submit: "Odoslať hlásenie", submitting: "Odosiela sa…" },
+      success: { title: "Hlásenie prijaté", body: "Incident bol vytvorený a čaká na preskúmanie.", incident: "Incident", status: "Stav", pending: "Čaká na preskúmanie", openDetail: "Otvoriť incident", backToInbox: "Späť do inboxu", newReport: "Podať ďalšie hlásenie" },
+      errors: { required: "Toto pole je povinné.", too_short: "Toto je príliš krátke.", too_long: "Toto je príliš dlhé.", invalid: "Táto hodnota nie je platná.", denied: "Nemáte oprávnenie podať hlásenie.", locked: "Táto funkcia nie je súčasťou vášho plánu.", error: "Hlásenie sa nepodarilo odoslať. Skúste to znova." },
+      category: { harassment: "Obťažovanie", threats: "Vyhrážky", impersonation: "Zneužitie identity", doxxing: "Doxxing", exclusion: "Vylučovanie", other: "Iné" },
+    },
   },
   de: {
     moduleName: "Cybermobbing-Schutz", moduleDesc: "Opferzentrierte Vorfallprüfung — erkannte Signale und manuelle Meldungen, getrennt von der Markenmoderation.", available: "Verfügbar",
@@ -132,6 +166,17 @@ export const CB_COPY: Record<Locale, CbCopy> = {
     assign: { title: "Zuweisung", unassigned: "Nicht zugewiesen", assignedTo: "Zugewiesen an", you: "Sie", claim: "Mir zuweisen", reassign: "Auf mich übertragen", unassign: "Zuweisung aufheben", historyTitle: "Zuweisungsverlauf", historyEmpty: "Noch keine Zuweisungsaktivität.", by: "von", actionLabel: { assigned: "Zugewiesen", reassigned: "Neu zugewiesen", unassigned: "Aufgehoben" } },
     notes: { title: "Prüfernotizen", subtitle: "Intern & vertraulich — nie für die geschützte Person sichtbar. Nur Anfügen.", empty: "Noch keine Prüfernotizen.", you: "Sie", placeholder: "Interne Notiz hinzufügen (kein Nachweis)…", add: "Notiz hinzufügen", confidential: "Vertraulich" },
     banner: { ok: "Erledigt.", forbidden: "Sie haben keine Berechtigung für diese Aktion.", not_found: "Vorfall nicht gefunden oder außerhalb des Bereichs.", transition: "Diese Statusänderung ist aus dem aktuellen Zustand nicht erlaubt.", assignment: "Diese Zuweisungsänderung ist nicht erlaubt.", error: "Die Aktion konnte nicht abgeschlossen werden." },
+    report: {
+      cta: "Vorfall melden", title: "Cybermobbing-Vorfall melden", subtitle: "Erstellen Sie eine manuelle Meldung für eine bestehende geschützte Person. Es wird ein Vorfall zur menschlichen Prüfung eröffnet — es erfolgt keine automatische Maßnahme.",
+      steps: { subject: "Geschützte Person", details: "Vorfalldetails", review: "Prüfen & senden" },
+      subjectStep: { label: "Geschützte Person", helper: "Wählen Sie die Person, um die es geht. Es werden nur Personen angezeigt, für die Sie melden dürfen.", emptyTitle: "Keine geschützten Personen verfügbar", emptyBody: "Es gibt noch keine geschützten Personen, für die Sie melden können. Zuerst muss eine geschützte Person angelegt werden, bevor eine Meldung erstellt werden kann.", type: "Typ", choose: "Person auswählen…" },
+      fields: { reportSource: "Meldungsquelle", category: "Kategorie", summary: "Was ist passiert", summaryHelper: "Vertrauliche Zusammenfassung für Prüfer. Keine Passwörter oder unbeteiligten personenbezogenen Daten einfügen.", actorLabel: "Bezeichnung des mutmaßlichen Akteurs", actorLabelHelper: "Optional. Eine neutrale Bezeichnung der gemeldeten Person oder des Kontos — kein Urteil.", actorRef: "Referenz des mutmaßlichen Akteurs", actorRefHelper: "Optional. Ein Handle, Profillink oder eine Kontoreferenz.", optional: "optional" },
+      reviewStep: { title: "Vor dem Senden prüfen", notConfirmed: "Dieser Vorfall ist nicht bestätigt. Beim Senden wird er zur menschlichen Prüfung weitergeleitet.", humanReview: "Die folgenden Angaben werden von einer autorisierten Person geprüft.", allegedNeutral: "Der mutmaßliche Akteur ist nur eine gemeldete Person oder ein Konto — nie ein bestätigter Angreifer." },
+      buttons: { next: "Weiter", back: "Zurück", cancel: "Abbrechen", submit: "Meldung senden", submitting: "Wird gesendet…" },
+      success: { title: "Meldung erhalten", body: "Der Vorfall wurde erstellt und wartet auf Prüfung.", incident: "Vorfall", status: "Status", pending: "Wartet auf Prüfung", openDetail: "Vorfall öffnen", backToInbox: "Zurück zum Posteingang", newReport: "Weitere Meldung erstellen" },
+      errors: { required: "Dieses Feld ist erforderlich.", too_short: "Dies ist zu kurz.", too_long: "Dies ist zu lang.", invalid: "Dieser Wert ist ungültig.", denied: "Sie haben keine Berechtigung, eine Meldung zu erstellen.", locked: "Diese Funktion ist in Ihrem Tarif nicht enthalten.", error: "Die Meldung konnte nicht gesendet werden. Bitte erneut versuchen." },
+      category: { harassment: "Belästigung", threats: "Drohungen", impersonation: "Identitätsmissbrauch", doxxing: "Doxxing", exclusion: "Ausgrenzung", other: "Sonstiges" },
+    },
   },
 };
 

@@ -440,6 +440,8 @@ model Tenant {
   // C5 — incident operations (assignment history + confidential reviewer notes).
   incidentReviewerNotes        IncidentReviewerNote[]
   incidentAssignmentEvents     IncidentAssignmentEvent[]
+  // C6 — manual-report idempotency claims (double-submit protection).
+  cyberbullyingReportSubmissions CyberbullyingReportSubmission[]
 
   @@map("tenants")
 }
@@ -1299,6 +1301,7 @@ model Incident {
   evidence            IncidentEvidence[]
   reviewerNotes       IncidentReviewerNote[]
   assignmentEvents    IncidentAssignmentEvent[]
+  reportSubmissions   CyberbullyingReportSubmission[]
 
   @@unique([id, tenantId])
   @@index([tenantId, brandId, status])
@@ -1948,6 +1951,31 @@ model IncidentAssignmentEvent {
   @@unique([id, tenantId])
   @@index([tenantId, incidentId, createdAt])
   @@map("incident_assignment_events")
+}
+
+// C6 — manual-report idempotency claim. Guarantees one browser submit creates at
+// most one incident: the claim is inserted as the LAST write of the create
+// transaction, so a duplicate key (double-click / resubmit) hits the unique index
+// and rolls the whole creation back — no orphan incident. Tenant + user scoped;
+// the raw key is server/client-only and never shown in the UI. Not the incident
+// itself — just a durable dedup marker mapping key → created incident.
+model CyberbullyingReportSubmission {
+  id             String   @id @default(cuid())
+  tenantId       String
+  userId         String // the reporter (opaque reference, no FK)
+  idempotencyKey String
+  incidentId     String
+  createdAt      DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  // One incident per (tenant, user, key) — the double-submit guard. Tenant-scoped
+  // so a key can never collide across tenants.
+  @@unique([tenantId, userId, idempotencyKey])
+  @@index([tenantId, incidentId])
+  @@map("cyberbullying_report_submissions")
 }
 
 enum LeadStatus {

@@ -6,6 +6,7 @@ import { CapabilityLockedState } from "@/components/dashboard/capability-locked"
 import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { getLocale } from "@/i18n/locale-server";
 import { canViewCyberbullying, listCyberbullyingIncidentInbox, getCyberbullyingFilterOptions, type InboxFilters, type InboxSort } from "@/server/cyberbullying-inbox";
+import { canReportCyberbullying } from "@/server/cyberbullying-report";
 import { CB_COPY, statusTone } from "../cb-i18n";
 import { IncidentLifecycleStatus } from "@guardora/core";
 
@@ -55,7 +56,15 @@ export default async function CyberbullyingInboxPage({ searchParams }: { searchP
   return (
     <>
       <PageHeader eyebrow="Security · Cyberbullying" title={t.inboxTitle} description={t.inboxSubtitle}
-        action={<Link href="/dashboard/security/cyberbullying" className="text-sm font-semibold text-[var(--color-brand)] hover:underline">← {t.overviewTitle}</Link>} />
+        action={
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard/security/cyberbullying" className="text-sm font-semibold text-[var(--color-brand)] hover:underline">← {t.overviewTitle}</Link>
+            {/* CTA rendered ONLY for a report-capable role (defence-in-depth with the route gate). */}
+            {canReportCyberbullying(session.role) ? (
+              <Link href="/dashboard/security/cyberbullying/report" className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-sm font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{t.report.cta}</Link>
+            ) : null}
+          </div>
+        } />
 
       {/* Filters — server-side GET form (no client business logic). */}
       <Card className="mb-4">

@@ -7,6 +7,7 @@ import { CapabilityLockedState } from "@/components/dashboard/capability-locked"
 import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { getLocale } from "@/i18n/locale-server";
 import { canViewCyberbullying, getCyberbullyingDashboardKpis, getCyberbullyingOperationalMetrics } from "@/server/cyberbullying-inbox";
+import { canReportCyberbullying } from "@/server/cyberbullying-report";
 import { CB_COPY } from "./cb-i18n";
 
 export const dynamic = "force-dynamic";
@@ -40,12 +41,17 @@ export default async function CyberbullyingOverviewPage({ searchParams }: { sear
         title={t.overviewTitle}
         description={t.overviewSubtitle}
         action={
-          <div className="inline-flex rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-0.5">
-            {TIMEFRAMES.map((d) => (
-              <Link key={d} href={tfHref(d)} aria-current={tf === d ? "true" : undefined} className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${d === tf ? "bg-[var(--color-brand)] text-[var(--color-brand-fg)]" : "text-[var(--color-muted)] hover:text-[var(--color-fg)]"}`}>
-                {t.timeframe[String(d) as "7" | "30" | "90"]}
-              </Link>
-            ))}
+          <div className="flex items-center gap-3">
+            <div className="inline-flex rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-0.5">
+              {TIMEFRAMES.map((d) => (
+                <Link key={d} href={tfHref(d)} aria-current={tf === d ? "true" : undefined} className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${d === tf ? "bg-[var(--color-brand)] text-[var(--color-brand-fg)]" : "text-[var(--color-muted)] hover:text-[var(--color-fg)]"}`}>
+                  {t.timeframe[String(d) as "7" | "30" | "90"]}
+                </Link>
+              ))}
+            </div>
+            {canReportCyberbullying(session.role) ? (
+              <Link href="/dashboard/security/cyberbullying/report" className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{t.report.cta}</Link>
+            ) : null}
           </div>
         }
       />

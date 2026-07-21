@@ -81,10 +81,10 @@ async function audit(db: Tx, actor: IncidentActorContext, event: string, inciden
 
 async function createIncident(
   db: Tx, actor: IncidentActorContext,
-  input: { protectedSubjectId: string; summary: string; reportSource: IncidentReportSource; severity?: string; title?: string; allegedActorLabel?: string | null; allegedActorExternalReference?: string | null },
+  input: { protectedSubjectId: string; summary: string; reportSource: IncidentReportSource; category?: string; severity?: string; title?: string; allegedActorLabel?: string | null; allegedActorExternalReference?: string | null },
 ): Promise<string> {
   const inc = await db.incident.create({ data: {
-    tenantId: actor.tenantId, brandId: null, domain: DOMAIN_CYBERBULLYING, category: "unspecified",
+    tenantId: actor.tenantId, brandId: null, domain: DOMAIN_CYBERBULLYING, category: input.category ?? "unspecified",
     title: input.title ?? "Cyberbullying incident", severity: input.severity ?? "medium", status: IncidentLifecycleStatus.Open,
     relatedItemIds: [],
   } });
@@ -103,11 +103,27 @@ async function createIncident(
 
 export async function createIncidentFromManualReport(
   actor: IncidentActorContext,
-  input: { protectedSubjectId: string; summary: string; severity?: string; title?: string; allegedActorLabel?: string | null; allegedActorExternalReference?: string | null },
-): Promise<{ incidentId: string }> {
+  input: { protectedSubjectId: string; summary: string; category?: string; severity?: string; title?: string; allegedActorLabel?: string | null; allegedActorExternalReference?: string | null; idempotencyKey?: string },
+): Promise<{ incidentId: string; duplicate?: boolean }> {
   assertPerm(actor, Permission.CyberbullyingReport);
-  const incidentId = await withTenant(actor.tenantId, (db) => createIncident(db, actor, { ...input, reportSource: IncidentReportSource.ManualReport }));
-  return { incidentId };
+  const key = input.idempotencyKey;
+  try {
+    const incidentId = await withTenant(actor.tenantId, async (db) => {
+      const id = await createIncident(db, actor, { ...input, reportSource: IncidentReportSource.ManualReport });
+      // C6 — DURABLE double-submit guard, inserted as the LAST write: a duplicate
+      // (tenant,user,key) hits the unique index and rolls back the ENTIRE creation
+      // (no orphan incident). The outer catch then returns the winning incident.
+      if (key) await db.cyberbullyingReportSubmission.create({ data: { tenantId: actor.tenantId, userId: actor.userId, idempotencyKey: key, incidentId: id } });
+      return id;
+    });
+    return { incidentId, duplicate: false };
+  } catch (e) {
+    if (key && e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const prior = await withTenant(actor.tenantId, (db) => db.cyberbullyingReportSubmission.findFirst({ where: { tenantId: actor.tenantId, userId: actor.userId, idempotencyKey: key }, select: { incidentId: true } }));
+      if (prior?.incidentId) return { incidentId: prior.incidentId, duplicate: true }; // idempotent success
+    }
+    throw e;
+  }
 }
 
 export async function createIncidentFromDetections(
@@ -319,6 +335,58 @@ export async function listAssignmentHistory(actor: IncidentActorContext, inciden
     if (!inc) throw new IncidentNotFoundError();
     return db.incidentAssignmentEvent.findMany({ where: { incidentId, tenantId: actor.tenantId }, orderBy: { createdAt: "asc" }, select: { id: true, action: true, assigneeUserId: true, previousAssigneeUserId: true, assignedByUserId: true, reason: true, createdAt: true } });
   });
+}
+
+// --- C6: Reportable protected subjects (manual report flow) ----------------
+
+export class ReportSubjectNotAllowedError extends Error {
+  readonly code = "SUBJECT_NOT_ALLOWED";
+  constructor() { super("subject not allowed for reporting in this scope"); this.name = "ReportSubjectNotAllowedError"; }
+}
+
+export interface ReportableSubject {
+  id: string;
+  displayLabel: string;
+  subjectType: string;
+  active: boolean;
+}
+
+/**
+ * Whether a role may open manual reports at all. Report is `cyberbullying:report`
+ * (Owner/Admin/Reviewer per the matrix). The C1 data model carries no per-user
+ * subject-authority grant, so a report-capable user may report for the tenant's
+ * ACTIVE protected subjects (tenant-scoped, active-only). Finer per-user subject
+ * authority is deferred to the (legally-gated) relationship sprint. Fail-closed.
+ */
+export function canReportManualIncident(role: string): boolean {
+  return can(role as Role, Permission.CyberbullyingReport);
+}
+
+/** Active protected subjects the actor may file a report for. Tenant-scoped, permission-checked, server-filtered. */
+export async function listReportableSubjects(actor: IncidentActorContext): Promise<ReportableSubject[]> {
+  assertPerm(actor, Permission.CyberbullyingReport);
+  return withTenant(actor.tenantId, (db) => db.protectedSubject.findMany({
+    where: { tenantId: actor.tenantId, active: true },
+    orderBy: { displayLabel: "asc" },
+    take: 500,
+    select: { id: true, displayLabel: true, subjectType: true, active: true },
+  }));
+}
+
+/**
+ * Assert the chosen subject is reportable by this actor and return its safe VM.
+ * Fail-closed for a missing / inactive / cross-tenant / out-of-scope subject
+ * (uniform error — never reveals which). RLS + the tenant filter make a
+ * cross-tenant id structurally invisible; the active filter blocks inactive ones.
+ */
+export async function assertReportableSubject(actor: IncidentActorContext, subjectId: string): Promise<ReportableSubject> {
+  assertPerm(actor, Permission.CyberbullyingReport);
+  const subject = await withTenant(actor.tenantId, (db) => db.protectedSubject.findFirst({
+    where: { id: subjectId, tenantId: actor.tenantId, active: true },
+    select: { id: true, displayLabel: true, subjectType: true, active: true },
+  }));
+  if (!subject) throw new ReportSubjectNotAllowedError();
+  return subject;
 }
 
 // --- Subject scope (ABOVE tenant RLS; fail-closed) -------------------------
