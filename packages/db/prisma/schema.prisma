@@ -472,6 +472,10 @@ model Tenant {
   complianceExportPackageManifests   ComplianceExportPackageManifest[]
   complianceApprovalHistoryEvents    ComplianceApprovalHistoryEvent[]
 
+  // CS-C1 — Child Safety Family domain (FAMILY workspaces only; enforced by workspace guards + RLS).
+  protectedProfiles     ProtectedProfile[]
+  guardianRelationships GuardianRelationship[]
+
   @@map("tenants")
 }
 
@@ -580,7 +584,13 @@ model Membership {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  // CS-C1 — a guardian membership may hold family guardian relationships (Family workspaces only).
+  guardianRelationships GuardianRelationship[]
+
   @@unique([userId, tenantId])
+  // CS-C1 — composite unique enabling same-tenant composite FKs from GuardianRelationship
+  // (guardianMembershipId, tenantId) → memberships(id, tenantId). No-op for Business tenants.
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@map("memberships")
 }
@@ -2595,4 +2605,65 @@ model Invite {
   @@index([tenantId, status])
   @@index([tenantId, emailNormalized])
   @@map("invites")
+}
+
+// ===========================================================================================
+// CS-C1 — Child Safety Family Domain Foundation. FAMILY-workspace-only, tenant-scoped tables.
+// A ProtectedProfile is NOT a User: it carries NO login/email/phone/Meta id/external account
+// id/username/message/media/precise location — only a guardian-chosen label, an age band, and a
+// protection status. Enums are stored as strings validated against the CS-C0 @guardora/core
+// domain enums (never duplicated as DB enum types), so CS-C2 workflows are not over-constrained.
+// Access is gated by BOTH tenant RLS AND workspace kind + FamilyRole (see child-safety-family.ts).
+// CHECK constraints, the partial "one active" unique index, RLS and GRANTs live in the hand-
+// authored migration 20260802090000_cs_c1_family_domain.
+// ===========================================================================================
+
+model ProtectedProfile {
+  id               String    @id @default(cuid())
+  tenantId         String
+  // Guardian-CHOSEN label only (e.g. "Younger child"). NEVER the child's real name/contact/identity.
+  guardianLabel    String?
+  ageBand          String // AgeBand (under_10 | age_10_12 | age_13_15 | age_16_17)
+  protectionStatus String    @default("inactive") // ProtectionStatus (inactive|monitoring|active|paused)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  // Archiving is soft: the row and its guardian relationships remain historically referencable.
+  archivedAt       DateTime?
+
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guardianRelationships GuardianRelationship[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, archivedAt])
+  @@map("protected_profiles")
+}
+
+model GuardianRelationship {
+  id                       String    @id @default(cuid())
+  tenantId                 String
+  guardianMembershipId     String
+  protectedProfileId       String
+  relationshipType         String // GuardianRelationshipType (parent|legal_guardian|trusted_adult|safety_professional)
+  authorityLevel           String // GuardianAuthorityLevel (full|limited|read_only)
+  // Status, consent and safe-recipient eligibility are DELIBERATELY SEPARATE axes. A guardian
+  // relationship NEVER implies consent or safe-recipient eligibility (defaults below). No automatic
+  // status transitions in CS-C1 — everything is an explicit, audited action.
+  status                   String    @default("pending") // GuardianRelationshipStatus (pending|verified|suspended|revoked)
+  consentStatus            String    @default("not_requested") // ConsentStatus
+  consentType              String? // ConsentType (where applicable)
+  safeRecipientEligibility String    @default("not_verified") // SafetyRecipientEligibility (never auto-eligible)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  revokedAt                DateTime?
+  archivedAt               DateTime?
+
+  tenant             Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Same-tenant composite FKs — cross-tenant linking is impossible at the DB level.
+  guardianMembership Membership       @relation(fields: [guardianMembershipId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  protectedProfile   ProtectedProfile @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, protectedProfileId])
+  @@index([tenantId, guardianMembershipId])
+  @@map("guardian_relationships")
 }

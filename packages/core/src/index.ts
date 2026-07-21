@@ -47,6 +47,7 @@ export * from "./cyberbullying-compliance";
 export * from "./cyberbullying-redaction";
 export * from "./workspace";
 export * from "./child-safety-signal";
+export * from "./child-safety-family";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";

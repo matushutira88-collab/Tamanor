@@ -118,6 +118,7 @@ export * from "./cyberbullying-escalation";
 export * from "./cyberbullying-sla";
 export * from "./cyberbullying-compliance";
 export * from "./cyberbullying-redaction";
+export * from "./child-safety-family";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";
