@@ -225,11 +225,6 @@ export const sk: Dictionary = {
     billingYearly: "Ročne",
     mostPopular: "Najobľúbenejšie",
     betaNote: "Začať môžete zdarma už dnes. Fakturácia a platené predplatné prídu v neskoršej verzii; počas skúšobnej verzie sa nič neúčtuje.",
-    plans: [
-      { name: "Starter", price: "49 €", tagline: "Pre malú značku, tvorcu alebo lokálny biznis.", features: ["1 značka", "1 Facebook Page", "Komentáre", "Fronta akcií", "Základná Reputácia", "Manuálna kontrola", "Bezpečné nastavenie auto-ochrany"] },
-      { name: "Growth", price: "149 €", tagline: "Pre aktívny e-shop, značku alebo klienta agentúry.", features: ["Až 3 pripojené účty", "Ochrana Facebooku", "Monitoring Instagramu", "Reputačná analytika", "Rizikové profily", "Pravidlá Control Center", "Prioritný onboarding"] },
-      { name: "Agency", price: "399 €", tagline: "Pre agentúry spravujúce viacero klientov.", features: ["Viac značiek/klientov podľa dohody", "Podpora pri onboardingu", "Monitoring viacerých účtov", "Reputácia + Rizikové profily", "Prioritná podpora", "Vyhradený kontakt"] },
-    ],
     enterpriseName: "Enterprise / Na mieru",
     enterpriseTagline: "Pre médiá, verejné osoby a väčšie značky.",
     enterpriseCta: "Kontaktovať obchod",

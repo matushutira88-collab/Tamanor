@@ -225,11 +225,6 @@ export const de: Dictionary = {
     billingYearly: "Jährlich",
     mostPopular: "Am beliebtesten",
     betaNote: "Sie können heute kostenlos starten. Abrechnung und kostenpflichtige Abos folgen in einer späteren Version; während der Testphase wird nichts berechnet.",
-    plans: [
-      { name: "Starter", price: "49 €", tagline: "Für eine kleine Marke, Creator oder lokales Geschäft.", features: ["1 Marke", "1 Facebook Page", "Kommentare", "Aktions-Warteschlange", "Basis-Reputation", "Manuelle Prüfung", "Sicheres Auto-Schutz-Setup"] },
-      { name: "Growth", price: "149 €", tagline: "Für einen aktiven E-Shop, Marke oder Agenturkunden.", features: ["Bis zu 3 verbundene Konten", "Facebook-Schutz", "Instagram-Monitoring", "Reputationsanalyse", "Risikoprofile", "Control-Center-Regeln", "Priorisiertes Onboarding"] },
-      { name: "Agency", price: "399 €", tagline: "Für Agenturen mit mehreren Kunden.", features: ["Mehrere Marken/Kunden nach Vereinbarung", "Onboarding-Unterstützung", "Monitoring mehrerer Konten", "Reputation + Risikoprofile", "Priorisierter Support", "Dedizierter Kontakt"] },
-    ],
     enterpriseName: "Enterprise / Individuell",
     enterpriseTagline: "Für Medien, Personen des öffentlichen Lebens und größere Marken.",
     enterpriseCta: "Vertrieb kontaktieren",

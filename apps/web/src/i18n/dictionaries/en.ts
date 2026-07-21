@@ -229,11 +229,6 @@ export const en = {
     billingYearly: "Yearly",
     mostPopular: "Most popular",
     betaNote: "You can start free today. Billing and paid subscriptions arrive in a later release; nothing is charged during the trial.",
-    plans: [
-      { name: "Starter", price: "€49", tagline: "For a small brand, creator or local business.", features: ["1 brand", "1 Facebook Page", "Comments", "Action Queue", "Basic Reputation", "Manual review", "Safe auto-protection setup"] },
-      { name: "Growth", price: "€149", tagline: "For an active e-shop, brand or agency client.", features: ["Up to 3 connected accounts", "Facebook protection", "Instagram monitoring", "Reputation Analytics", "Actor Risk", "Control Center rules", "Priority onboarding"] },
-      { name: "Agency", price: "€399", tagline: "For agencies managing multiple clients.", features: ["Multiple brands/clients by agreement", "Onboarding support", "Multi-account monitoring", "Reputation + Actor Risk", "Priority support", "Dedicated contact"] },
-    ],
     enterpriseName: "Enterprise / Custom",
     enterpriseTagline: "For media, public figures and larger brands.",
     enterpriseCta: "Contact sales",
