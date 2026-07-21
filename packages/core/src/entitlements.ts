@@ -215,6 +215,54 @@ export function maxPerBrandForPlatform(ent: PlanEntitlements, platform: string):
   }
 }
 
+// ---------------------------------------------------------------------------------------------------
+// V1.68 (Release A / A2) — retroactive "keep oldest" reconciliation. Enable-time limits are already
+// enforced at connect/monitor; this is the RETROACTIVE counterpart for events that lower the effective
+// headroom WITHOUT a create: a plan downgrade, a trial expiry, or a reconnect that re-activates a
+// previously-monitored account. The rule NEVER deletes data or accounts — it only DISABLES monitoring
+// on the accounts beyond the plan's structural caps, keeping the OLDEST. Pure + deterministic:
+//   1) brand cap  — keep the oldest `maxBrands` brands; disable monitoring on accounts of the rest.
+//   2) account cap — among the survivors, keep the oldest `maxConnectedAccounts`; disable the rest.
+// null cap = unlimited (no reconciliation for that dimension).
+// ---------------------------------------------------------------------------------------------------
+
+export type MonitoredAccountRef = { id: string; brandId: string | null; createdAt: Date };
+export type BrandRef = { id: string; createdAt: Date };
+export type MonitoringCaps = { maxBrands: number | null; maxConnectedAccounts: number | null };
+
+/** Deterministic oldest-first order (createdAt asc, id asc tiebreak) so "keep oldest" is stable. */
+function byOldest<T extends { createdAt: Date; id: string }>(a: T, b: T): number {
+  return a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/** Which monitored account ids must have monitoring DISABLED to satisfy the plan's structural caps. */
+export function selectMonitoringToDisable(
+  accounts: MonitoredAccountRef[],
+  brands: BrandRef[],
+  caps: MonitoringCaps,
+): string[] {
+  const disable = new Set<string>();
+
+  // 1) Brand cap — keep the oldest `maxBrands` brands; disable monitoring on accounts of the rest.
+  let survivors = accounts;
+  if (caps.maxBrands !== null) {
+    const keep = new Set([...brands].sort(byOldest).slice(0, Math.max(0, caps.maxBrands)).map((b) => b.id));
+    survivors = [];
+    for (const a of accounts) {
+      if (a.brandId !== null && !keep.has(a.brandId)) disable.add(a.id);
+      else survivors.push(a);
+    }
+  }
+
+  // 2) Account cap — among the survivors, keep the oldest `maxConnectedAccounts`; disable the rest.
+  if (caps.maxConnectedAccounts !== null) {
+    const ordered = [...survivors].sort(byOldest);
+    for (const a of ordered.slice(Math.max(0, caps.maxConnectedAccounts))) disable.add(a.id);
+  }
+
+  return [...disable];
+}
+
 export type GatedOperation =
   | "provider_sync" | "moderation_execution" | "paid_ai"
   | "connect_account" | "create_brand";

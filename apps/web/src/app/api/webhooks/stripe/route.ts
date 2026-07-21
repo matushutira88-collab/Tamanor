@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import { getStripe, webhookSecret } from "@/server/billing/stripe";
 import { normalizeSubscription, subscriptionFromEvent } from "@/server/billing/service";
 import {
-  recordAndApplyStripeEvent,
+  recordAndApplyStripeEvent, enforceMonitoringLimits,
   completeCheckoutAttemptBySession, expireCheckoutAttemptBySession, completeLiveCheckoutAttemptsForTenant,
   type StripeSubStateInput,
 } from "@guardora/db";
@@ -98,6 +98,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // attempt for the now-subscribed tenant so workflow state stays truthful (best-effort).
       if (res.tenantId && (event.type === "customer.subscription.created" || event.type === "invoice.paid")) {
         await completeLiveCheckoutAttemptsForTenant(res.tenantId).catch(() => {});
+      }
+      // V1.68 (Release A / A2) — a downgrade lowers the plan's structural caps: reconcile monitored
+      // accounts keep-oldest (disable monitoring on the excess; never delete or disconnect). Best-effort
+      // — the persisted plan is the source of truth, so this bookkeeping must never fail the webhook.
+      if (res.tenantId && (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created" || event.type === "customer.subscription.deleted" || event.type === "invoice.paid")) {
+        await enforceMonitoringLimits(res.tenantId).catch(() => {});
       }
       if (event.type === "customer.subscription.deleted") emitOpsEvent("billing.subscription_canceled", {});
       else if (event.type === "invoice.payment_failed" || event.type === "invoice.finalization_failed") emitOpsEvent("billing.payment_failed", {});

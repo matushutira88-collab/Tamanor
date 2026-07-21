@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Permission, assertCan, EntitlementError, emitOpsEvent } from "@guardora/core";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
 import { checkAccountToken, linkMetaAssets } from "@guardora/sync";
-import { encryptToken, withTenant, assertTenantActive, enableAccountMonitoringWithinLimit } from "@guardora/db";
+import { encryptToken, withTenant, assertTenantActive, enableAccountMonitoringWithinLimit, enforceMonitoringLimits } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
 
@@ -79,6 +79,15 @@ export async function confirmMetaSelection(
     // Best-effort token verification on the Page.
     try { await checkAccountToken(session.tenantId, link.pageAccountId); } catch { /* best-effort */ }
   }
+
+  // V1.68 (Release A / A2) — reconnect must NEVER bypass the limit. linkMetaAssets re-activates a
+  // previously-monitored account (status→active) while `monitoringEnabled` is preserved, and the
+  // enable no-ops when it is already true — so a disconnect→downgrade→reconnect could otherwise re-
+  // exceed the cap. Reconcile keep-oldest so the monitored count can never exceed the current plan cap.
+  try {
+    const r = await enforceMonitoringLimits(session.tenantId);
+    if (r.disabledCount > 0) emitOpsEvent("subscription.monitoring_limit_enforced", { operation: "reconnect" });
+  } catch { emitOpsEvent("worker.maintenance_failed", { operation: "reconnect_enforce_limits" }); }
 
   await clearOnboarding(session, onboardingId);
   revalidatePath("/dashboard/accounts");
