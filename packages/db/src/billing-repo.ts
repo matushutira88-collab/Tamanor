@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import {
-  resolveAccessState, resolveEntitlements, accessAllowsOperations, evaluateCheckoutGuard,
+  resolveEffectiveAccessState, resolveEntitlements, accessAllowsOperations, evaluateCheckoutGuard,
+  resolveTenantLifecycle, trialDaysRemaining,
   type AccessState, type BillingStatus, type PlanEntitlements, type CheckoutGuardReason,
+  type TenantLifecycleState,
 } from "@guardora/core";
 import { systemDb } from "./index";
 
@@ -17,7 +19,14 @@ export type TenantBilling = {
   tenantId: string;
   plan: string;
   billingStatus: string;
+  /** Persisted access column (a cache advanced by the webhook + sweep). */
   accessState: string;
+  /** V1.68 — read-time authority: access recomputed from billing fields (never stale vs the cron). */
+  effectiveAccessState: AccessState;
+  /** V1.68 — the canonical six-state lifecycle the dashboard labels. */
+  lifecycle: TenantLifecycleState;
+  /** V1.68 — whole days left in the trial (null when not on a trial window). */
+  trialDaysRemaining: number | null;
   trialStartsAt: Date | null;
   trialEndsAt: Date | null;
   subscription: {
@@ -32,7 +41,7 @@ export type TenantBilling = {
   } | null;
 };
 
-export async function getTenantBilling(tenantId: string): Promise<TenantBilling | null> {
+export async function getTenantBilling(tenantId: string, now: Date = new Date()): Promise<TenantBilling | null> {
   const t = await systemDb.tenant.findUnique({
     where: { id: tenantId },
     select: {
@@ -46,8 +55,21 @@ export async function getTenantBilling(tenantId: string): Promise<TenantBilling 
     },
   });
   if (!t) return null;
+  // V1.68 — derive access + lifecycle from billing fields at READ time (not the persisted cache), so a
+  // lapsed trial reads as expired immediately, independent of the daily sweep.
+  const lifecycleInput = {
+    status: t.billingStatus,
+    trialEndsAt: t.trialEndsAt,
+    currentPeriodEnd: t.subscription?.currentPeriodEnd ?? null,
+    cancelAtPeriodEnd: t.subscription?.cancelAtPeriodEnd,
+    persistedAccessState: t.accessState,
+    now,
+  };
   return {
     tenantId: t.id, plan: t.plan, billingStatus: t.billingStatus, accessState: t.accessState,
+    effectiveAccessState: resolveEffectiveAccessState(lifecycleInput),
+    lifecycle: resolveTenantLifecycle(lifecycleInput),
+    trialDaysRemaining: trialDaysRemaining(t.trialEndsAt, now),
     trialStartsAt: t.trialStartsAt, trialEndsAt: t.trialEndsAt,
     subscription: t.subscription
       ? {
@@ -65,12 +87,26 @@ export async function getTenantBilling(tenantId: string): Promise<TenantBilling 
  * Deletion state > suspended/restricted (operations off, creation blocked) > plan. Unknown plan
  * fails safe to the lowest access. This is the single server-side entitlement resolver.
  */
-export async function getTenantEntitlements(tenantId: string): Promise<PlanEntitlements> {
+export async function getTenantEntitlements(tenantId: string, now: Date = new Date()): Promise<PlanEntitlements> {
   const t = await systemDb.tenant.findUnique({
     where: { id: tenantId },
-    select: { plan: true, accessState: true, deletionState: true },
+    select: {
+      plan: true, accessState: true, deletionState: true, billingStatus: true, trialEndsAt: true,
+      subscription: { select: { currentPeriodEnd: true, cancelAtPeriodEnd: true } },
+    },
   });
-  return resolveEntitlements(t?.plan, t?.accessState, { deletingTenant: !!t && t.deletionState !== "active" });
+  if (!t) return resolveEntitlements(null, null);
+  // V1.68 — read-time access authority: recompute from billing fields so an expired trial (or any
+  // billing state) is enforced on THIS request, not only after the daily sweep. Removes the SPOF.
+  const effective = resolveEffectiveAccessState({
+    status: t.billingStatus,
+    trialEndsAt: t.trialEndsAt,
+    currentPeriodEnd: t.subscription?.currentPeriodEnd ?? null,
+    cancelAtPeriodEnd: t.subscription?.cancelAtPeriodEnd,
+    persistedAccessState: t.accessState,
+    now,
+  });
+  return resolveEntitlements(t.plan, effective, { deletingTenant: t.deletionState !== "active" });
 }
 
 /** Whether NEW operations (sync, moderation execution, provider actions) may run for this tenant. */
@@ -85,12 +121,28 @@ export type OperationGateReason = "tenant_deleting" | "billing_restricted" | "su
  * Precedence: deletion > suspended > restricted > allowed. This is the ONE place sync/execution
  * paths consult; they never re-derive restricted-state logic. Unknown/missing tenant → not allowed.
  */
-export async function getTenantOperationGate(tenantId: string): Promise<{ allowed: boolean; reason: OperationGateReason | null }> {
-  const t = await systemDb.tenant.findUnique({ where: { id: tenantId }, select: { accessState: true, deletionState: true } });
+export async function getTenantOperationGate(tenantId: string, now: Date = new Date()): Promise<{ allowed: boolean; reason: OperationGateReason | null }> {
+  const t = await systemDb.tenant.findUnique({
+    where: { id: tenantId },
+    select: {
+      accessState: true, deletionState: true, billingStatus: true, trialEndsAt: true,
+      subscription: { select: { currentPeriodEnd: true, cancelAtPeriodEnd: true } },
+    },
+  });
   if (!t) return { allowed: false, reason: "tenant_missing" };
   if (t.deletionState !== "active") return { allowed: false, reason: "tenant_deleting" };
-  if (t.accessState === "suspended") return { allowed: false, reason: "suspended" };
-  if (!accessAllowsOperations(t.accessState as AccessState)) return { allowed: false, reason: "billing_restricted" };
+  // V1.68 — recompute effective access at read time (removes the trial-expiry SPOF): a lapsed trial
+  // blocks operations on the next request, not only after the daily sweep persists "restricted".
+  const effective = resolveEffectiveAccessState({
+    status: t.billingStatus,
+    trialEndsAt: t.trialEndsAt,
+    currentPeriodEnd: t.subscription?.currentPeriodEnd ?? null,
+    cancelAtPeriodEnd: t.subscription?.cancelAtPeriodEnd,
+    persistedAccessState: t.accessState,
+    now,
+  });
+  if (effective === "suspended") return { allowed: false, reason: "suspended" };
+  if (!accessAllowsOperations(effective)) return { allowed: false, reason: "billing_restricted" };
   return { allowed: true, reason: null };
 }
 
@@ -331,7 +383,7 @@ export async function recordAndApplyStripeEvent(
     return { outcome: "ignored", tenantId: null, accessState: null };
   }
 
-  const accessState = resolveAccessState({
+  const accessState = resolveEffectiveAccessState({
     status: input.status,
     trialEndsAt: input.trialEndsAt ?? null,
     currentPeriodEnd: input.currentPeriodEnd ?? null,
@@ -400,30 +452,14 @@ export async function recordAndApplyStripeEvent(
 }
 
 /**
- * Recompute a tenant's access state from its current stored billing (used by the trial-expiry
- * sweep and on read). Central mapping; never invents access. Returns the new access state.
- */
-export async function recomputeTenantAccess(tenantId: string, now: Date = new Date()): Promise<AccessState | null> {
-  const t = await systemDb.tenant.findUnique({
-    where: { id: tenantId },
-    select: { billingStatus: true, trialEndsAt: true, subscription: { select: { currentPeriodEnd: true, cancelAtPeriodEnd: true } } },
-  });
-  if (!t) return null;
-  const access = resolveAccessState({
-    status: t.billingStatus,
-    trialEndsAt: t.trialEndsAt,
-    currentPeriodEnd: t.subscription?.currentPeriodEnd ?? null,
-    cancelAtPeriodEnd: t.subscription?.cancelAtPeriodEnd,
-    now,
-  });
-  await systemDb.tenant.updateMany({ where: { id: tenantId, accessState: { not: access } }, data: { accessState: access } });
-  return access;
-}
-
-/**
  * Worker sweep: tenants whose trial has ended with NO active paid subscription are moved to
  * restricted access (never deleted, never disconnected). Bounded batches, idempotent. Returns the
  * count restricted this pass.
+ *
+ * V1.68 — this sweep is now a PERSISTENCE OPTIMIZATION only, not the authority: the read path
+ * (getTenantEntitlements / getTenantOperationGate / getTenantBilling) recomputes effective access
+ * from billing fields on every request via resolveEffectiveAccessState, so trial expiry is enforced
+ * even if this sweep never runs. Keeping the persisted column fresh only benefits listing/analytics.
  */
 export async function sweepTrialExpirations(now: Date = new Date(), batchSize = 500): Promise<number> {
   const candidates = await systemDb.tenant.findMany({
