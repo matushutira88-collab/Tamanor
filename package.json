@@ -72,6 +72,7 @@
     "auth-registration:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/auth-registration.test.ts",
     "auth-email:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/auth-email.test.ts",
     "billing:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/billing.test.ts",
+    "stripe-smoke-verify": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/stripe-smoke-verify.ts",
     "entitlements:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/entitlements.test.ts",
     "entitlement-limits:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/entitlement-limits.test.ts",
     "env-separation:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/env-separation.test.ts",
