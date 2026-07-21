@@ -265,6 +265,43 @@ export async function getOnboardingState(tenantId: string, userId: string): Prom
   });
 }
 
+/**
+ * V1.67.1 — single-transaction "load onboarding for the dashboard": read the member row, derive the
+ * checklist facts ONCE, auto-complete if eligible, and return the resulting state + whether it auto-
+ * completed. This is behaviourally identical to `maybeAutoComplete()` THEN `getOnboardingState()` (the old
+ * loadOnboarding pattern) but does it in ONE withTenant round trip instead of two, and derives the facts
+ * once instead of twice for a mid-onboarding member. Auto-complete uses the SAME guard: only from
+ * not_started/in_progress when every required step is real; `updateMany` pins tenantId+userId (never another
+ * member) and re-checks status, so a concurrent completion is a safe no-op.
+ */
+export async function resolveOnboarding(
+  tenantId: string, userId: string,
+): Promise<{ state: OnboardingState | null; autoCompleted: boolean }> {
+  return withTenant(tenantId, async (db) => {
+    const row = await readRow(db, tenantId, userId);
+    if (!row) return { state: null, autoCompleted: false };
+    const facts = await deriveFacts(db, tenantId, userId);
+
+    const status = row.onboardingStatus as OnboardingStatusValue;
+    if (status === "in_progress" || status === "not_started") {
+      const { canFinish } = summarize(buildChecklist(facts));
+      if (canFinish) {
+        const res = await db.membership.updateMany({
+          where: { tenantId, userId, onboardingStatus: { in: ["not_started", "in_progress"] } },
+          data: { onboardingStatus: "completed", onboardingCompletedAt: new Date() },
+        });
+        if (res.count > 0) {
+          // Re-read so the returned state reflects the persisted completed status/timestamp (facts are
+          // unchanged by a membership-status write, so they are reused — never re-derived).
+          const fresh = await readRow(db, tenantId, userId);
+          return { state: fresh ? toState(fresh, facts) : null, autoCompleted: true };
+        }
+      }
+    }
+    return { state: toState(row, facts), autoCompleted: false };
+  });
+}
+
 export type OnboardingAction = "start" | "dismiss" | "resume" | "complete" | "restart";
 
 const TARGET: Record<OnboardingAction, OnboardingStatusValue> = {

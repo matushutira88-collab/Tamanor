@@ -35,7 +35,7 @@ const reviewer = { tenantId: tA, userId: "u_rev", role: "reviewer" };
 const reviewer2 = { tenantId: tA, userId: "u_rev2", role: "reviewer" };
 const viewer = { tenantId: tA, userId: "u_view", role: "viewer" };
 const ownerB = { tenantId: tB, userId: "u_ownerB", role: "owner" };
-let u = 0;
+const u = 0;
 const SECRET_NOTE = `RNOTE-SECRET-${sfx}`;
 
 async function mkMember(a: { tenantId: string; userId: string; role: string }) {

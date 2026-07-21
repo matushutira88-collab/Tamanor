@@ -4,7 +4,7 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { DASHBOARD_NAV } from "@/lib/nav";
 import { can, Role, WorkspaceKind, isWorkspaceKind } from "@guardora/core";
 import { requireVerifiedSession } from "@/server/auth";
-import { withTenant, getTenantBilling, getTenantEntitlements } from "@guardora/db";
+import { withTenant, getTenantBilling, getTenantEntitlements, unreadNotificationCount } from "@guardora/db";
 import { getLocale } from "@/i18n/locale-server";
 import { getDictionary, type Locale } from "@/i18n";
 import { TRACE_COOKIE, readValidTraceId, newTraceId, logPhase, withPhase } from "@/server/diagnostics/login-trace";
@@ -107,6 +107,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       accountsUsed={accountsUsed}
       accountsLimit={ent.maxConnectedAccounts}
       pendingCount={pendingCount}
+      unreadNotifications={await unreadNotificationCount(session.tenantId, session.userId).catch(() => 0)}
       demo={isDemoWorkspace}
       locale={locale}
       navLabels={dict.dashboardNav}

@@ -6,7 +6,7 @@ import { dataSubjectRights } from "@/content/legal-compliance";
 
 export async function generateMetadata(): Promise<Metadata> {
   const doc = dataSubjectRights[await getLocale()];
-  return { title: doc.metaTitle, description: doc.metaDescription };
+  return { title: doc.metaTitle, description: doc.metaDescription, alternates: { canonical: "/data-subject-rights" } };
 }
 
 export default async function Page() {

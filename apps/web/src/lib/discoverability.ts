@@ -28,6 +28,19 @@ export const MARKETING_ROUTES: { path: string; changefreq: string; priority: num
   { path: "/contact", changefreq: "yearly", priority: 0.3 },
   { path: "/privacy", changefreq: "yearly", priority: 0.3 },
   { path: "/terms", changefreq: "yearly", priority: 0.3 },
+  // V1.72 (Release C1) — standalone legal/policy pages: indexable, now discoverable via the sitemap.
+  { path: "/cookies", changefreq: "yearly", priority: 0.2 },
+  { path: "/dpa", changefreq: "yearly", priority: 0.2 },
+  { path: "/subprocessors", changefreq: "yearly", priority: 0.2 },
+  { path: "/business-terms", changefreq: "yearly", priority: 0.2 },
+  { path: "/consumer-terms", changefreq: "yearly", priority: 0.2 },
+  { path: "/ai-transparency", changefreq: "yearly", priority: 0.3 },
+  { path: "/copyright", changefreq: "yearly", priority: 0.2 },
+  { path: "/data-retention", changefreq: "yearly", priority: 0.2 },
+  { path: "/data-subject-rights", changefreq: "yearly", priority: 0.2 },
+  { path: "/incident-policy", changefreq: "yearly", priority: 0.2 },
+  { path: "/information-security", changefreq: "yearly", priority: 0.3 },
+  { path: "/security-policy", changefreq: "yearly", priority: 0.3 },
 ];
 
 /** Section index routes generated in V1.38.2. */

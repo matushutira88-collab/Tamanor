@@ -6,7 +6,7 @@ import { copyrightIp } from "@/content/legal-compliance";
 
 export async function generateMetadata(): Promise<Metadata> {
   const doc = copyrightIp[await getLocale()];
-  return { title: doc.metaTitle, description: doc.metaDescription };
+  return { title: doc.metaTitle, description: doc.metaDescription, alternates: { canonical: "/copyright" } };
 }
 
 export default async function Page() {

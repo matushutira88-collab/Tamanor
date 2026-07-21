@@ -143,6 +143,8 @@ export type OpsEvent =
   | "protection.action_failed"
   | "protection.simulation_run"
   | "subscription.account_limit_reached"
+  | "subscription.monitoring_limit_enforced"
+  | "report.exported"
   | "limit.concurrent_contention"
   | "limit.over_limit_detected";
 

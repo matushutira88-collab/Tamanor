@@ -4,7 +4,7 @@ import {
   isCaseRiskLevel, isCaseProtectionStatus, canTaskTransition, isCaseMilestoneKey,
   validateCaseTaskInput, parseCaseDueDate, CASE_LIMITS,
   CaseRiskLevel, CaseTaskStatus, CaseMilestoneKey,
-  RecipientPurpose, NotificationType, NotificationEntityType,
+  RecipientPurpose, CyberbullyingNotificationType, NotificationEntityType,
   type CaseFieldErrorCode, type CaseTaskField, type IncidentActorContext,
 } from "@guardora/core";
 import { withTenant } from "./repositories";
@@ -99,7 +99,7 @@ export async function updateProtectionPlan(
       ...(data.protectionStatus !== undefined ? { protectionStatus: String(data.protectionStatus) } : {}),
     });
     // C10 — a NEW critical risk raises an urgent notification (deduped by set time).
-    if (becameCritical) await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.CriticalRisk, { type: NotificationType.CriticalRiskSet, entityType: NotificationEntityType.Incident, entityId: incidentId, incidentId, discriminator: `critical:${(data.criticalRiskSetAt as Date).getTime()}` });
+    if (becameCritical) await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.CriticalRisk, { type: CyberbullyingNotificationType.CriticalRiskSet, entityType: NotificationEntityType.Incident, entityId: incidentId, incidentId, discriminator: `critical:${(data.criticalRiskSetAt as Date).getTime()}` });
   });
 }
 
@@ -167,7 +167,7 @@ export async function createCaseTask(
     await caseTimeline(db, actor, incidentId, IncidentTimelineEventType.TaskCreated, `task:${task.id}`); // id only, no title
     await caseAudit(db, actor, CYBERBULLYING_AUDIT_EVENTS.caseTaskCreated, incidentId, { taskId: task.id, status: CaseTaskStatus.Todo });
     // C10 — notify the task assignee (if any, in scope).
-    if (task.assigneeUserId) await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.TaskAssignment, { type: NotificationType.CaseTaskAssigned, entityType: NotificationEntityType.CaseTask, entityId: task.id, incidentId, discriminator: `assigned:${task.id}:${task.assigneeUserId}` }, { targetUserId: task.assigneeUserId });
+    if (task.assigneeUserId) await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.TaskAssignment, { type: CyberbullyingNotificationType.CaseTaskAssigned, entityType: NotificationEntityType.CaseTask, entityId: task.id, incidentId, discriminator: `assigned:${task.id}:${task.assigneeUserId}` }, { targetUserId: task.assigneeUserId });
     return { taskId: task.id };
   });
 }
@@ -208,6 +208,6 @@ export async function updateCaseTask(
     await caseAudit(db, actor, auditEvent, incidentId, { taskId, ...(data.status !== undefined ? { status: String(data.status) } : {}) });
     // C10 — notify a NEW task assignee (only when the assignee actually changes).
     const newAssignee = patch.assigneeUserId !== undefined ? (patch.assigneeUserId || null) : undefined;
-    if (newAssignee && newAssignee !== task.assigneeUserId) await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.TaskAssignment, { type: NotificationType.CaseTaskAssigned, entityType: NotificationEntityType.CaseTask, entityId: taskId, incidentId, discriminator: `assigned:${taskId}:${newAssignee}` }, { targetUserId: newAssignee });
+    if (newAssignee && newAssignee !== task.assigneeUserId) await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.TaskAssignment, { type: CyberbullyingNotificationType.CaseTaskAssigned, entityType: NotificationEntityType.CaseTask, entityId: taskId, incidentId, discriminator: `assigned:${taskId}:${newAssignee}` }, { targetUserId: newAssignee });
   });
 }

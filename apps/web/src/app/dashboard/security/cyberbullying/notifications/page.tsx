@@ -4,7 +4,7 @@ import { requireVerifiedSession } from "@/server/auth";
 import { requireDashboardCapability } from "@/server/route-guard";
 import { CapabilityLockedState } from "@/components/dashboard/capability-locked";
 import { getLocale } from "@/i18n/locale-server";
-import { listNotifications } from "@guardora/db";
+import { listCyberbullyingNotifications } from "@guardora/db";
 import { CB_COPY } from "../cb-i18n";
 import { markNotificationReadAction, dismissNotificationAction, markAllReadAction } from "./actions";
 
@@ -24,7 +24,7 @@ export default async function NotificationCenterPage({ searchParams }: { searchP
   const filter = sp.filter === "unread" ? "unread" : "all";
   const page = Math.max(1, Number(sp.page) || 1);
   const actor = { tenantId: session.tenantId, userId: session.userId, role: session.role };
-  const result = await listNotifications(actor, { filter, page });
+  const result = await listCyberbullyingNotifications(actor, { filter, page });
   const banner = sp.n ? (n.banner[sp.n as keyof typeof n.banner] ?? null) : null;
   const BTN = "rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-2)]";
   const back = "/dashboard/security/cyberbullying/notifications";

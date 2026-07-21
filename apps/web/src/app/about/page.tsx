@@ -25,7 +25,7 @@ const META: Record<Locale, { title: string; description: string }> = {
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
-  return META[locale];
+  return { ...META[locale], alternates: { canonical: "/about" } };
 }
 
 const COPY: Record<
@@ -125,8 +125,8 @@ export default async function AboutPage() {
             {c.startFree}
           </Link>{" "}
           {c.reachUsPre}{" "}
-          <a href="mailto:hello@guardora.ai" className="text-[var(--color-brand)] hover:underline">
-            hello@guardora.ai
+          <a href="mailto:hello@tamanor.com" className="text-[var(--color-brand)] hover:underline">
+            hello@tamanor.com
           </a>
           {c.reachUsPost}
         </p>

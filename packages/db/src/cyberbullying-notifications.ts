@@ -1,7 +1,7 @@
 import { ActorKind, Prisma } from "@prisma/client";
 import {
   Permission, Role, can, CYBERBULLYING_AUDIT_EVENTS, IncidentCategory,
-  NotificationType, NotificationSeverity, NOTIFICATION_SEVERITY, NotificationEntityType,
+  CyberbullyingNotificationType, CyberbullyingNotificationSeverity, NOTIFICATION_SEVERITY, NotificationEntityType,
   notificationDedupKey, RecipientPurpose, type IncidentActorContext,
 } from "@guardora/core";
 import { withTenant } from "./repositories";
@@ -115,7 +115,7 @@ export async function isValidIncidentRecipientTx(db: Tx, tenantId: string, incid
 // --- Notification creation (dedup, tx-composable) ---------------------------
 
 export interface NotifySpec {
-  type: NotificationType;
+  type: CyberbullyingNotificationType;
   entityType: NotificationEntityType;
   entityId: string;
   incidentId?: string | null;
@@ -132,9 +132,9 @@ export interface NotifySpec {
  */
 export async function createNotificationTx(db: Tx, tenantId: string, actorUserId: string | null, recipientUserId: string, spec: NotifySpec): Promise<boolean> {
   const dedupKey = notificationDedupKey(spec.type, spec.entityType, spec.entityId, spec.discriminator ?? "");
-  const existing = await db.notification.findFirst({ where: { tenantId, recipientUserId, deduplicationKey: dedupKey }, select: { id: true } });
+  const existing = await db.cyberbullyingNotification.findFirst({ where: { tenantId, recipientUserId, deduplicationKey: dedupKey }, select: { id: true } });
   if (existing) return false; // already delivered (dedup) — no INSERT, no transaction abort
-  await db.notification.create({ data: {
+  await db.cyberbullyingNotification.create({ data: {
     tenantId, recipientUserId, type: spec.type, severity: NOTIFICATION_SEVERITY[spec.type], entityType: spec.entityType, entityId: spec.entityId,
     incidentId: spec.incidentId ?? null, deduplicationKey: dedupKey, metadata: (spec.metadata ?? undefined) as never,
   } });
@@ -164,14 +164,14 @@ function toVM(n: { id: string; type: string; severity: string; entityType: strin
 const NOTIF_PAGE = 20;
 const NOTIF_MAX = 100;
 
-export async function listNotifications(actor: IncidentActorContext, opts: { filter?: "all" | "unread"; page?: number; pageSize?: number } = {}): Promise<{ items: NotificationVM[]; total: number; page: number; pageSize: number }> {
+export async function listCyberbullyingNotifications(actor: IncidentActorContext, opts: { filter?: "all" | "unread"; page?: number; pageSize?: number } = {}): Promise<{ items: NotificationVM[]; total: number; page: number; pageSize: number }> {
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.min(NOTIF_MAX, Math.max(1, opts.pageSize ?? NOTIF_PAGE));
-  const where: Prisma.NotificationWhereInput = { tenantId: actor.tenantId, recipientUserId: actor.userId, dismissedAt: null, ...(opts.filter === "unread" ? { readAt: null } : {}) };
+  const where: Prisma.CyberbullyingNotificationWhereInput = { tenantId: actor.tenantId, recipientUserId: actor.userId, dismissedAt: null, ...(opts.filter === "unread" ? { readAt: null } : {}) };
   return withTenant(actor.tenantId, async (db) => {
     const [rows, total] = await Promise.all([
-      db.notification.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize, select: { id: true, type: true, severity: true, entityType: true, entityId: true, incidentId: true, createdAt: true, readAt: true, dismissedAt: true } }),
-      db.notification.count({ where }),
+      db.cyberbullyingNotification.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize, select: { id: true, type: true, severity: true, entityType: true, entityId: true, incidentId: true, createdAt: true, readAt: true, dismissedAt: true } }),
+      db.cyberbullyingNotification.count({ where }),
     ]);
     return { items: rows.map(toVM), total, page, pageSize };
   });
@@ -179,19 +179,19 @@ export async function listNotifications(actor: IncidentActorContext, opts: { fil
 
 /** Unread, non-dismissed count for the bell. One efficient query. */
 export async function countUnreadNotifications(actor: IncidentActorContext): Promise<number> {
-  return withTenant(actor.tenantId, (db) => db.notification.count({ where: { tenantId: actor.tenantId, recipientUserId: actor.userId, readAt: null, dismissedAt: null } }));
+  return withTenant(actor.tenantId, (db) => db.cyberbullyingNotification.count({ where: { tenantId: actor.tenantId, recipientUserId: actor.userId, readAt: null, dismissedAt: null } }));
 }
 
 async function ownNotification(db: Tx, actor: IncidentActorContext, notificationId: string): Promise<{ id: string }> {
-  const n = await db.notification.findFirst({ where: { id: notificationId, tenantId: actor.tenantId, recipientUserId: actor.userId }, select: { id: true } });
+  const n = await db.cyberbullyingNotification.findFirst({ where: { id: notificationId, tenantId: actor.tenantId, recipientUserId: actor.userId }, select: { id: true } });
   if (!n) throw new NotificationError("not_found"); // cross-user / cross-tenant ⇒ not found (fail-closed)
   return n;
 }
 
-export async function markNotificationRead(actor: IncidentActorContext, notificationId: string): Promise<void> {
+export async function markCyberbullyingNotificationRead(actor: IncidentActorContext, notificationId: string): Promise<void> {
   await withTenant(actor.tenantId, async (db) => {
     await ownNotification(db, actor, notificationId);
-    await db.notification.update({ where: { id: notificationId }, data: { readAt: new Date() } });
+    await db.cyberbullyingNotification.update({ where: { id: notificationId }, data: { readAt: new Date() } });
     await db.auditLog.create({ data: { tenantId: actor.tenantId, event: CYBERBULLYING_AUDIT_EVENTS.notificationRead, actorKind: ActorKind.human, actorUserId: actor.userId, targetType: "notification", targetId: notificationId, metadata: {} as never } });
   });
 }
@@ -199,7 +199,7 @@ export async function markNotificationRead(actor: IncidentActorContext, notifica
 export async function markNotificationUnread(actor: IncidentActorContext, notificationId: string): Promise<void> {
   await withTenant(actor.tenantId, async (db) => {
     await ownNotification(db, actor, notificationId);
-    await db.notification.update({ where: { id: notificationId }, data: { readAt: null } });
+    await db.cyberbullyingNotification.update({ where: { id: notificationId }, data: { readAt: null } });
   });
 }
 
@@ -207,15 +207,15 @@ export async function markNotificationUnread(actor: IncidentActorContext, notifi
 export async function dismissNotification(actor: IncidentActorContext, notificationId: string): Promise<void> {
   await withTenant(actor.tenantId, async (db) => {
     await ownNotification(db, actor, notificationId);
-    await db.notification.update({ where: { id: notificationId }, data: { dismissedAt: new Date(), readAt: new Date() } });
+    await db.cyberbullyingNotification.update({ where: { id: notificationId }, data: { dismissedAt: new Date(), readAt: new Date() } });
     await db.auditLog.create({ data: { tenantId: actor.tenantId, event: CYBERBULLYING_AUDIT_EVENTS.notificationDismissed, actorKind: ActorKind.human, actorUserId: actor.userId, targetType: "notification", targetId: notificationId, metadata: {} as never } });
   });
 }
 
 /** Bounded bulk mark-read for the caller's own notifications. */
-export async function markAllNotificationsRead(actor: IncidentActorContext): Promise<number> {
+export async function markAllCyberbullyingNotificationsRead(actor: IncidentActorContext): Promise<number> {
   return withTenant(actor.tenantId, async (db) => {
-    const res = await db.notification.updateMany({ where: { tenantId: actor.tenantId, recipientUserId: actor.userId, readAt: null, dismissedAt: null }, data: { readAt: new Date() } });
+    const res = await db.cyberbullyingNotification.updateMany({ where: { tenantId: actor.tenantId, recipientUserId: actor.userId, readAt: null, dismissedAt: null }, data: { readAt: new Date() } });
     return res.count;
   });
 }

@@ -12,7 +12,7 @@ import {
   ConnectorHealth, ConnectorStatus, ActorKind, DecisionStatus, ModerationAction, ReputationStatus,
   findAccountsForTokenCheck, findItemsForProposal, findActiveMetaAccounts,
   deleteExpiredOnboardingSessions, minimizeWebhookPayloads, purgeExpiredWebhookEvents,
-  cleanupExpiredAuthTokens, sweepTrialExpirations, purgeStripeWebhookEvents,
+  cleanupExpiredAuthTokens, sweepTrialExpirations, sweepTrialEndingNotifications, expireStaleInvites, purgeStripeWebhookEvents,
 } from "@guardora/db";
 import { loadEnv, getWebhookRetentionConfig } from "@guardora/config";
 import { classifyTokenLifecycle, emitOpsEvent, metrics } from "@guardora/core";
@@ -150,6 +150,8 @@ export interface MaintenanceSummary {
   authTokenCleanup: { verificationRemoved: number; resetRemoved: number } | { failed: true };
   webhookRetention: { minimized: number; deleted: number } | { failed: true };
   trialSweep: number | { failed: true };
+  trialEndingNotify: number | { failed: true };
+  invitesExpired: number | { failed: true };
   stripePurge: number | { failed: true };
   metaHealth: { enabled: boolean; checked: number; changed: number } | { failed: true };
   tenantDeletionResume: { pending: number; resumed: number; failed: number } | { failed: true };
@@ -168,6 +170,8 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
     authTokenCleanup: await guard("auth_token_cleanup", () => cleanupExpiredAuthTokens({ now })),
     webhookRetention: await guard("webhook_retention", () => runWebhookRetentionTick(now)),
     trialSweep: await guard("trial_sweep", () => sweepTrialExpirations(now)),
+    trialEndingNotify: await guard("trial_ending_notify", () => sweepTrialEndingNotifications(now)),
+    invitesExpired: await guard("invites_expire", () => expireStaleInvites(now)),
     stripePurge: await guard("stripe_purge", () => purgeStripeWebhookEvents(new Date(now.getTime() - 90 * DAY_MS))),
     metaHealth: await guard("meta_health", () => runMetaConnectorHealth()),
     tenantDeletionResume: await guard("tenant_deletion_resume", () => resumePendingTenantDeletions().then((r) => ({ pending: r.pending, resumed: r.resumed, failed: r.failed }))),

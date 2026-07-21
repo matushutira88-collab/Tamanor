@@ -6,7 +6,7 @@ import { cookiePolicy } from "@/content/legal";
 
 export async function generateMetadata(): Promise<Metadata> {
   const doc = cookiePolicy[await getLocale()];
-  return { title: doc.metaTitle, description: doc.metaDescription };
+  return { title: doc.metaTitle, description: doc.metaDescription, alternates: { canonical: "/cookies" } };
 }
 
 export default async function CookiesPage() {

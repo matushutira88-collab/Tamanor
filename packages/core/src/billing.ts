@@ -316,6 +316,92 @@ export function accessAllowsOperations(state: AccessState): boolean {
   return state === "full_access" || state === "grace_period";
 }
 
+// ---- V1.68: effective access + canonical tenant lifecycle (read-time authority) --------------
+// Removes the trial-expiry Single Point of Failure: entitlement- and operation-gated server entries
+// resolve access FROM the billing fields on every request (below), so an expired trial (or any
+// billing state) takes effect on the NEXT request — not only when the daily sweep happens to run.
+
+/**
+ * Extra input for the read-time resolvers: the persisted access override. Only "suspended" is a
+ * manual/admin override the billing mapping never emits on its own; every other access decision is
+ * derived from the billing fields.
+ */
+export type EffectiveAccessInput = AccessInput & {
+  persistedAccessState?: AccessState | string | null;
+  /** V1.73 — internal Tamanor admin tenant flag (operator-set). Forces full access, never billing-blocked. */
+  internalAccess?: boolean;
+};
+
+/**
+ * The read-time AUTHORITY for a tenant's access state — the single function every entitlement- and
+ * operation-gated server entry uses. Precedence:
+ *   persisted "suspended" (admin/abuse override) > billing-derived suspended (unpaid / paused) >
+ *   the central {@link resolveAccessState} mapping (trial window, grace, restricted, …).
+ * Deterministic from its inputs; never grants access from a single raw field. Because it is pure and
+ * read on every request, no cron is on the critical path for enforcing trial expiry.
+ */
+export function resolveEffectiveAccessState(input: EffectiveAccessInput): AccessState {
+  // V1.73 — internal Tamanor admin tenant is never trial/billing-blocked → always full access.
+  if (input.internalAccess) return "full_access";
+  if (input.persistedAccessState === "suspended") return "suspended";
+  if (input.status === "unpaid" || input.status === "paused") return "suspended";
+  return resolveAccessState(input);
+}
+
+/**
+ * The canonical, presentational tenant lifecycle — exactly six mutually-exclusive states, each of
+ * which a real billing transition can reach (proven exhaustively by the pure lifecycle test). This
+ * is what the dashboard and audit trail LABEL; enforcement is governed by {@link AccessState}.
+ *   active_trial  — in the free-trial window (no paid subscription yet).
+ *   trial_expired — trial window elapsed with no paid subscription.
+ *   active_paid   — a current paid subscription (incl. cancel-at-period-end, still paid through).
+ *   past_due      — a payment failed / initial payment incomplete (dunning / grace).
+ *   canceled      — the subscription ended and the paid period is over.
+ *   suspended     — collection stopped (Stripe unpaid / paused) or an admin/abuse override.
+ */
+export type TenantLifecycleState =
+  | "active_trial" | "trial_expired" | "active_paid" | "past_due" | "canceled" | "suspended";
+export const TENANT_LIFECYCLE_STATES: readonly TenantLifecycleState[] = [
+  "active_trial", "trial_expired", "active_paid", "past_due", "canceled", "suspended",
+];
+
+/** Derive the canonical lifecycle state from billing fields (pure, read-time). */
+export function resolveTenantLifecycle(input: EffectiveAccessInput): TenantLifecycleState {
+  const now = input.now ?? new Date();
+  const trialActive = !!input.trialEndsAt && input.trialEndsAt.getTime() > now.getTime();
+  const periodActive = !!input.currentPeriodEnd && input.currentPeriodEnd.getTime() > now.getTime();
+  // V1.73 — an internal admin tenant is always effectively active (never trial/billing state).
+  if (input.internalAccess) return "active_paid";
+  if (input.persistedAccessState === "suspended") return "suspended";
+  switch (input.status) {
+    case "active":
+      return "active_paid";
+    case "trialing":
+    case "no_subscription":
+      return trialActive ? "active_trial" : "trial_expired";
+    case "past_due":
+    case "incomplete":
+      return "past_due";
+    case "unpaid":
+    case "paused":
+      return "suspended";
+    case "canceled":
+      return periodActive ? "active_paid" : "canceled";
+    case "incomplete_expired":
+      // The initial payment never settled → the subscription is dead → the trial window governs.
+      return trialActive ? "active_trial" : "trial_expired";
+    default:
+      return trialActive ? "active_trial" : "trial_expired";
+  }
+}
+
+/** Whole days remaining in the trial window (0 once elapsed; null when there is no trial end). */
+export function trialDaysRemaining(trialEndsAt: Date | null | undefined, now: Date = new Date()): number | null {
+  if (!trialEndsAt) return null;
+  const ms = trialEndsAt.getTime() - now.getTime();
+  return ms <= 0 ? 0 : Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
 // ---- V1.58.4: Stripe webhook event ordering (out-of-order protection) --------
 /**
  * Ordering position of a Stripe billing event: its `created` time plus whether it is TERMINAL

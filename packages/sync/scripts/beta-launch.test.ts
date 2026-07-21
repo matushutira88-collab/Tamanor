@@ -63,8 +63,10 @@ async function run() {
   // 10) Does NOT claim TikTok/YouTube/LinkedIn support.
   check("10) no TikTok/YouTube/LinkedIn claims", !landing.includes("YouTube") && !landing.includes("TikTok") && !landing.includes("LinkedIn") && en.includes("does not claim TikTok, YouTube or LinkedIn"));
 
-  // 11) Pricing has Starter Beta / Growth Beta / Agency Beta.
-  check("11) beta pricing tiers", ["Starter Beta", "Growth Beta", "Agency Beta"].every((n) => en.includes(n)) && landing.includes("t.beta.plans") && en.includes('"€49"') && en.includes('"€149"') && en.includes('"€399"'));
+  // 11) Pricing truth (Release A / A4): the retired beta price cards carried stale €49/€149/€399 numbers.
+  // Those have been REMOVED — the only live prices are 59/189/499 (LandingV2 + the billing catalogue).
+  check("11) stale beta prices removed (pricing truth)",
+    dicts.every((d) => !/["€]49\b|["€]149\b|["€]399\b|\b49 €|\b149 €|\b399 €/.test(d)));
 
   // 12) No Stripe / checkout dependency.
   check("12) no billing/checkout", !/stripe|checkout|subscription/i.test(landing) && !/stripe|checkout/i.test(bookDemo));

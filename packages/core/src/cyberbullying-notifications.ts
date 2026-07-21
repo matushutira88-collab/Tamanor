@@ -13,7 +13,7 @@
 
 // --- Notifications ----------------------------------------------------------
 
-export enum NotificationType {
+export enum CyberbullyingNotificationType {
   IncidentAssigned = "incident_assigned",
   IncidentReassigned = "incident_reassigned",
   IncidentUnassigned = "incident_unassigned",
@@ -28,32 +28,32 @@ export enum NotificationType {
   IncidentReopened = "incident_reopened",
   EvidenceScanPendingLong = "evidence_scan_pending_long",
 }
-export const ALL_NOTIFICATION_TYPES: readonly NotificationType[] = Object.values(NotificationType);
-export function isNotificationType(x: unknown): x is NotificationType {
+export const ALL_NOTIFICATION_TYPES: readonly CyberbullyingNotificationType[] = Object.values(CyberbullyingNotificationType);
+export function isNotificationType(x: unknown): x is CyberbullyingNotificationType {
   return typeof x === "string" && (ALL_NOTIFICATION_TYPES as readonly string[]).includes(x);
 }
 
-export enum NotificationSeverity {
+export enum CyberbullyingNotificationSeverity {
   Info = "info",
   Attention = "attention",
   Urgent = "urgent",
 }
 
 /** Default severity per type (a safe type→severity mapping; no free text). */
-export const NOTIFICATION_SEVERITY: Record<NotificationType, NotificationSeverity> = {
-  [NotificationType.IncidentAssigned]: NotificationSeverity.Attention,
-  [NotificationType.IncidentReassigned]: NotificationSeverity.Attention,
-  [NotificationType.IncidentUnassigned]: NotificationSeverity.Info,
-  [NotificationType.CaseTaskAssigned]: NotificationSeverity.Attention,
-  [NotificationType.TaskDueSoon]: NotificationSeverity.Attention,
-  [NotificationType.TaskOverdue]: NotificationSeverity.Urgent,
-  [NotificationType.FollowUpDueSoon]: NotificationSeverity.Attention,
-  [NotificationType.FollowUpOverdue]: NotificationSeverity.Urgent,
-  [NotificationType.CriticalRiskSet]: NotificationSeverity.Urgent,
-  [NotificationType.IncidentEscalated]: NotificationSeverity.Urgent,
-  [NotificationType.EscalationResolved]: NotificationSeverity.Info,
-  [NotificationType.IncidentReopened]: NotificationSeverity.Attention,
-  [NotificationType.EvidenceScanPendingLong]: NotificationSeverity.Attention,
+export const NOTIFICATION_SEVERITY: Record<CyberbullyingNotificationType, CyberbullyingNotificationSeverity> = {
+  [CyberbullyingNotificationType.IncidentAssigned]: CyberbullyingNotificationSeverity.Attention,
+  [CyberbullyingNotificationType.IncidentReassigned]: CyberbullyingNotificationSeverity.Attention,
+  [CyberbullyingNotificationType.IncidentUnassigned]: CyberbullyingNotificationSeverity.Info,
+  [CyberbullyingNotificationType.CaseTaskAssigned]: CyberbullyingNotificationSeverity.Attention,
+  [CyberbullyingNotificationType.TaskDueSoon]: CyberbullyingNotificationSeverity.Attention,
+  [CyberbullyingNotificationType.TaskOverdue]: CyberbullyingNotificationSeverity.Urgent,
+  [CyberbullyingNotificationType.FollowUpDueSoon]: CyberbullyingNotificationSeverity.Attention,
+  [CyberbullyingNotificationType.FollowUpOverdue]: CyberbullyingNotificationSeverity.Urgent,
+  [CyberbullyingNotificationType.CriticalRiskSet]: CyberbullyingNotificationSeverity.Urgent,
+  [CyberbullyingNotificationType.IncidentEscalated]: CyberbullyingNotificationSeverity.Urgent,
+  [CyberbullyingNotificationType.EscalationResolved]: CyberbullyingNotificationSeverity.Info,
+  [CyberbullyingNotificationType.IncidentReopened]: CyberbullyingNotificationSeverity.Attention,
+  [CyberbullyingNotificationType.EvidenceScanPendingLong]: CyberbullyingNotificationSeverity.Attention,
 };
 
 /** Entity a notification points at (drives the safe CTA target). */
@@ -71,7 +71,7 @@ export enum NotificationEntityType {
  * repeated evaluation of the SAME state does not. Never includes user text. The
  * recipient is a SEPARATE column in the unique index — this key is recipient-agnostic.
  */
-export function notificationDedupKey(type: NotificationType, entityType: NotificationEntityType, entityId: string, discriminator: string | number = ""): string {
+export function notificationDedupKey(type: CyberbullyingNotificationType, entityType: NotificationEntityType, entityId: string, discriminator: string | number = ""): string {
   return `${type}:${entityType}:${entityId}:${discriminator}`;
 }
 
@@ -140,14 +140,14 @@ export function followUpSlaState(nextReviewAt: Date | null, now: Date): SlaState
 }
 
 /** The notification type a deadline SLA transition should raise (or null if none). */
-export function notificationTypeForSlaTransition(sla: SlaType, to: SlaState): NotificationType | null {
+export function notificationTypeForSlaTransition(sla: SlaType, to: SlaState): CyberbullyingNotificationType | null {
   if (to === SlaState.DueSoon) {
-    if (sla === SlaType.TaskDue) return NotificationType.TaskDueSoon;
-    if (sla === SlaType.FollowUpDue) return NotificationType.FollowUpDueSoon;
+    if (sla === SlaType.TaskDue) return CyberbullyingNotificationType.TaskDueSoon;
+    if (sla === SlaType.FollowUpDue) return CyberbullyingNotificationType.FollowUpDueSoon;
   }
   if (to === SlaState.Overdue) {
-    if (sla === SlaType.TaskDue) return NotificationType.TaskOverdue;
-    if (sla === SlaType.FollowUpDue) return NotificationType.FollowUpOverdue;
+    if (sla === SlaType.TaskDue) return CyberbullyingNotificationType.TaskOverdue;
+    if (sla === SlaType.FollowUpDue) return CyberbullyingNotificationType.FollowUpOverdue;
   }
   return null;
 }

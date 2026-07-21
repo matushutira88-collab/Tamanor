@@ -12,7 +12,7 @@ import { PageHeader, Card, SectionHeader, StatCard, Badge, SecondaryButton } fro
 import { BarList } from "@/components/dashboard/trend-chart";
 import { PlatformBreakdown } from "@/components/dashboard/platform-icon";
 import { requireSession } from "@/server/auth";
-import { withTenant } from "@guardora/db";
+import { withTenant, getTenantEntitlements } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { navItem } from "@/lib/nav";
 import { getT } from "@/i18n/server";
@@ -27,6 +27,7 @@ const nav = navItem("/dashboard/reports");
 export default async function ReportsPage() {
   const session = await requireSession();
   const hdrT = await getT();
+  const reportEnt = await getTenantEntitlements(session.tenantId);
   const realMode = await getRealModeFilter(session.tenantId);
   const where = { tenantId: session.tenantId, ...realMode.brandWhere };
   const weekStart = new Date(Date.now() - 7 * 86_400_000);
@@ -107,11 +108,28 @@ export default async function ReportsPage() {
         title={hdrT.dashHeaders[nav.icon].title}
         description={hdrT.dashHeaders[nav.icon].desc}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge tone="neutral">{hdrT.dash.last7days}</Badge>
-            <SecondaryButton type="button" disabled title={hdrT.dash.exportComingSoonTitle}>
-              {hdrT.dash.exportComingSoon}
-            </SecondaryButton>
+            {/* V1.69 (Release B / B3) — real, entitlement-gated CSV export (paid feature). */}
+            {reportEnt.export ? (
+              <div className="flex flex-wrap items-center gap-1.5" data-testid="export-links">
+                <span className="text-xs text-[var(--color-muted)]">{hdrT.dash.exportCsv}:</span>
+                {([
+                  ["comments", hdrT.dash.exportCsvComments],
+                  ["risky_comments", hdrT.dash.exportCsvRisky],
+                  ...(reportEnt.incidents ? [["incidents", hdrT.dash.exportCsvIncidents] as const] : []),
+                  ["usage_summary", hdrT.dash.exportCsvUsage],
+                ] as const).map(([ds, label]) => (
+                  <a key={ds} href={`/api/export?dataset=${ds}`} className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:border-[var(--color-border-strong)]" download>
+                    {label}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <SecondaryButton type="button" disabled title={hdrT.dash.exportLockedTitle}>
+                {hdrT.dash.exportCsv}
+              </SecondaryButton>
+            )}
           </div>
         }
       />

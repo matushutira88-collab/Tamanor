@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import {
   ConnectorMode,
@@ -142,13 +143,35 @@ export async function runSyncAction(accountId: string): Promise<void> {
   }));
   if (!account) throw new Error("Account not found");
 
-  const outcome = await runReadOnlySync({ accountId, tenantId: session.tenantId });
+  // V1.69 (Release B / B6) — NON-BLOCKING "Sync now": the read-only sync (which does the whole Meta HTTP
+  // cycle) is scheduled to run AFTER the response via next/server `after()`, so the UI request returns
+  // immediately instead of holding the connection open for the full provider round-trip. The sync lease
+  // dedups concurrent triggers; the account's first-sync state / last-sync time reflect the result on the
+  // next page load. Behavior/entitlement logic is unchanged — only the request no longer blocks.
+  const tenantId = session.tenantId;
+  after(async () => { await runReadOnlySync({ accountId, tenantId }, "manual").catch(() => {}); });
 
   revalidatePath(`/dashboard/accounts/${accountId}`);
   revalidatePath("/dashboard/inbox");
-  const params = new URLSearchParams({
-    kind: outcome.ok ? "ok" : "error",
-    notice: `${outcome.message} Fetched ${outcome.fetched}, new ${outcome.created}, deduped ${outcome.deduped}, errors ${outcome.errors} (${outcome.durationMs} ms).`,
-  });
-  redirect(`/dashboard/accounts/${accountId}?${params.toString()}`);
+  redirect(`/dashboard/accounts/${accountId}?kind=ok&notice=${encodeURIComponent("Sync started — results will appear shortly.")}`);
+}
+
+/**
+ * V1.69 (Release B / B1) — NON-BLOCKING first-sync retry from the accounts list. The read-only sync is
+ * scheduled to run AFTER the response (next/server `after`), so the UI request never waits on the Meta
+ * HTTP cycle. The sync lease dedups, so double-clicking cannot launch parallel syncs; an error never
+ * touches the connection. The row's first-sync state updates on the next page load.
+ */
+export async function retryFirstSync(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.ConnectorManage);
+  const accountId = String(formData.get("accountId") ?? "");
+  const account = await withTenant(session.tenantId, (db) => db.connectedAccount.findFirst({
+    where: { id: accountId, tenantId: session.tenantId }, select: { id: true },
+  }));
+  if (!account) throw new Error("Account not found");
+  const tenantId = session.tenantId;
+  after(async () => { await runReadOnlySync({ accountId, tenantId }, "manual").catch(() => {}); });
+  revalidatePath("/dashboard/accounts");
+  redirect("/dashboard/accounts?sync=started");
 }

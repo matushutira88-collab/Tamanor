@@ -6,7 +6,7 @@ import { consumerTerms } from "@/content/legal-compliance";
 
 export async function generateMetadata(): Promise<Metadata> {
   const doc = consumerTerms[await getLocale()];
-  return { title: doc.metaTitle, description: doc.metaDescription };
+  return { title: doc.metaTitle, description: doc.metaDescription, alternates: { canonical: "/consumer-terms" } };
 }
 
 export default async function Page() {

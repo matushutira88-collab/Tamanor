@@ -49,7 +49,7 @@ export type PlanEntitlements = {
   // NOT shipped today → false for every plan (never advertised as available):
   multiWorkspace: boolean;
   agencyClientManagement: boolean;
-  export: boolean;              // /dashboard/reports export is "coming soon" — not implemented
+  export: boolean;              // V1.69 (B3): tenant-scoped CSV export — a PAID feature (all paid plans)
   // Operation gates (turned OFF by restricted/suspended access — see resolveEntitlements).
   providerSync: boolean;
   moderationExecution: boolean;
@@ -60,9 +60,10 @@ export type PlanEntitlements = {
   dataRetentionDays: number | null;
 };
 
-// NOTE (team): production team invitations/member management are NOT implemented (the team page's
-// invite form is a disabled no-op). `maxTeamMembers` is kept future-ready but is NOT enforced and
-// MUST NOT be presented on pricing as a shipped "seats" capability.
+// NOTE (team): V1.71 (Release B / B4) — team invites + seat enforcement ARE now implemented. Seat usage
+// (owner + active members + pending invites) is enforced server-side + transactionally at invite time,
+// so `maxTeamMembers` is authoritative and IS presented on pricing (the billing compare table reads these
+// values directly). Enterprise (null) is unlimited (never a false numeric cap).
 
 // V1.64 — per-brand model. Each paid brand holds 1 of each platform (FB/IG/Google Business/YouTube),
 // so the tenant-total account ceiling = maxBrands × 4. Comment (monthlyProcessedItems) MUST equal the
@@ -85,7 +86,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 1, maxConnectedAccounts: 4, maxFacebookPages: 1, maxInstagramAccounts: 1, ...PER_BRAND_ONE, maxTeamMembers: 3,
     monthlyProcessedItems: 4_000, monthlyAiActions: 200,
     reputationAnalytics: false, riskProfiles: false, incidents: false, controlCenter: false, advancedRules: false,
-    auditLog: true, securitySuite: false, cyberbullyingProtection: false, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, securitySuite: false, cyberbullyingProtection: false, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: true,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 90,
   },
   growth: {
@@ -93,7 +94,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 3, maxConnectedAccounts: 12, maxFacebookPages: 3, maxInstagramAccounts: 3, ...PER_BRAND_ONE, maxTeamMembers: 8,
     monthlyProcessedItems: 13_000, monthlyAiActions: 1_000,
     reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
-    auditLog: true, securitySuite: true, cyberbullyingProtection: true, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, securitySuite: true, cyberbullyingProtection: true, prioritySupport: false, multiWorkspace: false, agencyClientManagement: false, export: true,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 180,
   },
   // NOTE (V1.64): the `agency` id is the STABLE internal key for the plan marketed as "Business".
@@ -105,7 +106,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxBrands: 10, maxConnectedAccounts: 40, maxFacebookPages: 10, maxInstagramAccounts: 10, ...PER_BRAND_ONE, maxTeamMembers: 25,
     monthlyProcessedItems: 25_000, monthlyAiActions: 5_000,
     reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
-    auditLog: true, securitySuite: true, cyberbullyingProtection: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, securitySuite: true, cyberbullyingProtection: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: true,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: 365,
   },
   enterprise: {
@@ -114,7 +115,7 @@ const BASE: Record<BillingPlanId, PlanEntitlements> = {
     maxFacebookPerBrand: null, maxInstagramPerBrand: null, maxGoogleBusinessPerBrand: null, maxYouTubePerBrand: null, maxTeamMembers: null,
     monthlyProcessedItems: null, monthlyAiActions: null,
     reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
-    auditLog: true, securitySuite: true, cyberbullyingProtection: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: false,
+    auditLog: true, securitySuite: true, cyberbullyingProtection: true, prioritySupport: true, multiWorkspace: false, agencyClientManagement: false, export: true,
     providerSync: true, moderationExecution: true, paidAi: true, billingAccess: true, deletionAccess: true, dataRetentionDays: null,
   },
 };
@@ -129,6 +130,23 @@ const MINIMAL: PlanEntitlements = {
   reputationAnalytics: false, riskProfiles: false, incidents: false, controlCenter: false, advancedRules: false,
   securitySuite: false, cyberbullyingProtection: false,
   billingAccess: true, deletionAccess: true,
+};
+
+/**
+ * V1.73 — INTERNAL Tamanor admin tenant entitlements: fully unlimited, every capability + operation gate
+ * ON, export ON. Applied ONLY when the authoritative `Tenant.internalAccess` flag is true (operator-set,
+ * never user-settable). Deletion still wins over it; no billing state (trial expiry / restricted /
+ * suspended) applies. multiWorkspace/agencyClientManagement stay false (not shipped for anyone).
+ */
+const INTERNAL: PlanEntitlements = {
+  ...BASE.enterprise,
+  maxBrands: null, maxConnectedAccounts: null, maxFacebookPages: null, maxInstagramAccounts: null,
+  maxFacebookPerBrand: null, maxInstagramPerBrand: null, maxGoogleBusinessPerBrand: null, maxYouTubePerBrand: null,
+  maxTeamMembers: null, monthlyProcessedItems: null, monthlyAiActions: null,
+  reputationAnalytics: true, riskProfiles: true, incidents: true, controlCenter: true, advancedRules: true,
+  auditLog: true, prioritySupport: true, export: true,
+  providerSync: true, moderationExecution: true, paidAi: true,
+  billingAccess: true, deletionAccess: true, dataRetentionDays: null,
 };
 
 function isKnownBillingPlan(plan: unknown): plan is BillingPlanId {
@@ -152,13 +170,11 @@ export type EntAccessState = "full_access" | "grace_period" | "restricted" | "su
 export function resolveEntitlements(
   plan: string | null | undefined,
   accessState: EntAccessState | null | undefined,
-  opts: { deletingTenant?: boolean } = {},
+  opts: { deletingTenant?: boolean; internalAccess?: boolean } = {},
 ): PlanEntitlements {
   const base = planEntitlements(plan);
-  const locked = opts.deletingTenant || accessState === "suspended" || accessState === "restricted";
-  if (!locked) return base;
   // Restricted/suspended/deleting: preserve viewing + billing + deletion, block all operations + creation.
-  return {
+  const lockedEnt: PlanEntitlements = {
     ...base,
     maxConnectedAccounts: 0, maxFacebookPages: 0, maxInstagramAccounts: 0, maxBrands: 0,
     maxFacebookPerBrand: 0, maxInstagramPerBrand: 0, maxGoogleBusinessPerBrand: 0, maxYouTubePerBrand: 0,
@@ -166,6 +182,13 @@ export function resolveEntitlements(
     providerSync: false, moderationExecution: false, paidAi: false,
     billingAccess: true, deletionAccess: true,
   };
+  // Precedence: deletion > internal admin > billing-lock > plan.
+  // Deletion wins over everything (a deleting tenant is being removed — even an internal one).
+  if (opts.deletingTenant) return lockedEnt;
+  // V1.73 — internal Tamanor admin tenant: fully unlimited, ignoring plan + billing access-state.
+  if (opts.internalAccess) return INTERNAL;
+  const locked = accessState === "suspended" || accessState === "restricted";
+  return locked ? lockedEnt : base;
 }
 
 // ---- typed, normalized denials -------------------------------------------
@@ -220,6 +243,54 @@ export function maxPerBrandForPlatform(ent: PlanEntitlements, platform: string):
     case "youtube": return ent.maxYouTubePerBrand;
     default: return 0; // unmodelled platform → cannot connect (fail safe)
   }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// V1.68 (Release A / A2) — retroactive "keep oldest" reconciliation. Enable-time limits are already
+// enforced at connect/monitor; this is the RETROACTIVE counterpart for events that lower the effective
+// headroom WITHOUT a create: a plan downgrade, a trial expiry, or a reconnect that re-activates a
+// previously-monitored account. The rule NEVER deletes data or accounts — it only DISABLES monitoring
+// on the accounts beyond the plan's structural caps, keeping the OLDEST. Pure + deterministic:
+//   1) brand cap  — keep the oldest `maxBrands` brands; disable monitoring on accounts of the rest.
+//   2) account cap — among the survivors, keep the oldest `maxConnectedAccounts`; disable the rest.
+// null cap = unlimited (no reconciliation for that dimension).
+// ---------------------------------------------------------------------------------------------------
+
+export type MonitoredAccountRef = { id: string; brandId: string | null; createdAt: Date };
+export type BrandRef = { id: string; createdAt: Date };
+export type MonitoringCaps = { maxBrands: number | null; maxConnectedAccounts: number | null };
+
+/** Deterministic oldest-first order (createdAt asc, id asc tiebreak) so "keep oldest" is stable. */
+function byOldest<T extends { createdAt: Date; id: string }>(a: T, b: T): number {
+  return a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/** Which monitored account ids must have monitoring DISABLED to satisfy the plan's structural caps. */
+export function selectMonitoringToDisable(
+  accounts: MonitoredAccountRef[],
+  brands: BrandRef[],
+  caps: MonitoringCaps,
+): string[] {
+  const disable = new Set<string>();
+
+  // 1) Brand cap — keep the oldest `maxBrands` brands; disable monitoring on accounts of the rest.
+  let survivors = accounts;
+  if (caps.maxBrands !== null) {
+    const keep = new Set([...brands].sort(byOldest).slice(0, Math.max(0, caps.maxBrands)).map((b) => b.id));
+    survivors = [];
+    for (const a of accounts) {
+      if (a.brandId !== null && !keep.has(a.brandId)) disable.add(a.id);
+      else survivors.push(a);
+    }
+  }
+
+  // 2) Account cap — among the survivors, keep the oldest `maxConnectedAccounts`; disable the rest.
+  if (caps.maxConnectedAccounts !== null) {
+    const ordered = [...survivors].sort(byOldest);
+    for (const a of ordered.slice(Math.max(0, caps.maxConnectedAccounts))) disable.add(a.id);
+  }
+
+  return [...disable];
 }
 
 export type GatedOperation =

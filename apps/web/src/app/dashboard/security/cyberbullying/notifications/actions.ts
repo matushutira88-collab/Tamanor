@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { markNotificationRead, dismissNotification, markAllNotificationsRead } from "@guardora/db";
+import { markCyberbullyingNotificationRead, dismissNotification, markAllCyberbullyingNotificationsRead } from "@guardora/db";
 import { requireVerifiedSession } from "@/server/auth";
 
 /**
@@ -26,7 +26,7 @@ export async function markNotificationReadAction(formData: FormData): Promise<vo
   const id = str(formData, "notificationId");
   const back = str(formData, "back") || CENTER;
   if (!id) redirect(CENTER);
-  await run(back, () => markNotificationRead({ tenantId: s.tenantId, userId: s.userId, role: s.role }, id), "read");
+  await run(back, () => markCyberbullyingNotificationRead({ tenantId: s.tenantId, userId: s.userId, role: s.role }, id), "read");
 }
 
 export async function dismissNotificationAction(formData: FormData): Promise<void> {
@@ -39,5 +39,5 @@ export async function dismissNotificationAction(formData: FormData): Promise<voi
 
 export async function markAllReadAction(): Promise<void> {
   const s = await requireVerifiedSession();
-  await run(CENTER, async () => { await markAllNotificationsRead({ tenantId: s.tenantId, userId: s.userId, role: s.role }); }, "allRead");
+  await run(CENTER, async () => { await markAllCyberbullyingNotificationsRead({ tenantId: s.tenantId, userId: s.userId, role: s.role }); }, "allRead");
 }

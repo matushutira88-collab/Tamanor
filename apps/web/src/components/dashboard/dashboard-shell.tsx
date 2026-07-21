@@ -17,6 +17,7 @@ export function DashboardShell({
   accountsUsed,
   accountsLimit,
   pendingCount,
+  unreadNotifications,
   demo = false,
   locale = defaultLocale,
   navLabels,
@@ -34,6 +35,7 @@ export function DashboardShell({
   accountsUsed?: number;
   accountsLimit?: number | null;
   pendingCount?: number;
+  unreadNotifications?: number;
   demo?: boolean;
   locale?: Locale;
   navLabels?: Record<string, string>;
@@ -44,7 +46,7 @@ export function DashboardShell({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
-  const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, planName, accountsUsed, accountsLimit, pendingCount, demo, locale, navLabels, sidebarStrings, deniedNavHrefs };
+  const sidebarProps = { tenantName, userName, role, trialUsed, trialLimit, planName, accountsUsed, accountsLimit, pendingCount, unreadNotifications, demo, locale, navLabels, sidebarStrings, deniedNavHrefs };
 
   // V1.63 — one-time client mount marker: proves hydration completed (server bootstrap done + client
   // mounted). Its absence after DASHBOARD_BOOTSTRAP_COMPLETED points at a hydration/import/render failure.

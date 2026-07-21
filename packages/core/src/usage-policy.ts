@@ -121,7 +121,14 @@ export function resolveUsagePolicy(plan: string | null | undefined): UsagePolicy
  * unknown/undefined state, which fails safe to plan-only) use the plan policy. The global paid-AI
  * fuse remains authoritative on top of this.
  */
-export function resolveEffectiveUsagePolicy(plan: string | null | undefined, accessState: string | null | undefined): UsagePolicy {
+export function resolveEffectiveUsagePolicy(
+  plan: string | null | undefined,
+  accessState: string | null | undefined,
+  opts: { internalAccess?: boolean } = {},
+): UsagePolicy {
+  // V1.73 — internal Tamanor admin tenant: unlimited usage (no processed/premium caps), overriding
+  // both the plan and any restricted/suspended billing state.
+  if (opts.internalAccess) return ENTERPRISE;
   if (accessState === "restricted" || accessState === "suspended") return RESTRICTED;
   return resolveUsagePolicy(plan);
 }

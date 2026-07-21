@@ -9,7 +9,7 @@
 import { randomBytes } from "node:crypto";
 import {
   systemDb, registerUser, hashPassword, withTenant,
-  getOnboardingState, applyOnboardingAction, acknowledgeOnboarding, maybeAutoComplete,
+  getOnboardingState, applyOnboardingAction, acknowledgeOnboarding, maybeAutoComplete, resolveOnboarding,
   buildChecklist, summarize, canTransition, sanitizeAcks, shouldShowOnboarding,
   OnboardingTransitionError, OnboardingRequirementsError, ONBOARDING_STEPS, REQUIRED_STEPS, RECOMMENDED_STEPS,
   type DerivedFacts,
@@ -197,6 +197,22 @@ async function run() {
     check("8) restart puts the current user back IN the flow and bumps the version", restarted?.status === "in_progress" && restarted?.version === 2 && restarted?.completedAt === null && restarted?.dismissedAt === null);
     check("8) restart re-stamps startedAt and points at the next relevant step", restarted?.startedAt !== null && restarted?.step !== null);
     check("8) restart did NOT touch the other member of the same tenant", after?.status === before?.status && after?.version === before?.version);
+  }
+
+  // ---- V1.67.1) resolveOnboarding = maybeAutoComplete + getOnboardingState in ONE round trip -------
+  {
+    // `second` shares the tenant's satisfied facts (account/monitoring/sync) and has its OWN review audit
+    // (created above), and has never been touched (still not_started) — so ONE resolveOnboarding must
+    // auto-complete it, then be idempotent, and return the SAME derived state as getOnboardingState.
+    const r1 = await resolveOnboarding(a.tenantId, second.userId);
+    check("resolveOnboarding auto-completes a satisfiable member (autoCompleted + completed)",
+      r1.autoCompleted === true && r1.state?.status === "completed" && r1.state?.completedAt !== null);
+    const r2 = await resolveOnboarding(a.tenantId, second.userId);
+    check("resolveOnboarding is idempotent (already completed → autoCompleted:false)",
+      r2.autoCompleted === false && r2.state?.status === "completed");
+    const g = await getOnboardingState(a.tenantId, second.userId);
+    check("resolveOnboarding state == getOnboardingState (identical derived result)",
+      r2.state?.status === g?.status && r2.state?.completedCount === g?.completedCount && r2.state?.totalCount === g?.totalCount);
   }
 
   // ---- acknowledgements ---------------------------------------------------------------------------

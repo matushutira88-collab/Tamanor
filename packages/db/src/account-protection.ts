@@ -6,11 +6,13 @@
  * Every read/write is tenant-scoped through withTenant (RLS), so a foreign tenant can neither see nor
  * change another tenant's account protection. No token/secret is ever read or logged here.
  */
-import { EntitlementError, isWithinLimit } from "@guardora/core";
+import { EntitlementError, isWithinLimit, planEntitlements, selectMonitoringToDisable, notificationDedupeKey, dayBucket } from "@guardora/core";
+import { ActorKind } from "@prisma/client";
 import type { TenantTx } from "./tenant-db";
 import { withTenant } from "./repositories";
 import { getTenantEntitlements } from "./billing-repo";
 import { acquireTenantResourceLock } from "./resource-limits";
+import { createNotification } from "./notification-repo";
 
 export type AutoHideMode = "recommend" | "manual_approval" | "automatic";
 export type RiskThreshold = "medium" | "high" | "critical";
@@ -168,6 +170,65 @@ export async function previewMonitoredAccountLimit(tenantId: string, adding = 1)
   const used = await withTenant(tenantId, (tx) => countMonitoredAccounts(tx, tenantId));
   const remaining = limit < 0 ? Number.MAX_SAFE_INTEGER : Math.max(0, limit - used);
   return { used, limit, remaining, wouldExceed: limit >= 0 && used + adding > limit };
+}
+
+export interface MonitoringEnforcementResult {
+  plan: string;
+  disabledAccountIds: string[];
+  disabledCount: number;
+}
+
+/**
+ * V1.68 (Release A / A2) — RETROACTIVE keep-oldest reconciliation. Idempotently brings a tenant's
+ * monitored accounts back within its plan's STRUCTURAL caps (planEntitlements — NOT the access-adjusted
+ * caps, so a transient restriction never wipes a paying customer's config) by DISABLING monitoring on
+ * the accounts beyond the caps, keeping the oldest brands and the oldest accounts. NEVER deletes data,
+ * NEVER disconnects Meta accounts — it only flips `monitoringEnabled` to false.
+ *
+ * Call it on every event that lowers headroom without a create: a plan downgrade (webhook), a trial
+ * expiry (sweep), and a reconnect (which re-activates a previously-monitored account and would
+ * otherwise bypass the enable-time check). Advisory-locked per (tenant, connections) so it cannot race
+ * a concurrent enable. Returns the ids it disabled (for observability); a within-cap tenant is a no-op.
+ */
+export async function enforceMonitoringLimits(tenantId: string): Promise<MonitoringEnforcementResult> {
+  const result = await withTenant(tenantId, async (tx) => {
+    await acquireTenantResourceLock(tx, tenantId, "connections");
+    const t = await tx.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
+    if (!t) return { plan: "", disabledAccountIds: [], disabledCount: 0 };
+    const ent = planEntitlements(t.plan);
+    const [accounts, brands] = await Promise.all([
+      tx.connectedAccount.findMany({
+        where: { tenantId, monitoringEnabled: true, status: { not: "disconnected" } },
+        select: { id: true, brandId: true, createdAt: true },
+      }),
+      tx.brand.findMany({ where: { tenantId }, select: { id: true, createdAt: true } }),
+    ]);
+    const toDisable = selectMonitoringToDisable(accounts, brands, {
+      maxBrands: ent.maxBrands,
+      maxConnectedAccounts: ent.maxConnectedAccounts,
+    });
+    if (toDisable.length === 0) return { plan: t.plan, disabledAccountIds: [], disabledCount: 0 };
+    await tx.connectedAccount.updateMany({ where: { id: { in: toDisable }, tenantId }, data: { monitoringEnabled: false } });
+    await tx.auditLog.create({
+      data: {
+        tenantId, event: "monitoring.limit_enforced", actorKind: ActorKind.system,
+        targetType: "tenant", targetId: tenantId,
+        metadata: { plan: t.plan, disabled: toDisable.length, maxBrands: ent.maxBrands, maxConnectedAccounts: ent.maxConnectedAccounts },
+      },
+    });
+    return { plan: t.plan, disabledAccountIds: toDisable, disabledCount: toDisable.length };
+  });
+  // V1.70 (Release B / B2) — notify the tenant when the plan disabled monitoring (best-effort; a
+  // notification failure must never break enforcement). Dedupe per plan per day so it can't spam.
+  if (result.disabledCount > 0) {
+    await createNotification({
+      tenantId, type: "monitoring_disabled_by_plan",
+      titleKey: "notif.monitoring_disabled_by_plan.title", messageKey: "notif.monitoring_disabled_by_plan.body",
+      dedupeKey: notificationDedupeKey("monitoring_disabled_by_plan", result.plan, dayBucket(new Date())),
+      metadata: { disabled: result.disabledCount, plan: result.plan },
+    }).catch(() => {});
+  }
+  return result;
 }
 
 /**

@@ -3,11 +3,12 @@ import type Stripe from "stripe";
 import { getStripe, webhookSecret } from "@/server/billing/stripe";
 import { normalizeSubscription, subscriptionFromEvent } from "@/server/billing/service";
 import {
-  recordAndApplyStripeEvent,
+  recordAndApplyStripeEvent, enforceMonitoringLimits,
   completeCheckoutAttemptBySession, expireCheckoutAttemptBySession, completeLiveCheckoutAttemptsForTenant,
   type StripeSubStateInput,
 } from "@guardora/db";
-import { emitOpsEvent, metrics } from "@guardora/core";
+import { emitOpsEvent, metrics, notificationDedupeKey, dayBucket } from "@guardora/core";
+import { createNotification, sendCriticalNotificationEmail } from "@guardora/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,8 +100,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (res.tenantId && (event.type === "customer.subscription.created" || event.type === "invoice.paid")) {
         await completeLiveCheckoutAttemptsForTenant(res.tenantId).catch(() => {});
       }
+      // V1.68 (Release A / A2) — a downgrade lowers the plan's structural caps: reconcile monitored
+      // accounts keep-oldest (disable monitoring on the excess; never delete or disconnect). Best-effort
+      // — the persisted plan is the source of truth, so this bookkeeping must never fail the webhook.
+      if (res.tenantId && (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created" || event.type === "customer.subscription.deleted" || event.type === "invoice.paid")) {
+        await enforceMonitoringLimits(res.tenantId).catch(() => {});
+      }
       if (event.type === "customer.subscription.deleted") emitOpsEvent("billing.subscription_canceled", {});
-      else if (event.type === "invoice.payment_failed" || event.type === "invoice.finalization_failed") emitOpsEvent("billing.payment_failed", {});
+      else if (event.type === "invoice.payment_failed" || event.type === "invoice.finalization_failed") {
+        emitOpsEvent("billing.payment_failed", {});
+        // V1.70 (Release B / B2) — in-app payment-failed notification (best-effort; must never fail the
+        // webhook). Deduped per tenant per day. The critical email is sent by the notification email path.
+        if (res.tenantId) {
+          const n = await createNotification({
+            tenantId: res.tenantId, type: "payment_failed",
+            titleKey: "notif.payment_failed.title", messageKey: "notif.payment_failed.body",
+            dedupeKey: notificationDedupeKey("payment_failed", res.tenantId, dayBucket(new Date())),
+          }).catch(() => ({ created: false, id: null }));
+          if (n.created && n.id) await sendCriticalNotificationEmail(res.tenantId, n.id, "payment_failed").catch(() => {});
+        }
+      }
       else if (event.type === "checkout.session.completed" || event.type === "invoice.paid") emitOpsEvent("billing.subscription_activated", {});
       if (res.accessState === "restricted") emitOpsEvent("billing.access_restricted", {});
     }

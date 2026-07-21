@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { CONTROL_MODES, NEVER_AUTONOMOUS, presetPolicies, type PresetName } from "@guardora/ai";
+import { getLiveActionsConfig, metaCommentHideFeatureEnabled } from "@guardora/config";
 import { withTenant, type TenantTx } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
@@ -29,6 +30,11 @@ export async function updateControlPolicy(formData: FormData): Promise<void> {
   if (!(CONTROL_MODES as readonly string[]).includes(mode)) mode = "monitor";
   // Hard safety: never-autonomous categories can be at most approval.
   if (NEVER_AUTONOMOUS.has(category as never) && mode === "autonomous") mode = "approval";
+  // V1.68 (Release A / A3) — UI truth: never persist an "autonomous" policy that can never execute.
+  // Autonomous live auto-hide needs BOTH the platform feature flag and live execution; when either is
+  // off, clamp to "approval" so the customer isn't led to believe automation is armed.
+  const liveAutoHideAvailable = metaCommentHideFeatureEnabled() && getLiveActionsConfig().canExecuteLive;
+  if (mode === "autonomous" && !liveAutoHideAvailable) mode = "approval";
   const minConfidenceRaw = Number(formData.get("minConfidence") ?? "0.8");
   const minConfidence = Number.isFinite(minConfidenceRaw) ? Math.min(1, Math.max(0, minConfidenceRaw)) : 0.8;
 

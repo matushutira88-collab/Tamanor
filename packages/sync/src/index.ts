@@ -29,6 +29,8 @@ import {
   acquireSyncLease,
   releaseSyncLease,
   resolveAccountProtection,
+  createNotification,
+  sendCriticalNotificationEmail,
   type TenantTx,
   type ConnectedAccount,
 } from "@guardora/db";
@@ -46,6 +48,8 @@ import {
   accessAllowsOperations,
   emitOpsEvent,
   metrics,
+  notificationDedupeKey,
+  dayBucket,
 } from "@guardora/core";
 import {
   createConnectorRuntime,
@@ -260,6 +264,9 @@ export async function runReadOnlySync(
   if ((account.status as unknown as string) === ConnectorStatus.disconnected) {
     return zero(false, "This account is disconnected — reconnect to sync.");
   }
+  // V1.70 (Release B / B2) — remember whether this is the account's very first successful sync, so the
+  // terminal write can raise a one-time FIRST_SYNC_COMPLETED notification.
+  const wasFirstSync = !account.lastSuccessfulSyncAt;
 
   const mode = account.mode as unknown as CoreMode;
   if (!modeAllowsSync(mode)) {
@@ -409,6 +416,15 @@ export async function runReadOnlySync(
       }
 
       emitOpsEvent("sync.completed", { result: verdict === "partial_success" ? "partial" : "success" });
+      // V1.70 (B2) — one-time first-sync notification (best-effort; never affects the sync outcome).
+      if (wasFirstSync && verdict !== "failed") {
+        await createNotification({
+          tenantId, type: "first_sync_completed",
+          titleKey: "notif.first_sync_completed.title", messageKey: "notif.first_sync_completed.body",
+          dedupeKey: notificationDedupeKey("first_sync_completed", account.id),
+          metadata: { accountId: account.id, brandId: account.brandId, created },
+        }).catch(() => {});
+      }
       return {
         ok: verdict !== "failed",
         mock: useMock,
@@ -476,6 +492,26 @@ export async function runReadOnlySync(
         await auditTx(db, account, event, { error: msg, needsReconnect, retryLater, ...(permissionState ? { permissionState } : {}) });
       });
       phase("tenant-write-end");
+
+      // V1.70 (B2) — notify on sync failure (best-effort; never changes the outcome). A reconnect-
+      // required failure raises the dedicated ACCOUNT_RECONNECT_REQUIRED (deduped per account); any
+      // other failure raises SYNC_FAILED deduped per account per day so a stuck account can't spam.
+      if (needsReconnect) {
+        const n = await createNotification({
+          tenantId, type: "account_reconnect_required",
+          titleKey: "notif.account_reconnect_required.title", messageKey: "notif.account_reconnect_required.body",
+          dedupeKey: notificationDedupeKey("account_reconnect_required", account.id),
+          metadata: { accountId: account.id, brandId: account.brandId },
+        }).catch(() => ({ created: false, id: null }));
+        if (n.created && n.id) await sendCriticalNotificationEmail(tenantId, n.id, "account_reconnect_required").catch(() => {});
+      } else {
+        await createNotification({
+          tenantId, type: "sync_failed",
+          titleKey: "notif.sync_failed.title", messageKey: "notif.sync_failed.body",
+          dedupeKey: notificationDedupeKey("sync_failed", account.id, dayBucket(new Date())),
+          metadata: { accountId: account.id, brandId: account.brandId, attempts },
+        }).catch(() => {});
+      }
 
       return { ok: false, mock: useMock, fetched: 0, created: 0, updated: 0, deduped: 0, errors: 1, durationMs, message: msg, syncRunId: run.id, verdict: "failed", needsReconnect, retryLater };
     }
@@ -685,11 +721,12 @@ async function persistNewItem(
   hooks?: SyncPhaseHooks,
 ): Promise<IngestOutcome> {
   // Phase P1 — tenant reads (short tx): plan + brand locale + brand memory rules.
-  const { plan, accessState, brand, memoryRules, tenantDefaults } = await withTenantDb(tenantId, async (db) => {
+  const { plan, accessState, internalAccess, brand, memoryRules, tenantDefaults } = await withTenantDb(tenantId, async (db) => {
     // V1.50D — read the billing access state alongside the plan so paid AI is refused for a
     // restricted (trial-expired / lapsed) tenant, regardless of the stored plan.
+    // V1.73 — also read internalAccess so an internal admin tenant meters as unlimited.
     const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: {
-      plan: true, accessState: true,
+      plan: true, accessState: true, internalAccess: true,
       // V1.59 — tenant protection defaults, for resolving the effective per-account auto-hide config.
       defaultAutoHideEnabled: true, defaultAutoHideMode: true, defaultAutoHideRiskThreshold: true,
       defaultAutoHideCategories: true, defaultRequireManualApproval: true,
@@ -700,7 +737,7 @@ async function persistNewItem(
       select: { type: true, normalizedPhrase: true, language: true, severity: true, isActive: true },
     });
     return {
-      plan: tenant?.plan ?? "free", accessState: tenant?.accessState ?? "full_access", brand, memoryRules,
+      plan: tenant?.plan ?? "free", accessState: tenant?.accessState ?? "full_access", internalAccess: tenant?.internalAccess ?? false, brand, memoryRules,
       tenantDefaults: {
         defaultAutoHideEnabled: tenant?.defaultAutoHideEnabled ?? false,
         defaultAutoHideMode: tenant?.defaultAutoHideMode ?? "recommend",
@@ -723,7 +760,7 @@ async function persistNewItem(
   // cache). The ReputationItem does not exist yet, so we link the UsageEvents to it by this id AFTER create.
   const usageCorrelationId = randomUUID();
   const hybrid = await classifyWithUsagePolicy(
-    { tenantId, plan, accessState, correlationId: usageCorrelationId },
+    { tenantId, plan, accessState, internalAccess, correlationId: usageCorrelationId },
     { text: item.text, platform: item.platform, locale: item.author.locale, rating: item.rating, rules },
     {
       workspaceLocale: brand?.defaultLocale ?? "en",

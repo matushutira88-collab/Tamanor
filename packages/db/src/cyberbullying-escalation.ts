@@ -2,7 +2,7 @@ import { ActorKind, Prisma } from "@prisma/client";
 import {
   Permission, Role, can, CYBERBULLYING_AUDIT_EVENTS, IncidentCategory, IncidentTimelineEventType,
   EscalationStatus, EscalationSeverity, EscalationReason, RecipientPurpose,
-  NotificationType, NotificationEntityType,
+  CyberbullyingNotificationType, NotificationEntityType,
   isEscalationSeverity, isEscalationReason, escalationReasonRequiresNote, canEscalationTransition, ESCALATION_NOTE_MAX,
   type IncidentActorContext,
 } from "@guardora/core";
@@ -77,7 +77,7 @@ export async function createManualEscalation(
     await escAudit(db, actor, CYBERBULLYING_AUDIT_EVENTS.escalationCreated, esc.id, { reasonCode: input.reasonCode, severity: input.severity, ...(input.targetRole ? { targetRole: input.targetRole } : {}) });
     // Notify — deduped, sanitized (no note).
     await notifyIncidentTx(db, actor, incidentId, RecipientPurpose.Escalation,
-      { type: NotificationType.IncidentEscalated, entityType: NotificationEntityType.Escalation, entityId: esc.id, incidentId, discriminator: esc.id, metadata: { severity: input.severity, reasonCode: input.reasonCode } },
+      { type: CyberbullyingNotificationType.IncidentEscalated, entityType: NotificationEntityType.Escalation, entityId: esc.id, incidentId, discriminator: esc.id, metadata: { severity: input.severity, reasonCode: input.reasonCode } },
       { targetUserId: input.targetUserId, targetRole: input.targetRole });
     return { escalationId: esc.id, status: esc.status };
   });
@@ -101,7 +101,7 @@ export async function resolveEscalation(actor: IncidentActorContext, escalationI
     await db.cyberbullyingEscalation.update({ where: { id: escalationId }, data: { status: EscalationStatus.Resolved, resolvedAt: new Date(), resolvedByUserId: actor.userId, resolutionCode: resolutionCode || null } });
     await escTimeline(db, actor, esc.incidentId, IncidentTimelineEventType.EscalationResolved);
     await escAudit(db, actor, CYBERBULLYING_AUDIT_EVENTS.escalationResolved, escalationId, resolutionCode ? { resolutionCode } : {});
-    await notifyIncidentTx(db, actor, esc.incidentId, RecipientPurpose.Escalation, { type: NotificationType.EscalationResolved, entityType: NotificationEntityType.Escalation, entityId: escalationId, incidentId: esc.incidentId, discriminator: `resolved:${escalationId}` }, { targetUserId: esc.targetUserId });
+    await notifyIncidentTx(db, actor, esc.incidentId, RecipientPurpose.Escalation, { type: CyberbullyingNotificationType.EscalationResolved, entityType: NotificationEntityType.Escalation, entityId: escalationId, incidentId: esc.incidentId, discriminator: `resolved:${escalationId}` }, { targetUserId: esc.targetUserId });
   });
 }
 
@@ -125,7 +125,7 @@ export async function reassignEscalationTarget(actor: IncidentActorContext, esca
     await db.cyberbullyingEscalation.update({ where: { id: escalationId }, data: { targetUserId: newTargetUserId } });
     await escTimeline(db, actor, esc.incidentId, IncidentTimelineEventType.EscalationTargetChanged);
     await escAudit(db, actor, CYBERBULLYING_AUDIT_EVENTS.escalationTargetChanged, escalationId, {});
-    await createNotificationTx(db, actor.tenantId, actor.userId, newTargetUserId, { type: NotificationType.IncidentEscalated, entityType: NotificationEntityType.Escalation, entityId: escalationId, incidentId: esc.incidentId, discriminator: `reassigned:${escalationId}:${newTargetUserId}` });
+    await createNotificationTx(db, actor.tenantId, actor.userId, newTargetUserId, { type: CyberbullyingNotificationType.IncidentEscalated, entityType: NotificationEntityType.Escalation, entityId: escalationId, incidentId: esc.incidentId, discriminator: `reassigned:${escalationId}:${newTargetUserId}` });
   });
 }
 
