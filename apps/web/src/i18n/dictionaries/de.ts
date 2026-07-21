@@ -1259,6 +1259,7 @@ export const de: Dictionary = {
     reviewType: "Bewertung",
     state_not_configured: "Die Google-Business-Profile-Verbindung ist nicht konfiguriert.",
     state_api_disabled: "Der Google-Business-Profile-API-Zugriff ist für dieses Projekt noch nicht bestätigt.",
+    state_awaiting_approval: "Warten auf Google-API-Freigabe. OAuth ist konfiguriert, doch der Live-Zugriff auf Bewertungen wird erst aktiviert, sobald Google den Business-Profile-API-Zugriff für dieses Projekt freigibt.",
     state_api_access_unconfirmed: "Der Google-Business-Profile-API-Zugriff ist für dieses Projekt noch nicht bestätigt.",
     state_denied: "Sie haben keine Berechtigung, Konten zu verbinden.",
     state_oauth_denied: "Die Google-Anmeldung wurde abgebrochen.",

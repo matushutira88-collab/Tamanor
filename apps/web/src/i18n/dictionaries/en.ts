@@ -1289,6 +1289,7 @@ export const en = {
     reviewType: "Review",
     state_not_configured: "Google Business Profile connection is not configured.",
     state_api_disabled: "Google Business Profile API access is not yet confirmed for this project.",
+    state_awaiting_approval: "Awaiting Google API approval. OAuth is configured, but live review access is enabled only once Google approves Business Profile API access for this project.",
     state_api_access_unconfirmed: "Google Business Profile API access is not yet confirmed for this project.",
     state_denied: "You do not have permission to connect accounts.",
     state_oauth_denied: "Google sign-in was cancelled.",

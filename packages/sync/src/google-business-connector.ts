@@ -361,7 +361,7 @@ export function googleBusinessDiagnostic(input: {
   return {
     configured: cfg.configured,
     apiEnabled: cfg.apiEnabled,
-    oauthReady: cfg.status === "oauth_ready",
+    oauthReady: cfg.status === "oauth_ready" || cfg.status === "awaiting_approval",
     connected,
     tokenValid: input.tokenValid !== false,
     refreshAvailable: !!input.refreshAvailable,

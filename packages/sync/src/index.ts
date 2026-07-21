@@ -1140,6 +1140,7 @@ export * from "./facebook-connector";
 export * from "./instagram-connector";
 export * from "./instagram-moderation";
 export * from "./google-business-connector";
+export * from "./google-business-api-client";
 export * from "./production-safety";
 export * from "./connection-manager";
 export * from "./provider-revoke";

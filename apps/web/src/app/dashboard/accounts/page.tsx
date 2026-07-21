@@ -343,6 +343,8 @@ export default async function AccountsPage({
           <p className="text-sm text-[var(--color-muted)]">{hdrT.gbp.state_not_configured}</p>
         ) : gbp.status === "api_disabled" ? (
           <p className="text-sm text-[var(--color-muted)]">{hdrT.gbp.state_api_disabled}</p>
+        ) : gbp.status === "awaiting_approval" ? (
+          <p className="text-sm text-[var(--color-muted)]">{hdrT.gbp.state_awaiting_approval}</p>
         ) : (
           <>
             <p className="text-sm text-[var(--color-muted)]">{hdrT.gbp.readyToConnectBody}</p>

@@ -1259,6 +1259,7 @@ export const sk: Dictionary = {
     reviewType: "Recenzia",
     state_not_configured: "Pripojenie Google Business Profile nie je nakonfigurované.",
     state_api_disabled: "Prístup k Google Business Profile API zatiaľ nie je potvrdený pre tento projekt.",
+    state_awaiting_approval: "Čaká sa na schválenie Google API. OAuth je nakonfigurovaný, no živý prístup k recenziám sa zapne až po schválení prístupu k Business Profile API pre tento projekt zo strany Googlu.",
     state_api_access_unconfirmed: "Prístup k Google Business Profile API zatiaľ nie je potvrdený pre tento projekt.",
     state_denied: "Nemáte oprávnenie pripájať účty.",
     state_oauth_denied: "Prihlásenie cez Google bolo zrušené.",

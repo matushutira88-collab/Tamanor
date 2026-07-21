@@ -366,24 +366,40 @@ export const GOOGLE_BUSINESS_SCOPE = "https://www.googleapis.com/auth/business.m
  * from the source env (never cached) so tests can inject. The client secret is
  * NEVER returned (only `hasSecret`); `apiEnabled` defaults to false. Missing
  * config → `not_configured`; configured but flag off → `api_disabled`.
+ *
+ * V1.74 (Sprint C9) — API-access APPROVAL is a SEPARATE axis from the local enable
+ * flag. `GOOGLE_BUSINESS_API_ENABLED` turns the code path on; `GOOGLE_BUSINESS_API_APPROVED`
+ * asserts Google has actually granted Business Profile API access to the project. We
+ * NEVER treat the enable flag as approval — a live review read requires BOTH. When the
+ * flag is on but approval is still pending, status is `awaiting_approval` (the connector
+ * shows "Awaiting Google API approval" and issues no live calls / no mock data).
  */
 export function getGoogleBusinessConfig(source: NodeJS.ProcessEnv = process.env): {
   configured: boolean;
   apiEnabled: boolean;
+  /** True only when Google has APPROVED Business Profile API access for this project. */
+  apiApproved: boolean;
   clientId?: string;
   redirectUri?: string;
   hasSecret: boolean;
   scope: string;
-  status: "not_configured" | "api_disabled" | "oauth_ready";
+  status: "not_configured" | "api_disabled" | "awaiting_approval" | "oauth_ready";
 } {
   const clientId = source.GOOGLE_BUSINESS_CLIENT_ID || undefined;
   const clientSecret = source.GOOGLE_BUSINESS_CLIENT_SECRET || undefined;
   const redirectUri = source.GOOGLE_BUSINESS_REDIRECT_URI || source.GOOGLE_BUSINESS_OAUTH_REDIRECT_URI || undefined;
   const apiEnabled = source.GOOGLE_BUSINESS_API_ENABLED === "true" || source.GOOGLE_BUSINESS_API_ENABLED === "1";
+  const apiApproved = source.GOOGLE_BUSINESS_API_APPROVED === "true" || source.GOOGLE_BUSINESS_API_APPROVED === "1";
   const configured = !!(clientId && clientSecret && redirectUri);
-  const status = !configured ? "not_configured" : !apiEnabled ? "api_disabled" : "oauth_ready";
+  const status = !configured
+    ? "not_configured"
+    : !apiEnabled
+      ? "api_disabled"
+      : !apiApproved
+        ? "awaiting_approval"
+        : "oauth_ready";
   // clientId + redirectUri are public OAuth params; the secret is intentionally omitted.
-  return { configured, apiEnabled, clientId, redirectUri, hasSecret: !!clientSecret, scope: GOOGLE_BUSINESS_SCOPE, status };
+  return { configured, apiEnabled, apiApproved, clientId, redirectUri, hasSecret: !!clientSecret, scope: GOOGLE_BUSINESS_SCOPE, status };
 }
 
 /**
