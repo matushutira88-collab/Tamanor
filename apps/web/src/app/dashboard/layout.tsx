@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { DASHBOARD_NAV } from "@/lib/nav";
-import { can, Role } from "@guardora/core";
+import { can, Role, WorkspaceKind, isWorkspaceKind } from "@guardora/core";
 import { requireVerifiedSession } from "@/server/auth";
 import { withTenant, getTenantBilling, getTenantEntitlements } from "@guardora/db";
 import { getLocale } from "@/i18n/locale-server";
@@ -84,6 +84,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const deniedNavHrefs = DASHBOARD_NAV
     .filter((n) => n.requiredPermission && !can(session.role as Role, n.requiredPermission))
     .map((n) => n.href);
+  // CS-C0 — the BUSINESS navigation is shown ONLY in a BUSINESS workspace. A Family /
+  // Child-Safety-Organization / Internal workspace never renders business nav (its own
+  // nav ships in a later sprint). No-op for every existing tenant (all are business).
+  const workspaceKind = isWorkspaceKind(session.workspaceKind) ? session.workspaceKind : WorkspaceKind.Business;
+  const businessNavDenied = workspaceKind === WorkspaceKind.Business ? [] : DASHBOARD_NAV.map((n) => n.href);
+  const allDeniedNavHrefs = [...new Set([...deniedNavHrefs, ...businessNavDenied])];
 
   logPhase({ traceId, phase: "SHELL_RENDER_STARTED", success: true, userId: session.userId, tenantId: session.tenantId });
   // Server data bootstrap is done; the client mount marker (DASHBOARD_CLIENT_MOUNTED) confirms hydration.
@@ -105,7 +111,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       locale={locale}
       navLabels={dict.dashboardNav}
       sidebarStrings={dict.sidebar}
-      deniedNavHrefs={deniedNavHrefs}
+      deniedNavHrefs={allDeniedNavHrefs}
     >
       <StateBanner accessState={billing?.accessState ?? "full_access"} billingStatus={billing?.billingStatus ?? "no_subscription"} trialDaysLeft={trialDaysLeft} locale={locale} />
       {children}

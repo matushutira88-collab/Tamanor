@@ -7,6 +7,10 @@ node_modules/
 .evidence-store/
 evidence-store/
 
+# Local rls-security test tooling backups (throwaway; never committed).
+.local-db-backups/
+*/migration.sql.bak
+
 # build output
 dist/
 build/

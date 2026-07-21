@@ -40,6 +40,8 @@ export * from "./cyberbullying-evidence-upload";
 export * from "./cyberbullying-notifications";
 export * from "./cyberbullying-compliance";
 export * from "./cyberbullying-redaction";
+export * from "./workspace";
+export * from "./child-safety-signal";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";

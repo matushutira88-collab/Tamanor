@@ -12,7 +12,9 @@
     "./cyberbullying-evidence-upload": "./src/cyberbullying-evidence-upload.ts",
     "./cyberbullying-notifications": "./src/cyberbullying-notifications.ts",
     "./cyberbullying-compliance": "./src/cyberbullying-compliance.ts",
-    "./cyberbullying-redaction": "./src/cyberbullying-redaction.ts"
+    "./cyberbullying-redaction": "./src/cyberbullying-redaction.ts",
+    "./workspace": "./src/workspace.ts",
+    "./child-safety-signal": "./src/child-safety-signal.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

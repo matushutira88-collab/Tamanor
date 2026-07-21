@@ -352,6 +352,10 @@ model Tenant {
   name      String
   slug      String   @unique
   plan      String   @default("free")
+  // CS-C0 — IMMUTABLE workspace kind. Every existing tenant is `business`. BUSINESS and
+  // FAMILY data never share a tenant; capabilities are gated by kind on top of RLS.
+  // Changed only via an internal migration procedure, never a client API call.
+  workspaceKind String @default("business") // WorkspaceKind (business|family|child_safety_organization|internal)
   // V1.50A — self-service Free Trial. On registration: plan="free_trial" with a
   // 14-day window. Billing is out of scope (V1.50B+); these are informational only.
   trialStartsAt DateTime?
