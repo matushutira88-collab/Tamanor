@@ -473,8 +473,12 @@ model Tenant {
   complianceApprovalHistoryEvents    ComplianceApprovalHistoryEvent[]
 
   // CS-C1 — Child Safety Family domain (FAMILY workspaces only; enforced by workspace guards + RLS).
-  protectedProfiles     ProtectedProfile[]
-  guardianRelationships GuardianRelationship[]
+  protectedProfiles        ProtectedProfile[]
+  guardianRelationships    GuardianRelationship[]
+  // CS-C2 — consent, guardian authority & safe-recipient assessment.
+  guardianAuthorityRecords GuardianAuthorityRecord[]
+  consentRecords           ConsentRecord[]
+  safeRecipientAssessments SafeRecipientAssessment[]
 
   @@map("tenants")
 }
@@ -2632,6 +2636,7 @@ model ProtectedProfile {
 
   tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   guardianRelationships GuardianRelationship[]
+  consentRecords        ConsentRecord[] // CS-C2
 
   @@unique([id, tenantId])
   @@index([tenantId, archivedAt])
@@ -2657,13 +2662,103 @@ model GuardianRelationship {
   revokedAt                DateTime?
   archivedAt               DateTime?
 
-  tenant             Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                   Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // Same-tenant composite FKs — cross-tenant linking is impossible at the DB level.
-  guardianMembership Membership       @relation(fields: [guardianMembershipId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  protectedProfile   ProtectedProfile @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  guardianMembership       Membership                @relation(fields: [guardianMembershipId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  protectedProfile         ProtectedProfile          @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  // CS-C2 back-relations.
+  authorityRecords         GuardianAuthorityRecord[]
+  safeRecipientAssessments SafeRecipientAssessment[]
 
   @@unique([id, tenantId])
   @@index([tenantId, protectedProfileId])
   @@index([tenantId, guardianMembershipId])
   @@map("guardian_relationships")
+}
+
+// ===========================================================================================
+// CS-C2 — Consent, Guardian Authority & Safe Recipients. FAMILY-only, tenant-scoped. Four axes
+// (relationship / authority / consent / eligibility) are DELIBERATELY SEPARATE records that are
+// never auto-derived from one another. Domain values are TEXT validated against @guardora/core
+// enums (no DB enum types → CS-C3 not locked in). No document/evidence storage; verificationMethod
+// and reasonCode are allow-listed process metadata only. History is preserved (revoke/expire/
+// archive; app role has no DELETE). CHECK constraints, partial "one active" unique indexes, RLS and
+// GRANTs live in the hand-authored migration 20260803090000_cs_c2_consent_authority_safe_recipients.
+// Required links (authority→relationship, consent→profile, assessment→relationship) are same-tenant
+// composite FKs. Optional links (consent.guardianRelationshipId, grantedByMembershipId,
+// assessedByMembershipId) carry the shared tenantId and are enforced same-tenant in the REPOSITORY
+// (RLS-scoped lookup, fail-closed) with NO DB FK — history survives a member removal, and this avoids
+// SET NULL on the NOT NULL shared tenantId. Prisma also cannot model an optional composite relation
+// that shares a required scalar, so those optional links are scalar-only here.
+// ===========================================================================================
+
+model GuardianAuthorityRecord {
+  id                     String    @id @default(cuid())
+  tenantId               String
+  guardianRelationshipId String
+  authorityType          String // GuardianAuthorityType
+  authorityStatus        String    @default("pending") // GuardianAuthorityStatus (pending|verified|revoked|expired|rejected)
+  validFrom              DateTime  @default(now())
+  validUntil             DateTime? // validUntil < now ⇒ inactive even if status stayed VERIFIED
+  verifiedAt             DateTime?
+  verificationMethod     String? // VerificationMethod — process metadata only, NEVER proof/document
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  revokedAt              DateTime?
+  archivedAt             DateTime?
+
+  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guardianRelationship GuardianRelationship @relation(fields: [guardianRelationshipId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, guardianRelationshipId, authorityStatus])
+  @@map("guardian_authority_records")
+}
+
+model ConsentRecord {
+  id                     String    @id @default(cuid())
+  tenantId               String
+  protectedProfileId     String
+  guardianRelationshipId String? // optional link — same-tenant enforced in repository (no DB FK; history survives member removal)
+  consentType            String // ConsentType
+  consentStatus          String    @default("not_requested") // ConsentStatus (active == GRANTED, withdrawn == REVOKED)
+  grantedByMembershipId  String? // required for GRANTED — same-tenant enforced in repository (no DB FK)
+  grantedAt              DateTime?
+  validFrom              DateTime?
+  validUntil             DateTime?
+  revokedAt              DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  archivedAt             DateTime?
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  protectedProfile ProtectedProfile @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, protectedProfileId, consentStatus])
+  @@index([tenantId, guardianRelationshipId])
+  @@map("consent_records")
+}
+
+model SafeRecipientAssessment {
+  id                     String    @id @default(cuid())
+  tenantId               String
+  guardianRelationshipId String
+  eligibilityStatus      String    @default("not_verified") // SafetyRecipientEligibility (never auto-eligible)
+  assessmentStatus       String    @default("not_started") // SafeRecipientAssessmentStatus
+  assessedByMembershipId String? // required for APPROVED — same-tenant enforced in repository (no DB FK)
+  assessedAt             DateTime?
+  reasonCode             String? // SafeRecipientReasonCode (allow-listed enum, NEVER free text)
+  validUntil             DateTime?
+  revokedAt              DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  archivedAt             DateTime?
+
+  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guardianRelationship GuardianRelationship @relation(fields: [guardianRelationshipId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, guardianRelationshipId, assessmentStatus])
+  @@map("safe_recipient_assessments")
 }

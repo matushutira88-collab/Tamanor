@@ -24,13 +24,20 @@ import {
 
 // --- Family authorization model (FamilyRole → FamilyAction) -----------------
 
-/** Fine-grained family actions. Read (`*View`, `family:view`) vs mutate (`*Manage`). */
+/** Fine-grained family actions. Read (`*View`, `family:view`) vs mutate (`*Manage`/`*Assess`). */
 export enum FamilyAction {
   FamilyView = "family:view",
   ProtectedProfileView = "protected_profile:view",
   ProtectedProfileManage = "protected_profile:manage",
   GuardianRelationshipView = "guardian_relationship:view",
   GuardianRelationshipManage = "guardian_relationship:manage",
+  // CS-C2 — consent, guardian authority & safe recipients (Family-only). `Assess` is a mutate tier.
+  GuardianAuthorityView = "guardian_authority:view",
+  GuardianAuthorityManage = "guardian_authority:manage",
+  ConsentView = "consent:view",
+  ConsentManage = "consent:manage",
+  SafeRecipientView = "safe_recipient:view",
+  SafeRecipientAssess = "safe_recipient:assess",
 }
 export const ALL_FAMILY_ACTIONS: readonly FamilyAction[] = Object.values(FamilyAction);
 
@@ -52,6 +59,8 @@ export function familyRoleForMembershipRole(role: string): FamilyRole {
 
 const VIEW_ONLY: readonly FamilyAction[] = [
   FamilyAction.FamilyView, FamilyAction.ProtectedProfileView, FamilyAction.GuardianRelationshipView,
+  // CS-C2 — reads only. Trusted-adult / safety-professional / viewer NEVER verify/grant/approve.
+  FamilyAction.GuardianAuthorityView, FamilyAction.ConsentView, FamilyAction.SafeRecipientView,
 ];
 const FULL_MANAGE: readonly FamilyAction[] = ALL_FAMILY_ACTIONS;
 
@@ -76,6 +85,14 @@ export const FAMILY_ACTION_CAPABILITY: Readonly<Record<FamilyAction, WorkspaceCa
   [FamilyAction.ProtectedProfileManage]: WorkspaceCapability.ProtectedProfiles,
   [FamilyAction.GuardianRelationshipView]: WorkspaceCapability.GuardianRelationships,
   [FamilyAction.GuardianRelationshipManage]: WorkspaceCapability.GuardianRelationships,
+  // CS-C2 — authority lives under the GuardianRelationships capability; consent + safe-recipient
+  // reuse the CS-0 Family capabilities (all Family-kind only).
+  [FamilyAction.GuardianAuthorityView]: WorkspaceCapability.GuardianRelationships,
+  [FamilyAction.GuardianAuthorityManage]: WorkspaceCapability.GuardianRelationships,
+  [FamilyAction.ConsentView]: WorkspaceCapability.ConsentManagement,
+  [FamilyAction.ConsentManage]: WorkspaceCapability.ConsentManagement,
+  [FamilyAction.SafeRecipientView]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafeRecipientAssess]: WorkspaceCapability.SafeRecipientPolicies,
 };
 
 /** The actor context every Family repository operation requires. */
@@ -111,6 +128,18 @@ export const CHILD_SAFETY_AUDIT_EVENTS = {
   guardianRelationshipCreated: "child_safety.guardian_relationship.created",
   guardianRelationshipRevoked: "child_safety.guardian_relationship.revoked",
   guardianRelationshipArchived: "child_safety.guardian_relationship.archived",
+  // CS-C2 — guardian authority, consent & safe-recipient assessment (content-free).
+  guardianAuthorityCreated: "child_safety.guardian_authority.created",
+  guardianAuthorityVerified: "child_safety.guardian_authority.verified",
+  guardianAuthorityRejected: "child_safety.guardian_authority.rejected",
+  guardianAuthorityRevoked: "child_safety.guardian_authority.revoked",
+  consentCreated: "child_safety.consent.created",
+  consentGranted: "child_safety.consent.granted",
+  consentRevoked: "child_safety.consent.revoked",
+  safeRecipientAssessmentCreated: "child_safety.safe_recipient_assessment.created",
+  safeRecipientAssessmentApproved: "child_safety.safe_recipient_assessment.approved",
+  safeRecipientAssessmentRejected: "child_safety.safe_recipient_assessment.rejected",
+  safeRecipientAssessmentRevoked: "child_safety.safe_recipient_assessment.revoked",
 } as const;
 export type ChildSafetyAuditEvent = (typeof CHILD_SAFETY_AUDIT_EVENTS)[keyof typeof CHILD_SAFETY_AUDIT_EVENTS];
 

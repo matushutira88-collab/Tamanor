@@ -15,7 +15,8 @@
     "./cyberbullying-redaction": "./src/cyberbullying-redaction.ts",
     "./workspace": "./src/workspace.ts",
     "./child-safety-signal": "./src/child-safety-signal.ts",
-    "./child-safety-family": "./src/child-safety-family.ts"
+    "./child-safety-family": "./src/child-safety-family.ts",
+    "./child-safety-consent": "./src/child-safety-consent.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -22,9 +22,12 @@ export class FamilyForbiddenError extends Error {
   readonly code = "FORBIDDEN";
   constructor(public readonly reason: FamilyForbiddenReason) { super(`forbidden: ${reason}`); this.name = "FamilyForbiddenError"; }
 }
+export type FamilyRecordKind =
+  | "protected_profile" | "guardian_relationship"
+  | "guardian_authority_record" | "consent_record" | "safe_recipient_assessment" | "membership";
 export class FamilyNotFoundError extends Error {
   readonly code = "NOT_FOUND";
-  constructor(kind: "protected_profile" | "guardian_relationship") { super(`${kind} not found in this tenant`); this.name = "FamilyNotFoundError"; }
+  constructor(kind: FamilyRecordKind) { super(`${kind} not found in this tenant`); this.name = "FamilyNotFoundError"; }
 }
 export class FamilyValidationError extends Error {
   readonly code = "INVALID";
