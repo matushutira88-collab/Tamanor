@@ -483,6 +483,8 @@ model Tenant {
   safetySignals                   SafetySignal[]
   // CS-C4 — recipient authorization decisions.
   recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[]
+  // CS-C5 — internal deliveries.
+  safetySignalDeliveries          SafetySignalDelivery[]
 
   @@map("tenants")
 }
@@ -2643,6 +2645,7 @@ model ProtectedProfile {
   consentRecords                  ConsentRecord[] // CS-C2
   safetySignals                   SafetySignal[] // CS-C3
   recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[] // CS-C4
+  safetySignalDeliveries          SafetySignalDelivery[] // CS-C5
 
   @@unique([id, tenantId])
   @@index([tenantId, archivedAt])
@@ -2809,6 +2812,7 @@ model SafetySignal {
   protectedProfile                ProtectedProfile                       @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: NoAction)
   // CS-C4 back-relation.
   recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[]
+  safetySignalDeliveries          SafetySignalDelivery[] // CS-C5
 
   // CS-C4 — composite unique so a recipient authorization decision can reference (id, tenantId).
   @@unique([id, tenantId])
@@ -2856,13 +2860,78 @@ model SafetyRecipientAuthorizationDecision {
   updatedAt                 DateTime  @updatedAt
   archivedAt                DateTime?
 
-  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  safetySignal     SafetySignal     @relation(fields: [safetySignalId, tenantId], references: [id, tenantId], onDelete: NoAction)
-  protectedProfile ProtectedProfile @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  safetySignal     SafetySignal           @relation(fields: [safetySignalId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  protectedProfile ProtectedProfile       @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  deliveries       SafetySignalDelivery[] // CS-C5
 
+  // CS-C5 — composite unique so an internal delivery can reference (id, tenantId).
+  @@unique([id, tenantId])
   @@index([tenantId, safetySignalId, decisionStatus], map: "sread_tenant_signal_status_idx")
   @@index([tenantId, protectedProfileId], map: "sread_tenant_profile_idx")
   @@index([tenantId, recipientMembershipId], map: "sread_tenant_recipient_idx")
   @@index([tenantId, safetySignalId, recipientMembershipId, createdAt], map: "sread_effective_lookup_idx")
   @@map("safety_recipient_authorization_decisions")
+}
+
+// ===========================================================================================
+// CS-C5 — Internal Delivery Foundation. FAMILY-only, tenant-scoped. A SafetySignalDelivery is ONLY an
+// INTERNAL record that a minimal, already-authorized safety disclosure is PREPARED for a specific
+// authorized recipient — point 7 of the pipeline. It NEVER sends anything (no email/SMS/push/webhook/
+// notification/incident/case/evidence, no platform contact, no raw content) and mutates no CS-1..C4
+// record. A delivery may exist ONLY for a currently-EFFECTIVE CS-C4 recipient authorization decision
+// (re-checked in the repository via getEffectiveRecipientAuthorization). `deliveryChannel` is
+// internal-only (internal_inbox). The disclosure SNAPSHOT is safe enum + bounded scalars (scope,
+// signalType, severity, occurrenceBucket?, recommendedActionClass?) — NEVER raw content/JSON/free text.
+// Idempotency: unique (tenantId, recipientAuthorizationDecisionId, recipientMembershipId,
+// idempotencyKey). Required links (signal, profile, decision) are same-tenant composite FKs with
+// ON DELETE NO ACTION (never cascade-delete delivery history; tenant lifecycle cleans up via tenant FK).
+// recipient/acknowledgedBy/declinedBy membership ids have NO DB FK: `removeMember` (team-repo.ts) hard-
+// deletes memberships, so NO ACTION/RESTRICT would block member removal and CASCADE would delete
+// history — same-tenant is enforced in the repository (RLS lookup). CHECK constraints, RLS and GRANTs
+// live in the hand-authored migration 20260806090000_cs_c5_internal_delivery.
+// ===========================================================================================
+
+model SafetySignalDelivery {
+  id                               String    @id @default(cuid())
+  tenantId                         String
+  safetySignalId                   String
+  protectedProfileId               String
+  recipientAuthorizationDecisionId String
+  recipientMembershipId            String // same-tenant enforced in repository (no DB FK — member removal lifecycle)
+  deliveryStatus                   String    @default("prepared") // SafetyDeliveryStatus
+  deliveryChannel                  String    @default("internal_inbox") // SafetyDeliveryChannel — INTERNAL only
+  disclosureScope                  String // snapshot of the CS-C4 authorized scope (comma-joined allow-listed, non-empty)
+  signalType                       String // RiskType snapshot (CS-0)
+  severity                         String // SafetySeverity snapshot (CS-0)
+  occurrenceBucket                 String? // safe bucket snapshot (opaque; no raw-content hash)
+  recommendedActionClass           String? // SafetyRecommendedActionClass (allow-listed; no free text)
+  idempotencyKey                   String // bounded [A-Za-z0-9_-]; NOT derived from raw content
+  preparedAt                       DateTime  @default(now())
+  availableAt                      DateTime?
+  acknowledgedAt                   DateTime?
+  acknowledgedByMembershipId       String? // same-tenant enforced in repository (no DB FK)
+  declinedAt                       DateTime?
+  declinedByMembershipId           String? // same-tenant enforced in repository (no DB FK)
+  failedAt                         DateTime?
+  failureReasonCode                String? // SafetyDeliveryReasonCode (allow-listed)
+  revokedAt                        DateTime?
+  expiredAt                        DateTime?
+  supersededAt                     DateTime?
+  createdAt                        DateTime  @default(now())
+  updatedAt                        DateTime  @updatedAt
+  archivedAt                       DateTime?
+
+  tenant                         Tenant                               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  safetySignal                   SafetySignal                         @relation(fields: [safetySignalId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  protectedProfile               ProtectedProfile                     @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  recipientAuthorizationDecision SafetyRecipientAuthorizationDecision @relation(fields: [recipientAuthorizationDecisionId, tenantId], references: [id, tenantId], onDelete: NoAction)
+
+  @@unique([tenantId, recipientAuthorizationDecisionId, recipientMembershipId, idempotencyKey], map: "ssd_idempotency_key")
+  @@index([tenantId, safetySignalId, deliveryStatus], map: "ssd_tenant_signal_status_idx")
+  @@index([tenantId, protectedProfileId], map: "ssd_tenant_profile_idx")
+  @@index([tenantId, recipientAuthorizationDecisionId], map: "ssd_tenant_decision_idx")
+  @@index([tenantId, recipientMembershipId], map: "ssd_tenant_recipient_idx")
+  @@index([tenantId, safetySignalId, recipientMembershipId, createdAt], map: "ssd_effective_lookup_idx")
+  @@map("safety_signal_deliveries")
 }

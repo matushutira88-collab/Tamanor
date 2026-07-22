@@ -49,6 +49,15 @@ export enum FamilyAction {
   SafetyRecipientAuthorizationEvaluate = "safety_recipient_authorization:evaluate",
   SafetyRecipientAuthorizationCreate = "safety_recipient_authorization:create",
   SafetyRecipientAuthorizationRevoke = "safety_recipient_authorization:revoke",
+  // CS-C5 — INTERNAL delivery foundation (Family-only). `Acknowledge`/`Decline` are recipient acts on
+  // one's OWN delivery (repository-enforced). Nothing is ever sent externally.
+  SafetyDeliveryView = "safety_delivery:view",
+  SafetyDeliveryCreate = "safety_delivery:create",
+  SafetyDeliveryMakeAvailable = "safety_delivery:make_available",
+  SafetyDeliveryAcknowledge = "safety_delivery:acknowledge",
+  SafetyDeliveryDecline = "safety_delivery:decline",
+  SafetyDeliveryRevoke = "safety_delivery:revoke",
+  SafetyDeliveryArchive = "safety_delivery:archive",
 }
 export const ALL_FAMILY_ACTIONS: readonly FamilyAction[] = Object.values(FamilyAction);
 
@@ -76,22 +85,32 @@ const VIEW_ONLY: readonly FamilyAction[] = [
   FamilyAction.SafetySignalView,
 ];
 const FULL_MANAGE: readonly FamilyAction[] = ALL_FAMILY_ACTIONS;
-// CS-C4 — a plain Guardian may do everything a PrimaryGuardian can EXCEPT revoke a recipient
-// authorization decision (revocation of a disclosure authorization is a PrimaryGuardian act).
-const GUARDIAN_ACTIONS: readonly FamilyAction[] = ALL_FAMILY_ACTIONS.filter((a) => a !== FamilyAction.SafetyRecipientAuthorizationRevoke);
-// CS-C3/C4 — a safety professional is view-only for family administration but MAY review safety
-// signals and MAY view+evaluate recipient authorization (a read-only computation) — never create/
-// revoke a decision, and never mutate consent/authority/relationship.
+// CS-C5 — a recipient (of any non-viewer role) may VIEW + ACKNOWLEDGE/DECLINE their OWN delivery (the
+// "own delivery only" rule is enforced in the repository). This never bypasses the CS-C4 decision.
+const DELIVERY_RECIPIENT_ACTIONS: readonly FamilyAction[] = [
+  FamilyAction.SafetyDeliveryView, FamilyAction.SafetyDeliveryAcknowledge, FamilyAction.SafetyDeliveryDecline,
+];
+// CS-C4/C5 — a plain Guardian may do everything a PrimaryGuardian can EXCEPT revoke a recipient
+// authorization decision, revoke a delivery, or archive a delivery (those stay PrimaryGuardian acts).
+const GUARDIAN_ACTIONS: readonly FamilyAction[] = ALL_FAMILY_ACTIONS.filter((a) =>
+  a !== FamilyAction.SafetyRecipientAuthorizationRevoke && a !== FamilyAction.SafetyDeliveryRevoke && a !== FamilyAction.SafetyDeliveryArchive);
+// CS-C3/C4/C5 — a safety professional is view-only for family administration but MAY review safety
+// signals, view+evaluate recipient authorization, and act on their OWN delivery — never create a
+// signal/decision/delivery, never revoke, and never mutate consent/authority/relationship.
 const SAFETY_PROFESSIONAL: readonly FamilyAction[] = [
   ...VIEW_ONLY, FamilyAction.SafetySignalReview,
   FamilyAction.SafetyRecipientAuthorizationView, FamilyAction.SafetyRecipientAuthorizationEvaluate,
+  ...DELIVERY_RECIPIENT_ACTIONS,
 ];
+// CS-C5 — a trusted adult may VIEW/ACKNOWLEDGE/DECLINE their OWN delivery (if a valid authorized
+// recipient), on top of the CS-1..C3 read-only set. Never create/revoke/archive.
+const TRUSTED_ADULT: readonly FamilyAction[] = [...VIEW_ONLY, ...DELIVERY_RECIPIENT_ACTIONS];
 
 /** Which actions each FamilyRole may perform. Only guardians manage; everyone else is read-mostly. */
 export const FAMILY_ROLE_ACTIONS: Readonly<Record<FamilyRole, readonly FamilyAction[]>> = {
   [FamilyRole.PrimaryGuardian]: FULL_MANAGE,
   [FamilyRole.Guardian]: GUARDIAN_ACTIONS,
-  [FamilyRole.TrustedAdult]: VIEW_ONLY,
+  [FamilyRole.TrustedAdult]: TRUSTED_ADULT,
   [FamilyRole.SafetyProfessional]: SAFETY_PROFESSIONAL,
   [FamilyRole.FamilyViewer]: VIEW_ONLY,
 };
@@ -126,6 +145,14 @@ export const FAMILY_ACTION_CAPABILITY: Readonly<Record<FamilyAction, WorkspaceCa
   [FamilyAction.SafetyRecipientAuthorizationEvaluate]: WorkspaceCapability.SafeRecipientPolicies,
   [FamilyAction.SafetyRecipientAuthorizationCreate]: WorkspaceCapability.SafeRecipientPolicies,
   [FamilyAction.SafetyRecipientAuthorizationRevoke]: WorkspaceCapability.SafeRecipientPolicies,
+  // CS-C5 — internal delivery lives under the same SafeRecipientPolicies capability (recipient-scoped).
+  [FamilyAction.SafetyDeliveryView]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafetyDeliveryCreate]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafetyDeliveryMakeAvailable]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafetyDeliveryAcknowledge]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafetyDeliveryDecline]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafetyDeliveryRevoke]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafetyDeliveryArchive]: WorkspaceCapability.SafeRecipientPolicies,
 };
 
 /** The actor context every Family repository operation requires. */
@@ -187,6 +214,17 @@ export const CHILD_SAFETY_AUDIT_EVENTS = {
   recipientAuthorizationAuthorized: "child_safety.recipient_authorization.authorized",
   recipientAuthorizationRevoked: "child_safety.recipient_authorization.revoked",
   recipientAuthorizationSuperseded: "child_safety.recipient_authorization.superseded",
+  // CS-C5 — INTERNAL delivery foundation (content-free; NOTHING sent externally).
+  deliveryEvaluated: "child_safety.delivery.evaluated",
+  deliveryCreated: "child_safety.delivery.created",
+  deliveryAvailable: "child_safety.delivery.available",
+  deliveryAcknowledged: "child_safety.delivery.acknowledged",
+  deliveryDeclined: "child_safety.delivery.declined",
+  deliveryFailed: "child_safety.delivery.failed",
+  deliveryRevoked: "child_safety.delivery.revoked",
+  deliveryExpired: "child_safety.delivery.expired",
+  deliverySuperseded: "child_safety.delivery.superseded",
+  deliveryArchived: "child_safety.delivery.archived",
 } as const;
 export type ChildSafetyAuditEvent = (typeof CHILD_SAFETY_AUDIT_EVENTS)[keyof typeof CHILD_SAFETY_AUDIT_EVENTS];
 
