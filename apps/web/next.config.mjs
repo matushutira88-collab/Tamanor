@@ -46,6 +46,12 @@ const nextConfig = {
     const analyticsScript = "https://www.googletagmanager.com https://connect.facebook.net";
     const analyticsConnect =
       "https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.facebook.com https://connect.facebook.net";
+    // V1.58.9 — Cloudflare Turnstile (bot verification). Its api.js loads from this origin AND the
+    // challenge renders in an iframe served from it, so the origin MUST be allowlisted in BOTH
+    // `script-src` and `frame-src` — otherwise the CSP blocks the widget, no token is produced, and
+    // every login/registration is rejected server-side as a failed bot challenge.
+    // Ref: https://developers.cloudflare.com/turnstile/reference/content-security-policy/
+    const turnstile = "https://challenges.cloudflare.com";
     const csp = [
       "default-src 'self'",
       "base-uri 'self'",
@@ -56,10 +62,10 @@ const nextConfig = {
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
       isProd
-        ? `script-src 'self' 'unsafe-inline' ${analyticsScript}`
-        : `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${analyticsScript}`,
+        ? `script-src 'self' 'unsafe-inline' ${analyticsScript} ${turnstile}`
+        : `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${analyticsScript} ${turnstile}`,
       `connect-src 'self' ${analyticsConnect}`,
-      "frame-src 'self'",
+      `frame-src 'self' ${turnstile}`,
       ...(isProd ? ["upgrade-insecure-requests"] : []),
     ].join("; ");
     const security = [
