@@ -103,6 +103,11 @@ export function findMetaSyncCandidates(statuses: string[]): Promise<MetaSyncCand
     where: {
       platform: { in: ["facebook_page", "instagram_business"] as never },
       status: { in: statuses as never },
+      // V1.75 (P0) — AUTOMATIC sync is per-account. An account whose monitoring/auto-sync is
+      // OFF must NEVER be picked up by the cron/worker (this was the "cron syncs disabled
+      // accounts" bug — it also spawned unwanted reconnect notifications for accounts the user
+      // deliberately chose not to monitor). Manual "Sync now" is a separate, explicit path.
+      monitoringEnabled: true,
       // V1.45C1 — exclude a deleting tenant so worker auto-sync never picks up its accounts.
       tenant: { deletionState: "active" },
     },
@@ -139,7 +144,10 @@ export function findActiveMetaAccounts(): Promise<Array<{ id: string; tenantId: 
 /** Accounts whose OAuth token has an expiry and are currently healthy/unknown. No token material returned. */
 export function findAccountsForTokenCheck(): Promise<Array<{ id: string; tenantId: string; brandId: string; platform: string; tokenExpiresAt: Date | null }>> {
   return systemDb.connectedAccount.findMany({
-    where: { tokenExpiresAt: { not: null }, health: { in: ["healthy", "unknown"] as never }, tenant: { deletionState: "active" } },
+    // V1.75 (P0) — the token watchdog also honours the per-account auto-sync toggle. A
+    // monitoring-disabled account is not watched, so it can never produce a repeated
+    // reconnect audit/notification for an account the user isn't monitoring.
+    where: { tokenExpiresAt: { not: null }, health: { in: ["healthy", "unknown"] as never }, monitoringEnabled: true, tenant: { deletionState: "active" } },
     select: { id: true, tenantId: true, brandId: true, platform: true, tokenExpiresAt: true },
   });
 }

@@ -318,7 +318,9 @@ export default async function AccountsPage({
           </div>
           <p className="mb-2 text-[11px] text-[var(--color-muted)]">{hdrT.dash.syncCadence.replace("{n}", String(autoSync.intervalSeconds))}</p>
           <dl className="space-y-1.5 text-xs">
-            <div className="text-[var(--color-muted)]">{hdrT.dash.workerRequired}</div>
+            {/* V1.75 (P0) — "running via automatic sync" is shown ONLY when auto-sync is actually enabled,
+                so the card can never simultaneously read "disabled" (badge) and "running" (this line). */}
+            {autoSync.enabled ? <div className="text-[var(--color-muted)]">{hdrT.dash.workerRequired}</div> : null}
             <div>{hdrT.dash.lastAutomaticSync}: <span className="font-medium">{lastAutoRow ? formatDateTime(lastAutoRow.createdAt) : hdrT.dash.noAutomaticSyncYet}</span></div>
             <div>{hdrT.dash.lastManualSync}: <span className="font-medium">{lastManualRow ? formatDateTime(lastManualRow.createdAt) : "—"}</span></div>
             {autoSync.enabled ? (

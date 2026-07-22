@@ -4,7 +4,10 @@
  * "Nedostupné cez aktuálne oprávnenia" rather than a fake 0). Queries are batched (Promise.all / groupBy)
  * so there is no N+1 across accounts. All reads go through withTenant (RLS) — no cross-tenant leakage.
  */
-import { computeProtectionScore, type ProtectionScore } from "@guardora/core";
+import {
+  computeProtectionScore, type ProtectionScore,
+  resolveConnectionState, resolveAutoSyncState, type ConnectionState, type AutoSyncState, type ConnectionStateInput,
+} from "@guardora/core";
 import { withTenant } from "./repositories";
 import { resolveAccountProtection, countMonitoredAccounts, type EffectiveProtection } from "./account-protection";
 import { getTenantEntitlements } from "./billing-repo";
@@ -91,6 +94,9 @@ export interface WatchedAccountView {
   tokenHealth: string;
   monitoringEnabled: boolean;
   lastSuccessfulSyncAt: Date | null;
+  /** V1.75 — canonical, server-authoritative connection + auto-sync state (shared resolver). */
+  connectionState: ConnectionState;
+  autoSyncState: AutoSyncState;
   parentAccountId: string | null;
   /** Effective (resolved) protection — tenant default unless the account overrides it. */
   protection: EffectiveProtection;
@@ -122,12 +128,20 @@ export function accountProtectionScore(view: WatchedAccountView, now: Date = new
   });
 }
 
-function classifyProblem(a: { monitoringEnabled: boolean; health: string; connectionStatus: string; tokenHealth: string }): AccountProblem {
-  if (!a.monitoringEnabled) return "monitoring_off";
-  if (["expired", "invalid", "revoked"].includes(a.tokenHealth)) return "permissions_expired";
-  if (["needs_reconnect", "invalid_token", "missing_permission"].includes(a.connectionStatus)) return "needs_reconnect";
-  if (["error", "degraded"].includes(a.health)) return "sync_failed";
-  return "none";
+/**
+ * V1.75 — the main-dashboard `problem` is now a pure PROJECTION of the ONE canonical
+ * connection state (no independent field-combination formula). monitoring_off still wins so a
+ * deliberately-unmonitored account is labelled as such rather than as a connection error.
+ */
+function classifyProblem(state: ConnectionState, monitoringEnabled: boolean): AccountProblem {
+  if (!monitoringEnabled) return "monitoring_off";
+  switch (state) {
+    case "REAUTH_REQUIRED": return "permissions_expired";
+    case "DISCONNECTED": return "needs_reconnect";
+    case "SYNC_FAILED":
+    case "DEGRADED": return "sync_failed";
+    default: return "none"; // CONNECTED_HEALTHY | WAITING_FIRST_SYNC
+  }
 }
 
 /**
@@ -141,8 +155,9 @@ export async function getWatchedAccountsView(tenantId: string, since: Date, bran
       db.connectedAccount.findMany({
         where: { tenantId, ...brandWhere, status: { not: "disconnected" } },
         select: {
-          id: true, platform: true, externalName: true, externalId: true, status: true, health: true,
-          connectionStatus: true, tokenHealth: true, monitoringEnabled: true, lastSuccessfulSyncAt: true, parentAccountId: true,
+          id: true, platform: true, externalName: true, externalId: true, status: true, health: true, mode: true,
+          connectionStatus: true, tokenHealth: true, tokenExpiresAt: true, lastError: true, lastSyncedAt: true,
+          monitoringEnabled: true, lastSuccessfulSyncAt: true, parentAccountId: true,
           protectionOverridden: true, autoHideEnabled: true, autoHideMode: true, autoHideRiskThreshold: true,
           autoHideCategories: true, requireManualApproval: true,
         },
@@ -158,16 +173,27 @@ export async function getWatchedAccountsView(tenantId: string, since: Date, bran
     const comments = new Map(commentGroups.map((g) => [g.connectedAccountId, g._count.connectedAccountId]));
     const risk = new Map(riskGroups.map((g) => [g.connectedAccountId, g._count.connectedAccountId]));
 
-    return accounts.map((a) => ({
-      id: a.id, platform: a.platform as unknown as string, externalName: a.externalName, externalId: a.externalId,
-      status: a.status as unknown as string, health: a.health as unknown as string,
-      connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth, monitoringEnabled: a.monitoringEnabled,
-      lastSuccessfulSyncAt: a.lastSuccessfulSyncAt, parentAccountId: a.parentAccountId,
-      protection: resolveAccountProtection(a, defaults),
-      commentsInWindow: comments.get(a.id) ?? 0,
-      riskCommentsInWindow: risk.get(a.id) ?? 0,
-      problem: classifyProblem({ monitoringEnabled: a.monitoringEnabled, health: a.health as unknown as string, connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth }),
-    }));
+    return accounts.map((a) => {
+      const stateInput: ConnectionStateInput = {
+        status: a.status as unknown as string, mode: a.mode as unknown as string, health: a.health as unknown as string,
+        connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth, tokenExpiresAt: a.tokenExpiresAt,
+        lastError: a.lastError, lastSuccessfulSyncAt: a.lastSuccessfulSyncAt, lastSyncedAt: a.lastSyncedAt,
+        monitoringEnabled: a.monitoringEnabled,
+      };
+      const connectionState = resolveConnectionState(stateInput);
+      return {
+        id: a.id, platform: a.platform as unknown as string, externalName: a.externalName, externalId: a.externalId,
+        status: a.status as unknown as string, health: a.health as unknown as string,
+        connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth, monitoringEnabled: a.monitoringEnabled,
+        lastSuccessfulSyncAt: a.lastSuccessfulSyncAt,
+        connectionState, autoSyncState: resolveAutoSyncState(stateInput),
+        parentAccountId: a.parentAccountId,
+        protection: resolveAccountProtection(a, defaults),
+        commentsInWindow: comments.get(a.id) ?? 0,
+        riskCommentsInWindow: risk.get(a.id) ?? 0,
+        problem: classifyProblem(connectionState, a.monitoringEnabled),
+      };
+    });
   });
 }
 
@@ -189,6 +215,9 @@ export interface DashboardAccountRow {
   /** Whether the monitoring switch may ENABLE this account (already-on can always be turned off). */
   monitoringCanBeEnabled: boolean;
   connectionStatus: ConnectionStatusView;
+  /** V1.75 — canonical, server-authoritative connection + auto-sync state (the ONE resolver). */
+  connectionState: ConnectionState;
+  autoSyncState: AutoSyncState;
   reconnectRequired: boolean;
   commentsToday: number;
   riskToday: number;
@@ -227,12 +256,18 @@ export interface DashboardAccountsOverview {
  * waiting state, not a failure). Only a REAL failed sync ATTEMPT (health="error" AND a sync was actually
  * attempted) maps to sync_error; a transient `degraded` health is not surfaced as an error.
  */
-function connectionStatusOf(a: { status: string; health: string; connectionStatus: string; tokenHealth: string; lastAttemptAt: Date | null }): ConnectionStatusView {
-  if (a.status === "disconnected") return "disconnected";
-  if (["expired", "invalid", "revoked"].includes(a.tokenHealth)) return "permissions_expired";
-  if (["needs_reconnect", "invalid_token", "missing_permission"].includes(a.connectionStatus)) return "reconnect_required";
-  if (a.health === "error" && a.lastAttemptAt) return "sync_error"; // an attempt was made and it failed
-  return "connected";
+function connectionStatusView(state: ConnectionState, a: { status: string; tokenHealth: string }): ConnectionStatusView {
+  switch (state) {
+    case "DISCONNECTED": return "disconnected";
+    case "REAUTH_REQUIRED":
+      // Preserve the existing copy split: an expired/invalid token reads "permissions expired";
+      // a connection-level needs_reconnect reads "reconnect required". Both drive the Reconnect CTA.
+      return a.status === "expired" || ["expired", "invalid", "revoked"].includes(a.tokenHealth) ? "permissions_expired" : "reconnect_required";
+    case "SYNC_FAILED": return "sync_error";
+    // DEGRADED (transient) stays "connected" in this LEGACY projection — the truthful non-green
+    // rendering is driven by the canonical `connectionState` field the UI reads for the badge.
+    default: return "connected"; // CONNECTED_HEALTHY | WAITING_FIRST_SYNC | DEGRADED
+  }
 }
 
 /**
@@ -250,7 +285,7 @@ export async function getDashboardAccountsOverview(tenantId: string, now: Date =
         where: { tenantId, status: { not: "disconnected" } },
         select: {
           id: true, platform: true, externalName: true, externalId: true, status: true, health: true, mode: true, grantedPermissions: true,
-          connectionStatus: true, tokenHealth: true, monitoringEnabled: true, lastSuccessfulSyncAt: true, lastSyncedAt: true, parentAccountId: true,
+          connectionStatus: true, tokenHealth: true, tokenExpiresAt: true, lastError: true, monitoringEnabled: true, lastSuccessfulSyncAt: true, lastSyncedAt: true, parentAccountId: true,
         },
       }),
       countMonitoredAccounts(db, tenantId),
@@ -262,13 +297,23 @@ export async function getDashboardAccountsOverview(tenantId: string, now: Date =
     const remaining = limit < 0 ? Number.MAX_SAFE_INTEGER : Math.max(0, limit - used);
 
     const rows: DashboardAccountRow[] = accounts.map((a) => {
-      const cs = connectionStatusOf({ status: a.status as unknown as string, health: a.health as unknown as string, connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth, lastAttemptAt: a.lastSyncedAt });
+      const stateInput: ConnectionStateInput = {
+        status: a.status as unknown as string, mode: a.mode as unknown as string, health: a.health as unknown as string,
+        connectionStatus: a.connectionStatus, tokenHealth: a.tokenHealth, tokenExpiresAt: a.tokenExpiresAt,
+        lastError: a.lastError, lastSuccessfulSyncAt: a.lastSuccessfulSyncAt, lastSyncedAt: a.lastSyncedAt,
+        monitoringEnabled: a.monitoringEnabled,
+      };
+      const connectionState = resolveConnectionState(stateInput, now);
+      // Legacy view is a pure projection of the canonical state (keeps every existing consumer stable).
+      const cs = connectionStatusView(connectionState, { status: stateInput.status, tokenHealth: a.tokenHealth });
       const kind = accountKindOf({ status: a.status as unknown as string, mode: a.mode as unknown as string, grantedPermissions: a.grantedPermissions });
       return {
         id: a.id, platform: a.platform as unknown as string, name: a.externalName, username: a.platform as unknown as string === "instagram_business" ? a.externalName : null,
         avatarUrl: null, followersCount: null, monitoringEnabled: a.monitoringEnabled,
         monitoringCanBeEnabled: a.monitoringEnabled || remaining > 0,
-        connectionStatus: cs, reconnectRequired: cs === "reconnect_required" || cs === "permissions_expired",
+        connectionStatus: cs,
+        connectionState, autoSyncState: resolveAutoSyncState(stateInput, now),
+        reconnectRequired: cs === "reconnect_required" || cs === "permissions_expired",
         commentsToday: comments.get(a.id) ?? 0, riskToday: risk.get(a.id) ?? 0,
         lastSuccessAt: a.lastSuccessfulSyncAt, lastAttemptAt: a.lastSyncedAt, hasSyncError: cs === "sync_error",
         parentAccountId: a.parentAccountId,

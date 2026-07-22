@@ -13,6 +13,8 @@ import {
   isWithinLimit,
   emitOpsEvent,
   maxPerBrandForPlatform,
+  resolveConnectionState,
+  manualSyncBlocked,
 } from "@guardora/core";
 import { runReadOnlySync, disconnectAccount } from "@guardora/sync";
 import { withTenant, assertTenantActive, getTenantEntitlements, acquireTenantResourceLock, countCommercialConnections, assertBrandPlatformCapacity } from "@guardora/db";
@@ -139,9 +141,21 @@ export async function runSyncAction(accountId: string): Promise<void> {
 
   const account = await withTenant(session.tenantId, (db) => db.connectedAccount.findFirst({
     where: { id: accountId, tenantId: session.tenantId },
-    select: { id: true },
+    select: {
+      id: true, status: true, mode: true, health: true, connectionStatus: true, tokenHealth: true,
+      tokenExpiresAt: true, lastError: true, lastSuccessfulSyncAt: true, lastSyncedAt: true, monitoringEnabled: true,
+    },
   }));
   if (!account) throw new Error("Account not found");
+
+  // V1.75 (P0) — a manual "Sync now" is BLOCKED when the account needs reconnect (or is
+  // disconnected). Starting a sync on an expired/revoked token only fails and re-marks the
+  // account — the truthful action is "reconnect first". Uses the ONE canonical resolver.
+  const state = resolveConnectionState({ ...account, status: account.status as unknown as string, mode: account.mode as unknown as string, health: account.health as unknown as string });
+  if (manualSyncBlocked(state)) {
+    revalidatePath(`/dashboard/accounts/${accountId}`);
+    redirect(`/dashboard/accounts/${accountId}?kind=error&notice=${encodeURIComponent("Reconnect the account first — manual sync is unavailable until it is reconnected.")}`);
+  }
 
   // V1.69 (Release B / B6) — NON-BLOCKING "Sync now": the read-only sync (which does the whole Meta HTTP
   // cycle) is scheduled to run AFTER the response via next/server `after()`, so the UI request returns
@@ -167,9 +181,19 @@ export async function retryFirstSync(formData: FormData): Promise<void> {
   assertCan(session.role, Permission.ConnectorManage);
   const accountId = String(formData.get("accountId") ?? "");
   const account = await withTenant(session.tenantId, (db) => db.connectedAccount.findFirst({
-    where: { id: accountId, tenantId: session.tenantId }, select: { id: true },
+    where: { id: accountId, tenantId: session.tenantId },
+    select: {
+      id: true, status: true, mode: true, health: true, connectionStatus: true, tokenHealth: true,
+      tokenExpiresAt: true, lastError: true, lastSuccessfulSyncAt: true, lastSyncedAt: true, monitoringEnabled: true,
+    },
   }));
   if (!account) throw new Error("Account not found");
+  // V1.75 (P0) — same block as "Sync now": never launch a manual sync on a reconnect-required account.
+  const state = resolveConnectionState({ ...account, status: account.status as unknown as string, mode: account.mode as unknown as string, health: account.health as unknown as string });
+  if (manualSyncBlocked(state)) {
+    revalidatePath("/dashboard/accounts");
+    redirect("/dashboard/accounts?sync=reconnect_required");
+  }
   const tenantId = session.tenantId;
   after(async () => { await runReadOnlySync({ accountId, tenantId }, "manual").catch(() => {}); });
   revalidatePath("/dashboard/accounts");

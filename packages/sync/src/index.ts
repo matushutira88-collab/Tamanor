@@ -400,7 +400,12 @@ export async function runReadOnlySync(
             where: { id: run.id },
             data: { status, fetched: fetched.length, created, updated, deduped, errors: failed, durationMs, cursor: cursor ?? null, finishedAt: new Date() },
           });
-          await auditTx(db, account, verdict === "partial_success" ? "sync.partial" : "sync.completed", {
+          // V1.75 (P0) — TRUTHFUL terminal audit. A non-fenced run whose every item failed has
+          // verdict==="failed" (SyncRun.status is already `failed` above); it must NOT be recorded as
+          // `sync.completed`. Emit `sync.completed` only for a real success, `sync.partial` for a
+          // partial success, and `sync.failed` when nothing was ingested.
+          const terminalEvent = verdict === "success" ? "sync.completed" : verdict === "partial_success" ? "sync.partial" : "sync.failed";
+          await auditTx(db, account, terminalEvent, {
             mock: useMock, fetched: fetched.length, created, updated, deduped, failed, verdict, durationMs, trigger,
             ...(permissionState ? { permissionState } : {}),
             ...(truncated ? { truncated: true } : {}),
@@ -415,7 +420,9 @@ export async function runReadOnlySync(
         return { ok: false, mock: useMock, fetched: fetched.length, created, updated, deduped, errors: failed, durationMs, message: "Sync interrupted — the account lease was taken over; no success was recorded.", syncRunId: run.id, verdict: "interrupted" };
       }
 
-      emitOpsEvent("sync.completed", { result: verdict === "partial_success" ? "partial" : "success" });
+      // V1.75 (P0) — a failed verdict emits `sync.failed` (never `sync.completed{result:success}`).
+      if (verdict === "failed") emitOpsEvent("sync.failed", { result: "failed", reason: "all_items_failed" });
+      else emitOpsEvent("sync.completed", { result: verdict === "partial_success" ? "partial" : "success" });
       // V1.70 (B2) — one-time first-sync notification (best-effort; never affects the sync outcome).
       if (wasFirstSync && verdict !== "failed") {
         await createNotification({
@@ -432,11 +439,13 @@ export async function runReadOnlySync(
         created, updated, deduped,
         errors: failed,
         durationMs,
-        message: verdict === "partial_success"
-          ? `Sync completed with ${failed} item error(s) isolated; ${created} new, ${updated} updated, ${deduped} unchanged.`
-          : useMock
-            ? "Mock read-only sync completed (labelled MOCK data, no live API call)."
-            : "Read-only sync completed.",
+        message: verdict === "failed"
+          ? `Read-only sync failed — ${failed} item error(s) and nothing was ingested.`
+          : verdict === "partial_success"
+            ? `Sync completed with ${failed} item error(s) isolated; ${created} new, ${updated} updated, ${deduped} unchanged.`
+            : useMock
+              ? "Mock read-only sync completed (labelled MOCK data, no live API call)."
+              : "Read-only sync completed.",
         syncRunId: run.id,
         verdict,
       };

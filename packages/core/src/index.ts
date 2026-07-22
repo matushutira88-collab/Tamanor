@@ -13,6 +13,7 @@ export * from "./permissions";
 export * from "./brand";
 export * from "./connector-mode";
 export * from "./connector-account";
+export * from "./connection-state";
 export * from "./sync-state";
 export * from "./csv";
 export * from "./notifications";
