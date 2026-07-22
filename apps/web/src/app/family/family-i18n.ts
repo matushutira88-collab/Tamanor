@@ -35,6 +35,30 @@ export interface FamilyDict {
     deliveryStatus: Record<string, string>;
   };
   common: { back: string; view: string; loading: string; none: string; confirm: string; cancel: string; notAvailable: string };
+  // CS-C6.1 — the fail-closed page shown when the workspace kind is unknown/corrupt/unsupported.
+  unsupported: { title: string; body: string; explain: string; logout: string; help: string };
+  // CS-C6.1 — accessible confirmation dialogs for the 4 destructive Family actions (no window.confirm).
+  dialog: {
+    confirm: string; cancel: string; working: string; errorTitle: string;
+    archiveProfileTitle: string; archiveProfileBody: string; archiveProfileConfirm: string;
+    revokeAuthTitle: string; revokeAuthBody: string; revokeAuthConfirm: string;
+    revokeDeliveryTitle: string; revokeDeliveryBody: string; revokeDeliveryConfirm: string;
+    archiveDeliveryTitle: string; archiveDeliveryBody: string; archiveDeliveryConfirm: string;
+  };
+  // CS-C6.1 — Family route-level error boundary (safe, no stack/PII/tenant).
+  errorBoundary: { title: string; body: string; retry: string; back: string };
+  // CS-C6.1 — safe, serializable action-error groups → localized text (never raw/DB/PII details).
+  actionErrors: Record<string, string>;
+}
+
+/** CS-C6.1 — the ONLY safe, serializable Family action-error groups the UI may surface. */
+export const FAMILY_ACTION_ERROR_CODES = [
+  "forbidden", "not_found", "invalid_state", "authorization_not_effective",
+  "archived", "already_revoked", "retry_later",
+] as const;
+export type FamilyActionErrorCode = (typeof FAMILY_ACTION_ERROR_CODES)[number];
+export function isFamilyActionErrorCode(v: unknown): v is FamilyActionErrorCode {
+  return typeof v === "string" && (FAMILY_ACTION_ERROR_CODES as readonly string[]).includes(v);
 }
 
 const en: FamilyDict = {
@@ -77,6 +101,41 @@ const en: FamilyDict = {
     deliveryStatus: { prepared: "Prepared", available: "Available", acknowledged: "Acknowledged", declined: "Declined", failed: "Failed", revoked: "Revoked", expired: "Expired", superseded: "Superseded", archived: "Archived" },
   },
   common: { back: "Back", view: "View", loading: "Loading…", none: "—", confirm: "Confirm", cancel: "Cancel", notAvailable: "Not available in this workspace" },
+  unsupported: {
+    title: "This workspace can't be opened",
+    body: "Your account is signed in, but this workspace type isn't supported by the current app. Nothing was changed.",
+    explain: "This can happen if the workspace was set up for a product area that isn't available here. Please sign out and sign in again, or contact support if this keeps happening.",
+    logout: "Sign out", help: "Contact support",
+  },
+  dialog: {
+    confirm: "Confirm", cancel: "Cancel", working: "Working…", errorTitle: "Action could not be completed",
+    archiveProfileTitle: "Archive this protected profile?",
+    archiveProfileBody: "Archiving stops new activity for this profile. Existing records are kept for history and this can be reviewed later. This does not delete anything.",
+    archiveProfileConfirm: "Archive profile",
+    revokeAuthTitle: "Revoke this authorization?",
+    revokeAuthBody: "Revoking ends this recipient's authorization for this signal. Any related internal delivery becomes unavailable. This is recorded for audit.",
+    revokeAuthConfirm: "Revoke authorization",
+    revokeDeliveryTitle: "Revoke this internal delivery?",
+    revokeDeliveryBody: "Revoking makes this internal delivery unavailable to the recipient inside Tamanor Family. This is recorded and cannot be undone.",
+    revokeDeliveryConfirm: "Revoke delivery",
+    archiveDeliveryTitle: "Archive this internal delivery?",
+    archiveDeliveryBody: "Archiving removes this delivery from the active list. The record is kept for history. This does not delete anything.",
+    archiveDeliveryConfirm: "Archive delivery",
+  },
+  errorBoundary: {
+    title: "Something went wrong",
+    body: "This part of Tamanor Family couldn't be shown. No changes were lost. You can try again or go back to your family space.",
+    retry: "Try again", back: "Back to family space",
+  },
+  actionErrors: {
+    forbidden: "You don't have permission to do that.",
+    not_found: "That item could not be found. It may have already been changed.",
+    invalid_state: "This action isn't possible in the item's current state.",
+    authorization_not_effective: "This authorization is not currently effective.",
+    archived: "That item is already archived.",
+    already_revoked: "That item has already been revoked.",
+    retry_later: "Something went wrong. Please try again in a moment.",
+  },
 };
 
 const sk: FamilyDict = {
@@ -119,6 +178,41 @@ const sk: FamilyDict = {
     deliveryStatus: { prepared: "Pripravené", available: "Dostupné", acknowledged: "Potvrdené", declined: "Odmietnuté", failed: "Zlyhalo", revoked: "Zrušené", expired: "Expirované", superseded: "Nahradené", archived: "Archivované" },
   },
   common: { back: "Späť", view: "Zobraziť", loading: "Načítava sa…", none: "—", confirm: "Potvrdiť", cancel: "Zrušiť", notAvailable: "Nedostupné v tomto priestore" },
+  unsupported: {
+    title: "Tento priestor nie je možné otvoriť",
+    body: "Ste prihlásený, ale tento typ pracovného priestoru aktuálna aplikácia nepodporuje. Nič sa nezmenilo.",
+    explain: "Môže sa to stať, ak bol priestor nastavený pre oblasť produktu, ktorá tu nie je dostupná. Odhláste sa a prihláste znova, alebo kontaktujte podporu, ak to pretrváva.",
+    logout: "Odhlásiť sa", help: "Kontaktovať podporu",
+  },
+  dialog: {
+    confirm: "Potvrdiť", cancel: "Zrušiť", working: "Prebieha…", errorTitle: "Akciu sa nepodarilo dokončiť",
+    archiveProfileTitle: "Archivovať tento chránený profil?",
+    archiveProfileBody: "Archiváciou sa zastaví nová aktivita pre tento profil. Existujúce záznamy sa zachovajú pre históriu a možno ich neskôr posúdiť. Nič sa nevymaže.",
+    archiveProfileConfirm: "Archivovať profil",
+    revokeAuthTitle: "Zrušiť túto autorizáciu?",
+    revokeAuthBody: "Zrušením sa ukončí autorizácia príjemcu pre tento signál. Súvisiace interné doručenie sa stane nedostupným. Zaznamenáva sa pre audit.",
+    revokeAuthConfirm: "Zrušiť autorizáciu",
+    revokeDeliveryTitle: "Zrušiť toto interné doručenie?",
+    revokeDeliveryBody: "Zrušením sa interné doručenie stane pre príjemcu nedostupným v Tamanor Rodina. Zaznamenáva sa a nedá sa vrátiť späť.",
+    revokeDeliveryConfirm: "Zrušiť doručenie",
+    archiveDeliveryTitle: "Archivovať toto interné doručenie?",
+    archiveDeliveryBody: "Archiváciou sa doručenie odstráni z aktívneho zoznamu. Záznam sa zachová pre históriu. Nič sa nevymaže.",
+    archiveDeliveryConfirm: "Archivovať doručenie",
+  },
+  errorBoundary: {
+    title: "Niečo sa pokazilo",
+    body: "Túto časť Tamanor Rodina sa nepodarilo zobraziť. Žiadne zmeny sa nestratili. Môžete to skúsiť znova alebo sa vrátiť do svojho rodinného prostredia.",
+    retry: "Skúsiť znova", back: "Späť do rodinného prostredia",
+  },
+  actionErrors: {
+    forbidden: "Nemáte oprávnenie na túto akciu.",
+    not_found: "Položka sa nenašla. Možno už bola zmenená.",
+    invalid_state: "Táto akcia nie je možná v aktuálnom stave položky.",
+    authorization_not_effective: "Táto autorizácia momentálne nie je účinná.",
+    archived: "Položka je už archivovaná.",
+    already_revoked: "Položka už bola zrušená.",
+    retry_later: "Niečo sa pokazilo. Skúste to o chvíľu znova.",
+  },
 };
 
 const de: FamilyDict = {
@@ -161,6 +255,41 @@ const de: FamilyDict = {
     deliveryStatus: { prepared: "Vorbereitet", available: "Verfügbar", acknowledged: "Bestätigt", declined: "Abgelehnt", failed: "Fehlgeschlagen", revoked: "Widerrufen", expired: "Abgelaufen", superseded: "Ersetzt", archived: "Archiviert" },
   },
   common: { back: "Zurück", view: "Ansehen", loading: "Wird geladen…", none: "—", confirm: "Bestätigen", cancel: "Abbrechen", notAvailable: "In diesem Bereich nicht verfügbar" },
+  unsupported: {
+    title: "Dieser Bereich kann nicht geöffnet werden",
+    body: "Sie sind angemeldet, aber dieser Arbeitsbereichstyp wird von der aktuellen App nicht unterstützt. Es wurde nichts geändert.",
+    explain: "Das kann passieren, wenn der Bereich für einen Produktbereich eingerichtet wurde, der hier nicht verfügbar ist. Bitte melden Sie sich ab und wieder an, oder kontaktieren Sie den Support, falls dies weiterhin auftritt.",
+    logout: "Abmelden", help: "Support kontaktieren",
+  },
+  dialog: {
+    confirm: "Bestätigen", cancel: "Abbrechen", working: "Wird ausgeführt…", errorTitle: "Aktion konnte nicht abgeschlossen werden",
+    archiveProfileTitle: "Dieses geschützte Profil archivieren?",
+    archiveProfileBody: "Durch das Archivieren wird neue Aktivität für dieses Profil gestoppt. Bestehende Datensätze bleiben für die Historie erhalten und können später geprüft werden. Es wird nichts gelöscht.",
+    archiveProfileConfirm: "Profil archivieren",
+    revokeAuthTitle: "Diese Autorisierung widerrufen?",
+    revokeAuthBody: "Durch den Widerruf endet die Autorisierung des Empfängers für dieses Signal. Eine zugehörige interne Zustellung wird nicht mehr verfügbar. Dies wird für die Prüfung protokolliert.",
+    revokeAuthConfirm: "Autorisierung widerrufen",
+    revokeDeliveryTitle: "Diese interne Zustellung widerrufen?",
+    revokeDeliveryBody: "Durch den Widerruf wird diese interne Zustellung für den Empfänger in Tamanor Familie nicht mehr verfügbar. Dies wird protokolliert und kann nicht rückgängig gemacht werden.",
+    revokeDeliveryConfirm: "Zustellung widerrufen",
+    archiveDeliveryTitle: "Diese interne Zustellung archivieren?",
+    archiveDeliveryBody: "Durch das Archivieren wird diese Zustellung aus der aktiven Liste entfernt. Der Datensatz bleibt für die Historie erhalten. Es wird nichts gelöscht.",
+    archiveDeliveryConfirm: "Zustellung archivieren",
+  },
+  errorBoundary: {
+    title: "Etwas ist schiefgelaufen",
+    body: "Dieser Teil von Tamanor Familie konnte nicht angezeigt werden. Es sind keine Änderungen verloren gegangen. Sie können es erneut versuchen oder zu Ihrem Familienbereich zurückkehren.",
+    retry: "Erneut versuchen", back: "Zurück zum Familienbereich",
+  },
+  actionErrors: {
+    forbidden: "Sie haben keine Berechtigung dafür.",
+    not_found: "Dieses Element wurde nicht gefunden. Es wurde möglicherweise bereits geändert.",
+    invalid_state: "Diese Aktion ist im aktuellen Zustand des Elements nicht möglich.",
+    authorization_not_effective: "Diese Autorisierung ist derzeit nicht wirksam.",
+    archived: "Dieses Element ist bereits archiviert.",
+    already_revoked: "Dieses Element wurde bereits widerrufen.",
+    retry_later: "Etwas ist schiefgelaufen. Bitte versuchen Sie es gleich erneut.",
+  },
 };
 
 const DICTS: Record<Locale, FamilyDict> = { en, sk, de };

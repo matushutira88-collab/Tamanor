@@ -1,21 +1,25 @@
 import "server-only";
 import { redirect } from "next/navigation";
-import { WorkspaceKind, FamilyAction, authorizeFamilyAction, type FamilyActorContext } from "@guardora/core";
+import { WorkspaceKind, FamilyAction, authorizeFamilyAction, classifyWorkspaceRouting, type FamilyActorContext } from "@guardora/core";
 import { getFamilyOnboardingState } from "@guardora/db";
 import { requireVerifiedSession, type AppSession } from "./auth";
+import { resolveWorkspaceDestination } from "./workspace-routing";
 
 /**
- * CS-C6 — the SINGLE server-side entry guard for the Family console. A tenantId (RLS) is never
+ * CS-C6/6.1 — the SINGLE server-side entry guard for the Family console. A tenantId (RLS) is never
  * sufficient: the active workspace's IMMUTABLE kind must be FAMILY. Fail-closed and server-authoritative
- * (UI hiding is never the only protection). A Business workspace deep-linking `/family/*` is bounced to
- * `/dashboard`; an unknown/invalid kind is treated as Business (never silently granted Family).
+ * (UI hiding is never the only protection). A NON-FAMILY session is routed by the CENTRAL resolver — a
+ * Business session → /dashboard, an unknown/corrupt/unsupported kind → /unsupported-workspace. There is
+ * NO Business fallback for an unknown kind (never `else redirect("/dashboard")`).
  */
 export interface FamilyContext { session: AppSession; actor: FamilyActorContext }
 
 export async function requireFamilyActor(): Promise<FamilyContext> {
   const session = await requireVerifiedSession();
-  if (session.workspaceKind !== WorkspaceKind.Family) redirect("/dashboard");
-  const actor: FamilyActorContext = { tenantId: session.tenantId, userId: session.userId, role: session.role, workspaceKind: session.workspaceKind };
+  if (classifyWorkspaceRouting(session.workspaceKind) !== "family") {
+    redirect((await resolveWorkspaceDestination(session)).href);
+  }
+  const actor: FamilyActorContext = { tenantId: session.tenantId, userId: session.userId, role: session.role, workspaceKind: WorkspaceKind.Family };
   return { session, actor };
 }
 

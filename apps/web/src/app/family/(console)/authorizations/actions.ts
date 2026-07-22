@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { revokeRecipientAuthorizationDecision, createRecipientAuthorizationDecision, evaluateRecipientAuthorization } from "@guardora/db";
 import { requireFamilyActor } from "@/server/family-guard";
+import { toFamilyActionErrorCode, type FamilyActionState } from "@/server/family-safe-error";
 
 /**
  * CS-C6 — Family server actions for recipient authorization decisions (CS-C4). Session + FAMILY +
@@ -12,12 +13,16 @@ import { requireFamilyActor } from "@/server/family-guard";
  */
 function str(fd: FormData, k: string): string { return String(fd.get(k) ?? "").trim(); }
 
-export async function revokeRecipientAuthorizationDecisionAction(formData: FormData): Promise<void> {
+/**
+ * CS-C6.1 — DESTRUCTIVE. `useActionState`-shaped: returns a SAFE error group on failure and redirects only
+ * on success. Confirmed in an accessible dialog (never `window.confirm`); the actor is server-authoritative.
+ */
+export async function revokeRecipientAuthorizationDecisionAction(_prev: FamilyActionState, formData: FormData): Promise<FamilyActionState> {
   const { actor } = await requireFamilyActor();
   const id = str(formData, "decisionId");
-  if (!id) redirect("/family/authorizations?e=invalid");
+  if (!id) return { ok: false, error: "not_found" };
   try { await revokeRecipientAuthorizationDecision(actor, id); }
-  catch { redirect("/family/authorizations?e=error"); }
+  catch (e) { return { ok: false, error: toFamilyActionErrorCode(e) }; }
   revalidatePath("/family/authorizations");
   redirect("/family/authorizations?ok=revoked");
 }

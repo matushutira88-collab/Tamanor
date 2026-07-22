@@ -5,6 +5,7 @@ import { requireFamilyConsole, familyCan } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, SectionHeader, Badge, Field, Input, Select, PrimaryButton } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../family-i18n";
+import { ConfirmDialog } from "../../confirm-dialog";
 import { createProtectedProfileAction, archiveProtectedProfileAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +61,20 @@ export default async function FamilyProfilesPage() {
                     <td className="py-2.5 pr-3 text-xs text-[var(--color-muted)]">{fmt(p.createdAt)}</td>
                     <td className="py-2.5 text-right">
                       {canManage && !p.archivedAt ? (
-                        <form action={archiveProtectedProfileAction}><input type="hidden" name="profileId" value={p.id} /><button type="submit" className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-muted)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]">{t.profiles.archive}</button></form>
+                        <ConfirmDialog
+                          action={archiveProtectedProfileAction}
+                          hiddenName="profileId"
+                          hiddenValue={p.id}
+                          triggerLabel={t.profiles.archive}
+                          title={t.dialog.archiveProfileTitle}
+                          body={t.dialog.archiveProfileBody}
+                          confirmLabel={t.dialog.archiveProfileConfirm}
+                          cancelLabel={t.dialog.cancel}
+                          workingLabel={t.dialog.working}
+                          errorTitle={t.dialog.errorTitle}
+                          errorMessages={t.actionErrors}
+                          danger
+                        />
                       ) : null}
                     </td>
                   </tr>

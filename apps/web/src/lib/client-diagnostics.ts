@@ -55,7 +55,8 @@ function post(body: Record<string, unknown>): void {
 
 export interface ClientErrorReport {
   referenceId: string;
-  boundary: "global" | "dashboard";
+  // CS-C6.1 — added the Family route-level boundaries (family + family-console).
+  boundary: "global" | "dashboard" | "family" | "family-console";
   route: string;
   errorName?: string;
   safeMessage?: string;

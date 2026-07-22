@@ -6,6 +6,8 @@ import { findUserForLogin, verifyPassword, normalizeEmail, DUMMY_PASSWORD_HASH }
 import { metrics, emitOpsEvent, getTurnstileConfig } from "@guardora/core";
 import { authLimiter, loginChallengeLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 import { startSession } from "@/server/session";
+import { getSession } from "@/server/auth";
+import { resolveWorkspaceDestination } from "@/server/workspace-routing";
 import { newTraceId, TRACE_COOKIE, traceCookieOptions, logPhase, withPhase, phaseLogger } from "@/server/diagnostics/login-trace";
 import { isSameOrigin } from "@/server/csrf";
 import { verifyChallenge, summarizeUserAgent } from "@/server/auth-security";
@@ -104,5 +106,9 @@ export async function loginAction(formData: FormData): Promise<void> {
   } catch { /* delivery failure must not block login (already audited inside) */ }
   logPhase({ traceId, phase: "REDIRECT_STARTED", success: true, userId: user.id, tenantId: session.tenantId });
   // V1.50C — an unverified email/password user goes to the verification-required screen.
-  redirect(session.emailVerified ? "/dashboard" : "/verify-email");
+  if (!session.emailVerified) redirect("/verify-email");
+  // CS-C6.1 — route by the CENTRAL resolver (fail-closed): Business → /dashboard, Family → /family or its
+  // onboarding, unknown/corrupt/unsupported → /unsupported-workspace. Never a Business default for unknown.
+  const appSession = await getSession();
+  redirect(appSession ? (await resolveWorkspaceDestination(appSession)).href : "/dashboard");
 }

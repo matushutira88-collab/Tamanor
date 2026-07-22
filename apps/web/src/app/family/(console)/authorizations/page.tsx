@@ -4,6 +4,7 @@ import { requireFamilyConsole, familyCan } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, SectionHeader, Badge } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../family-i18n";
+import { ConfirmDialog } from "../../confirm-dialog";
 import { revokeRecipientAuthorizationDecisionAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +40,20 @@ export default async function FamilyAuthorizationsPage() {
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-[var(--color-muted)]">{t.authorizations.evaluatedAt}: {fmt(d.evaluatedAt)}{d.validUntil ? ` · ${t.authorizations.validUntil}: ${fmt(d.validUntil)}` : ""}</span>
                     {canRevoke && effective ? (
-                      <form action={revokeRecipientAuthorizationDecisionAction}><input type="hidden" name="decisionId" value={d.id} /><button type="submit" className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-muted)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]">{t.authorizations.revoke}</button></form>
+                      <ConfirmDialog
+                        action={revokeRecipientAuthorizationDecisionAction}
+                        hiddenName="decisionId"
+                        hiddenValue={d.id}
+                        triggerLabel={t.authorizations.revoke}
+                        title={t.dialog.revokeAuthTitle}
+                        body={t.dialog.revokeAuthBody}
+                        confirmLabel={t.dialog.revokeAuthConfirm}
+                        cancelLabel={t.dialog.cancel}
+                        workingLabel={t.dialog.working}
+                        errorTitle={t.dialog.errorTitle}
+                        errorMessages={t.actionErrors}
+                        danger
+                      />
                     ) : null}
                   </div>
                 </div>

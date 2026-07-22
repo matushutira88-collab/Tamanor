@@ -53,6 +53,24 @@ export function familyOnboardingStepIndex(step: string): number {
 }
 export const isFamilyOnboardingComplete = (step: string): boolean => step === WorkspaceOnboardingStep.Complete;
 
+// --- CS-C6.1 — fail-closed workspace routing classification ------------------
+
+/** The three routing outcomes for a workspace kind. `unsupported` NEVER falls back to business. */
+export type WorkspaceRoutingClass = "family" | "business" | "unsupported";
+
+/**
+ * Classify a WorkspaceKind for routing. EXPLICIT + fail-closed: only the two supported console kinds
+ * map to a console; `null` / `undefined` / unknown / corrupt / a valid-but-unsupported kind
+ * (child_safety_organization / internal) → `unsupported`. There is NO default-to-business branch.
+ */
+export function classifyWorkspaceRouting(kind: unknown): WorkspaceRoutingClass {
+  switch (kind) {
+    case WorkspaceKind.Family: return "family";
+    case WorkspaceKind.Business: return "business";
+    default: return "unsupported";
+  }
+}
+
 // --- Content-free audit events ----------------------------------------------
 
 export const WORKSPACE_ONBOARDING_AUDIT_EVENTS = {

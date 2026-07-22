@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { WorkspaceKind } from "@guardora/core";
+import { classifyWorkspaceRouting } from "@guardora/core";
+import { resolveWorkspaceDestination } from "@/server/workspace-routing";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { computeDeniedNavHrefs } from "@/server/nav-access";
 import { requireVerifiedSession } from "@/server/auth";
@@ -46,9 +47,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   logPhase({ traceId, traceSource, phase: "DASHBOARD_BOOTSTRAP_STARTED", route: "/dashboard", success: true });
 
   const session = await withPhase(traceId, "SESSION_READ", () => requireVerifiedSession(), { route: "/dashboard" });
-  // CS-C6 — a FAMILY workspace never uses the Business dashboard; bounce it to the Family console
-  // (server-authoritative, mirror of the Family guard which bounces Business → /dashboard).
-  if (session.workspaceKind === WorkspaceKind.Family) redirect("/family");
+  // CS-C6.1 — the Business dashboard is for BUSINESS only. Any non-business kind is routed by the CENTRAL
+  // resolver (FAMILY → /family or /family/onboarding; unknown/corrupt/unsupported → /unsupported-workspace).
+  // Fail-closed: an unknown kind NEVER falls through to the Business dashboard.
+  if (classifyWorkspaceRouting(session.workspaceKind) !== "business") {
+    redirect((await resolveWorkspaceDestination(session)).href);
+  }
   logPhase({ traceId, phase: "USER_CONTEXT_RESOLVED", success: true, userId: session.userId, tenantId: session.tenantId });
   logPhase({ traceId, phase: "TENANT_LOADED", success: true, tenantId: session.tenantId });
   const locale = await getLocale();

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Logo } from "@/components/logo";
 import { getSession } from "@/server/auth";
+import { resolveWorkspaceDestination } from "@/server/workspace-routing";
 import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
 import { SocialAuthButtons } from "@/components/auth/social-buttons";
@@ -111,7 +112,8 @@ const label = "block text-sm font-medium";
 
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string; kind?: string }> }) {
   const session = await getSession();
-  if (session) redirect(session.workspaceKind === "family" ? "/family" : "/dashboard");
+  // CS-C6.1 — an authenticated user is routed by the central resolver (fail-closed; never a Business default).
+  if (session) redirect((await resolveWorkspaceDestination(session)).href);
   const sp = await searchParams;
   // CS-C6 — the workspace kind must be chosen first (mandatory, allow-listed). Otherwise → the chooser.
   if (sp.kind !== "family" && sp.kind !== "business") redirect("/register/workspace-type");

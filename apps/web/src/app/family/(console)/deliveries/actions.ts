@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { makeSafetySignalDeliveryAvailable, acknowledgeSafetySignalDelivery, declineSafetySignalDelivery, revokeSafetySignalDelivery, archiveSafetySignalDelivery, createSafetySignalDelivery } from "@guardora/db";
 import { requireFamilyActor } from "@/server/family-guard";
+import { toFamilyActionErrorCode, type FamilyActionState } from "@/server/family-safe-error";
 
 /**
  * CS-C6 — Family server actions for internal deliveries (CS-C5). Session + FAMILY + membership are
@@ -24,8 +25,19 @@ async function run(id: string, fn: (id: string) => Promise<unknown>, ok: string)
 export async function makeSafetySignalDeliveryAvailableAction(fd: FormData): Promise<void> { const { actor } = await requireFamilyActor(); await run(str(fd, "deliveryId"), (id) => makeSafetySignalDeliveryAvailable(actor, id), "available"); }
 export async function acknowledgeSafetySignalDeliveryAction(fd: FormData): Promise<void> { const { actor } = await requireFamilyActor(); await run(str(fd, "deliveryId"), (id) => acknowledgeSafetySignalDelivery(actor, id), "acknowledged"); }
 export async function declineSafetySignalDeliveryAction(fd: FormData): Promise<void> { const { actor } = await requireFamilyActor(); await run(str(fd, "deliveryId"), (id) => declineSafetySignalDelivery(actor, id), "declined"); }
-export async function revokeSafetySignalDeliveryAction(fd: FormData): Promise<void> { const { actor } = await requireFamilyActor(); await run(str(fd, "deliveryId"), (id) => revokeSafetySignalDelivery(actor, id), "revoked"); }
-export async function archiveSafetySignalDeliveryAction(fd: FormData): Promise<void> { const { actor } = await requireFamilyActor(); await run(str(fd, "deliveryId"), (id) => archiveSafetySignalDelivery(actor, id), "archived"); }
+
+/**
+ * CS-C6.1 — DESTRUCTIVE (revoke / archive). `useActionState`-shaped: a SAFE error group on failure, redirect
+ * only on success. Confirmed in an accessible dialog (never `window.confirm`); actor is server-authoritative.
+ */
+async function runDestructive(id: string, fn: (id: string) => Promise<unknown>, ok: string): Promise<FamilyActionState> {
+  if (!id) return { ok: false, error: "not_found" };
+  try { await fn(id); } catch (e) { return { ok: false, error: toFamilyActionErrorCode(e) }; }
+  revalidatePath("/family/deliveries");
+  redirect(`/family/deliveries?ok=${ok}`);
+}
+export async function revokeSafetySignalDeliveryAction(_prev: FamilyActionState, fd: FormData): Promise<FamilyActionState> { const { actor } = await requireFamilyActor(); return runDestructive(str(fd, "deliveryId"), (id) => revokeSafetySignalDelivery(actor, id), "revoked"); }
+export async function archiveSafetySignalDeliveryAction(_prev: FamilyActionState, fd: FormData): Promise<FamilyActionState> { const { actor } = await requireFamilyActor(); return runDestructive(str(fd, "deliveryId"), (id) => archiveSafetySignalDelivery(actor, id), "archived"); }
 
 export async function createSafetySignalDeliveryAction(fd: FormData): Promise<void> {
   const { actor } = await requireFamilyActor();

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Logo } from "@/components/logo";
 import { getSession } from "@/server/auth";
+import { resolveWorkspaceDestination } from "@/server/workspace-routing";
 import { getLocale } from "@/i18n/locale-server";
 import { familyDict } from "@/app/family/family-i18n";
 
@@ -16,7 +17,8 @@ export const dynamic = "force-dynamic";
  */
 export default async function WorkspaceTypePage() {
   const session = await getSession();
-  if (session) redirect(session.workspaceKind === "family" ? "/family" : "/dashboard");
+  // CS-C6.1 — an authenticated user is routed by the central resolver (fail-closed; never a Business default).
+  if (session) redirect((await resolveWorkspaceDestination(session)).href);
   const t = familyDict(await getLocale());
   const c = t.chooser;
 

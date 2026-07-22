@@ -4,6 +4,7 @@ import { requireFamilyConsole, familyCan } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, SectionHeader, Badge } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../family-i18n";
+import { ConfirmDialog } from "../../confirm-dialog";
 import { makeSafetySignalDeliveryAvailableAction, acknowledgeSafetySignalDeliveryAction, declineSafetySignalDeliveryAction, revokeSafetySignalDeliveryAction, archiveSafetySignalDeliveryAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -41,8 +42,37 @@ export default async function FamilyDeliveriesPage() {
                     <span className="text-xs text-[var(--color-muted)]">{t.deliveries.preparedAt}: {fmt(d.preparedAt)}</span>
                     {canManage && d.deliveryStatus === "prepared" ? <ActBtn action={makeSafetySignalDeliveryAvailableAction} id={d.id} label={t.deliveries.makeAvailable} /> : null}
                     {d.deliveryStatus === "available" ? <><ActBtn action={acknowledgeSafetySignalDeliveryAction} id={d.id} label={t.deliveries.acknowledge} /><ActBtn action={declineSafetySignalDeliveryAction} id={d.id} label={t.deliveries.decline} /></> : null}
-                    {canRevoke && (d.deliveryStatus === "prepared" || d.deliveryStatus === "available") ? <ActBtn action={revokeSafetySignalDeliveryAction} id={d.id} label={t.deliveries.revoke} danger /> : null}
-                    {canRevoke && d.deliveryStatus !== "archived" ? <ActBtn action={archiveSafetySignalDeliveryAction} id={d.id} label={t.deliveries.archive} /> : null}
+                    {canRevoke && (d.deliveryStatus === "prepared" || d.deliveryStatus === "available") ? (
+                      <ConfirmDialog
+                        action={revokeSafetySignalDeliveryAction}
+                        hiddenName="deliveryId"
+                        hiddenValue={d.id}
+                        triggerLabel={t.deliveries.revoke}
+                        title={t.dialog.revokeDeliveryTitle}
+                        body={t.dialog.revokeDeliveryBody}
+                        confirmLabel={t.dialog.revokeDeliveryConfirm}
+                        cancelLabel={t.dialog.cancel}
+                        workingLabel={t.dialog.working}
+                        errorTitle={t.dialog.errorTitle}
+                        errorMessages={t.actionErrors}
+                        danger
+                      />
+                    ) : null}
+                    {canRevoke && d.deliveryStatus !== "archived" ? (
+                      <ConfirmDialog
+                        action={archiveSafetySignalDeliveryAction}
+                        hiddenName="deliveryId"
+                        hiddenValue={d.id}
+                        triggerLabel={t.deliveries.archive}
+                        title={t.dialog.archiveDeliveryTitle}
+                        body={t.dialog.archiveDeliveryBody}
+                        confirmLabel={t.dialog.archiveDeliveryConfirm}
+                        cancelLabel={t.dialog.cancel}
+                        workingLabel={t.dialog.working}
+                        errorTitle={t.dialog.errorTitle}
+                        errorMessages={t.actionErrors}
+                      />
+                    ) : null}
                   </div>
                 </div>
               );
