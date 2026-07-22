@@ -19,7 +19,8 @@
     "./child-safety-consent": "./src/child-safety-consent.ts",
     "./child-safety-safety-signal": "./src/child-safety-safety-signal.ts",
     "./child-safety-recipient-authorization": "./src/child-safety-recipient-authorization.ts",
-    "./child-safety-delivery": "./src/child-safety-delivery.ts"
+    "./child-safety-delivery": "./src/child-safety-delivery.ts",
+    "./child-safety-onboarding": "./src/child-safety-onboarding.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -2,8 +2,8 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { hashPassword, registerUser, normalizeEmail, EmailAlreadyRegisteredError } from "@guardora/db";
-import { emitOpsEvent, metrics } from "@guardora/core";
+import { hashPassword, registerUser, registerFamilyUser, normalizeEmail, EmailAlreadyRegisteredError } from "@guardora/db";
+import { emitOpsEvent, metrics, isSelectableWorkspaceKind, WorkspaceKind } from "@guardora/core";
 import { authLimiter, ipKeyFromHeader } from "@/lib/rate-limit";
 import { startSession } from "@/server/session";
 import { isSameOrigin } from "@/server/csrf";
@@ -30,6 +30,12 @@ export async function registerAction(formData: FormData): Promise<void> {
     metrics.inc("auth_rate_limited_total", { operation: "register" });
     fail("rate_limited");
   }
+
+  // CS-C6 — the workspace kind is server-authoritative and allow-listed. It comes from the mandatory
+  // /register/workspace-type choice (hidden field); an unknown/missing kind fails closed to the chooser.
+  const kindRaw = String(formData.get("kind") ?? "").trim();
+  if (!isSelectableWorkspaceKind(kindRaw)) redirect("/register/workspace-type");
+  const kind = kindRaw as WorkspaceKind;
 
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
@@ -59,7 +65,8 @@ export async function registerAction(formData: FormData): Promise<void> {
     fail("weak_password");
   }
   if (workspaceName.length < 2 || workspaceName.length > 60) fail("missing_workspace");
-  if (!country) fail("missing_country");
+  // A country is required only for BUSINESS (billing/entitlement context); FAMILY collects no country.
+  if (kind === WorkspaceKind.Business && !country) fail("missing_country");
 
   // Per-email limit (after validation, so it counts only well-formed attempts).
   if (!(await authLimiter.check(`email:${normalizeEmail(email)}`)).allowed) {
@@ -70,13 +77,12 @@ export async function registerAction(formData: FormData): Promise<void> {
   let userId: string;
   try {
     const passwordHash = await hashPassword(password);
-    const result = await registerUser({
-      email,
-      passwordHash,
-      workspaceName,
-      company: company || null,
-      country,
-    });
+    const locale = await getLocale();
+    // CS-C6 — FAMILY provisions a WorkspaceKind.FAMILY tenant + PrimaryGuardian + onboarding state (no
+    // Brand/AutoProtect); BUSINESS keeps the existing flow untouched. WorkspaceKind is set server-side.
+    const result = kind === WorkspaceKind.Family
+      ? await registerFamilyUser({ email, passwordHash, workspaceName, locale })
+      : await registerUser({ email, passwordHash, workspaceName, company: company || null, country, locale });
     userId = result.userId;
   } catch (e) {
     if (e instanceof EmailAlreadyRegisteredError) fail("email_taken");

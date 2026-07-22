@@ -485,6 +485,8 @@ model Tenant {
   recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[]
   // CS-C5 — internal deliveries.
   safetySignalDeliveries          SafetySignalDelivery[]
+  // CS-C6 — workspace onboarding state (one per tenant).
+  workspaceOnboardingState        WorkspaceOnboardingState?
 
   @@map("tenants")
 }
@@ -2934,4 +2936,27 @@ model SafetySignalDelivery {
   @@index([tenantId, recipientMembershipId], map: "ssd_tenant_recipient_idx")
   @@index([tenantId, safetySignalId, recipientMembershipId, createdAt], map: "ssd_effective_lookup_idx")
   @@map("safety_signal_deliveries")
+}
+
+// ===========================================================================================
+// CS-C6 — Workspace onboarding state (FAMILY + BUSINESS). One row per tenant. Tenant-scoped, RLS
+// ENABLE+FORCE. Content-free: only the immutable workspaceKind, the current onboarding step (a safe
+// enum), and lifecycle timestamps — never a name/label/PII. App role SELECT/INSERT/UPDATE only.
+// CHECK + RLS + GRANTs in the hand-authored migration 20260807090000_cs_c6_workspace_onboarding.
+// ===========================================================================================
+
+model WorkspaceOnboardingState {
+  id            String    @id @default(cuid())
+  tenantId      String    @unique
+  workspaceKind String // WorkspaceKind (immutable copy for convenience; source of truth is Tenant.workspaceKind)
+  currentStep   String    @default("welcome") // WorkspaceOnboardingStep
+  completedAt   DateTime?
+  skippedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, currentStep])
+  @@map("workspace_onboarding_states")
 }

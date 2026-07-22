@@ -160,6 +160,58 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
   });
 }
 
+// ---- CS-C6: FAMILY workspace registration ----------------------------------
+
+export type RegisterFamilyInput = {
+  email: string;
+  passwordHash: string;
+  workspaceName: string;
+  locale?: string;
+  timezone?: string;
+};
+
+/**
+ * CS-C6 — atomically create User + Tenant(workspaceKind=FAMILY, trial) + OWNER Membership (=
+ * PrimaryGuardian) + a Family WorkspaceOnboardingState(welcome). A FAMILY workspace gets NO Brand /
+ * AutoProtect policies (those are Business-only) — Family billing/entitlement never touches Business.
+ * Idempotent on the rare slug collision; email collision → {@link EmailAlreadyRegisteredError}. On any
+ * error the whole transaction rolls back — never a partially-created workspace.
+ */
+export async function registerFamilyUser(input: RegisterFamilyInput): Promise<RegisterResult> {
+  const email = normalizeEmail(input.email);
+  const workspaceName = input.workspaceName.trim() || "Family";
+  const locale = input.locale ?? "en";
+  const timezone = (input.timezone ?? "").trim() || "Europe/Bratislava";
+  const now = new Date();
+  const trialEndsAt = new Date(now.getTime() + FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+  const slugBase = slugifyBase(workspaceName);
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const slug = `${slugBase}-${shortSuffix()}`;
+    try {
+      return await systemDb.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: { email, passwordHash: input.passwordHash, locale, emailVerifiedAt: null },
+          select: { id: true },
+        });
+        const tenant = await tx.tenant.create({
+          data: { name: workspaceName, slug, plan: FREE_TRIAL_PLAN, workspaceKind: "family", trialStartsAt: now, trialEndsAt, onboardingCompletedAt: null },
+          select: { id: true },
+        });
+        await tx.membership.create({ data: { userId: user.id, tenantId: tenant.id, role: Role.owner } }); // owner → PrimaryGuardian in a FAMILY workspace
+        await tx.workspaceOnboardingState.create({ data: { tenantId: tenant.id, workspaceKind: "family", currentStep: "welcome" } });
+        await tx.auditLog.create({ data: { tenantId: tenant.id, event: "workspace.kind.selected", actorKind: "human", actorUserId: user.id, targetType: "tenant", targetId: tenant.id, metadata: { workspaceKind: "family" } as never } });
+        return { userId: user.id, tenantId: tenant.id, trialEndsAt };
+      });
+    } catch (e) {
+      if (isUniqueViolation(e, "email")) throw new EmailAlreadyRegisteredError();
+      if (isUniqueViolation(e, "slug")) continue;
+      throw e;
+    }
+  }
+  throw new Error("registerFamilyUser: could not allocate a unique workspace slug");
+}
+
 export async function findUserForLogin(email: string): Promise<{ id: string; passwordHash: string | null } | null> {
   return systemDb.user.findUnique({
     where: { email: normalizeEmail(email) },

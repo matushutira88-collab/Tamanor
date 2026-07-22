@@ -109,10 +109,15 @@ const COPY: Record<Locale, Copy> = {
 const field = "mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-brand)]";
 const label = "block text-sm font-medium";
 
-export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  if (await getSession()) redirect("/dashboard");
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string; kind?: string }> }) {
+  const session = await getSession();
+  if (session) redirect(session.workspaceKind === "family" ? "/family" : "/dashboard");
+  const sp = await searchParams;
+  // CS-C6 — the workspace kind must be chosen first (mandatory, allow-listed). Otherwise → the chooser.
+  if (sp.kind !== "family" && sp.kind !== "business") redirect("/register/workspace-type");
+  const kind = sp.kind;
   const c = COPY[await getLocale()];
-  const errorCode = (await searchParams).error;
+  const errorCode = sp.error;
   const errorMsg = errorCode ? c.errors[errorCode] ?? c.errors.server_error : null;
   const turnstile = turnstileForRegistration();
 
@@ -138,6 +143,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
           </div>
 
           <form action={registerAction} className="space-y-4">
+            <input type="hidden" name="kind" value={kind} />
             <div>
               <label htmlFor="email" className={label}>{c.email}</label>
               <input id="email" name="email" type="email" required autoComplete="email" inputMode="email" className={field} />
@@ -152,17 +158,22 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
               <input id="workspaceName" name="workspaceName" type="text" required minLength={2} maxLength={60} aria-describedby="ws-hint" className={field} />
               <p id="ws-hint" className="mt-1 text-xs text-[var(--color-muted)]">{c.workspaceHint}</p>
             </div>
-            <div>
-              <label htmlFor="company" className={label}>{c.company} <span className="font-normal text-[var(--color-muted)]">({c.optional})</span></label>
-              <input id="company" name="company" type="text" maxLength={80} autoComplete="organization" className={field} />
-            </div>
-            <div>
-              <label htmlFor="country" className={label}>{c.country}</label>
-              <select id="country" name="country" required defaultValue="" className={field}>
-                <option value="" disabled>{c.countryPlaceholder}</option>
-                {COUNTRIES.map((country) => <option key={country} value={country}>{country}</option>)}
-              </select>
-            </div>
+            {/* CS-C6 — company + country are BUSINESS-only (billing/entitlement context). FAMILY collects neither. */}
+            {kind === "business" ? (
+              <>
+                <div>
+                  <label htmlFor="company" className={label}>{c.company} <span className="font-normal text-[var(--color-muted)]">({c.optional})</span></label>
+                  <input id="company" name="company" type="text" maxLength={80} autoComplete="organization" className={field} />
+                </div>
+                <div>
+                  <label htmlFor="country" className={label}>{c.country}</label>
+                  <select id="country" name="country" required defaultValue="" className={field}>
+                    <option value="" disabled>{c.countryPlaceholder}</option>
+                    {COUNTRIES.map((country) => <option key={country} value={country}>{country}</option>)}
+                  </select>
+                </div>
+              </>
+            ) : null}
             {turnstile.enabled && turnstile.siteKey ? <TurnstileWidget siteKey={turnstile.siteKey} /> : null}
             <button type="submit" className="w-full rounded-xl bg-[var(--color-brand)] px-4 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
               {c.submit}
