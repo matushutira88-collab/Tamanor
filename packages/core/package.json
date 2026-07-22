@@ -16,7 +16,8 @@
     "./workspace": "./src/workspace.ts",
     "./child-safety-signal": "./src/child-safety-signal.ts",
     "./child-safety-family": "./src/child-safety-family.ts",
-    "./child-safety-consent": "./src/child-safety-consent.ts"
+    "./child-safety-consent": "./src/child-safety-consent.ts",
+    "./child-safety-safety-signal": "./src/child-safety-safety-signal.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

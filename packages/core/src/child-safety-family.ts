@@ -38,6 +38,11 @@ export enum FamilyAction {
   ConsentManage = "consent:manage",
   SafeRecipientView = "safe_recipient:view",
   SafeRecipientAssess = "safe_recipient:assess",
+  // CS-C3 — safety signal occurrence + classification metadata + review state (Family-only).
+  SafetySignalView = "safety_signal:view",
+  SafetySignalCreate = "safety_signal:create",
+  SafetySignalReview = "safety_signal:review",
+  SafetySignalArchive = "safety_signal:archive",
 }
 export const ALL_FAMILY_ACTIONS: readonly FamilyAction[] = Object.values(FamilyAction);
 
@@ -61,15 +66,20 @@ const VIEW_ONLY: readonly FamilyAction[] = [
   FamilyAction.FamilyView, FamilyAction.ProtectedProfileView, FamilyAction.GuardianRelationshipView,
   // CS-C2 — reads only. Trusted-adult / safety-professional / viewer NEVER verify/grant/approve.
   FamilyAction.GuardianAuthorityView, FamilyAction.ConsentView, FamilyAction.SafeRecipientView,
+  // CS-C3 — reads only. Trusted-adult / viewer may VIEW safety signals but never create/review/archive.
+  FamilyAction.SafetySignalView,
 ];
 const FULL_MANAGE: readonly FamilyAction[] = ALL_FAMILY_ACTIONS;
+// CS-C3 — a safety professional is view-only for family administration but MAY review safety signals
+// (per the CS-0 charter). Still no create/archive and no consent/authority/relationship mutation.
+const SAFETY_PROFESSIONAL: readonly FamilyAction[] = [...VIEW_ONLY, FamilyAction.SafetySignalReview];
 
-/** Which actions each FamilyRole may perform. Only guardians manage; everyone else is read-only. */
+/** Which actions each FamilyRole may perform. Only guardians manage; everyone else is read-mostly. */
 export const FAMILY_ROLE_ACTIONS: Readonly<Record<FamilyRole, readonly FamilyAction[]>> = {
   [FamilyRole.PrimaryGuardian]: FULL_MANAGE,
   [FamilyRole.Guardian]: FULL_MANAGE,
   [FamilyRole.TrustedAdult]: VIEW_ONLY,
-  [FamilyRole.SafetyProfessional]: VIEW_ONLY,
+  [FamilyRole.SafetyProfessional]: SAFETY_PROFESSIONAL,
   [FamilyRole.FamilyViewer]: VIEW_ONLY,
 };
 
@@ -93,6 +103,11 @@ export const FAMILY_ACTION_CAPABILITY: Readonly<Record<FamilyAction, WorkspaceCa
   [FamilyAction.ConsentManage]: WorkspaceCapability.ConsentManagement,
   [FamilyAction.SafeRecipientView]: WorkspaceCapability.SafeRecipientPolicies,
   [FamilyAction.SafeRecipientAssess]: WorkspaceCapability.SafeRecipientPolicies,
+  // CS-C3 — all safety-signal actions live under the CS-0 SafetySignals capability (Family-kind only).
+  [FamilyAction.SafetySignalView]: WorkspaceCapability.SafetySignals,
+  [FamilyAction.SafetySignalCreate]: WorkspaceCapability.SafetySignals,
+  [FamilyAction.SafetySignalReview]: WorkspaceCapability.SafetySignals,
+  [FamilyAction.SafetySignalArchive]: WorkspaceCapability.SafetySignals,
 };
 
 /** The actor context every Family repository operation requires. */
@@ -140,6 +155,13 @@ export const CHILD_SAFETY_AUDIT_EVENTS = {
   safeRecipientAssessmentApproved: "child_safety.safe_recipient_assessment.approved",
   safeRecipientAssessmentRejected: "child_safety.safe_recipient_assessment.rejected",
   safeRecipientAssessmentRevoked: "child_safety.safe_recipient_assessment.revoked",
+  // CS-C3 — safety signal occurrence + review lifecycle (content-free).
+  safetySignalCreated: "child_safety.safety_signal.created",
+  safetySignalAcknowledged: "child_safety.safety_signal.acknowledged",
+  safetySignalReviewStarted: "child_safety.safety_signal.review_started",
+  safetySignalDismissed: "child_safety.safety_signal.dismissed",
+  safetySignalConfirmed: "child_safety.safety_signal.confirmed",
+  safetySignalArchived: "child_safety.safety_signal.archived",
 } as const;
 export type ChildSafetyAuditEvent = (typeof CHILD_SAFETY_AUDIT_EVENTS)[keyof typeof CHILD_SAFETY_AUDIT_EVENTS];
 

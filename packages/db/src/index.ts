@@ -120,6 +120,7 @@ export * from "./cyberbullying-compliance";
 export * from "./cyberbullying-redaction";
 export * from "./child-safety-family";
 export * from "./child-safety-consent";
+export * from "./child-safety-safety-signal";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

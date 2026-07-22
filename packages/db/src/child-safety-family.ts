@@ -24,7 +24,8 @@ export class FamilyForbiddenError extends Error {
 }
 export type FamilyRecordKind =
   | "protected_profile" | "guardian_relationship"
-  | "guardian_authority_record" | "consent_record" | "safe_recipient_assessment" | "membership";
+  | "guardian_authority_record" | "consent_record" | "safe_recipient_assessment" | "membership"
+  | "safety_signal";
 export class FamilyNotFoundError extends Error {
   readonly code = "NOT_FOUND";
   constructor(kind: FamilyRecordKind) { super(`${kind} not found in this tenant`); this.name = "FamilyNotFoundError"; }

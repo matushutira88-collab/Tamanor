@@ -479,6 +479,8 @@ model Tenant {
   guardianAuthorityRecords GuardianAuthorityRecord[]
   consentRecords           ConsentRecord[]
   safeRecipientAssessments SafeRecipientAssessment[]
+  // CS-C3 — safety signals.
+  safetySignals            SafetySignal[]
 
   @@map("tenants")
 }
@@ -2637,6 +2639,7 @@ model ProtectedProfile {
   tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   guardianRelationships GuardianRelationship[]
   consentRecords        ConsentRecord[] // CS-C2
+  safetySignals         SafetySignal[] // CS-C3
 
   @@unique([id, tenantId])
   @@index([tenantId, archivedAt])
@@ -2761,4 +2764,49 @@ model SafeRecipientAssessment {
   @@unique([id, tenantId])
   @@index([tenantId, guardianRelationshipId, assessmentStatus])
   @@map("safe_recipient_assessments")
+}
+
+// ===========================================================================================
+// CS-C3 — Safety Signal Foundation. FAMILY-only, tenant-scoped. A SafetySignal is ONLY a bounded,
+// structured record that some external/future-local system reported a TYPE of possible safety risk
+// for a ProtectedProfile — NOT a message/incident/evidence/alert/AI-classification/guilt-decision/
+// action. It holds occurrence + classification METADATA + review state only (CS-C3 = points 1–3);
+// there is NO delivery/alert/notification/recipient/incident/case/escalation. `signalType` reuses the
+// CS-0 RiskType category; `severity` reuses CS-0 SafetySeverity; all values are TEXT validated in
+// @guardora/core (no DB enum types → CS-C4 not locked in). `sourceReference`/`occurrenceBucket` are
+// OPAQUE, length-bounded, char-allowlisted (never a URL/username/message-id/raw-content hash). No raw
+// content, free text, or arbitrary JSON is ever stored. `reviewedByMembershipId` is optional and
+// enforced same-tenant in the repository (no DB FK; history survives a member removal). The profile
+// link is a same-tenant composite FK with ON DELETE NO ACTION so signal history is never cascade-
+// deleted by a profile delete (only tenant lifecycle may remove it, via the tenant FK). CHECK
+// constraints, RLS and GRANTs live in the hand-authored migration 20260804090000_cs_c3_safety_signal.
+// ===========================================================================================
+
+model SafetySignal {
+  id                     String    @id @default(cuid())
+  tenantId               String
+  protectedProfileId     String
+  signalType             String // RiskType (CS-0): GROOMING|SEXUAL_SOLICITATION|SEXTORTION|MEETING_ATTEMPT|CYBERBULLYING|THREAT|IDENTITY_MANIPULATION
+  severity               String // SafetySeverity (CS-0): low|medium|high|critical
+  confidenceBand         String    @default("unknown") // SafetyConfidenceBand — a coarse band, NEVER a raw model score
+  sourceType             String // SafetySignalSourceType (no real connector in CS-C3)
+  sourceReference        String? // OPAQUE, ≤64, [A-Za-z0-9_-] — never a URL/username/message-id/raw content
+  occurrenceBucket       String? // safe time bucket / opaque dedupe token, ≤32 — never a raw-content hash
+  reviewStatus           String    @default("new") // SafetySignalReviewStatus
+  detectedAt             DateTime?
+  receivedAt             DateTime  @default(now())
+  reviewedAt             DateTime?
+  reviewedByMembershipId String? // required for final review states — same-tenant enforced in repository (no DB FK)
+  resolutionCode         String? // SafetySignalResolutionCode (allow-listed; only on a final review state)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  archivedAt             DateTime?
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  protectedProfile ProtectedProfile @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: NoAction)
+
+  @@index([tenantId, protectedProfileId, receivedAt])
+  @@index([tenantId, reviewStatus, receivedAt])
+  @@index([tenantId, signalType])
+  @@map("safety_signals")
 }
