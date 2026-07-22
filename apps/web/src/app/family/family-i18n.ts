@@ -77,6 +77,19 @@ export interface FamilyDict {
     declineDialogTitle: string; declineDialogBody: string; declineDialogConfirm: string;
     statuses: Record<string, string>; familyRoles: Record<string, string>; errors: Record<string, string>;
   };
+  // CS-C9 — guardian authority lifecycle UI (content-free; separate axis from role/relationship).
+  c9: {
+    title: string; disclaimer: string; attestationLabel: string; noAuthority: string;
+    statusLabel: string; levelLabel: string; typeLabel: string; expiresLabel: string;
+    effective: string; notEffective: string; effectiveReason: string;
+    grant: string; changeLevel: string; suspend: string; resume: string; revoke: string; save: string;
+    grantTitle: string; validUntilLabel: string; optional: string;
+    timelineTitle: string; timelineEmpty: string;
+    suspendDialogTitle: string; suspendDialogBody: string; suspendDialogConfirm: string;
+    revokeDialogTitle: string; revokeDialogBody: string; revokeDialogConfirm: string;
+    statuses: Record<string, string>; levels: Record<string, string>; types: Record<string, string>;
+    reasons: Record<string, string>; events: Record<string, string>; errors: Record<string, string>;
+  };
 }
 
 /** CS-C6.1 — the safe, serializable Family destructive-action error groups (frozen). */
@@ -92,13 +105,23 @@ export const FAMILY_INVITATION_ERROR_CODES = [
   "primary_conflict", "invalid_token", "retry_later",
 ] as const;
 export type FamilyInvitationErrorCode = (typeof FAMILY_INVITATION_ERROR_CODES)[number];
-const ALL_SAFE_ERROR_CODES: ReadonlySet<string> = new Set<string>([...FAMILY_ACTION_ERROR_CODES, ...FAMILY_INVITATION_ERROR_CODES]);
+/** CS-C9 — additional safe error groups for the guardian-authority lifecycle (superset). */
+export const FAMILY_AUTHORITY_ERROR_CODES = [
+  "authority_not_found", "authority_already_active", "authority_suspended", "authority_revoked", "authority_expired",
+  "inactive_relationship", "inactive_membership", "archived_profile", "invalid_authority_level",
+  "self_management_forbidden", "delegation_forbidden", "invalid_state", "retry_later",
+] as const;
+export type FamilyAuthorityErrorCode = (typeof FAMILY_AUTHORITY_ERROR_CODES)[number];
+const ALL_SAFE_ERROR_CODES: ReadonlySet<string> = new Set<string>([...FAMILY_ACTION_ERROR_CODES, ...FAMILY_INVITATION_ERROR_CODES, ...FAMILY_AUTHORITY_ERROR_CODES]);
 /** Accepts ANY safe serializable group (CS-C6.1 destructive OR CS-C8 invitation). Never a raw string/PII. */
 export function isFamilyActionErrorCode(v: unknown): v is FamilyActionErrorCode {
   return typeof v === "string" && ALL_SAFE_ERROR_CODES.has(v);
 }
 export function isFamilyInvitationErrorCode(v: unknown): v is FamilyInvitationErrorCode {
   return typeof v === "string" && (FAMILY_INVITATION_ERROR_CODES as readonly string[]).includes(v);
+}
+export function isFamilyAuthorityErrorCode(v: unknown): v is FamilyAuthorityErrorCode {
+  return typeof v === "string" && (FAMILY_AUTHORITY_ERROR_CODES as readonly string[]).includes(v);
 }
 
 const en: FamilyDict = {
@@ -228,6 +251,36 @@ const en: FamilyDict = {
       expired: "This invitation has expired.", revoked: "This invitation was revoked.", already_accepted: "This invitation was already accepted.", already_declined: "This invitation was already declined.",
       duplicate_pending_invitation: "A pending invitation already exists for this profile and email.", already_member: "That person is already a member.", already_guardian: "That person is already an active guardian for this profile.",
       identity_mismatch: "This invitation was created for a different email address.", primary_conflict: "This profile already has an active primary guardian.", invalid_token: "This invitation link is not valid.", retry_later: "Something went wrong. Please try again in a moment.",
+    },
+  },
+  c9: {
+    title: "Authority", disclaimer: "Tamanor does not perform legal identity or guardianship-document verification. This only sets an internal product access scope.",
+    attestationLabel: "I confirm I'm entitled to set this guardian's access scope.", noAuthority: "No authority granted.",
+    statusLabel: "Status", levelLabel: "Level", typeLabel: "Type", expiresLabel: "Expires",
+    effective: "Effective", notEffective: "Not effective", effectiveReason: "Reason",
+    grant: "Grant authority", changeLevel: "Change level", suspend: "Suspend", resume: "Resume", revoke: "Revoke", save: "Save",
+    grantTitle: "Grant authority", validUntilLabel: "Valid until", optional: "optional",
+    timelineTitle: "Authority history", timelineEmpty: "No authority activity yet.",
+    suspendDialogTitle: "Suspend this authority?", suspendDialogBody: "Suspending immediately makes the authority not effective. It can be resumed later after re-checking conditions. Nothing else changes.", suspendDialogConfirm: "Suspend authority",
+    revokeDialogTitle: "Revoke this authority?", revokeDialogBody: "Revoking permanently ends this authority and makes it not effective. This cannot be undone; grant a new authority if needed.", revokeDialogConfirm: "Revoke authority",
+    statuses: { pending: "Pending", verified: "Active", suspended: "Suspended", revoked: "Revoked", expired: "Expired", rejected: "Rejected" },
+    levels: { full: "Full", limited: "Limited", read_only: "Read only" },
+    types: { legal_guardian: "Legal guardian", parental_responsibility: "Parental responsibility", court_appointed: "Court appointed", delegated_care: "Delegated care", temporary_care: "Temporary care", other_verified: "Other" },
+    reasons: { effective: "Effective", inactive_relationship: "The guardian relationship is not active.", archived_profile: "The profile is archived.", inactive_membership: "The guardian is no longer a member.", authority_not_active: "No active authority.", authority_expired: "The authority has expired." },
+    events: {
+      "child_safety.guardian_authority.granted": "Authority granted",
+      "child_safety.guardian_authority.level_changed": "Authority level changed",
+      "child_safety.guardian_authority.suspended": "Authority suspended",
+      "child_safety.guardian_authority.resumed": "Authority resumed",
+      "child_safety.guardian_authority.revoked": "Authority revoked",
+      "child_safety.guardian_authority.expired": "Authority expired",
+      "child_safety.guardian_authority.created": "Authority created",
+      "child_safety.guardian_authority.verified": "Authority verified",
+    },
+    errors: {
+      authority_not_found: "That authority could not be found.", authority_already_active: "This guardian already has an active authority.", authority_suspended: "This authority is suspended.", authority_revoked: "This authority was revoked.", authority_expired: "This authority has expired.",
+      inactive_relationship: "The guardian relationship is not active.", inactive_membership: "The guardian is no longer a member.", archived_profile: "The profile is archived.", invalid_authority_level: "That access level isn't valid.",
+      self_management_forbidden: "You can't manage your own authority.", delegation_forbidden: "You don't have permission to manage authority.", invalid_state: "This action isn't possible for the authority's current state.", retry_later: "Something went wrong. Please try again in a moment.",
     },
   },
 };
@@ -361,6 +414,36 @@ const sk: FamilyDict = {
       identity_mismatch: "Táto pozvánka bola vytvorená pre inú e-mailovú adresu.", primary_conflict: "Tento profil už má aktívneho primárneho opatrovníka.", invalid_token: "Tento odkaz pozvánky nie je platný.", retry_later: "Niečo sa pokazilo. Skúste to o chvíľu znova.",
     },
   },
+  c9: {
+    title: "Oprávnenie", disclaimer: "Tamanor nevykonáva právne overenie identity ani opatrovníckych dokumentov. Nastavuje sa iba interný produktový rozsah prístupu.",
+    attestationLabel: "Potvrdzujem, že mám oprávnenie nastaviť rozsah prístupu tohto opatrovníka.", noAuthority: "Žiadne udelené oprávnenie.",
+    statusLabel: "Stav", levelLabel: "Úroveň", typeLabel: "Typ", expiresLabel: "Platí do",
+    effective: "Účinné", notEffective: "Neúčinné", effectiveReason: "Dôvod",
+    grant: "Udeliť oprávnenie", changeLevel: "Zmeniť úroveň", suspend: "Pozastaviť", resume: "Obnoviť", revoke: "Odobrať", save: "Uložiť",
+    grantTitle: "Udeliť oprávnenie", validUntilLabel: "Platné do", optional: "voliteľné",
+    timelineTitle: "História oprávnenia", timelineEmpty: "Zatiaľ žiadna aktivita oprávnenia.",
+    suspendDialogTitle: "Pozastaviť toto oprávnenie?", suspendDialogBody: "Pozastavením sa oprávnenie okamžite stane neúčinným. Neskôr ho možno obnoviť po opätovnom overení podmienok. Nič iné sa nezmení.", suspendDialogConfirm: "Pozastaviť oprávnenie",
+    revokeDialogTitle: "Odobrať toto oprávnenie?", revokeDialogBody: "Odobratím sa oprávnenie natrvalo ukončí a stane sa neúčinným. Nedá sa to vrátiť; v prípade potreby udeľte nové oprávnenie.", revokeDialogConfirm: "Odobrať oprávnenie",
+    statuses: { pending: "Čaká", verified: "Aktívne", suspended: "Pozastavené", revoked: "Odobraté", expired: "Vypršané", rejected: "Zamietnuté" },
+    levels: { full: "Plný", limited: "Obmedzený", read_only: "Iba na čítanie" },
+    types: { legal_guardian: "Zákonný zástupca", parental_responsibility: "Rodičovská zodpovednosť", court_appointed: "Súdom ustanovený", delegated_care: "Delegovaná starostlivosť", temporary_care: "Dočasná starostlivosť", other_verified: "Iné" },
+    reasons: { effective: "Účinné", inactive_relationship: "Vzťah opatrovníka nie je aktívny.", archived_profile: "Profil je archivovaný.", inactive_membership: "Opatrovník už nie je členom.", authority_not_active: "Žiadne aktívne oprávnenie.", authority_expired: "Oprávnenie vypršalo." },
+    events: {
+      "child_safety.guardian_authority.granted": "Oprávnenie udelené",
+      "child_safety.guardian_authority.level_changed": "Úroveň oprávnenia zmenená",
+      "child_safety.guardian_authority.suspended": "Oprávnenie pozastavené",
+      "child_safety.guardian_authority.resumed": "Oprávnenie obnovené",
+      "child_safety.guardian_authority.revoked": "Oprávnenie odobraté",
+      "child_safety.guardian_authority.expired": "Oprávnenie vypršalo",
+      "child_safety.guardian_authority.created": "Oprávnenie vytvorené",
+      "child_safety.guardian_authority.verified": "Oprávnenie overené",
+    },
+    errors: {
+      authority_not_found: "Oprávnenie sa nenašlo.", authority_already_active: "Tento opatrovník už má aktívne oprávnenie.", authority_suspended: "Toto oprávnenie je pozastavené.", authority_revoked: "Toto oprávnenie bolo odobraté.", authority_expired: "Toto oprávnenie vypršalo.",
+      inactive_relationship: "Vzťah opatrovníka nie je aktívny.", inactive_membership: "Opatrovník už nie je členom.", archived_profile: "Profil je archivovaný.", invalid_authority_level: "Táto úroveň prístupu nie je platná.",
+      self_management_forbidden: "Nemôžete spravovať vlastné oprávnenie.", delegation_forbidden: "Nemáte oprávnenie spravovať oprávnenia.", invalid_state: "Táto akcia nie je možná pre aktuálny stav oprávnenia.", retry_later: "Niečo sa pokazilo. Skúste to o chvíľu znova.",
+    },
+  },
 };
 
 const de: FamilyDict = {
@@ -490,6 +573,36 @@ const de: FamilyDict = {
       expired: "Diese Einladung ist abgelaufen.", revoked: "Diese Einladung wurde widerrufen.", already_accepted: "Diese Einladung wurde bereits angenommen.", already_declined: "Diese Einladung wurde bereits abgelehnt.",
       duplicate_pending_invitation: "Für dieses Profil und diese E-Mail existiert bereits eine ausstehende Einladung.", already_member: "Diese Person ist bereits Mitglied.", already_guardian: "Diese Person ist bereits aktiver Betreuer dieses Profils.",
       identity_mismatch: "Diese Einladung wurde für eine andere E-Mail-Adresse erstellt.", primary_conflict: "Dieses Profil hat bereits einen aktiven Hauptbetreuer.", invalid_token: "Dieser Einladungslink ist ungültig.", retry_later: "Etwas ist schiefgelaufen. Bitte versuchen Sie es gleich erneut.",
+    },
+  },
+  c9: {
+    title: "Befugnis", disclaimer: "Tamanor führt keine rechtliche Identitäts- oder Sorgerechtsdokumentprüfung durch. Es wird nur ein interner Produkt-Zugriffsumfang festgelegt.",
+    attestationLabel: "Ich bestätige, dass ich berechtigt bin, den Zugriffsumfang dieses Betreuers festzulegen.", noAuthority: "Keine Befugnis erteilt.",
+    statusLabel: "Status", levelLabel: "Stufe", typeLabel: "Typ", expiresLabel: "Gültig bis",
+    effective: "Wirksam", notEffective: "Nicht wirksam", effectiveReason: "Grund",
+    grant: "Befugnis erteilen", changeLevel: "Stufe ändern", suspend: "Aussetzen", resume: "Fortsetzen", revoke: "Widerrufen", save: "Speichern",
+    grantTitle: "Befugnis erteilen", validUntilLabel: "Gültig bis", optional: "optional",
+    timelineTitle: "Befugnis-Verlauf", timelineEmpty: "Noch keine Befugnis-Aktivität.",
+    suspendDialogTitle: "Diese Befugnis aussetzen?", suspendDialogBody: "Durch das Aussetzen wird die Befugnis sofort nicht mehr wirksam. Sie kann später nach erneuter Prüfung der Bedingungen fortgesetzt werden. Sonst ändert sich nichts.", suspendDialogConfirm: "Befugnis aussetzen",
+    revokeDialogTitle: "Diese Befugnis widerrufen?", revokeDialogBody: "Durch den Widerruf endet diese Befugnis dauerhaft und wird nicht mehr wirksam. Dies kann nicht rückgängig gemacht werden; erteilen Sie bei Bedarf eine neue Befugnis.", revokeDialogConfirm: "Befugnis widerrufen",
+    statuses: { pending: "Ausstehend", verified: "Aktiv", suspended: "Ausgesetzt", revoked: "Widerrufen", expired: "Abgelaufen", rejected: "Abgelehnt" },
+    levels: { full: "Voll", limited: "Eingeschränkt", read_only: "Nur Lesen" },
+    types: { legal_guardian: "Gesetzl. Vertreter", parental_responsibility: "Elterliche Verantwortung", court_appointed: "Gerichtlich bestellt", delegated_care: "Delegierte Betreuung", temporary_care: "Vorübergehende Betreuung", other_verified: "Sonstige" },
+    reasons: { effective: "Wirksam", inactive_relationship: "Die Betreuungsbeziehung ist nicht aktiv.", archived_profile: "Das Profil ist archiviert.", inactive_membership: "Der Betreuer ist kein Mitglied mehr.", authority_not_active: "Keine aktive Befugnis.", authority_expired: "Die Befugnis ist abgelaufen." },
+    events: {
+      "child_safety.guardian_authority.granted": "Befugnis erteilt",
+      "child_safety.guardian_authority.level_changed": "Befugnisstufe geändert",
+      "child_safety.guardian_authority.suspended": "Befugnis ausgesetzt",
+      "child_safety.guardian_authority.resumed": "Befugnis fortgesetzt",
+      "child_safety.guardian_authority.revoked": "Befugnis widerrufen",
+      "child_safety.guardian_authority.expired": "Befugnis abgelaufen",
+      "child_safety.guardian_authority.created": "Befugnis erstellt",
+      "child_safety.guardian_authority.verified": "Befugnis verifiziert",
+    },
+    errors: {
+      authority_not_found: "Diese Befugnis wurde nicht gefunden.", authority_already_active: "Dieser Betreuer hat bereits eine aktive Befugnis.", authority_suspended: "Diese Befugnis ist ausgesetzt.", authority_revoked: "Diese Befugnis wurde widerrufen.", authority_expired: "Diese Befugnis ist abgelaufen.",
+      inactive_relationship: "Die Betreuungsbeziehung ist nicht aktiv.", inactive_membership: "Der Betreuer ist kein Mitglied mehr.", archived_profile: "Das Profil ist archiviert.", invalid_authority_level: "Diese Zugriffsstufe ist ungültig.",
+      self_management_forbidden: "Sie können Ihre eigene Befugnis nicht verwalten.", delegation_forbidden: "Sie haben keine Berechtigung, Befugnisse zu verwalten.", invalid_state: "Diese Aktion ist im aktuellen Zustand der Befugnis nicht möglich.", retry_later: "Etwas ist schiefgelaufen. Bitte versuchen Sie es gleich erneut.",
     },
   },
 };

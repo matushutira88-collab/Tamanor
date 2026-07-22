@@ -22,6 +22,7 @@ export function ConfirmDialog(props: {
   action: (prev: DialogActionState, fd: FormData) => Promise<DialogActionState>;
   hiddenName: string;
   hiddenValue: string;
+  extraHidden?: Record<string, string>;
   triggerLabel: string;
   triggerClassName?: string;
   title: string;
@@ -33,7 +34,7 @@ export function ConfirmDialog(props: {
   errorMessages: Record<string, string>;
   danger?: boolean;
 }) {
-  const { action, hiddenName, hiddenValue, triggerLabel, triggerClassName, title, body, confirmLabel, cancelLabel, workingLabel, errorTitle, errorMessages, danger } = props;
+  const { action, hiddenName, hiddenValue, extraHidden, triggerLabel, triggerClassName, title, body, confirmLabel, cancelLabel, workingLabel, errorTitle, errorMessages, danger } = props;
   const [state, formAction, isPending] = useActionState<DialogActionState, FormData>(action, { ok: true });
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -113,6 +114,7 @@ export function ConfirmDialog(props: {
 
             <form action={formAction} className="mt-6 flex justify-end gap-3">
               <input type="hidden" name={hiddenName} value={hiddenValue} />
+              {extraHidden ? Object.entries(extraHidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />) : null}
               <button
                 type="button"
                 onClick={close}

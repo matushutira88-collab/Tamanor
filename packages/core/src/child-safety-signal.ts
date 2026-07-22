@@ -121,6 +121,7 @@ export enum ConsentType { Guardian = "guardian", ChildAssent = "child_assent", P
 
 export enum GuardianRelationshipType { Parent = "parent", LegalGuardian = "legal_guardian", TrustedAdult = "trusted_adult", SafetyProfessional = "safety_professional" }
 export enum GuardianAuthorityLevel { Full = "full", Limited = "limited", ReadOnly = "read_only" }
+export const ALL_GUARDIAN_AUTHORITY_LEVELS: readonly GuardianAuthorityLevel[] = Object.values(GuardianAuthorityLevel);
 export enum GuardianRelationshipStatus { Pending = "pending", Verified = "verified", Suspended = "suspended", Revoked = "revoked" }
 
 /**

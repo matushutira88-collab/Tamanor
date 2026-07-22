@@ -2765,7 +2765,11 @@ model GuardianAuthorityRecord {
   tenantId               String
   guardianRelationshipId String
   authorityType          String // GuardianAuthorityType
-  authorityStatus        String    @default("pending") // GuardianAuthorityStatus (pending|verified|revoked|expired|rejected)
+  // CS-C9 — the granted SCOPE (GuardianAuthorityLevel: full|limited|read_only). Separate axis from
+  // authorityType/GuardianRole/relationshipType/FamilyRole; never auto-derived. Bounded CHECK in the
+  // hand-authored CS-C9 migration. App-required (backfilled to read_only for pre-C9 rows).
+  authorityLevel         String    @default("read_only")
+  authorityStatus        String    @default("pending") // GuardianAuthorityStatus (pending|verified|suspended|revoked|expired|rejected)
   validFrom              DateTime  @default(now())
   validUntil             DateTime? // validUntil < now ⇒ inactive even if status stayed VERIFIED
   verifiedAt             DateTime?

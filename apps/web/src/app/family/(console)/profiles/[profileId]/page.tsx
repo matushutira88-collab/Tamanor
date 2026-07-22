@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getProtectedProfile, listRelationshipsForProfile, listFamilyMembers, listProfileTimeline,
-  listConsentRecords, listSafetySignals, guardianLifecycleState, FamilyNotFoundError,
+  listConsentRecords, listSafetySignals, guardianLifecycleState, isActiveGuardianRelationship,
+  listGuardianAuthorityRecords, evaluateEffectiveGuardianAuthority, listGuardianAuthorityTimeline, FamilyNotFoundError,
 } from "@guardora/db";
 import {
   ALL_AGE_BANDS, ProtectionStatus, PROFILE_LANGUAGES, ALL_GUARDIAN_ROLES,
@@ -15,6 +16,7 @@ import { familyDict, famLabel } from "../../../family-i18n";
 import { ConfirmDialog } from "../../../confirm-dialog";
 import { updateProtectedProfileAction, archiveProtectedProfileAction, restoreProtectedProfileAction } from "../actions";
 import { createGuardianRelationshipAction, updateGuardianRoleAction, deactivateGuardianRelationshipAction, reactivateGuardianRelationshipAction } from "./actions";
+import { GuardianAuthoritySection } from "./authority-section";
 
 export const dynamic = "force-dynamic";
 function fmt(d: Date | null): string { return d ? new Date(d).toISOString().slice(0, 10) : "—"; }
@@ -40,8 +42,18 @@ export default async function ProfileDetailPage({ params, searchParams }: { para
     listSafetySignals(actor, { protectedProfileId: profileId, includeArchived: true, limit: 20 }),
   ]);
 
+  // CS-C9 — authority data per ACTIVE guardian (records + effective decision + timeline).
+  const canManageAuthority = familyCan(actor, FamilyAction.FamilyAuthorityGrant);
+  const activeGuardians = rels.filter((r) => isActiveGuardianRelationship(r));
+  const authorityData = await Promise.all(activeGuardians.map(async (r) => ({
+    rel: r,
+    records: await listGuardianAuthorityRecords(actor, r.id, { includeInactive: true }),
+    effective: await evaluateEffectiveGuardianAuthority(actor, r.id),
+    timeline: await listGuardianAuthorityTimeline(actor, r.id),
+  })));
+
   const archived = profile.archivedAt !== null;
-  const banner = sp.ok ? { tone: "ok" as const, msg: sp.ok } : sp.e ? { tone: "danger" as const, msg: t.actionErrors[sp.e] ?? t.actionErrors.retry_later } : null;
+  const banner = sp.ok ? { tone: "ok" as const, msg: sp.ok } : sp.e ? { tone: "danger" as const, msg: t.actionErrors[sp.e] ?? t.c9.errors[sp.e] ?? t.actionErrors.retry_later } : null;
   const ageOptions = (ALL_AGE_BANDS as readonly string[]).map((v) => ({ value: v, label: famLabel(t.labels.ageBand, v) }));
   const statusOptions = Object.values(ProtectionStatus).map((v) => ({ value: v, label: famLabel(t.labels.protectionStatus, v) }));
   const langOptions = [{ value: "", label: t.c7.languageAuto }, ...(PROFILE_LANGUAGES as readonly string[]).map((v) => ({ value: v, label: v.toUpperCase() }))];
@@ -138,6 +150,19 @@ export default async function ProfileDetailPage({ params, searchParams }: { para
           </form>
         )}
       </Card>
+
+      {/* CS-C9 — guardian authority lifecycle (grant/change/suspend/resume/revoke) per active guardian */}
+      {activeGuardians.length > 0 && (
+        <Card>
+          <SectionHeader title={t.c9.title} />
+          <p className="mb-3 text-xs text-[var(--color-muted)]">{t.c9.disclaimer}</p>
+          <div className="space-y-3">
+            {authorityData.map((a) => (
+              <GuardianAuthoritySection key={a.rel.id} t={t} profileId={profile.id} relationshipId={a.rel.id} guardianRoleLabel={famLabel(t.c7.roles, a.rel.guardianRole)} records={a.records} effective={a.effective} timeline={a.timeline} canManage={canManageAuthority} />
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* CS-C7 — content-free append-only timeline */}
       <Card>

@@ -1,6 +1,6 @@
 import "server-only";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError, DeliveryNotEligibleError } from "@guardora/db";
-import { isFamilyInvitationErrorCode, type FamilyActionErrorCode, type FamilyInvitationErrorCode } from "@/app/family/family-i18n";
+import { isFamilyInvitationErrorCode, isFamilyAuthorityErrorCode, type FamilyActionErrorCode, type FamilyInvitationErrorCode, type FamilyAuthorityErrorCode } from "@/app/family/family-i18n";
 
 /**
  * CS-C6.1 — map a repository exception to ONE safe, serializable, non-PII error group. This is the ONLY
@@ -34,3 +34,19 @@ export function toFamilyInvitationErrorCode(e: unknown): FamilyInvitationErrorCo
 }
 /** CS-C8 — the safe result shape an invitation destructive action returns to `useActionState`. */
 export type FamilyInvitationActionState = { ok: true } | { ok: false; error: FamilyInvitationErrorCode };
+
+/**
+ * CS-C9 — map an authority-workflow exception to ONE safe authority error GROUP. FamilyValidationError
+ * carries the precise safe code in `.field` (e.g. "authority_already_active", "self_management_forbidden",
+ * "inactive_relationship", "invalid_authority_level"); a not-found record → authority_not_found; a
+ * forbidden actor → delegation_forbidden; anything else fails closed to invalid_state / retry_later. Never
+ * leaks a stack, SQL/Prisma detail, id, PII or the authorization chain.
+ */
+export function toFamilyAuthorityErrorCode(e: unknown): FamilyAuthorityErrorCode {
+  if (e instanceof FamilyForbiddenError) return "delegation_forbidden";
+  if (e instanceof FamilyNotFoundError) return "authority_not_found";
+  if (e instanceof FamilyValidationError) return isFamilyAuthorityErrorCode(e.field) ? e.field : "invalid_state";
+  return "retry_later";
+}
+/** CS-C9 — the safe result shape an authority destructive action returns to `useActionState`. */
+export type FamilyAuthorityActionState = { ok: true } | { ok: false; error: FamilyAuthorityErrorCode };

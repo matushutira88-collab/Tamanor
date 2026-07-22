@@ -5,11 +5,11 @@ import {
   FamilyAction, authorizeFamilyAction, CHILD_SAFETY_AUDIT_EVENTS, validateChildSafetyInput,
   GuardianRelationshipStatus, ConsentStatus, SafetyRecipientEligibility,
   GuardianAuthorityStatus, SafeRecipientAssessmentStatus,
-  isGuardianAuthorityType, isVerificationMethod, isConsentType, isSafeRecipientReasonCode,
+  isGuardianAuthorityType, isGuardianAuthorityLevel, isVerificationMethod, isConsentType, isSafeRecipientReasonCode,
   isGuardianAuthorityActive, isConsentEffective, isSafeRecipientAssessmentApproved,
   evaluateCanReceiveSafetyInformation,
   CONSENT_GRANTED_STATUS, CONSENT_REVOKED_STATUS,
-  GUARDIAN_AUTHORITY_CREATE_FIELDS, GUARDIAN_AUTHORITY_VERIFY_FIELDS,
+  GUARDIAN_AUTHORITY_CREATE_FIELDS, GUARDIAN_AUTHORITY_VERIFY_FIELDS, GUARDIAN_AUTHORITY_GRANT_FIELDS, GUARDIAN_AUTHORITY_CHANGE_LEVEL_FIELDS,
   CONSENT_CREATE_FIELDS, CONSENT_GRANT_FIELDS,
   SAFE_RECIPIENT_ASSESSMENT_CREATE_FIELDS, SAFE_RECIPIENT_ASSESSMENT_DECIDE_FIELDS,
   type FamilyActorContext, type SafetyRecipientDenyReason,
@@ -47,7 +47,7 @@ function relationshipIsVerifiedActive(r: { status: string; revokedAt: Date | nul
 // ============================ view models (content-free) ============================
 
 export interface GuardianAuthorityRecordVM {
-  id: string; guardianRelationshipId: string; authorityType: string; authorityStatus: string;
+  id: string; guardianRelationshipId: string; authorityType: string; authorityLevel: string; authorityStatus: string;
   validFrom: Date; validUntil: Date | null; verifiedAt: Date | null; verificationMethod: string | null;
   createdAt: Date; updatedAt: Date; revokedAt: Date | null; archivedAt: Date | null;
 }
@@ -61,7 +61,7 @@ export interface SafeRecipientAssessmentVM {
   assessedByMembershipId: string | null; assessedAt: Date | null; reasonCode: string | null; validUntil: Date | null;
   revokedAt: Date | null; createdAt: Date; updatedAt: Date; archivedAt: Date | null;
 }
-const AUTH_SELECT = { id: true, guardianRelationshipId: true, authorityType: true, authorityStatus: true, validFrom: true, validUntil: true, verifiedAt: true, verificationMethod: true, createdAt: true, updatedAt: true, revokedAt: true, archivedAt: true } as const;
+const AUTH_SELECT = { id: true, guardianRelationshipId: true, authorityType: true, authorityLevel: true, authorityStatus: true, validFrom: true, validUntil: true, verifiedAt: true, verificationMethod: true, createdAt: true, updatedAt: true, revokedAt: true, archivedAt: true } as const;
 const CONSENT_SELECT = { id: true, protectedProfileId: true, guardianRelationshipId: true, consentType: true, consentStatus: true, grantedByMembershipId: true, grantedAt: true, validFrom: true, validUntil: true, revokedAt: true, createdAt: true, updatedAt: true, archivedAt: true } as const;
 const ASSESS_SELECT = { id: true, guardianRelationshipId: true, eligibilityStatus: true, assessmentStatus: true, assessedByMembershipId: true, assessedAt: true, reasonCode: true, validUntil: true, revokedAt: true, createdAt: true, updatedAt: true, archivedAt: true } as const;
 
@@ -133,6 +133,172 @@ export async function getEffectiveGuardianAuthority(actor: FamilyActorContext, g
   return withTenant(actor.tenantId, async (db) => {
     const rows = await db.guardianAuthorityRecord.findMany({ where: { tenantId: actor.tenantId, guardianRelationshipId, authorityStatus: GuardianAuthorityStatus.Verified, revokedAt: null, archivedAt: null }, orderBy: { createdAt: "desc" }, select: AUTH_SELECT });
     return rows.find((r) => isGuardianAuthorityActive(r, now)) ?? null;
+  });
+}
+
+// ============================ CS-C9 — Guardian Authority activation & lifecycle ============================
+//
+// Authority is a SEPARATE axis: grant/change/suspend/resume/revoke NEVER touch GuardianRole,
+// relationshipType or FamilyRole, and NEVER create a ConsentRecord / SafeRecipientAssessment /
+// RecipientAuthorizationDecision / SafetySignalDelivery. Management is PrimaryGuardian-ONLY and forbids
+// self-management. Authority is an internal PRODUCT permission — NOT a claim of state-verified legal
+// authority; NO document/photo/id/free-text is ever stored (attestation is a bounded flag + timestamp).
+
+/** Load the relationship + profile-archived + guardian membership for authority preconditions. Fail-closed. */
+async function loadAuthorityContext(db: Tx, actor: FamilyActorContext, guardianRelationshipId: string): Promise<{ rel: { id: string; status: string; revokedAt: Date | null; archivedAt: Date | null; protectedProfileId: string; guardianMembershipId: string }; guardianUserId: string; profileArchived: boolean }> {
+  const rel = await db.guardianRelationship.findFirst({ where: { id: guardianRelationshipId, tenantId: actor.tenantId }, select: { id: true, status: true, revokedAt: true, archivedAt: true, protectedProfileId: true, guardianMembershipId: true } });
+  if (!rel) throw new FamilyNotFoundError("guardian_relationship");
+  const [profile, gm] = await Promise.all([
+    db.protectedProfile.findFirst({ where: { id: rel.protectedProfileId, tenantId: actor.tenantId }, select: { archivedAt: true } }),
+    db.membership.findFirst({ where: { id: rel.guardianMembershipId, tenantId: actor.tenantId }, select: { id: true, userId: true } }),
+  ]);
+  if (!gm) throw new FamilyValidationError("inactive_membership"); // membership hard-deleted → treat as inactive
+  return { rel, guardianUserId: gm.userId, profileArchived: profile?.archivedAt != null || profile == null };
+}
+/** The actor must never manage authority for a relationship whose guardian is the actor themselves. */
+function assertNotSelfManaged(actor: FamilyActorContext, guardianUserId: string): void {
+  if (guardianUserId === actor.userId) throw new FamilyValidationError("self_management_forbidden");
+}
+
+/**
+ * CS-C9 — GRANT explicit, ACTIVE authority to a Guardian relationship. Requires an attestation flag; sets
+ * the granted scope (authorityLevel) and an optional future expiry. Fail-closed on every precondition; at
+ * most one ACTIVE (verified/suspended) authority per relationship.
+ */
+export async function grantGuardianAuthority(actor: FamilyActorContext, input: { guardianRelationshipId: string; authorityType: string; authorityLevel: string; validUntil?: Date; attestation?: boolean }, now: Date = new Date()): Promise<GuardianAuthorityRecordVM> {
+  assertFamily(actor, FamilyAction.FamilyAuthorityGrant);
+  const v = validateChildSafetyInput(input, GUARDIAN_AUTHORITY_GRANT_FIELDS);
+  if (!v.ok) throw new FamilyValidationError(v.errors[0]?.field ?? "$");
+  if (!isGuardianAuthorityType(input.authorityType)) throw new FamilyValidationError("authorityType");
+  if (!isGuardianAuthorityLevel(input.authorityLevel)) throw new FamilyValidationError("invalid_authority_level");
+  if (input.attestation !== true) throw new FamilyValidationError("attestation_required");
+  if (input.validUntil != null && input.validUntil.getTime() <= now.getTime()) throw new FamilyValidationError("invalid_state");
+  return withTenant(actor.tenantId, async (db) => {
+    const { rel, guardianUserId, profileArchived } = await loadAuthorityContext(db, actor, input.guardianRelationshipId);
+    if (!isActiveGuardianRelationship(rel)) throw new FamilyValidationError("inactive_relationship");
+    if (profileArchived) throw new FamilyValidationError("archived_profile");
+    assertNotSelfManaged(actor, guardianUserId);
+    const active = await db.guardianAuthorityRecord.findFirst({ where: { tenantId: actor.tenantId, guardianRelationshipId: rel.id, authorityStatus: { in: [GuardianAuthorityStatus.Verified, GuardianAuthorityStatus.Suspended] }, revokedAt: null, archivedAt: null }, select: { id: true } });
+    if (active) throw new FamilyValidationError("authority_already_active");
+    // ACTIVE = 'verified'. verifiedAt + verificationMethod=manual_review record the bounded attestation
+    // (NEVER a document/photo/id/free text). NO role / relationshipType / consent / assessment is touched.
+    const row = await db.guardianAuthorityRecord.create({
+      data: { tenantId: actor.tenantId, guardianRelationshipId: rel.id, authorityType: input.authorityType, authorityLevel: input.authorityLevel, authorityStatus: GuardianAuthorityStatus.Verified, verifiedAt: now, verificationMethod: "manual_review", validUntil: input.validUntil ?? null },
+      select: AUTH_SELECT,
+    });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityGranted, "guardian_authority_record", row.id, { authorityType: row.authorityType, authorityLevel: row.authorityLevel });
+    return row;
+  });
+}
+
+/** CS-C9 — change the granted SCOPE (authorityLevel) on an ACTIVE or SUSPENDED authority. Never role/type. */
+export async function changeGuardianAuthorityLevel(actor: FamilyActorContext, id: string, authorityLevel: string): Promise<GuardianAuthorityRecordVM> {
+  assertFamily(actor, FamilyAction.FamilyAuthorityChange);
+  const v = validateChildSafetyInput({ authorityLevel }, GUARDIAN_AUTHORITY_CHANGE_LEVEL_FIELDS);
+  if (!v.ok) throw new FamilyValidationError(v.errors[0]?.field ?? "$");
+  if (!isGuardianAuthorityLevel(authorityLevel)) throw new FamilyValidationError("invalid_authority_level");
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, authorityLevel: true, guardianRelationshipId: true } });
+    if (!rec) throw new FamilyNotFoundError("guardian_authority_record");
+    if (rec.authorityStatus !== GuardianAuthorityStatus.Verified && rec.authorityStatus !== GuardianAuthorityStatus.Suspended) throw new FamilyValidationError("invalid_state");
+    const { guardianUserId } = await loadAuthorityContext(db, actor, rec.guardianRelationshipId);
+    assertNotSelfManaged(actor, guardianUserId);
+    if (rec.authorityLevel === authorityLevel) return db.guardianAuthorityRecord.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: AUTH_SELECT });
+    const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityLevel }, select: AUTH_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityLevelChanged, "guardian_authority_record", row.id, { from: rec.authorityLevel, to: authorityLevel });
+    return row;
+  });
+}
+
+/** CS-C9 — suspend an ACTIVE authority (reversible). Immediately NOT effective. Idempotent. */
+export async function suspendGuardianAuthority(actor: FamilyActorContext, id: string): Promise<GuardianAuthorityRecordVM> {
+  assertFamily(actor, FamilyAction.FamilyAuthoritySuspend);
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, guardianRelationshipId: true } });
+    if (!rec) throw new FamilyNotFoundError("guardian_authority_record");
+    if (rec.authorityStatus === GuardianAuthorityStatus.Suspended) return db.guardianAuthorityRecord.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: AUTH_SELECT });
+    if (rec.authorityStatus !== GuardianAuthorityStatus.Verified) throw new FamilyValidationError("invalid_state");
+    const { guardianUserId } = await loadAuthorityContext(db, actor, rec.guardianRelationshipId);
+    assertNotSelfManaged(actor, guardianUserId);
+    const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityStatus: GuardianAuthorityStatus.Suspended }, select: AUTH_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthoritySuspended, "guardian_authority_record", row.id);
+    return row;
+  });
+}
+
+/** CS-C9 — resume a SUSPENDED authority — but ONLY after re-checking every condition. Fail-closed. */
+export async function resumeGuardianAuthority(actor: FamilyActorContext, id: string, now: Date = new Date()): Promise<GuardianAuthorityRecordVM> {
+  assertFamily(actor, FamilyAction.FamilyAuthorityResume);
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, validUntil: true, guardianRelationshipId: true } });
+    if (!rec) throw new FamilyNotFoundError("guardian_authority_record");
+    if (rec.authorityStatus !== GuardianAuthorityStatus.Suspended) throw new FamilyValidationError("invalid_state");
+    if (rec.validUntil != null && rec.validUntil.getTime() <= now.getTime()) throw new FamilyValidationError("authority_expired");
+    const { rel, guardianUserId, profileArchived } = await loadAuthorityContext(db, actor, rec.guardianRelationshipId);
+    if (!isActiveGuardianRelationship(rel)) throw new FamilyValidationError("inactive_relationship");
+    if (profileArchived) throw new FamilyValidationError("archived_profile");
+    assertNotSelfManaged(actor, guardianUserId);
+    const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityStatus: GuardianAuthorityStatus.Verified }, select: AUTH_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityResumed, "guardian_authority_record", row.id);
+    return row;
+  });
+}
+
+/** CS-C9 — revoke an ACTIVE or SUSPENDED authority (terminal). Immediately NOT effective. Idempotent. */
+export async function revokeGuardianAuthority(actor: FamilyActorContext, id: string): Promise<GuardianAuthorityRecordVM> {
+  assertFamily(actor, FamilyAction.FamilyAuthorityRevoke);
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, revokedAt: true, guardianRelationshipId: true } });
+    if (!rec) throw new FamilyNotFoundError("guardian_authority_record");
+    if (rec.authorityStatus === GuardianAuthorityStatus.Revoked || rec.revokedAt != null) return db.guardianAuthorityRecord.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: AUTH_SELECT });
+    if (rec.authorityStatus !== GuardianAuthorityStatus.Verified && rec.authorityStatus !== GuardianAuthorityStatus.Suspended) throw new FamilyValidationError("invalid_state");
+    const { guardianUserId } = await loadAuthorityContext(db, actor, rec.guardianRelationshipId);
+    assertNotSelfManaged(actor, guardianUserId);
+    const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityStatus: GuardianAuthorityStatus.Revoked, revokedAt: new Date() }, select: AUTH_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityRevoked, "guardian_authority_record", row.id);
+    return row;
+  });
+}
+
+/**
+ * CS-C9 — the FULL effective-authority evaluation for a relationship. Fail-closed: effective ONLY when the
+ * workspace is FAMILY, the profile is ACTIVE, the relationship is active, the guardian membership exists,
+ * and a VERIFIED, time-valid authority record exists. Returns a SAFE reason code (never internal detail).
+ */
+export type EffectiveAuthorityReason = "effective" | "inactive_relationship" | "archived_profile" | "inactive_membership" | "authority_not_active" | "authority_expired";
+export interface EffectiveAuthorityDecision { effective: boolean; authorityLevel: string | null; reason: EffectiveAuthorityReason }
+export async function evaluateEffectiveGuardianAuthority(actor: FamilyActorContext, guardianRelationshipId: string, now: Date = new Date()): Promise<EffectiveAuthorityDecision> {
+  assertFamily(actor, FamilyAction.GuardianAuthorityView);
+  return withTenant(actor.tenantId, async (db) => {
+    const rel = await db.guardianRelationship.findFirst({ where: { id: guardianRelationshipId, tenantId: actor.tenantId }, select: { id: true, status: true, revokedAt: true, archivedAt: true, protectedProfileId: true, guardianMembershipId: true } });
+    if (!rel || !isActiveGuardianRelationship(rel)) return { effective: false, authorityLevel: null, reason: "inactive_relationship" };
+    const [profile, gm] = await Promise.all([
+      db.protectedProfile.findFirst({ where: { id: rel.protectedProfileId, tenantId: actor.tenantId }, select: { archivedAt: true } }),
+      db.membership.findFirst({ where: { id: rel.guardianMembershipId, tenantId: actor.tenantId }, select: { id: true } }),
+    ]);
+    if (!profile || profile.archivedAt != null) return { effective: false, authorityLevel: null, reason: "archived_profile" };
+    if (!gm) return { effective: false, authorityLevel: null, reason: "inactive_membership" };
+    const rows = await db.guardianAuthorityRecord.findMany({ where: { tenantId: actor.tenantId, guardianRelationshipId, authorityStatus: GuardianAuthorityStatus.Verified, revokedAt: null, archivedAt: null }, orderBy: { createdAt: "desc" }, select: AUTH_SELECT });
+    const active = rows.find((r) => isGuardianAuthorityActive(r, now));
+    if (!active) return { effective: false, authorityLevel: null, reason: "authority_not_active" };
+    return { effective: true, authorityLevel: active.authorityLevel, reason: "effective" };
+  });
+}
+
+/** CS-C9 — content-free, append-only authority timeline for one relationship (newest first). */
+export interface AuthorityTimelineEntryVM { id: string; event: string; actorUserId: string | null; targetId: string | null; metadata: Record<string, unknown> | null; createdAt: Date }
+export async function listGuardianAuthorityTimeline(actor: FamilyActorContext, guardianRelationshipId: string, opts: { limit?: number } = {}): Promise<AuthorityTimelineEntryVM[]> {
+  assertFamily(actor, FamilyAction.GuardianAuthorityView);
+  return withTenant(actor.tenantId, async (db) => {
+    const recs = await db.guardianAuthorityRecord.findMany({ where: { tenantId: actor.tenantId, guardianRelationshipId }, select: { id: true } });
+    const ids = recs.map((r) => r.id);
+    if (ids.length === 0) return [];
+    const rows = await db.auditLog.findMany({
+      where: { tenantId: actor.tenantId, targetType: "guardian_authority_record", targetId: { in: ids } },
+      orderBy: { createdAt: "desc" }, take: Math.min(Math.max(opts.limit ?? 100, 1), 200),
+      select: { id: true, event: true, actorUserId: true, targetId: true, metadata: true, createdAt: true },
+    });
+    return rows.map((r) => ({ ...r, metadata: (r.metadata ?? null) as Record<string, unknown> | null }));
   });
 }
 

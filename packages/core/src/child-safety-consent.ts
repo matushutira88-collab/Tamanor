@@ -34,6 +34,9 @@ export const ALL_GUARDIAN_AUTHORITY_TYPES: readonly GuardianAuthorityType[] = Ob
 export enum GuardianAuthorityStatus {
   Pending = "pending",
   Verified = "verified",
+  // CS-C9 — a reversible, non-terminal pause. A SUSPENDED authority is NOT effective (isGuardianAuthorityActive
+  // requires Verified); resume returns it to Verified after re-checking every condition.
+  Suspended = "suspended",
   Revoked = "revoked",
   Expired = "expired",
   Rejected = "rejected",
@@ -85,6 +88,11 @@ export const isSafeRecipientReasonCode = (x: unknown): x is SafeRecipientReasonC
 
 export const GUARDIAN_AUTHORITY_CREATE_FIELDS: readonly string[] = ["guardianRelationshipId", "authorityType", "validFrom", "validUntil"];
 export const GUARDIAN_AUTHORITY_VERIFY_FIELDS: readonly string[] = ["verificationMethod", "validUntil"];
+// CS-C9 — the ONLY fields a client may submit to GRANT authority. `attestation` is a bounded boolean
+// confirmation flag ("I confirm I'm entitled to set this Guardian's access scope") — NEVER a document,
+// id number, photo, signature, biometric or free text. `authorityLevel` is the granted scope.
+export const GUARDIAN_AUTHORITY_GRANT_FIELDS: readonly string[] = ["guardianRelationshipId", "authorityType", "authorityLevel", "validUntil", "attestation"];
+export const GUARDIAN_AUTHORITY_CHANGE_LEVEL_FIELDS: readonly string[] = ["authorityLevel"];
 export const CONSENT_CREATE_FIELDS: readonly string[] = ["protectedProfileId", "guardianRelationshipId", "consentType", "validFrom", "validUntil"];
 export const CONSENT_GRANT_FIELDS: readonly string[] = ["validFrom", "validUntil"];
 export const SAFE_RECIPIENT_ASSESSMENT_CREATE_FIELDS: readonly string[] = ["guardianRelationshipId"];

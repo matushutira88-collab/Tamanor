@@ -65,7 +65,20 @@ export enum FamilyAction {
   FamilyInvitationView = "family_invitation:view",
   FamilyInvitationCreate = "family_invitation:create",
   FamilyInvitationRevoke = "family_invitation:revoke",
+  // CS-C9 — guardian AUTHORITY lifecycle management (Family-only). DELIBERATELY the highest tier:
+  // grant/change/suspend/resume/revoke are PrimaryGuardian-ONLY (excluded from GUARDIAN_ACTIONS below) —
+  // no ambiguous custom delegation hierarchy. Viewing reuses the CS-C2 `GuardianAuthorityView`.
+  FamilyAuthorityGrant = "family_authority:grant",
+  FamilyAuthorityChange = "family_authority:change",
+  FamilyAuthoritySuspend = "family_authority:suspend",
+  FamilyAuthorityResume = "family_authority:resume",
+  FamilyAuthorityRevoke = "family_authority:revoke",
 }
+/** CS-C9 — the PrimaryGuardian-only authority-management actions (excluded from the plain Guardian set). */
+export const FAMILY_AUTHORITY_MANAGE_ACTIONS: readonly FamilyAction[] = [
+  FamilyAction.FamilyAuthorityGrant, FamilyAction.FamilyAuthorityChange, FamilyAction.FamilyAuthoritySuspend,
+  FamilyAction.FamilyAuthorityResume, FamilyAction.FamilyAuthorityRevoke,
+];
 export const ALL_FAMILY_ACTIONS: readonly FamilyAction[] = Object.values(FamilyAction);
 
 /**
@@ -99,8 +112,11 @@ const DELIVERY_RECIPIENT_ACTIONS: readonly FamilyAction[] = [
 ];
 // CS-C4/C5 — a plain Guardian may do everything a PrimaryGuardian can EXCEPT revoke a recipient
 // authorization decision, revoke a delivery, or archive a delivery (those stay PrimaryGuardian acts).
+// CS-C9 — a plain Guardian additionally may NOT manage guardian AUTHORITY (grant/change/suspend/resume/
+// revoke) — those are PrimaryGuardian-only.
 const GUARDIAN_ACTIONS: readonly FamilyAction[] = ALL_FAMILY_ACTIONS.filter((a) =>
-  a !== FamilyAction.SafetyRecipientAuthorizationRevoke && a !== FamilyAction.SafetyDeliveryRevoke && a !== FamilyAction.SafetyDeliveryArchive);
+  a !== FamilyAction.SafetyRecipientAuthorizationRevoke && a !== FamilyAction.SafetyDeliveryRevoke && a !== FamilyAction.SafetyDeliveryArchive
+  && !FAMILY_AUTHORITY_MANAGE_ACTIONS.includes(a));
 // CS-C3/C4/C5 — a safety professional is view-only for family administration but MAY review safety
 // signals, view+evaluate recipient authorization, and act on their OWN delivery — never create a
 // signal/decision/delivery, never revoke, and never mutate consent/authority/relationship.
@@ -164,6 +180,12 @@ export const FAMILY_ACTION_CAPABILITY: Readonly<Record<FamilyAction, WorkspaceCa
   [FamilyAction.FamilyInvitationView]: WorkspaceCapability.GuardianRelationships,
   [FamilyAction.FamilyInvitationCreate]: WorkspaceCapability.GuardianRelationships,
   [FamilyAction.FamilyInvitationRevoke]: WorkspaceCapability.GuardianRelationships,
+  // CS-C9 — guardian authority management lives under the GuardianRelationships capability (Family-only).
+  [FamilyAction.FamilyAuthorityGrant]: WorkspaceCapability.GuardianRelationships,
+  [FamilyAction.FamilyAuthorityChange]: WorkspaceCapability.GuardianRelationships,
+  [FamilyAction.FamilyAuthoritySuspend]: WorkspaceCapability.GuardianRelationships,
+  [FamilyAction.FamilyAuthorityResume]: WorkspaceCapability.GuardianRelationships,
+  [FamilyAction.FamilyAuthorityRevoke]: WorkspaceCapability.GuardianRelationships,
 };
 
 /** The actor context every Family repository operation requires. */
@@ -222,6 +244,12 @@ export const CHILD_SAFETY_AUDIT_EVENTS = {
   guardianAuthorityVerified: "child_safety.guardian_authority.verified",
   guardianAuthorityRejected: "child_safety.guardian_authority.rejected",
   guardianAuthorityRevoked: "child_safety.guardian_authority.revoked",
+  // CS-C9 — authority grant/lifecycle (content-free: actor + bounded status/level transitions only).
+  guardianAuthorityGranted: "child_safety.guardian_authority.granted",
+  guardianAuthorityLevelChanged: "child_safety.guardian_authority.level_changed",
+  guardianAuthoritySuspended: "child_safety.guardian_authority.suspended",
+  guardianAuthorityResumed: "child_safety.guardian_authority.resumed",
+  guardianAuthorityExpired: "child_safety.guardian_authority.expired",
   consentCreated: "child_safety.consent.created",
   consentGranted: "child_safety.consent.granted",
   consentRevoked: "child_safety.consent.revoked",
