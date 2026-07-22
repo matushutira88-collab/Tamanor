@@ -41,6 +41,7 @@
     "child-safety-family:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-family.test.ts",
     "child-safety-consent:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-consent.test.ts",
     "child-safety-signal:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-safety-signal.test.ts",
+    "child-safety-recipient-authorization:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-recipient-authorization.test.ts",
     "detection-engine:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/detection-engine.test.ts",
     "security-access:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/security-access.test.ts",
     "security-score-facts:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/security-score-facts.test.ts",

@@ -43,6 +43,12 @@ export enum FamilyAction {
   SafetySignalCreate = "safety_signal:create",
   SafetySignalReview = "safety_signal:review",
   SafetySignalArchive = "safety_signal:archive",
+  // CS-C4 — authorized recipient resolution & disclosure decisions (Family-only). Evaluate is read-only
+  // (no write); Create records a decision; Revoke invalidates one.
+  SafetyRecipientAuthorizationView = "safety_recipient_authorization:view",
+  SafetyRecipientAuthorizationEvaluate = "safety_recipient_authorization:evaluate",
+  SafetyRecipientAuthorizationCreate = "safety_recipient_authorization:create",
+  SafetyRecipientAuthorizationRevoke = "safety_recipient_authorization:revoke",
 }
 export const ALL_FAMILY_ACTIONS: readonly FamilyAction[] = Object.values(FamilyAction);
 
@@ -70,14 +76,21 @@ const VIEW_ONLY: readonly FamilyAction[] = [
   FamilyAction.SafetySignalView,
 ];
 const FULL_MANAGE: readonly FamilyAction[] = ALL_FAMILY_ACTIONS;
-// CS-C3 — a safety professional is view-only for family administration but MAY review safety signals
-// (per the CS-0 charter). Still no create/archive and no consent/authority/relationship mutation.
-const SAFETY_PROFESSIONAL: readonly FamilyAction[] = [...VIEW_ONLY, FamilyAction.SafetySignalReview];
+// CS-C4 — a plain Guardian may do everything a PrimaryGuardian can EXCEPT revoke a recipient
+// authorization decision (revocation of a disclosure authorization is a PrimaryGuardian act).
+const GUARDIAN_ACTIONS: readonly FamilyAction[] = ALL_FAMILY_ACTIONS.filter((a) => a !== FamilyAction.SafetyRecipientAuthorizationRevoke);
+// CS-C3/C4 — a safety professional is view-only for family administration but MAY review safety
+// signals and MAY view+evaluate recipient authorization (a read-only computation) — never create/
+// revoke a decision, and never mutate consent/authority/relationship.
+const SAFETY_PROFESSIONAL: readonly FamilyAction[] = [
+  ...VIEW_ONLY, FamilyAction.SafetySignalReview,
+  FamilyAction.SafetyRecipientAuthorizationView, FamilyAction.SafetyRecipientAuthorizationEvaluate,
+];
 
 /** Which actions each FamilyRole may perform. Only guardians manage; everyone else is read-mostly. */
 export const FAMILY_ROLE_ACTIONS: Readonly<Record<FamilyRole, readonly FamilyAction[]>> = {
   [FamilyRole.PrimaryGuardian]: FULL_MANAGE,
-  [FamilyRole.Guardian]: FULL_MANAGE,
+  [FamilyRole.Guardian]: GUARDIAN_ACTIONS,
   [FamilyRole.TrustedAdult]: VIEW_ONLY,
   [FamilyRole.SafetyProfessional]: SAFETY_PROFESSIONAL,
   [FamilyRole.FamilyViewer]: VIEW_ONLY,
@@ -108,6 +121,11 @@ export const FAMILY_ACTION_CAPABILITY: Readonly<Record<FamilyAction, WorkspaceCa
   [FamilyAction.SafetySignalCreate]: WorkspaceCapability.SafetySignals,
   [FamilyAction.SafetySignalReview]: WorkspaceCapability.SafetySignals,
   [FamilyAction.SafetySignalArchive]: WorkspaceCapability.SafetySignals,
+  // CS-C4 — recipient authorization decisions live under the CS-0 SafeRecipientPolicies capability.
+  [FamilyAction.SafetyRecipientAuthorizationView]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafetyRecipientAuthorizationEvaluate]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafetyRecipientAuthorizationCreate]: WorkspaceCapability.SafeRecipientPolicies,
+  [FamilyAction.SafetyRecipientAuthorizationRevoke]: WorkspaceCapability.SafeRecipientPolicies,
 };
 
 /** The actor context every Family repository operation requires. */
@@ -162,6 +180,13 @@ export const CHILD_SAFETY_AUDIT_EVENTS = {
   safetySignalDismissed: "child_safety.safety_signal.dismissed",
   safetySignalConfirmed: "child_safety.safety_signal.confirmed",
   safetySignalArchived: "child_safety.safety_signal.archived",
+  // CS-C4 — recipient authorization decisions (content-free; no delivery).
+  recipientAuthorizationEvaluated: "child_safety.recipient_authorization.evaluated",
+  recipientAuthorizationCreated: "child_safety.recipient_authorization.created",
+  recipientAuthorizationDenied: "child_safety.recipient_authorization.denied",
+  recipientAuthorizationAuthorized: "child_safety.recipient_authorization.authorized",
+  recipientAuthorizationRevoked: "child_safety.recipient_authorization.revoked",
+  recipientAuthorizationSuperseded: "child_safety.recipient_authorization.superseded",
 } as const;
 export type ChildSafetyAuditEvent = (typeof CHILD_SAFETY_AUDIT_EVENTS)[keyof typeof CHILD_SAFETY_AUDIT_EVENTS];
 

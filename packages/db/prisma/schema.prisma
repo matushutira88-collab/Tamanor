@@ -473,14 +473,16 @@ model Tenant {
   complianceApprovalHistoryEvents    ComplianceApprovalHistoryEvent[]
 
   // CS-C1 — Child Safety Family domain (FAMILY workspaces only; enforced by workspace guards + RLS).
-  protectedProfiles        ProtectedProfile[]
-  guardianRelationships    GuardianRelationship[]
+  protectedProfiles               ProtectedProfile[]
+  guardianRelationships           GuardianRelationship[]
   // CS-C2 — consent, guardian authority & safe-recipient assessment.
-  guardianAuthorityRecords GuardianAuthorityRecord[]
-  consentRecords           ConsentRecord[]
-  safeRecipientAssessments SafeRecipientAssessment[]
+  guardianAuthorityRecords        GuardianAuthorityRecord[]
+  consentRecords                  ConsentRecord[]
+  safeRecipientAssessments        SafeRecipientAssessment[]
   // CS-C3 — safety signals.
-  safetySignals            SafetySignal[]
+  safetySignals                   SafetySignal[]
+  // CS-C4 — recipient authorization decisions.
+  recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[]
 
   @@map("tenants")
 }
@@ -2636,10 +2638,11 @@ model ProtectedProfile {
   // Archiving is soft: the row and its guardian relationships remain historically referencable.
   archivedAt       DateTime?
 
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  guardianRelationships GuardianRelationship[]
-  consentRecords        ConsentRecord[] // CS-C2
-  safetySignals         SafetySignal[] // CS-C3
+  tenant                          Tenant                                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guardianRelationships           GuardianRelationship[]
+  consentRecords                  ConsentRecord[] // CS-C2
+  safetySignals                   SafetySignal[] // CS-C3
+  recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[] // CS-C4
 
   @@unique([id, tenantId])
   @@index([tenantId, archivedAt])
@@ -2802,11 +2805,64 @@ model SafetySignal {
   updatedAt              DateTime  @updatedAt
   archivedAt             DateTime?
 
-  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  protectedProfile ProtectedProfile @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  tenant                          Tenant                                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  protectedProfile                ProtectedProfile                       @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  // CS-C4 back-relation.
+  recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[]
 
+  // CS-C4 — composite unique so a recipient authorization decision can reference (id, tenantId).
+  @@unique([id, tenantId])
   @@index([tenantId, protectedProfileId, receivedAt])
   @@index([tenantId, reviewStatus, receivedAt])
   @@index([tenantId, signalType])
   @@map("safety_signals")
+}
+
+// ===========================================================================================
+// CS-C4 — Authorized Recipient Resolution & Disclosure Decisions. FAMILY-only, tenant-scoped. For a
+// specific SafetySignal, records WHETHER a membership is (at evaluation time) an authorized recipient
+// of a specific disclosure SCOPE — point 6 of the pipeline ONLY. It NEVER delivers anything and never
+// mutates any CS-1/C2/C3 record. Each row is a HISTORICAL snapshot of the record IDs + safe enum values
+// used at evaluation; effectiveness is recomputed by a pure fn + a live CS-2 chain re-check (a decision
+// stops being effective if its underlying consent/authority/relationship/assessment is later revoked or
+// the signal is archived). `disclosureScope` is a bounded, deterministic, comma-joined allow-listed
+// scalar (NEVER JSON/free text). Required links (signal, profile) are same-tenant composite FKs with
+// ON DELETE NO ACTION; optional links (relationship, authority, consent, assessment) are same-tenant
+// composite FKs in the migration (Prisma cannot model an optional composite sharing tenantId).
+// `recipientMembershipId` has NO DB FK: `removeMember` (team-repo.ts) hard-deletes memberships, so a
+// NO ACTION/RESTRICT FK would block legitimate member removal and CASCADE would delete authorization
+// history — so same-tenant is enforced in the repository (RLS lookup). CHECK constraints, RLS and
+// GRANTs live in the hand-authored migration 20260805090000_cs_c4_recipient_authorization.
+// ===========================================================================================
+
+model SafetyRecipientAuthorizationDecision {
+  id                        String    @id @default(cuid())
+  tenantId                  String
+  safetySignalId            String
+  protectedProfileId        String
+  recipientMembershipId     String // same-tenant enforced in repository (no DB FK — member removal lifecycle)
+  guardianRelationshipId    String? // snapshot ref — same-tenant composite FK in migration
+  guardianAuthorityRecordId String? // snapshot ref — same-tenant composite FK in migration
+  consentRecordId           String? // snapshot ref — same-tenant composite FK in migration
+  safeRecipientAssessmentId String? // snapshot ref — same-tenant composite FK in migration
+  decisionStatus            String // RecipientAuthorizationDecisionStatus (pending|authorized|denied|revoked|expired|superseded)
+  disclosureScope           String    @default("") // bounded comma-joined allow-listed SafetyDisclosureScope set (no JSON/free text)
+  reasonCode                String // RecipientAuthorizationReasonCode (allow-listed)
+  evaluatedAt               DateTime  @default(now())
+  validUntil                DateTime?
+  revokedAt                 DateTime?
+  supersededAt              DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  archivedAt                DateTime?
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  safetySignal     SafetySignal     @relation(fields: [safetySignalId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  protectedProfile ProtectedProfile @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: NoAction)
+
+  @@index([tenantId, safetySignalId, decisionStatus], map: "sread_tenant_signal_status_idx")
+  @@index([tenantId, protectedProfileId], map: "sread_tenant_profile_idx")
+  @@index([tenantId, recipientMembershipId], map: "sread_tenant_recipient_idx")
+  @@index([tenantId, safetySignalId, recipientMembershipId, createdAt], map: "sread_effective_lookup_idx")
+  @@map("safety_recipient_authorization_decisions")
 }
