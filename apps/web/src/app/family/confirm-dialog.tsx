@@ -1,8 +1,13 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
-import type { FamilyActionState } from "@/server/family-safe-error";
 import { isFamilyActionErrorCode } from "./family-i18n";
+
+/**
+ * Structural state a dialog action returns. Both the CS-C6.1 destructive actions (FamilyActionState) and
+ * the CS-C8 invitation actions (FamilyInvitationActionState) are subtypes — the safe error code is a string.
+ */
+type DialogActionState = { ok: true } | { ok: false; error: string };
 
 /**
  * CS-C6.1 — accessible confirmation dialog for a DESTRUCTIVE Family action. Explicit two-step intent, with
@@ -14,7 +19,7 @@ import { isFamilyActionErrorCode } from "./family-i18n";
  * trigger on close; Escape and backdrop cancel (both disabled while the action is pending).
  */
 export function ConfirmDialog(props: {
-  action: (prev: FamilyActionState, fd: FormData) => Promise<FamilyActionState>;
+  action: (prev: DialogActionState, fd: FormData) => Promise<DialogActionState>;
   hiddenName: string;
   hiddenValue: string;
   triggerLabel: string;
@@ -29,7 +34,7 @@ export function ConfirmDialog(props: {
   danger?: boolean;
 }) {
   const { action, hiddenName, hiddenValue, triggerLabel, triggerClassName, title, body, confirmLabel, cancelLabel, workingLabel, errorTitle, errorMessages, danger } = props;
-  const [state, formAction, isPending] = useActionState<FamilyActionState, FormData>(action, { ok: true });
+  const [state, formAction, isPending] = useActionState<DialogActionState, FormData>(action, { ok: true });
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);

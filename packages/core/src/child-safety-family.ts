@@ -59,6 +59,12 @@ export enum FamilyAction {
   SafetyDeliveryDecline = "safety_delivery:decline",
   SafetyDeliveryRevoke = "safety_delivery:revoke",
   SafetyDeliveryArchive = "safety_delivery:archive",
+  // CS-C8 — internal Family guardian invitations (Family-only). Create/View/Revoke are inviter-side and
+  // role-gated; ACCEPT/DECLINE are self-service, authorized by the opaque token + a session-email match
+  // (the invitee has no membership yet), so they are NOT modeled as role-gated actions here.
+  FamilyInvitationView = "family_invitation:view",
+  FamilyInvitationCreate = "family_invitation:create",
+  FamilyInvitationRevoke = "family_invitation:revoke",
 }
 export const ALL_FAMILY_ACTIONS: readonly FamilyAction[] = Object.values(FamilyAction);
 
@@ -154,6 +160,10 @@ export const FAMILY_ACTION_CAPABILITY: Readonly<Record<FamilyAction, WorkspaceCa
   [FamilyAction.SafetyDeliveryDecline]: WorkspaceCapability.SafeRecipientPolicies,
   [FamilyAction.SafetyDeliveryRevoke]: WorkspaceCapability.SafeRecipientPolicies,
   [FamilyAction.SafetyDeliveryArchive]: WorkspaceCapability.SafeRecipientPolicies,
+  // CS-C8 — guardian invitation management lives under the GuardianRelationships capability (Family-only).
+  [FamilyAction.FamilyInvitationView]: WorkspaceCapability.GuardianRelationships,
+  [FamilyAction.FamilyInvitationCreate]: WorkspaceCapability.GuardianRelationships,
+  [FamilyAction.FamilyInvitationRevoke]: WorkspaceCapability.GuardianRelationships,
 };
 
 /** The actor context every Family repository operation requires. */
@@ -196,6 +206,17 @@ export const CHILD_SAFETY_AUDIT_EVENTS = {
   guardianRelationshipDeactivated: "child_safety.guardian_relationship.deactivated",
   guardianRelationshipReactivated: "child_safety.guardian_relationship.reactivated",
   guardianRelationshipRoleChanged: "child_safety.guardian_relationship.role_changed",
+  // CS-C8 — Family guardian invitation lifecycle + activation (content-free: ids + bounded enums only,
+  // NEVER a raw token / token hash / raw email / guardianLabel value / PII).
+  familyInvitationCreated: "child_safety.family_invitation.created",
+  familyInvitationAccepted: "child_safety.family_invitation.accepted",
+  familyInvitationDeclined: "child_safety.family_invitation.declined",
+  familyInvitationRevoked: "child_safety.family_invitation.revoked",
+  familyInvitationExpired: "child_safety.family_invitation.expired",
+  familyMembershipCreatedFromInvitation: "child_safety.family_membership.created_from_invitation",
+  familyMembershipReusedFromInvitation: "child_safety.family_membership.reused_from_invitation",
+  guardianRelationshipCreatedFromInvitation: "child_safety.guardian_relationship.created_from_invitation",
+  guardianRelationshipReactivatedFromInvitation: "child_safety.guardian_relationship.reactivated_from_invitation",
   // CS-C2 — guardian authority, consent & safe-recipient assessment (content-free).
   guardianAuthorityCreated: "child_safety.guardian_authority.created",
   guardianAuthorityVerified: "child_safety.guardian_authority.verified",
@@ -309,3 +330,39 @@ export const GUARDIAN_RELATIONSHIP_DEFAULTS = {
 
 /** CS-C1 default protection posture for a newly created profile. */
 export const PROTECTED_PROFILE_DEFAULT_STATUS = ProtectionStatus.Inactive;
+
+// --- CS-C8 — Family guardian invitation domain (content-free) ---------------
+
+/** The invitation lifecycle. All states except PENDING are TERMINAL (append-only; no re-opening). */
+export enum FamilyInvitationStatus { Pending = "pending", Accepted = "accepted", Declined = "declined", Revoked = "revoked", Expired = "expired" }
+export const ALL_FAMILY_INVITATION_STATUSES: readonly FamilyInvitationStatus[] = Object.values(FamilyInvitationStatus);
+export const isFamilyInvitationStatus = (x: unknown): x is FamilyInvitationStatus => (ALL_FAMILY_INVITATION_STATUSES as readonly string[]).includes(x as string);
+
+/**
+ * FamilyRoles a guardian invitation may grant. DELIBERATELY EXCLUDES PrimaryGuardian: a new owner is never
+ * mintable via an invitation (no privilege escalation). Least-privilege by construction.
+ */
+export const INVITABLE_FAMILY_ROLES: readonly FamilyRole[] = [
+  FamilyRole.Guardian, FamilyRole.TrustedAdult, FamilyRole.SafetyProfessional, FamilyRole.FamilyViewer,
+];
+export const isInvitableFamilyRole = (x: unknown): x is FamilyRole => (INVITABLE_FAMILY_ROLES as readonly string[]).includes(x as string);
+
+/**
+ * Reverse of {@link familyRoleForMembershipRole} for INVITED guardians: the stored Membership Business
+ * `Role` that derives the intended FamilyRole. Never `owner` — PrimaryGuardian is not invitable, so this
+ * returns null for it (and for any unknown value), failing closed.
+ */
+export function membershipRoleForInvitedFamilyRole(familyRole: string): Role | null {
+  switch (familyRole) {
+    case FamilyRole.Guardian: return Role.Admin;
+    case FamilyRole.TrustedAdult: return Role.Reviewer;
+    case FamilyRole.SafetyProfessional: return Role.Analyst;
+    case FamilyRole.FamilyViewer: return Role.Viewer;
+    default: return null; // primary_guardian / unknown → not invitable (fail closed)
+  }
+}
+
+/** CS-C8 — the fields a client MAY submit to create an invitation. Everything else is server-resolved. */
+export const FAMILY_INVITATION_CREATE_FIELDS: readonly string[] = [
+  "protectedProfileId", "invitedEmail", "intendedFamilyRole", "intendedGuardianRole", "intendedRelationshipType",
+];

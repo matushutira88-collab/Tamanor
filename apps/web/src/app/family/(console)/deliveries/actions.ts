@@ -36,8 +36,8 @@ async function runDestructive(id: string, fn: (id: string) => Promise<unknown>, 
   revalidatePath("/family/deliveries");
   redirect(`/family/deliveries?ok=${ok}`);
 }
-export async function revokeSafetySignalDeliveryAction(_prev: FamilyActionState, fd: FormData): Promise<FamilyActionState> { const { actor } = await requireFamilyActor(); return runDestructive(str(fd, "deliveryId"), (id) => revokeSafetySignalDelivery(actor, id), "revoked"); }
-export async function archiveSafetySignalDeliveryAction(_prev: FamilyActionState, fd: FormData): Promise<FamilyActionState> { const { actor } = await requireFamilyActor(); return runDestructive(str(fd, "deliveryId"), (id) => archiveSafetySignalDelivery(actor, id), "archived"); }
+export async function revokeSafetySignalDeliveryAction(_prev: unknown, fd: FormData): Promise<FamilyActionState> { const { actor } = await requireFamilyActor(); return runDestructive(str(fd, "deliveryId"), (id) => revokeSafetySignalDelivery(actor, id), "revoked"); }
+export async function archiveSafetySignalDeliveryAction(_prev: unknown, fd: FormData): Promise<FamilyActionState> { const { actor } = await requireFamilyActor(); return runDestructive(str(fd, "deliveryId"), (id) => archiveSafetySignalDelivery(actor, id), "archived"); }
 
 export async function createSafetySignalDeliveryAction(fd: FormData): Promise<void> {
   const { actor } = await requireFamilyActor();

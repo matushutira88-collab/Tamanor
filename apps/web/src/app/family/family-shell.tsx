@@ -16,6 +16,7 @@ export function FamilyShell({ nav, workspaceName, userName, brand, children }: {
     { href: "/family", label: nav.overview },
     { href: "/family/profiles", label: nav.profiles },
     { href: "/family/guardians", label: nav.guardians },
+    { href: "/family/invitations", label: nav.invitations },
     { href: "/family/authorizations", label: nav.authorizations },
     { href: "/family/signals", label: nav.signals },
     { href: "/family/deliveries", label: nav.deliveries },

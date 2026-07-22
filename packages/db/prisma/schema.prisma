@@ -254,6 +254,8 @@ model User {
   // V1.42 — inbox assignment + note authorship (both SetNull on user delete).
   assignedInboxItems      ReputationItem[]         @relation("InboxAssignee")
   inboxNotes              InboxNote[]              @relation("InboxNoteAuthor")
+  // CS-C8 — Family guardian invitations this user accepted (SetNull on user delete).
+  familyGuardianInvitationsAccepted FamilyGuardianInvitation[]
 
   @@map("users")
 }
@@ -487,6 +489,8 @@ model Tenant {
   safetySignalDeliveries          SafetySignalDelivery[]
   // CS-C6 — workspace onboarding state (one per tenant).
   workspaceOnboardingState        WorkspaceOnboardingState?
+  // CS-C8 — Family guardian invitations.
+  familyGuardianInvitations       FamilyGuardianInvitation[]
 
   @@map("tenants")
 }
@@ -598,6 +602,8 @@ model Membership {
 
   // CS-C1 — a guardian membership may hold family guardian relationships (Family workspaces only).
   guardianRelationships GuardianRelationship[]
+  // CS-C8 — invitations this membership has sent (Family workspaces only).
+  familyGuardianInvitationsSent FamilyGuardianInvitation[]
 
   @@unique([userId, tenantId])
   // CS-C1 — composite unique enabling same-tenant composite FKs from GuardianRelationship
@@ -2651,6 +2657,7 @@ model ProtectedProfile {
   safetySignals                   SafetySignal[] // CS-C3
   recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[] // CS-C4
   safetySignalDeliveries          SafetySignalDelivery[] // CS-C5
+  familyGuardianInvitations       FamilyGuardianInvitation[] // CS-C8
 
   @@unique([id, tenantId])
   @@index([tenantId, archivedAt])
@@ -2693,6 +2700,48 @@ model GuardianRelationship {
   @@index([tenantId, protectedProfileId])
   @@index([tenantId, guardianMembershipId])
   @@map("guardian_relationships")
+}
+
+// ===========================================================================================
+// CS-C8 — Family Guardian Invitation. A SEPARATE, FAMILY-only, tenant-scoped, content-free entity —
+// NOT the Business `invites` table, NOT `notifications`, NOT any CS-C1..C7 record. The invitation grants
+// NOTHING by itself; accepting it may only create/reuse a Membership + create/reactivate a
+// GuardianRelationship in one transaction. Only the token's sha256 hash is stored. No PII of a minor.
+// Bounded status/role CHECKs + the one-pending-per(profile,email) partial unique index live in the
+// hand-authored migration (Prisma cannot express WHERE-partial uniques or CHECKs).
+// ===========================================================================================
+model FamilyGuardianInvitation {
+  id                       String    @id @default(cuid())
+  tenantId                 String
+  protectedProfileId       String
+  // ADULT invitee email (normalized) — never a child's identity; never logged/audited in the clear.
+  invitedEmailNormalized   String
+  invitedByMembershipId    String
+  intendedFamilyRole       String // FamilyRole (invitable subset: guardian|trusted_adult|safety_professional|family_viewer)
+  intendedGuardianRole     String // GuardianRole (primary|secondary|emergency|view_only)
+  intendedRelationshipType String // GuardianRelationshipType (parent|legal_guardian|trusted_adult|safety_professional)
+  status                   String    @default("pending") // pending|accepted|declined|revoked|expired
+  tokenHash                String    @unique // sha256 of the opaque token; the plaintext is never stored
+  expiresAt                DateTime
+  acceptedAt               DateTime?
+  declinedAt               DateTime?
+  revokedAt                DateTime?
+  acceptedByUserId         String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Same-tenant composite FKs — cross-tenant linking is impossible at the DB level.
+  protectedProfile ProtectedProfile @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  invitedBy        Membership       @relation(fields: [invitedByMembershipId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  acceptedByUser   User?            @relation(fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, protectedProfileId])
+  @@index([tenantId, invitedEmailNormalized, status])
+  @@index([expiresAt])
+  @@map("family_guardian_invitations")
 }
 
 // ===========================================================================================

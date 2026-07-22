@@ -55,7 +55,7 @@ export async function reactivateGuardianRelationshipAction(formData: FormData): 
 }
 
 /** CS-C7 — DESTRUCTIVE (reversible). `useActionState`-shaped for the confirm dialog. */
-export async function deactivateGuardianRelationshipAction(_prev: FamilyActionState, formData: FormData): Promise<FamilyActionState> {
+export async function deactivateGuardianRelationshipAction(_prev: unknown, formData: FormData): Promise<FamilyActionState> {
   const { actor } = await requireFamilyActor();
   const profileId = str(formData, "profileId");
   const relationshipId = str(formData, "relationshipId");

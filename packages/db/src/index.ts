@@ -124,6 +124,7 @@ export * from "./child-safety-safety-signal";
 export * from "./child-safety-recipient-authorization";
 export * from "./child-safety-delivery";
 export * from "./child-safety-family-onboarding";
+export * from "./family-invitation";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

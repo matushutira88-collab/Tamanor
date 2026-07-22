@@ -32,7 +32,7 @@ export async function createProtectedProfileAction(formData: FormData): Promise<
  * message/stack/id), and redirects only on success. The confirm happens in an accessible dialog, never
  * `window.confirm`. tenantId / actorMembershipId stay server-authoritative (never from the client).
  */
-export async function archiveProtectedProfileAction(_prev: FamilyActionState, formData: FormData): Promise<FamilyActionState> {
+export async function archiveProtectedProfileAction(_prev: unknown, formData: FormData): Promise<FamilyActionState> {
   const { actor } = await requireFamilyActor();
   const id = str(formData, "profileId");
   if (!id) return { ok: false, error: "not_found" };
@@ -67,7 +67,7 @@ export async function updateProtectedProfileAction(formData: FormData): Promise<
 }
 
 /** CS-C7 — restore an archived profile (recovery). `useActionState`-shaped for the confirm dialog. */
-export async function restoreProtectedProfileAction(_prev: FamilyActionState, formData: FormData): Promise<FamilyActionState> {
+export async function restoreProtectedProfileAction(_prev: unknown, formData: FormData): Promise<FamilyActionState> {
   const { actor } = await requireFamilyActor();
   const id = str(formData, "profileId");
   if (!id) return { ok: false, error: "not_found" };

@@ -7,7 +7,7 @@ import type { Locale } from "@/i18n";
  */
 export interface FamilyDict {
   brand: string; workspaceType: string; family: string; business: string;
-  nav: { overview: string; profiles: string; guardians: string; authorizations: string; signals: string; deliveries: string; settings: string };
+  nav: { overview: string; profiles: string; guardians: string; invitations: string; authorizations: string; signals: string; deliveries: string; settings: string };
   chooser: { title: string; subtitle: string; familyTitle: string; familyText: string; familyCta: string; businessTitle: string; businessText: string; businessCta: string; familyBullets: string[]; businessBullets: string[] };
   onboarding: {
     title: string; stepOf: (a: number, b: number) => string; next: string; back: string; finish: string;
@@ -63,21 +63,47 @@ export interface FamilyDict {
     timelineTitle: string; timelineEmpty: string; timelineBy: string;
     roles: Record<string, string>; authority: Record<string, string>; lifecycle: Record<string, string>; events: Record<string, string>;
   };
+  // CS-C8 — guardian invitation & membership activation workflow (Family-only, content-free).
+  c8: {
+    title: string; subtitle: string; create: string; newTitle: string; back: string;
+    invitedEmail: string; emailHint: string; familyRoleLabel: string; guardianRoleLabel: string; relationshipLabel: string; submit: string;
+    linkTitle: string; linkWarning: string; copyLink: string; copied: string; copyAria: string; linkGoneHint: string; done: string;
+    invitedEmailCol: string; profileCol: string; roleCol: string; statusCol: string; expiresCol: string; revoke: string; empty: string;
+    filterStatus: string; filterRole: string; searchEmail: string; apply: string; clear: string; anyOption: string;
+    acceptTitle: string; acceptIntro: string; forProfile: string; expiresOn: string; accept: string; decline: string;
+    invalidLink: string; expiredLink: string; revokedLink: string; identityMismatchTitle: string; identityMismatchBody: string;
+    alreadyAcceptedTitle: string; alreadyDeclinedTitle: string; acceptedTitle: string; acceptedBody: string; declinedTitle: string; declinedBody: string; goToFamily: string;
+    revokeDialogTitle: string; revokeDialogBody: string; revokeDialogConfirm: string;
+    declineDialogTitle: string; declineDialogBody: string; declineDialogConfirm: string;
+    statuses: Record<string, string>; familyRoles: Record<string, string>; errors: Record<string, string>;
+  };
 }
 
-/** CS-C6.1 — the ONLY safe, serializable Family action-error groups the UI may surface. */
+/** CS-C6.1 — the safe, serializable Family destructive-action error groups (frozen). */
 export const FAMILY_ACTION_ERROR_CODES = [
   "forbidden", "not_found", "invalid_state", "authorization_not_effective",
   "archived", "already_revoked", "retry_later",
 ] as const;
 export type FamilyActionErrorCode = (typeof FAMILY_ACTION_ERROR_CODES)[number];
+/** CS-C8 — additional safe error groups for the guardian-invitation workflow (superset). */
+export const FAMILY_INVITATION_ERROR_CODES = [
+  "forbidden", "not_found", "invalid_state", "expired", "revoked", "already_accepted", "already_declined",
+  "duplicate_pending_invitation", "already_member", "already_guardian", "identity_mismatch",
+  "primary_conflict", "invalid_token", "retry_later",
+] as const;
+export type FamilyInvitationErrorCode = (typeof FAMILY_INVITATION_ERROR_CODES)[number];
+const ALL_SAFE_ERROR_CODES: ReadonlySet<string> = new Set<string>([...FAMILY_ACTION_ERROR_CODES, ...FAMILY_INVITATION_ERROR_CODES]);
+/** Accepts ANY safe serializable group (CS-C6.1 destructive OR CS-C8 invitation). Never a raw string/PII. */
 export function isFamilyActionErrorCode(v: unknown): v is FamilyActionErrorCode {
-  return typeof v === "string" && (FAMILY_ACTION_ERROR_CODES as readonly string[]).includes(v);
+  return typeof v === "string" && ALL_SAFE_ERROR_CODES.has(v);
+}
+export function isFamilyInvitationErrorCode(v: unknown): v is FamilyInvitationErrorCode {
+  return typeof v === "string" && (FAMILY_INVITATION_ERROR_CODES as readonly string[]).includes(v);
 }
 
 const en: FamilyDict = {
   brand: "Tamanor Family", workspaceType: "Workspace type", family: "Family", business: "Business",
-  nav: { overview: "Overview", profiles: "Protected profiles", guardians: "Authorized people", authorizations: "Authorizations", signals: "Safety signals", deliveries: "Internal deliveries", settings: "Settings" },
+  nav: { overview: "Overview", profiles: "Protected profiles", guardians: "Authorized people", invitations: "Invitations", authorizations: "Authorizations", signals: "Safety signals", deliveries: "Internal deliveries", settings: "Settings" },
   chooser: { title: "How would you like to use Tamanor?", subtitle: "Choose the mode that fits you. This decides your product and cannot be changed later.", familyTitle: "Tamanor Family", familyText: "Helps a family safely manage protected profiles, authorized people and safety information.", familyCta: "Continue as a family", businessTitle: "Tamanor Business", businessText: "Protects business accounts, comments and online reputation from spam, scams and harmful content.", businessCta: "Continue as a business", familyBullets: ["Protected profiles for family members", "Authorized recipient management", "Safety signals", "A private family space"], businessBullets: ["Manage business accounts", "Analyze risky comments", "Brand protection", "Team and agency options by plan"] },
   onboarding: {
     title: "Set up Tamanor Family", stepOf: (a, b) => `Step ${a} of ${b}`, next: "Continue", back: "Back", finish: "Finish setup",
@@ -184,11 +210,31 @@ const en: FamilyDict = {
       "child_safety.guardian_relationship.archived": "Guardian archived",
     },
   },
+  c8: {
+    title: "Invitations", subtitle: "Invite another adult to help protect a profile. Invitations are internal — Tamanor never emails or messages them; you share the one-time link yourself.", create: "New invitation", newTitle: "New guardian invitation", back: "Back to invitations",
+    invitedEmail: "Invitee email", emailHint: "The adult's email address. This is not sent anywhere — it only checks who may accept.", familyRoleLabel: "Family role", guardianRoleLabel: "Guardian role", relationshipLabel: "Relationship", submit: "Create invitation",
+    linkTitle: "One-time invitation link", linkWarning: "Copy this link now and hand it to the invitee securely. Tamanor does not send it, and it will NOT be shown again. If you lose it, revoke this invitation and create a new one.", copyLink: "Copy link", copied: "Copied", copyAria: "Copy invitation link to clipboard", linkGoneHint: "This link is shown only once.", done: "Done",
+    invitedEmailCol: "Invitee", profileCol: "Profile", roleCol: "Role", statusCol: "Status", expiresCol: "Expires", revoke: "Revoke", empty: "No invitations yet.",
+    filterStatus: "Status", filterRole: "Guardian role", searchEmail: "Search email", apply: "Apply", clear: "Clear", anyOption: "Any",
+    acceptTitle: "Guardian invitation", acceptIntro: "You've been invited to help protect a profile in a Tamanor Family workspace.", forProfile: "Profile", expiresOn: "Expires", accept: "Accept invitation", decline: "Decline invitation",
+    invalidLink: "This invitation link is not valid.", expiredLink: "This invitation has expired. Ask the family to send a new one.", revokedLink: "This invitation was revoked.", identityMismatchTitle: "Different account", identityMismatchBody: "This invitation was created for a different email address. Sign in with that email to accept it.",
+    alreadyAcceptedTitle: "Already accepted", alreadyDeclinedTitle: "Already declined", acceptedTitle: "You're all set", acceptedBody: "You've joined the family workspace. You can now open the Family space.", declinedTitle: "Invitation declined", declinedBody: "You've declined this invitation. No changes were made.", goToFamily: "Go to Family space",
+    revokeDialogTitle: "Revoke this invitation?", revokeDialogBody: "Revoking makes the invitation link stop working immediately. Nothing else changes. This cannot be undone; create a new invitation if needed.", revokeDialogConfirm: "Revoke invitation",
+    declineDialogTitle: "Decline this invitation?", declineDialogBody: "Declining permanently turns down this invitation. No membership or guardian access is created. This cannot be undone.", declineDialogConfirm: "Decline invitation",
+    statuses: { pending: "Pending", accepted: "Accepted", declined: "Declined", revoked: "Revoked", expired: "Expired" },
+    familyRoles: { guardian: "Guardian", trusted_adult: "Trusted adult", safety_professional: "Safety professional", family_viewer: "Viewer" },
+    errors: {
+      forbidden: "You don't have permission to do that.", not_found: "That invitation could not be found.", invalid_state: "This action isn't possible for the invitation's current state.",
+      expired: "This invitation has expired.", revoked: "This invitation was revoked.", already_accepted: "This invitation was already accepted.", already_declined: "This invitation was already declined.",
+      duplicate_pending_invitation: "A pending invitation already exists for this profile and email.", already_member: "That person is already a member.", already_guardian: "That person is already an active guardian for this profile.",
+      identity_mismatch: "This invitation was created for a different email address.", primary_conflict: "This profile already has an active primary guardian.", invalid_token: "This invitation link is not valid.", retry_later: "Something went wrong. Please try again in a moment.",
+    },
+  },
 };
 
 const sk: FamilyDict = {
   ...en, brand: "Tamanor Rodina", workspaceType: "Typ pracovného priestoru", family: "Rodina", business: "Firma",
-  nav: { overview: "Prehľad", profiles: "Chránené profily", guardians: "Oprávnené osoby", authorizations: "Autorizácie", signals: "Bezpečnostné signály", deliveries: "Interné doručenia", settings: "Nastavenia" },
+  nav: { overview: "Prehľad", profiles: "Chránené profily", guardians: "Oprávnené osoby", invitations: "Pozvánky", authorizations: "Autorizácie", signals: "Bezpečnostné signály", deliveries: "Interné doručenia", settings: "Nastavenia" },
   chooser: { title: "Ako chcete používať Tamanor?", subtitle: "Vyberte režim, ktorý vám vyhovuje. Určuje váš produkt a neskôr sa nedá zmeniť.", familyTitle: "Tamanor Rodina", familyText: "Pomáha rodine bezpečne spravovať ochranné profily, oprávnené osoby a bezpečnostné upozornenia.", familyCta: "Pokračovať ako rodina", businessTitle: "Tamanor Firma", businessText: "Chráni firemné účty, komentáre a online reputáciu pred spamom, podvodmi a škodlivým obsahom.", businessCta: "Pokračovať ako firma", familyBullets: ["ochranné profily členov rodiny", "správa oprávnených príjemcov", "bezpečnostné signály", "súkromné rodinné prostredie"], businessBullets: ["správa firemných účtov", "analýza rizikových komentárov", "ochrana značky", "tímové a agentúrne možnosti podľa plánu"] },
   onboarding: {
     title: "Nastavenie Tamanor Rodina", stepOf: (a, b) => `Krok ${a} z ${b}`, next: "Pokračovať", back: "Späť", finish: "Dokončiť nastavenie",
@@ -295,11 +341,31 @@ const sk: FamilyDict = {
       "child_safety.guardian_relationship.archived": "Opatrovník archivovaný",
     },
   },
+  c8: {
+    title: "Pozvánky", subtitle: "Pozvite ďalšieho dospelého, aby pomohol chrániť profil. Pozvánky sú interné — Tamanor ich neposiela e-mailom ani správou; jednorazový odkaz odovzdáte sami.", create: "Nová pozvánka", newTitle: "Nová pozvánka opatrovníka", back: "Späť na pozvánky",
+    invitedEmail: "E-mail pozvaného", emailHint: "E-mailová adresa dospelej osoby. Nikam sa neodosiela — slúži len na overenie, kto môže prijať.", familyRoleLabel: "Rodinná rola", guardianRoleLabel: "Rola opatrovníka", relationshipLabel: "Vzťah", submit: "Vytvoriť pozvánku",
+    linkTitle: "Jednorazový odkaz pozvánky", linkWarning: "Skopírujte tento odkaz teraz a bezpečne ho odovzdajte pozvanému. Tamanor ho neodosiela a NEzobrazí sa znova. Ak ho stratíte, pozvánku zrušte a vytvorte novú.", copyLink: "Kopírovať odkaz", copied: "Skopírované", copyAria: "Skopírovať odkaz pozvánky do schránky", linkGoneHint: "Tento odkaz sa zobrazí iba raz.", done: "Hotovo",
+    invitedEmailCol: "Pozvaný", profileCol: "Profil", roleCol: "Rola", statusCol: "Stav", expiresCol: "Platí do", revoke: "Zrušiť", empty: "Zatiaľ žiadne pozvánky.",
+    filterStatus: "Stav", filterRole: "Rola opatrovníka", searchEmail: "Hľadať e-mail", apply: "Použiť", clear: "Vymazať", anyOption: "Ľubovoľné",
+    acceptTitle: "Pozvánka opatrovníka", acceptIntro: "Boli ste pozvaný pomôcť chrániť profil v rodinnom priestore Tamanor.", forProfile: "Profil", expiresOn: "Platí do", accept: "Prijať pozvánku", decline: "Odmietnuť pozvánku",
+    invalidLink: "Tento odkaz pozvánky nie je platný.", expiredLink: "Táto pozvánka vypršala. Požiadajte rodinu o novú.", revokedLink: "Táto pozvánka bola zrušená.", identityMismatchTitle: "Iný účet", identityMismatchBody: "Táto pozvánka bola vytvorená pre inú e-mailovú adresu. Prihláste sa s tým e-mailom, aby ste ju prijali.",
+    alreadyAcceptedTitle: "Už prijaté", alreadyDeclinedTitle: "Už odmietnuté", acceptedTitle: "Všetko je pripravené", acceptedBody: "Pripojili ste sa do rodinného priestoru. Teraz môžete otvoriť Rodinu.", declinedTitle: "Pozvánka odmietnutá", declinedBody: "Túto pozvánku ste odmietli. Nič sa nezmenilo.", goToFamily: "Prejsť do Rodiny",
+    revokeDialogTitle: "Zrušiť túto pozvánku?", revokeDialogBody: "Zrušením odkaz pozvánky okamžite prestane fungovať. Nič iné sa nezmení. Nedá sa to vrátiť; v prípade potreby vytvorte novú pozvánku.", revokeDialogConfirm: "Zrušiť pozvánku",
+    declineDialogTitle: "Odmietnuť túto pozvánku?", declineDialogBody: "Odmietnutím túto pozvánku natrvalo zamietnete. Nevytvorí sa žiadne členstvo ani prístup opatrovníka. Nedá sa to vrátiť.", declineDialogConfirm: "Odmietnuť pozvánku",
+    statuses: { pending: "Čaká", accepted: "Prijaté", declined: "Odmietnuté", revoked: "Zrušené", expired: "Vypršané" },
+    familyRoles: { guardian: "Opatrovník", trusted_adult: "Dôveryhodná osoba", safety_professional: "Bezpečnostný odborník", family_viewer: "Pozorovateľ" },
+    errors: {
+      forbidden: "Nemáte oprávnenie na túto akciu.", not_found: "Pozvánka sa nenašla.", invalid_state: "Táto akcia nie je možná pre aktuálny stav pozvánky.",
+      expired: "Táto pozvánka vypršala.", revoked: "Táto pozvánka bola zrušená.", already_accepted: "Táto pozvánka už bola prijatá.", already_declined: "Táto pozvánka už bola odmietnutá.",
+      duplicate_pending_invitation: "Pre tento profil a e-mail už existuje čakajúca pozvánka.", already_member: "Táto osoba už je členom.", already_guardian: "Táto osoba už je aktívnym opatrovníkom tohto profilu.",
+      identity_mismatch: "Táto pozvánka bola vytvorená pre inú e-mailovú adresu.", primary_conflict: "Tento profil už má aktívneho primárneho opatrovníka.", invalid_token: "Tento odkaz pozvánky nie je platný.", retry_later: "Niečo sa pokazilo. Skúste to o chvíľu znova.",
+    },
+  },
 };
 
 const de: FamilyDict = {
   ...en, brand: "Tamanor Familie", workspaceType: "Arbeitsbereichstyp", family: "Familie", business: "Business",
-  nav: { overview: "Übersicht", profiles: "Geschützte Profile", guardians: "Berechtigte Personen", authorizations: "Autorisierungen", signals: "Sicherheitssignale", deliveries: "Interne Zustellungen", settings: "Einstellungen" },
+  nav: { overview: "Übersicht", profiles: "Geschützte Profile", guardians: "Berechtigte Personen", invitations: "Einladungen", authorizations: "Autorisierungen", signals: "Sicherheitssignale", deliveries: "Interne Zustellungen", settings: "Einstellungen" },
   chooser: { title: "Wie möchten Sie Tamanor nutzen?", subtitle: "Wählen Sie den passenden Modus. Er bestimmt Ihr Produkt und kann später nicht geändert werden.", familyTitle: "Tamanor Familie", familyText: "Hilft einer Familie, geschützte Profile, berechtigte Personen und Sicherheitsinformationen sicher zu verwalten.", familyCta: "Als Familie fortfahren", businessTitle: "Tamanor Business", businessText: "Schützt Geschäftskonten, Kommentare und die Online-Reputation vor Spam, Betrug und schädlichen Inhalten.", businessCta: "Als Unternehmen fortfahren", familyBullets: ["Geschützte Profile für Familienmitglieder", "Verwaltung berechtigter Empfänger", "Sicherheitssignale", "Ein privater Familienraum"], businessBullets: ["Geschäftskonten verwalten", "Riskante Kommentare analysieren", "Markenschutz", "Team- und Agenturoptionen je nach Plan"] },
   onboarding: {
     title: "Tamanor Familie einrichten", stepOf: (a, b) => `Schritt ${a} von ${b}`, next: "Weiter", back: "Zurück", finish: "Einrichtung abschließen",
@@ -404,6 +470,26 @@ const de: FamilyDict = {
       "child_safety.guardian_relationship.reactivated": "Betreuer reaktiviert",
       "child_safety.guardian_relationship.revoked": "Betreuer widerrufen",
       "child_safety.guardian_relationship.archived": "Betreuer archiviert",
+    },
+  },
+  c8: {
+    title: "Einladungen", subtitle: "Laden Sie einen weiteren Erwachsenen ein, ein Profil zu schützen. Einladungen sind intern — Tamanor versendet sie nie per E-Mail oder Nachricht; den Einmal-Link geben Sie selbst weiter.", create: "Neue Einladung", newTitle: "Neue Betreuer-Einladung", back: "Zurück zu Einladungen",
+    invitedEmail: "E-Mail des Eingeladenen", emailHint: "Die E-Mail-Adresse des Erwachsenen. Sie wird nirgendwohin gesendet — sie prüft nur, wer annehmen darf.", familyRoleLabel: "Familienrolle", guardianRoleLabel: "Betreuerrolle", relationshipLabel: "Beziehung", submit: "Einladung erstellen",
+    linkTitle: "Einmal-Einladungslink", linkWarning: "Kopieren Sie diesen Link jetzt und geben Sie ihn dem Eingeladenen sicher weiter. Tamanor versendet ihn nicht, und er wird NICHT erneut angezeigt. Falls Sie ihn verlieren, widerrufen Sie die Einladung und erstellen Sie eine neue.", copyLink: "Link kopieren", copied: "Kopiert", copyAria: "Einladungslink in die Zwischenablage kopieren", linkGoneHint: "Dieser Link wird nur einmal angezeigt.", done: "Fertig",
+    invitedEmailCol: "Eingeladen", profileCol: "Profil", roleCol: "Rolle", statusCol: "Status", expiresCol: "Gültig bis", revoke: "Widerrufen", empty: "Noch keine Einladungen.",
+    filterStatus: "Status", filterRole: "Betreuerrolle", searchEmail: "E-Mail suchen", apply: "Anwenden", clear: "Zurücksetzen", anyOption: "Beliebig",
+    acceptTitle: "Betreuer-Einladung", acceptIntro: "Sie wurden eingeladen, ein Profil in einem Tamanor-Familienbereich zu schützen.", forProfile: "Profil", expiresOn: "Gültig bis", accept: "Einladung annehmen", decline: "Einladung ablehnen",
+    invalidLink: "Dieser Einladungslink ist ungültig.", expiredLink: "Diese Einladung ist abgelaufen. Bitten Sie die Familie um eine neue.", revokedLink: "Diese Einladung wurde widerrufen.", identityMismatchTitle: "Anderes Konto", identityMismatchBody: "Diese Einladung wurde für eine andere E-Mail-Adresse erstellt. Melden Sie sich mit dieser E-Mail an, um sie anzunehmen.",
+    alreadyAcceptedTitle: "Bereits angenommen", alreadyDeclinedTitle: "Bereits abgelehnt", acceptedTitle: "Alles bereit", acceptedBody: "Sie sind dem Familienbereich beigetreten. Sie können jetzt den Familienbereich öffnen.", declinedTitle: "Einladung abgelehnt", declinedBody: "Sie haben diese Einladung abgelehnt. Es wurden keine Änderungen vorgenommen.", goToFamily: "Zum Familienbereich",
+    revokeDialogTitle: "Diese Einladung widerrufen?", revokeDialogBody: "Durch den Widerruf funktioniert der Einladungslink sofort nicht mehr. Sonst ändert sich nichts. Dies kann nicht rückgängig gemacht werden; erstellen Sie bei Bedarf eine neue Einladung.", revokeDialogConfirm: "Einladung widerrufen",
+    declineDialogTitle: "Diese Einladung ablehnen?", declineDialogBody: "Durch das Ablehnen wird diese Einladung dauerhaft abgelehnt. Es wird keine Mitgliedschaft oder Betreuerzugang erstellt. Dies kann nicht rückgängig gemacht werden.", declineDialogConfirm: "Einladung ablehnen",
+    statuses: { pending: "Ausstehend", accepted: "Angenommen", declined: "Abgelehnt", revoked: "Widerrufen", expired: "Abgelaufen" },
+    familyRoles: { guardian: "Betreuer", trusted_adult: "Vertrauensperson", safety_professional: "Sicherheitsfachkraft", family_viewer: "Betrachter" },
+    errors: {
+      forbidden: "Sie haben keine Berechtigung dafür.", not_found: "Diese Einladung wurde nicht gefunden.", invalid_state: "Diese Aktion ist im aktuellen Zustand der Einladung nicht möglich.",
+      expired: "Diese Einladung ist abgelaufen.", revoked: "Diese Einladung wurde widerrufen.", already_accepted: "Diese Einladung wurde bereits angenommen.", already_declined: "Diese Einladung wurde bereits abgelehnt.",
+      duplicate_pending_invitation: "Für dieses Profil und diese E-Mail existiert bereits eine ausstehende Einladung.", already_member: "Diese Person ist bereits Mitglied.", already_guardian: "Diese Person ist bereits aktiver Betreuer dieses Profils.",
+      identity_mismatch: "Diese Einladung wurde für eine andere E-Mail-Adresse erstellt.", primary_conflict: "Dieses Profil hat bereits einen aktiven Hauptbetreuer.", invalid_token: "Dieser Einladungslink ist ungültig.", retry_later: "Etwas ist schiefgelaufen. Bitte versuchen Sie es gleich erneut.",
     },
   },
 };

@@ -1,6 +1,6 @@
 import "server-only";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError, DeliveryNotEligibleError } from "@guardora/db";
-import type { FamilyActionErrorCode } from "@/app/family/family-i18n";
+import { isFamilyInvitationErrorCode, type FamilyActionErrorCode, type FamilyInvitationErrorCode } from "@/app/family/family-i18n";
 
 /**
  * CS-C6.1 — map a repository exception to ONE safe, serializable, non-PII error group. This is the ONLY
@@ -19,3 +19,18 @@ export function toFamilyActionErrorCode(e: unknown): FamilyActionErrorCode {
 /** CS-C6.1 — the safe result shape a Family destructive action returns to `useActionState`. */
 export type FamilyActionState = { ok: true } | { ok: false; error: FamilyActionErrorCode };
 export const FAMILY_ACTION_IDLE: FamilyActionState = { ok: true };
+
+/**
+ * CS-C8 — map an invitation-workflow exception to ONE safe invitation error GROUP. FamilyValidationError
+ * already carries the precise safe code in `.field` (e.g. "primary_conflict", "duplicate_pending_invitation",
+ * "already_guardian", "expired", "already_accepted"); anything else fails closed to invalid_state /
+ * retry_later. Never leaks a stack, SQL/Prisma detail, id, token, email or PII.
+ */
+export function toFamilyInvitationErrorCode(e: unknown): FamilyInvitationErrorCode {
+  if (e instanceof FamilyForbiddenError) return "forbidden";
+  if (e instanceof FamilyNotFoundError) return "not_found";
+  if (e instanceof FamilyValidationError) return isFamilyInvitationErrorCode(e.field) ? e.field : "invalid_state";
+  return "retry_later";
+}
+/** CS-C8 — the safe result shape an invitation destructive action returns to `useActionState`. */
+export type FamilyInvitationActionState = { ok: true } | { ok: false; error: FamilyInvitationErrorCode };

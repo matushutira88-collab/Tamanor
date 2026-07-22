@@ -17,7 +17,7 @@ function str(fd: FormData, k: string): string { return String(fd.get(k) ?? "").t
  * CS-C6.1 — DESTRUCTIVE. `useActionState`-shaped: returns a SAFE error group on failure and redirects only
  * on success. Confirmed in an accessible dialog (never `window.confirm`); the actor is server-authoritative.
  */
-export async function revokeRecipientAuthorizationDecisionAction(_prev: FamilyActionState, formData: FormData): Promise<FamilyActionState> {
+export async function revokeRecipientAuthorizationDecisionAction(_prev: unknown, formData: FormData): Promise<FamilyActionState> {
   const { actor } = await requireFamilyActor();
   const id = str(formData, "decisionId");
   if (!id) return { ok: false, error: "not_found" };
