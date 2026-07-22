@@ -118,6 +118,7 @@ export const ALL_AGE_BANDS: readonly AgeBand[] = Object.values(AgeBand);
 export enum ConsentStatus { NotRequested = "not_requested", Pending = "pending", Active = "active", Withdrawn = "withdrawn", Expired = "expired", Disputed = "disputed", Suspended = "suspended" }
 
 export enum ConsentType { Guardian = "guardian", ChildAssent = "child_assent", Platform = "platform", PilotParticipation = "pilot_participation", EvidenceSharing = "evidence_sharing", ExpertReview = "expert_review" }
+export const ALL_CONSENT_TYPES: readonly ConsentType[] = Object.values(ConsentType);
 
 export enum GuardianRelationshipType { Parent = "parent", LegalGuardian = "legal_guardian", TrustedAdult = "trusted_adult", SafetyProfessional = "safety_professional" }
 export enum GuardianAuthorityLevel { Full = "full", Limited = "limited", ReadOnly = "read_only" }

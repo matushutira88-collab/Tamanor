@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import {
   getProtectedProfile, listRelationshipsForProfile, listFamilyMembers, listProfileTimeline,
   listConsentRecords, listSafetySignals, guardianLifecycleState, isActiveGuardianRelationship,
-  listGuardianAuthorityRecords, evaluateEffectiveGuardianAuthority, listGuardianAuthorityTimeline, FamilyNotFoundError,
+  listGuardianAuthorityRecords, evaluateEffectiveGuardianAuthority, listGuardianAuthorityTimeline,
+  listGuardianConsents, evaluateEffectiveGuardianConsent, listGuardianConsentTimeline, FamilyNotFoundError,
 } from "@guardora/db";
 import {
   ALL_AGE_BANDS, ProtectionStatus, PROFILE_LANGUAGES, ALL_GUARDIAN_ROLES,
@@ -17,6 +18,8 @@ import { ConfirmDialog } from "../../../confirm-dialog";
 import { updateProtectedProfileAction, archiveProtectedProfileAction, restoreProtectedProfileAction } from "../actions";
 import { createGuardianRelationshipAction, updateGuardianRoleAction, deactivateGuardianRelationshipAction, reactivateGuardianRelationshipAction } from "./actions";
 import { GuardianAuthoritySection } from "./authority-section";
+import { GuardianConsentSection } from "./consent-section";
+import { ConsentType } from "@guardora/core";
 
 export const dynamic = "force-dynamic";
 function fmt(d: Date | null): string { return d ? new Date(d).toISOString().slice(0, 10) : "—"; }
@@ -51,9 +54,17 @@ export default async function ProfileDetailPage({ params, searchParams }: { para
     effective: await evaluateEffectiveGuardianAuthority(actor, r.id),
     timeline: await listGuardianAuthorityTimeline(actor, r.id),
   })));
+  // CS-C10 — consent data per ACTIVE guardian (the "guardian" consent type + effective decision + timeline).
+  const canManageConsent = familyCan(actor, FamilyAction.ConsentManage);
+  const consentData = await Promise.all(activeGuardians.map(async (r) => ({
+    rel: r,
+    records: await listGuardianConsents(actor, r.id, { includeInactive: true }),
+    effective: await evaluateEffectiveGuardianConsent(actor, r.id, ConsentType.Guardian),
+    timeline: await listGuardianConsentTimeline(actor, r.id),
+  })));
 
   const archived = profile.archivedAt !== null;
-  const banner = sp.ok ? { tone: "ok" as const, msg: sp.ok } : sp.e ? { tone: "danger" as const, msg: t.actionErrors[sp.e] ?? t.c9.errors[sp.e] ?? t.actionErrors.retry_later } : null;
+  const banner = sp.ok ? { tone: "ok" as const, msg: sp.ok } : sp.e ? { tone: "danger" as const, msg: t.actionErrors[sp.e] ?? t.c9.errors[sp.e] ?? t.c10.errors[sp.e] ?? t.actionErrors.retry_later } : null;
   const ageOptions = (ALL_AGE_BANDS as readonly string[]).map((v) => ({ value: v, label: famLabel(t.labels.ageBand, v) }));
   const statusOptions = Object.values(ProtectionStatus).map((v) => ({ value: v, label: famLabel(t.labels.protectionStatus, v) }));
   const langOptions = [{ value: "", label: t.c7.languageAuto }, ...(PROFILE_LANGUAGES as readonly string[]).map((v) => ({ value: v, label: v.toUpperCase() }))];
@@ -159,6 +170,19 @@ export default async function ProfileDetailPage({ params, searchParams }: { para
           <div className="space-y-3">
             {authorityData.map((a) => (
               <GuardianAuthoritySection key={a.rel.id} t={t} profileId={profile.id} relationshipId={a.rel.id} guardianRoleLabel={famLabel(t.c7.roles, a.rel.guardianRole)} records={a.records} effective={a.effective} timeline={a.timeline} canManage={canManageAuthority} />
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* CS-C10 — consent lifecycle (grant/suspend/resume/revoke) per active guardian */}
+      {activeGuardians.length > 0 && (
+        <Card>
+          <SectionHeader title={t.c10.title} />
+          <p className="mb-3 text-xs text-[var(--color-muted)]">{t.c10.disclaimer}</p>
+          <div className="space-y-3">
+            {consentData.map((a) => (
+              <GuardianConsentSection key={a.rel.id} t={t} profileId={profile.id} relationshipId={a.rel.id} guardianRoleLabel={famLabel(t.c7.roles, a.rel.guardianRole)} records={a.records} effective={a.effective} timeline={a.timeline} canManage={canManageConsent} />
             ))}
           </div>
         </Card>

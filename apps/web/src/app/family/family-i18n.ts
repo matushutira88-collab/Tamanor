@@ -90,6 +90,17 @@ export interface FamilyDict {
     statuses: Record<string, string>; levels: Record<string, string>; types: Record<string, string>;
     reasons: Record<string, string>; events: Record<string, string>; errors: Record<string, string>;
   };
+  // CS-C10 — consent lifecycle UI (content-free; separate domain layer from role/authority).
+  c10: {
+    title: string; disclaimer: string; noConsent: string;
+    statusLabel: string; typeLabel: string; expiresLabel: string; optional: string;
+    effective: string; notEffective: string; effectiveReason: string;
+    grant: string; suspend: string; resume: string; revoke: string;
+    timelineTitle: string; timelineEmpty: string;
+    suspendDialogTitle: string; suspendDialogBody: string; suspendDialogConfirm: string;
+    revokeDialogTitle: string; revokeDialogBody: string; revokeDialogConfirm: string;
+    statuses: Record<string, string>; types: Record<string, string>; reasons: Record<string, string>; events: Record<string, string>; errors: Record<string, string>;
+  };
 }
 
 /** CS-C6.1 — the safe, serializable Family destructive-action error groups (frozen). */
@@ -112,7 +123,13 @@ export const FAMILY_AUTHORITY_ERROR_CODES = [
   "self_management_forbidden", "delegation_forbidden", "invalid_state", "retry_later",
 ] as const;
 export type FamilyAuthorityErrorCode = (typeof FAMILY_AUTHORITY_ERROR_CODES)[number];
-const ALL_SAFE_ERROR_CODES: ReadonlySet<string> = new Set<string>([...FAMILY_ACTION_ERROR_CODES, ...FAMILY_INVITATION_ERROR_CODES, ...FAMILY_AUTHORITY_ERROR_CODES]);
+/** CS-C10 — additional safe error groups for the consent lifecycle (superset). */
+export const FAMILY_CONSENT_ERROR_CODES = [
+  "consent_not_found", "consent_already_active", "consent_suspended", "consent_revoked", "consent_expired",
+  "inactive_relationship", "inactive_membership", "archived_profile", "invalid_state", "retry_later",
+] as const;
+export type FamilyConsentErrorCode = (typeof FAMILY_CONSENT_ERROR_CODES)[number];
+const ALL_SAFE_ERROR_CODES: ReadonlySet<string> = new Set<string>([...FAMILY_ACTION_ERROR_CODES, ...FAMILY_INVITATION_ERROR_CODES, ...FAMILY_AUTHORITY_ERROR_CODES, ...FAMILY_CONSENT_ERROR_CODES]);
 /** Accepts ANY safe serializable group (CS-C6.1 destructive OR CS-C8 invitation). Never a raw string/PII. */
 export function isFamilyActionErrorCode(v: unknown): v is FamilyActionErrorCode {
   return typeof v === "string" && ALL_SAFE_ERROR_CODES.has(v);
@@ -122,6 +139,9 @@ export function isFamilyInvitationErrorCode(v: unknown): v is FamilyInvitationEr
 }
 export function isFamilyAuthorityErrorCode(v: unknown): v is FamilyAuthorityErrorCode {
   return typeof v === "string" && (FAMILY_AUTHORITY_ERROR_CODES as readonly string[]).includes(v);
+}
+export function isFamilyConsentErrorCode(v: unknown): v is FamilyConsentErrorCode {
+  return typeof v === "string" && (FAMILY_CONSENT_ERROR_CODES as readonly string[]).includes(v);
 }
 
 const en: FamilyDict = {
@@ -281,6 +301,30 @@ const en: FamilyDict = {
       authority_not_found: "That authority could not be found.", authority_already_active: "This guardian already has an active authority.", authority_suspended: "This authority is suspended.", authority_revoked: "This authority was revoked.", authority_expired: "This authority has expired.",
       inactive_relationship: "The guardian relationship is not active.", inactive_membership: "The guardian is no longer a member.", archived_profile: "The profile is archived.", invalid_authority_level: "That access level isn't valid.",
       self_management_forbidden: "You can't manage your own authority.", delegation_forbidden: "You don't have permission to manage authority.", invalid_state: "This action isn't possible for the authority's current state.", retry_later: "Something went wrong. Please try again in a moment.",
+    },
+  },
+  c10: {
+    title: "Consent", disclaimer: "Consent is separate from role and authority — a guardian with authority is not an authorized recipient without effective consent.",
+    noConsent: "No consent granted.", statusLabel: "Status", typeLabel: "Type", expiresLabel: "Expires", optional: "optional",
+    effective: "Effective", notEffective: "Not effective", effectiveReason: "Reason",
+    grant: "Grant consent", suspend: "Suspend", resume: "Resume", revoke: "Revoke",
+    timelineTitle: "Consent history", timelineEmpty: "No consent activity yet.",
+    suspendDialogTitle: "Suspend this consent?", suspendDialogBody: "Suspending immediately makes the consent not effective. It can be resumed later after re-checking conditions. Nothing else changes.", suspendDialogConfirm: "Suspend consent",
+    revokeDialogTitle: "Revoke this consent?", revokeDialogBody: "Revoking permanently ends this consent and makes it not effective. This cannot be undone; grant a new consent if needed.", revokeDialogConfirm: "Revoke consent",
+    statuses: { not_requested: "Not requested", pending: "Pending", active: "Active", suspended: "Suspended", withdrawn: "Revoked", expired: "Expired", disputed: "Disputed" },
+    types: { guardian: "Guardian", child_assent: "Child assent", platform: "Platform", pilot_participation: "Pilot participation", evidence_sharing: "Evidence sharing", expert_review: "Expert review" },
+    reasons: { effective: "Effective", inactive_relationship: "The guardian relationship is not active.", archived_profile: "The profile is archived.", inactive_membership: "The guardian is no longer a member.", consent_not_active: "No active consent." },
+    events: {
+      "child_safety.consent.granted": "Consent granted",
+      "child_safety.consent.suspended": "Consent suspended",
+      "child_safety.consent.resumed": "Consent resumed",
+      "child_safety.consent.revoked": "Consent revoked",
+      "child_safety.consent.expired": "Consent expired",
+      "child_safety.consent.created": "Consent created",
+    },
+    errors: {
+      consent_not_found: "That consent could not be found.", consent_already_active: "This guardian already has an active consent of this type.", consent_suspended: "This consent is suspended.", consent_revoked: "This consent was revoked.", consent_expired: "This consent has expired.",
+      inactive_relationship: "The guardian relationship is not active.", inactive_membership: "The guardian is no longer a member.", archived_profile: "The profile is archived.", invalid_state: "This action isn't possible for the consent's current state.", retry_later: "Something went wrong. Please try again in a moment.",
     },
   },
 };
@@ -444,6 +488,30 @@ const sk: FamilyDict = {
       self_management_forbidden: "Nemôžete spravovať vlastné oprávnenie.", delegation_forbidden: "Nemáte oprávnenie spravovať oprávnenia.", invalid_state: "Táto akcia nie je možná pre aktuálny stav oprávnenia.", retry_later: "Niečo sa pokazilo. Skúste to o chvíľu znova.",
     },
   },
+  c10: {
+    title: "Súhlas", disclaimer: "Súhlas je oddelený od roly a oprávnenia — opatrovník s oprávnením nie je oprávneným príjemcom bez účinného súhlasu.",
+    noConsent: "Žiadny udelený súhlas.", statusLabel: "Stav", typeLabel: "Typ", expiresLabel: "Platí do", optional: "voliteľné",
+    effective: "Účinný", notEffective: "Neúčinný", effectiveReason: "Dôvod",
+    grant: "Udeliť súhlas", suspend: "Pozastaviť", resume: "Obnoviť", revoke: "Odvolať",
+    timelineTitle: "História súhlasu", timelineEmpty: "Zatiaľ žiadna aktivita súhlasu.",
+    suspendDialogTitle: "Pozastaviť tento súhlas?", suspendDialogBody: "Pozastavením sa súhlas okamžite stane neúčinným. Neskôr ho možno obnoviť po opätovnom overení podmienok. Nič iné sa nezmení.", suspendDialogConfirm: "Pozastaviť súhlas",
+    revokeDialogTitle: "Odvolať tento súhlas?", revokeDialogBody: "Odvolaním sa súhlas natrvalo ukončí a stane sa neúčinným. Nedá sa to vrátiť; v prípade potreby udeľte nový súhlas.", revokeDialogConfirm: "Odvolať súhlas",
+    statuses: { not_requested: "Nevyžiadaný", pending: "Čaká", active: "Aktívny", suspended: "Pozastavený", withdrawn: "Odvolaný", expired: "Vypršaný", disputed: "Sporný" },
+    types: { guardian: "Opatrovník", child_assent: "Súhlas dieťaťa", platform: "Platforma", pilot_participation: "Účasť v pilote", evidence_sharing: "Zdieľanie dôkazov", expert_review: "Odborné posúdenie" },
+    reasons: { effective: "Účinný", inactive_relationship: "Vzťah opatrovníka nie je aktívny.", archived_profile: "Profil je archivovaný.", inactive_membership: "Opatrovník už nie je členom.", consent_not_active: "Žiadny aktívny súhlas." },
+    events: {
+      "child_safety.consent.granted": "Súhlas udelený",
+      "child_safety.consent.suspended": "Súhlas pozastavený",
+      "child_safety.consent.resumed": "Súhlas obnovený",
+      "child_safety.consent.revoked": "Súhlas odvolaný",
+      "child_safety.consent.expired": "Súhlas vypršal",
+      "child_safety.consent.created": "Súhlas vytvorený",
+    },
+    errors: {
+      consent_not_found: "Súhlas sa nenašiel.", consent_already_active: "Tento opatrovník už má aktívny súhlas tohto typu.", consent_suspended: "Tento súhlas je pozastavený.", consent_revoked: "Tento súhlas bol odvolaný.", consent_expired: "Tento súhlas vypršal.",
+      inactive_relationship: "Vzťah opatrovníka nie je aktívny.", inactive_membership: "Opatrovník už nie je členom.", archived_profile: "Profil je archivovaný.", invalid_state: "Táto akcia nie je možná pre aktuálny stav súhlasu.", retry_later: "Niečo sa pokazilo. Skúste to o chvíľu znova.",
+    },
+  },
 };
 
 const de: FamilyDict = {
@@ -603,6 +671,30 @@ const de: FamilyDict = {
       authority_not_found: "Diese Befugnis wurde nicht gefunden.", authority_already_active: "Dieser Betreuer hat bereits eine aktive Befugnis.", authority_suspended: "Diese Befugnis ist ausgesetzt.", authority_revoked: "Diese Befugnis wurde widerrufen.", authority_expired: "Diese Befugnis ist abgelaufen.",
       inactive_relationship: "Die Betreuungsbeziehung ist nicht aktiv.", inactive_membership: "Der Betreuer ist kein Mitglied mehr.", archived_profile: "Das Profil ist archiviert.", invalid_authority_level: "Diese Zugriffsstufe ist ungültig.",
       self_management_forbidden: "Sie können Ihre eigene Befugnis nicht verwalten.", delegation_forbidden: "Sie haben keine Berechtigung, Befugnisse zu verwalten.", invalid_state: "Diese Aktion ist im aktuellen Zustand der Befugnis nicht möglich.", retry_later: "Etwas ist schiefgelaufen. Bitte versuchen Sie es gleich erneut.",
+    },
+  },
+  c10: {
+    title: "Einwilligung", disclaimer: "Die Einwilligung ist von Rolle und Befugnis getrennt — ein Betreuer mit Befugnis ist ohne wirksame Einwilligung kein autorisierter Empfänger.",
+    noConsent: "Keine Einwilligung erteilt.", statusLabel: "Status", typeLabel: "Typ", expiresLabel: "Gültig bis", optional: "optional",
+    effective: "Wirksam", notEffective: "Nicht wirksam", effectiveReason: "Grund",
+    grant: "Einwilligung erteilen", suspend: "Aussetzen", resume: "Fortsetzen", revoke: "Widerrufen",
+    timelineTitle: "Einwilligungs-Verlauf", timelineEmpty: "Noch keine Einwilligungs-Aktivität.",
+    suspendDialogTitle: "Diese Einwilligung aussetzen?", suspendDialogBody: "Durch das Aussetzen wird die Einwilligung sofort nicht mehr wirksam. Sie kann später nach erneuter Prüfung der Bedingungen fortgesetzt werden. Sonst ändert sich nichts.", suspendDialogConfirm: "Einwilligung aussetzen",
+    revokeDialogTitle: "Diese Einwilligung widerrufen?", revokeDialogBody: "Durch den Widerruf endet diese Einwilligung dauerhaft und wird nicht mehr wirksam. Dies kann nicht rückgängig gemacht werden; erteilen Sie bei Bedarf eine neue Einwilligung.", revokeDialogConfirm: "Einwilligung widerrufen",
+    statuses: { not_requested: "Nicht angefordert", pending: "Ausstehend", active: "Aktiv", suspended: "Ausgesetzt", withdrawn: "Widerrufen", expired: "Abgelaufen", disputed: "Strittig" },
+    types: { guardian: "Betreuer", child_assent: "Zustimmung des Kindes", platform: "Plattform", pilot_participation: "Pilot-Teilnahme", evidence_sharing: "Beweisweitergabe", expert_review: "Expertenprüfung" },
+    reasons: { effective: "Wirksam", inactive_relationship: "Die Betreuungsbeziehung ist nicht aktiv.", archived_profile: "Das Profil ist archiviert.", inactive_membership: "Der Betreuer ist kein Mitglied mehr.", consent_not_active: "Keine aktive Einwilligung." },
+    events: {
+      "child_safety.consent.granted": "Einwilligung erteilt",
+      "child_safety.consent.suspended": "Einwilligung ausgesetzt",
+      "child_safety.consent.resumed": "Einwilligung fortgesetzt",
+      "child_safety.consent.revoked": "Einwilligung widerrufen",
+      "child_safety.consent.expired": "Einwilligung abgelaufen",
+      "child_safety.consent.created": "Einwilligung erstellt",
+    },
+    errors: {
+      consent_not_found: "Diese Einwilligung wurde nicht gefunden.", consent_already_active: "Dieser Betreuer hat bereits eine aktive Einwilligung dieses Typs.", consent_suspended: "Diese Einwilligung ist ausgesetzt.", consent_revoked: "Diese Einwilligung wurde widerrufen.", consent_expired: "Diese Einwilligung ist abgelaufen.",
+      inactive_relationship: "Die Betreuungsbeziehung ist nicht aktiv.", inactive_membership: "Der Betreuer ist kein Mitglied mehr.", archived_profile: "Das Profil ist archiviert.", invalid_state: "Diese Aktion ist im aktuellen Zustand der Einwilligung nicht möglich.", retry_later: "Etwas ist schiefgelaufen. Bitte versuchen Sie es gleich erneut.",
     },
   },
 };

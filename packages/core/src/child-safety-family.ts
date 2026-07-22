@@ -253,6 +253,10 @@ export const CHILD_SAFETY_AUDIT_EVENTS = {
   consentCreated: "child_safety.consent.created",
   consentGranted: "child_safety.consent.granted",
   consentRevoked: "child_safety.consent.revoked",
+  // CS-C10 — consent lifecycle (content-free: actor + bounded status/type + timestamps only).
+  consentSuspended: "child_safety.consent.suspended",
+  consentResumed: "child_safety.consent.resumed",
+  consentExpired: "child_safety.consent.expired",
   safeRecipientAssessmentCreated: "child_safety.safe_recipient_assessment.created",
   safeRecipientAssessmentApproved: "child_safety.safe_recipient_assessment.approved",
   safeRecipientAssessmentRejected: "child_safety.safe_recipient_assessment.rejected",

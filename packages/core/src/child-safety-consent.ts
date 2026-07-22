@@ -95,6 +95,9 @@ export const GUARDIAN_AUTHORITY_GRANT_FIELDS: readonly string[] = ["guardianRela
 export const GUARDIAN_AUTHORITY_CHANGE_LEVEL_FIELDS: readonly string[] = ["authorityLevel"];
 export const CONSENT_CREATE_FIELDS: readonly string[] = ["protectedProfileId", "guardianRelationshipId", "consentType", "validFrom", "validUntil"];
 export const CONSENT_GRANT_FIELDS: readonly string[] = ["validFrom", "validUntil"];
+// CS-C10 — the ONLY fields a client may submit to grant a relationship-scoped consent. NEVER free text /
+// PII / document. Consent is bound to (tenant, profile, relationship) — never global.
+export const GUARDIAN_CONSENT_GRANT_FIELDS: readonly string[] = ["protectedProfileId", "guardianRelationshipId", "consentType", "validUntil"];
 export const SAFE_RECIPIENT_ASSESSMENT_CREATE_FIELDS: readonly string[] = ["guardianRelationshipId"];
 export const SAFE_RECIPIENT_ASSESSMENT_DECIDE_FIELDS: readonly string[] = ["reasonCode", "validUntil"];
 

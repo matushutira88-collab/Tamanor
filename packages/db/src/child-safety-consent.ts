@@ -10,7 +10,7 @@ import {
   evaluateCanReceiveSafetyInformation,
   CONSENT_GRANTED_STATUS, CONSENT_REVOKED_STATUS,
   GUARDIAN_AUTHORITY_CREATE_FIELDS, GUARDIAN_AUTHORITY_VERIFY_FIELDS, GUARDIAN_AUTHORITY_GRANT_FIELDS, GUARDIAN_AUTHORITY_CHANGE_LEVEL_FIELDS,
-  CONSENT_CREATE_FIELDS, CONSENT_GRANT_FIELDS,
+  CONSENT_CREATE_FIELDS, CONSENT_GRANT_FIELDS, GUARDIAN_CONSENT_GRANT_FIELDS,
   SAFE_RECIPIENT_ASSESSMENT_CREATE_FIELDS, SAFE_RECIPIENT_ASSESSMENT_DECIDE_FIELDS,
   type FamilyActorContext, type SafetyRecipientDenyReason,
 } from "@guardora/core";
@@ -365,6 +365,166 @@ export async function getEffectiveConsent(actor: FamilyActorContext, protectedPr
     const rows = await db.consentRecord.findMany({ where: { tenantId: actor.tenantId, protectedProfileId, consentType, consentStatus: ConsentStatus.Active, revokedAt: null, archivedAt: null }, orderBy: { createdAt: "desc" }, select: CONSENT_SELECT });
     return rows.find((r) => isConsentEffective(r, now)) ?? null;
   });
+}
+
+// ============================ CS-C10 — Consent lifecycle ============================
+//
+// Consent is a SEPARATE domain layer: it is bound to (tenant, ProtectedProfile, GuardianRelationship) and
+// is NEVER created implicitly by an invitation / relationship / GuardianAuthority / GuardianRole change —
+// only by an explicit server action. A Guardian may hold AUTHORITY yet, WITHOUT effective consent, must not
+// count as an authorized SafetySignal recipient (consent is evaluated independently). Lifecycle mirrors
+// CS-C9: PENDING → ACTIVE ⇄ SUSPENDED → REVOKED('withdrawn')/EXPIRED. Revoked/expired are terminal; no
+// hard delete; content-free audit only. Reuses the CS-C2 ConsentRecord + ConsentStatus (no migration).
+
+/** Load the consent's relationship + profile-archived for lifecycle re-checks. Fail-closed. */
+async function loadConsentContext(db: Tx, actor: FamilyActorContext, guardianRelationshipId: string): Promise<{ rel: { id: string; status: string; revokedAt: Date | null; archivedAt: Date | null; protectedProfileId: string; guardianMembershipId: string }; profileArchived: boolean; membershipActive: boolean }> {
+  const rel = await db.guardianRelationship.findFirst({ where: { id: guardianRelationshipId, tenantId: actor.tenantId }, select: { id: true, status: true, revokedAt: true, archivedAt: true, protectedProfileId: true, guardianMembershipId: true } });
+  if (!rel) throw new FamilyNotFoundError("guardian_relationship");
+  const [profile, gm] = await Promise.all([
+    db.protectedProfile.findFirst({ where: { id: rel.protectedProfileId, tenantId: actor.tenantId }, select: { archivedAt: true } }),
+    db.membership.findFirst({ where: { id: rel.guardianMembershipId, tenantId: actor.tenantId }, select: { id: true } }),
+  ]);
+  return { rel, profileArchived: profile?.archivedAt != null || profile == null, membershipActive: gm != null };
+}
+
+/**
+ * CS-C10 — GRANT an explicit, ACTIVE consent bound to (profile, relationship, type). Preconditions:
+ * profile ACTIVE, relationship active, guardian membership active. At most one ACTIVE/SUSPENDED consent per
+ * (profile, relationship, type). NEVER auto-created elsewhere.
+ */
+export async function grantGuardianConsent(actor: FamilyActorContext, input: { protectedProfileId: string; guardianRelationshipId: string; consentType: string; validUntil?: Date }, now: Date = new Date()): Promise<ConsentRecordVM> {
+  assertFamily(actor, FamilyAction.ConsentManage);
+  const v = validateChildSafetyInput(input, GUARDIAN_CONSENT_GRANT_FIELDS);
+  if (!v.ok) throw new FamilyValidationError(v.errors[0]?.field ?? "$");
+  if (!isConsentType(input.consentType)) throw new FamilyValidationError("consentType");
+  if (input.validUntil != null && input.validUntil.getTime() <= now.getTime()) throw new FamilyValidationError("invalid_state");
+  return withTenant(actor.tenantId, async (db) => {
+    const { rel, profileArchived, membershipActive } = await loadConsentContext(db, actor, input.guardianRelationshipId);
+    if (rel.protectedProfileId !== input.protectedProfileId) throw new FamilyNotFoundError("guardian_relationship");
+    if (!isActiveGuardianRelationship(rel)) throw new FamilyValidationError("inactive_relationship");
+    if (profileArchived) throw new FamilyValidationError("archived_profile");
+    if (!membershipActive) throw new FamilyValidationError("inactive_membership");
+    const active = await db.consentRecord.findFirst({ where: { tenantId: actor.tenantId, protectedProfileId: input.protectedProfileId, guardianRelationshipId: input.guardianRelationshipId, consentType: input.consentType, consentStatus: { in: [ConsentStatus.Active, ConsentStatus.Suspended] }, revokedAt: null, archivedAt: null }, select: { id: true } });
+    if (active) throw new FamilyValidationError("consent_already_active");
+    const membershipId = await actorMembershipId(db, actor);
+    const row = await db.consentRecord.create({
+      data: { tenantId: actor.tenantId, protectedProfileId: input.protectedProfileId, guardianRelationshipId: input.guardianRelationshipId, consentType: input.consentType, consentStatus: CONSENT_GRANTED_STATUS, grantedAt: now, grantedByMembershipId: membershipId, validUntil: input.validUntil ?? null },
+      select: CONSENT_SELECT,
+    });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.consentGranted, "consent_record", row.id, { consentType: row.consentType });
+    return row;
+  });
+}
+
+/** Load an active/suspended consent + its relationship for a lifecycle mutation. */
+async function loadManageableConsent(db: Tx, actor: FamilyActorContext, id: string): Promise<{ id: string; consentStatus: string; guardianRelationshipId: string | null; revokedAt: Date | null; validUntil: Date | null }> {
+  const rec = await db.consentRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, consentStatus: true, guardianRelationshipId: true, revokedAt: true, validUntil: true } });
+  if (!rec) throw new FamilyNotFoundError("consent_record");
+  return rec;
+}
+
+/** CS-C10 — suspend an ACTIVE consent (reversible). Immediately NOT effective. Idempotent. */
+export async function suspendGuardianConsent(actor: FamilyActorContext, id: string): Promise<ConsentRecordVM> {
+  assertFamily(actor, FamilyAction.ConsentManage);
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadManageableConsent(db, actor, id);
+    if (rec.consentStatus === ConsentStatus.Suspended) return db.consentRecord.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: CONSENT_SELECT });
+    if (rec.consentStatus !== ConsentStatus.Active) throw new FamilyValidationError("invalid_state");
+    const row = await db.consentRecord.update({ where: { id }, data: { consentStatus: ConsentStatus.Suspended }, select: CONSENT_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.consentSuspended, "consent_record", row.id);
+    return row;
+  });
+}
+
+/** CS-C10 — resume a SUSPENDED consent — ONLY after re-checking every condition. Fail-closed. */
+export async function resumeGuardianConsent(actor: FamilyActorContext, id: string, now: Date = new Date()): Promise<ConsentRecordVM> {
+  assertFamily(actor, FamilyAction.ConsentManage);
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadManageableConsent(db, actor, id);
+    if (rec.consentStatus !== ConsentStatus.Suspended) throw new FamilyValidationError("invalid_state");
+    if (rec.validUntil != null && rec.validUntil.getTime() <= now.getTime()) throw new FamilyValidationError("consent_expired");
+    if (!rec.guardianRelationshipId) throw new FamilyValidationError("invalid_state");
+    const { rel, profileArchived, membershipActive } = await loadConsentContext(db, actor, rec.guardianRelationshipId);
+    if (!isActiveGuardianRelationship(rel)) throw new FamilyValidationError("inactive_relationship");
+    if (profileArchived) throw new FamilyValidationError("archived_profile");
+    if (!membershipActive) throw new FamilyValidationError("inactive_membership");
+    const row = await db.consentRecord.update({ where: { id }, data: { consentStatus: ConsentStatus.Active }, select: CONSENT_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.consentResumed, "consent_record", row.id);
+    return row;
+  });
+}
+
+/** CS-C10 — revoke an ACTIVE or SUSPENDED consent (terminal 'withdrawn'). Immediately NOT effective. */
+export async function revokeGuardianConsent(actor: FamilyActorContext, id: string): Promise<ConsentRecordVM> {
+  assertFamily(actor, FamilyAction.ConsentManage);
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadManageableConsent(db, actor, id);
+    if (rec.consentStatus === CONSENT_REVOKED_STATUS || rec.revokedAt != null) return db.consentRecord.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: CONSENT_SELECT });
+    if (rec.consentStatus !== ConsentStatus.Active && rec.consentStatus !== ConsentStatus.Suspended) throw new FamilyValidationError("invalid_state");
+    const row = await db.consentRecord.update({ where: { id }, data: { consentStatus: CONSENT_REVOKED_STATUS, revokedAt: new Date() }, select: CONSENT_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.consentRevoked, "consent_record", row.id);
+    return row;
+  });
+}
+
+/** CS-C10 — change the expiry on an ACTIVE or SUSPENDED consent (future only; null clears it). */
+export async function changeGuardianConsentExpiry(actor: FamilyActorContext, id: string, validUntil: Date | null, now: Date = new Date()): Promise<ConsentRecordVM> {
+  assertFamily(actor, FamilyAction.ConsentManage);
+  if (validUntil != null && validUntil.getTime() <= now.getTime()) throw new FamilyValidationError("invalid_state");
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadManageableConsent(db, actor, id);
+    if (rec.consentStatus !== ConsentStatus.Active && rec.consentStatus !== ConsentStatus.Suspended) throw new FamilyValidationError("invalid_state");
+    const row = await db.consentRecord.update({ where: { id }, data: { validUntil }, select: CONSENT_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.consentGranted, "consent_record", row.id, { consentType: row.consentType });
+    return row;
+  });
+}
+
+/**
+ * CS-C10 — the FULL effective-consent evaluation for a relationship + type. Fail-closed: effective ONLY
+ * when FAMILY + profile ACTIVE + relationship active + membership active + an ACTIVE, granted, time-valid
+ * consent exists. A Guardian with authority but no effective consent is NOT an authorized recipient.
+ */
+export type EffectiveConsentReason = "effective" | "inactive_relationship" | "archived_profile" | "inactive_membership" | "consent_not_active" | "consent_expired";
+export interface EffectiveConsentDecision { effective: boolean; reason: EffectiveConsentReason }
+export async function evaluateEffectiveGuardianConsent(actor: FamilyActorContext, guardianRelationshipId: string, consentType: string, now: Date = new Date()): Promise<EffectiveConsentDecision> {
+  assertFamily(actor, FamilyAction.ConsentView);
+  return withTenant(actor.tenantId, async (db) => {
+    const rel = await db.guardianRelationship.findFirst({ where: { id: guardianRelationshipId, tenantId: actor.tenantId }, select: { id: true, status: true, revokedAt: true, archivedAt: true, protectedProfileId: true, guardianMembershipId: true } });
+    if (!rel || !isActiveGuardianRelationship(rel)) return { effective: false, reason: "inactive_relationship" };
+    const [profile, gm] = await Promise.all([
+      db.protectedProfile.findFirst({ where: { id: rel.protectedProfileId, tenantId: actor.tenantId }, select: { archivedAt: true } }),
+      db.membership.findFirst({ where: { id: rel.guardianMembershipId, tenantId: actor.tenantId }, select: { id: true } }),
+    ]);
+    if (!profile || profile.archivedAt != null) return { effective: false, reason: "archived_profile" };
+    if (!gm) return { effective: false, reason: "inactive_membership" };
+    const rows = await db.consentRecord.findMany({ where: { tenantId: actor.tenantId, protectedProfileId: rel.protectedProfileId, guardianRelationshipId, consentType, consentStatus: ConsentStatus.Active, revokedAt: null, archivedAt: null }, orderBy: { createdAt: "desc" }, select: CONSENT_SELECT });
+    const active = rows.find((r) => isConsentEffective(r, now));
+    if (!active) return { effective: false, reason: "consent_not_active" };
+    return { effective: true, reason: "effective" };
+  });
+}
+
+/** CS-C10 — content-free, append-only consent timeline for one relationship (newest first). */
+export interface ConsentTimelineEntryVM { id: string; event: string; actorUserId: string | null; targetId: string | null; metadata: Record<string, unknown> | null; createdAt: Date }
+export async function listGuardianConsentTimeline(actor: FamilyActorContext, guardianRelationshipId: string, opts: { limit?: number } = {}): Promise<ConsentTimelineEntryVM[]> {
+  assertFamily(actor, FamilyAction.ConsentView);
+  return withTenant(actor.tenantId, async (db) => {
+    const recs = await db.consentRecord.findMany({ where: { tenantId: actor.tenantId, guardianRelationshipId }, select: { id: true } });
+    const ids = recs.map((r) => r.id);
+    if (ids.length === 0) return [];
+    const rows = await db.auditLog.findMany({
+      where: { tenantId: actor.tenantId, targetType: "consent_record", targetId: { in: ids } },
+      orderBy: { createdAt: "desc" }, take: Math.min(Math.max(opts.limit ?? 100, 1), 200),
+      select: { id: true, event: true, actorUserId: true, targetId: true, metadata: true, createdAt: true },
+    });
+    return rows.map((r) => ({ ...r, metadata: (r.metadata ?? null) as Record<string, unknown> | null }));
+  });
+}
+/** CS-C10 — list a relationship's consents (content-free). */
+export function listGuardianConsents(actor: FamilyActorContext, guardianRelationshipId: string, opts: { includeInactive?: boolean } = {}): Promise<ConsentRecordVM[]> {
+  assertFamily(actor, FamilyAction.ConsentView);
+  return withTenant(actor.tenantId, (db) => db.consentRecord.findMany({ where: { tenantId: actor.tenantId, guardianRelationshipId, ...(opts.includeInactive ? {} : { revokedAt: null, archivedAt: null }) }, orderBy: { createdAt: "desc" }, select: CONSENT_SELECT }));
 }
 
 // ============================ Safe Recipient Assessment ============================
