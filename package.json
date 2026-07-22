@@ -45,6 +45,7 @@
     "child-safety-delivery:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-delivery.test.ts",
     "child-safety-onboarding:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-onboarding.test.ts",
     "child-safety-profile-lifecycle:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-profile-lifecycle.test.ts",
+    "child-safety-safe-recipient-assessment:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-safe-recipient-assessment.test.ts",
     "child-safety-consent-lifecycle:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-consent-lifecycle.test.ts",
     "child-safety-guardian-authority:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-guardian-authority.test.ts",
     "child-safety-guardian-invitation:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-guardian-invitation.test.ts",

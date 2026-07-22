@@ -261,6 +261,12 @@ export const CHILD_SAFETY_AUDIT_EVENTS = {
   safeRecipientAssessmentApproved: "child_safety.safe_recipient_assessment.approved",
   safeRecipientAssessmentRejected: "child_safety.safe_recipient_assessment.rejected",
   safeRecipientAssessmentRevoked: "child_safety.safe_recipient_assessment.revoked",
+  // CS-C11 — safe-recipient assessment lifecycle (content-free: actor + bounded status/purpose + timestamps).
+  safeRecipientAssessmentRequested: "child_safety.safe_recipient_assessment.requested",
+  safeRecipientAssessmentSuspended: "child_safety.safe_recipient_assessment.suspended",
+  safeRecipientAssessmentResumed: "child_safety.safe_recipient_assessment.resumed",
+  safeRecipientAssessmentExpired: "child_safety.safe_recipient_assessment.expired",
+  safeRecipientAssessmentExpiryChanged: "child_safety.safe_recipient_assessment.expiry_changed",
   // CS-C3 — safety signal occurrence + review lifecycle (content-free).
   safetySignalCreated: "child_safety.safety_signal.created",
   safetySignalAcknowledged: "child_safety.safety_signal.acknowledged",

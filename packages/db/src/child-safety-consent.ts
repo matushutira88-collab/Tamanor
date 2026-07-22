@@ -3,8 +3,8 @@ import { withTenant } from "./repositories";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError, isActiveGuardianRelationship } from "./child-safety-family";
 import {
   FamilyAction, authorizeFamilyAction, CHILD_SAFETY_AUDIT_EVENTS, validateChildSafetyInput,
-  GuardianRelationshipStatus, ConsentStatus, SafetyRecipientEligibility,
-  GuardianAuthorityStatus, SafeRecipientAssessmentStatus,
+  GuardianRelationshipStatus, ConsentStatus, ConsentType, SafetyRecipientEligibility,
+  GuardianAuthorityStatus, SafeRecipientAssessmentStatus, AssessmentPurpose, isAssessmentPurpose, SafeRecipientReason, SAFE_RECIPIENT_REQUEST_FIELDS,
   isGuardianAuthorityType, isGuardianAuthorityLevel, isVerificationMethod, isConsentType, isSafeRecipientReasonCode,
   isGuardianAuthorityActive, isConsentEffective, isSafeRecipientAssessmentApproved,
   evaluateCanReceiveSafetyInformation,
@@ -57,13 +57,13 @@ export interface ConsentRecordVM {
   revokedAt: Date | null; createdAt: Date; updatedAt: Date; archivedAt: Date | null;
 }
 export interface SafeRecipientAssessmentVM {
-  id: string; guardianRelationshipId: string; eligibilityStatus: string; assessmentStatus: string;
+  id: string; guardianRelationshipId: string; purpose: string; eligibilityStatus: string; assessmentStatus: string;
   assessedByMembershipId: string | null; assessedAt: Date | null; reasonCode: string | null; validUntil: Date | null;
   revokedAt: Date | null; createdAt: Date; updatedAt: Date; archivedAt: Date | null;
 }
 const AUTH_SELECT = { id: true, guardianRelationshipId: true, authorityType: true, authorityLevel: true, authorityStatus: true, validFrom: true, validUntil: true, verifiedAt: true, verificationMethod: true, createdAt: true, updatedAt: true, revokedAt: true, archivedAt: true } as const;
 const CONSENT_SELECT = { id: true, protectedProfileId: true, guardianRelationshipId: true, consentType: true, consentStatus: true, grantedByMembershipId: true, grantedAt: true, validFrom: true, validUntil: true, revokedAt: true, createdAt: true, updatedAt: true, archivedAt: true } as const;
-const ASSESS_SELECT = { id: true, guardianRelationshipId: true, eligibilityStatus: true, assessmentStatus: true, assessedByMembershipId: true, assessedAt: true, reasonCode: true, validUntil: true, revokedAt: true, createdAt: true, updatedAt: true, archivedAt: true } as const;
+const ASSESS_SELECT = { id: true, guardianRelationshipId: true, purpose: true, eligibilityStatus: true, assessmentStatus: true, assessedByMembershipId: true, assessedAt: true, reasonCode: true, validUntil: true, revokedAt: true, createdAt: true, updatedAt: true, archivedAt: true } as const;
 
 // ============================ Guardian Authority ============================
 
@@ -596,6 +596,181 @@ export async function getEffectiveSafeRecipientEligibility(actor: FamilyActorCon
   return withTenant(actor.tenantId, async (db) => {
     const rows = await db.safeRecipientAssessment.findMany({ where: { tenantId: actor.tenantId, guardianRelationshipId, assessmentStatus: SafeRecipientAssessmentStatus.Approved, revokedAt: null, archivedAt: null }, orderBy: { createdAt: "desc" }, select: ASSESS_SELECT });
     return rows.find((r) => isSafeRecipientAssessmentApproved(r, now)) ?? null;
+  });
+}
+
+// ============================ CS-C11 — Safe Recipient Assessment lifecycle ============================
+//
+// An assessment ONLY determines whether a guardian may be a SAFE RECIPIENT of Family safety information for
+// a given AssessmentPurpose. It NEVER grants access to data (that is CS-C12 RecipientAuthorization). It is
+// bound to (tenant, ProtectedProfile, GuardianRelationship, Guardian, purpose). Lifecycle mirrors CS-C9/C10:
+// PENDING → APPROVED ⇄ SUSPENDED → REJECTED/EXPIRED. Rejected/expired are terminal; no hard delete;
+// content-free audit. Authority and consent ALONE are never sufficient — see the resolver below.
+
+/** CS-C11 — REQUEST an assessment (PENDING) for a relationship + purpose. At most one active per (rel, purpose). */
+export async function requestSafeRecipientAssessment(actor: FamilyActorContext, input: { guardianRelationshipId: string; purpose: string }): Promise<SafeRecipientAssessmentVM> {
+  assertFamily(actor, FamilyAction.SafeRecipientAssess);
+  const v = validateChildSafetyInput(input, SAFE_RECIPIENT_REQUEST_FIELDS);
+  if (!v.ok) throw new FamilyValidationError(v.errors[0]?.field ?? "$");
+  if (!isAssessmentPurpose(input.purpose)) throw new FamilyValidationError("purpose");
+  return withTenant(actor.tenantId, async (db) => {
+    const { rel, profileArchived } = await loadConsentContext(db, actor, input.guardianRelationshipId);
+    if (!isActiveGuardianRelationship(rel)) throw new FamilyValidationError("inactive_relationship");
+    if (profileArchived) throw new FamilyValidationError("archived_profile");
+    const active = await db.safeRecipientAssessment.findFirst({ where: { tenantId: actor.tenantId, guardianRelationshipId: input.guardianRelationshipId, purpose: input.purpose, assessmentStatus: { in: [SafeRecipientAssessmentStatus.Pending, SafeRecipientAssessmentStatus.Approved, SafeRecipientAssessmentStatus.Suspended] }, revokedAt: null, archivedAt: null }, select: { id: true } });
+    if (active) throw new FamilyValidationError("assessment_already_active");
+    const row = await db.safeRecipientAssessment.create({ data: { tenantId: actor.tenantId, guardianRelationshipId: input.guardianRelationshipId, purpose: input.purpose, assessmentStatus: SafeRecipientAssessmentStatus.Pending, eligibilityStatus: SafetyRecipientEligibility.NotVerified }, select: ASSESS_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.safeRecipientAssessmentRequested, "safe_recipient_assessment", row.id, { purpose: row.purpose });
+    return row;
+  });
+}
+
+/** Load an assessment for a lifecycle mutation. */
+async function loadAssessment(db: Tx, actor: FamilyActorContext, id: string): Promise<{ id: string; assessmentStatus: string; guardianRelationshipId: string; validUntil: Date | null; revokedAt: Date | null }> {
+  const rec = await db.safeRecipientAssessment.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, assessmentStatus: true, guardianRelationshipId: true, validUntil: true, revokedAt: true } });
+  if (!rec) throw new FamilyNotFoundError("safe_recipient_assessment");
+  return rec;
+}
+
+/** CS-C11 — APPROVE a PENDING assessment (records assessor). Fail-closed on preconditions. */
+export async function approveSafeRecipient(actor: FamilyActorContext, id: string, input: { reasonCode?: string; validUntil?: Date } = {}, now: Date = new Date()): Promise<SafeRecipientAssessmentVM> {
+  assertFamily(actor, FamilyAction.SafeRecipientAssess);
+  const v = validateChildSafetyInput(input, SAFE_RECIPIENT_ASSESSMENT_DECIDE_FIELDS);
+  if (!v.ok) throw new FamilyValidationError(v.errors[0]?.field ?? "$");
+  if (input.reasonCode != null && !isSafeRecipientReasonCode(input.reasonCode)) throw new FamilyValidationError("reasonCode");
+  if (input.validUntil != null && input.validUntil.getTime() <= now.getTime()) throw new FamilyValidationError("invalid_state");
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadAssessment(db, actor, id);
+    if (rec.assessmentStatus !== SafeRecipientAssessmentStatus.Pending && rec.assessmentStatus !== SafeRecipientAssessmentStatus.NotStarted) throw new FamilyValidationError("invalid_state");
+    const { rel, profileArchived, membershipActive } = await loadConsentContext(db, actor, rec.guardianRelationshipId);
+    if (!isActiveGuardianRelationship(rel)) throw new FamilyValidationError("inactive_relationship");
+    if (profileArchived) throw new FamilyValidationError("archived_profile");
+    if (!membershipActive) throw new FamilyValidationError("inactive_membership");
+    const membershipId = await actorMembershipId(db, actor);
+    const row = await db.safeRecipientAssessment.update({ where: { id }, data: { assessmentStatus: SafeRecipientAssessmentStatus.Approved, eligibilityStatus: SafetyRecipientEligibility.Eligible, assessedByMembershipId: membershipId, assessedAt: now, reasonCode: input.reasonCode ?? null, ...(input.validUntil ? { validUntil: input.validUntil } : {}) }, select: ASSESS_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.safeRecipientAssessmentApproved, "safe_recipient_assessment", row.id, input.reasonCode ? { reasonCode: input.reasonCode } : undefined);
+    return row;
+  });
+}
+
+/** CS-C11 — REJECT a PENDING assessment (terminal). */
+export async function rejectSafeRecipient(actor: FamilyActorContext, id: string, input: { reasonCode?: string } = {}): Promise<SafeRecipientAssessmentVM> {
+  assertFamily(actor, FamilyAction.SafeRecipientAssess);
+  if (input.reasonCode != null && !isSafeRecipientReasonCode(input.reasonCode)) throw new FamilyValidationError("reasonCode");
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadAssessment(db, actor, id);
+    if (rec.assessmentStatus !== SafeRecipientAssessmentStatus.Pending && rec.assessmentStatus !== SafeRecipientAssessmentStatus.NotStarted) throw new FamilyValidationError("invalid_state");
+    const row = await db.safeRecipientAssessment.update({ where: { id }, data: { assessmentStatus: SafeRecipientAssessmentStatus.Rejected, eligibilityStatus: SafetyRecipientEligibility.NotVerified, reasonCode: input.reasonCode ?? null }, select: ASSESS_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.safeRecipientAssessmentRejected, "safe_recipient_assessment", row.id, input.reasonCode ? { reasonCode: input.reasonCode } : undefined);
+    return row;
+  });
+}
+
+/** CS-C11 — suspend an APPROVED assessment (reversible). Immediately NOT effective. Idempotent. */
+export async function suspendSafeRecipient(actor: FamilyActorContext, id: string): Promise<SafeRecipientAssessmentVM> {
+  assertFamily(actor, FamilyAction.SafeRecipientAssess);
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadAssessment(db, actor, id);
+    if (rec.assessmentStatus === SafeRecipientAssessmentStatus.Suspended) return db.safeRecipientAssessment.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: ASSESS_SELECT });
+    if (rec.assessmentStatus !== SafeRecipientAssessmentStatus.Approved) throw new FamilyValidationError("invalid_state");
+    const row = await db.safeRecipientAssessment.update({ where: { id }, data: { assessmentStatus: SafeRecipientAssessmentStatus.Suspended, eligibilityStatus: SafetyRecipientEligibility.NotVerified }, select: ASSESS_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.safeRecipientAssessmentSuspended, "safe_recipient_assessment", row.id);
+    return row;
+  });
+}
+
+/** CS-C11 — resume a SUSPENDED assessment — ONLY after re-checking every condition. Fail-closed. */
+export async function resumeSafeRecipient(actor: FamilyActorContext, id: string, now: Date = new Date()): Promise<SafeRecipientAssessmentVM> {
+  assertFamily(actor, FamilyAction.SafeRecipientAssess);
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadAssessment(db, actor, id);
+    if (rec.assessmentStatus !== SafeRecipientAssessmentStatus.Suspended) throw new FamilyValidationError("invalid_state");
+    if (rec.validUntil != null && rec.validUntil.getTime() <= now.getTime()) throw new FamilyValidationError("assessment_expired");
+    const { rel, profileArchived, membershipActive } = await loadConsentContext(db, actor, rec.guardianRelationshipId);
+    if (!isActiveGuardianRelationship(rel)) throw new FamilyValidationError("inactive_relationship");
+    if (profileArchived) throw new FamilyValidationError("archived_profile");
+    if (!membershipActive) throw new FamilyValidationError("inactive_membership");
+    const row = await db.safeRecipientAssessment.update({ where: { id }, data: { assessmentStatus: SafeRecipientAssessmentStatus.Approved, eligibilityStatus: SafetyRecipientEligibility.Eligible }, select: ASSESS_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.safeRecipientAssessmentResumed, "safe_recipient_assessment", row.id);
+    return row;
+  });
+}
+
+/** CS-C11 — change the expiry on an APPROVED or SUSPENDED assessment (future only; null clears it). */
+export async function changeSafeRecipientExpiry(actor: FamilyActorContext, id: string, validUntil: Date | null, now: Date = new Date()): Promise<SafeRecipientAssessmentVM> {
+  assertFamily(actor, FamilyAction.SafeRecipientAssess);
+  if (validUntil != null && validUntil.getTime() <= now.getTime()) throw new FamilyValidationError("invalid_state");
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadAssessment(db, actor, id);
+    if (rec.assessmentStatus !== SafeRecipientAssessmentStatus.Approved && rec.assessmentStatus !== SafeRecipientAssessmentStatus.Suspended) throw new FamilyValidationError("invalid_state");
+    const row = await db.safeRecipientAssessment.update({ where: { id }, data: { validUntil }, select: ASSESS_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.safeRecipientAssessmentExpiryChanged, "safe_recipient_assessment", row.id);
+    return row;
+  });
+}
+
+/** CS-C11 — expire an APPROVED or SUSPENDED assessment (terminal). Idempotent. */
+export async function expireSafeRecipient(actor: FamilyActorContext, id: string): Promise<SafeRecipientAssessmentVM> {
+  assertFamily(actor, FamilyAction.SafeRecipientAssess);
+  return withTenant(actor.tenantId, async (db) => {
+    const rec = await loadAssessment(db, actor, id);
+    if (rec.assessmentStatus === SafeRecipientAssessmentStatus.Expired) return db.safeRecipientAssessment.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: ASSESS_SELECT });
+    if (rec.assessmentStatus !== SafeRecipientAssessmentStatus.Approved && rec.assessmentStatus !== SafeRecipientAssessmentStatus.Suspended) throw new FamilyValidationError("invalid_state");
+    const row = await db.safeRecipientAssessment.update({ where: { id }, data: { assessmentStatus: SafeRecipientAssessmentStatus.Expired, eligibilityStatus: SafetyRecipientEligibility.NotVerified }, select: ASSESS_SELECT });
+    await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.safeRecipientAssessmentExpired, "safe_recipient_assessment", row.id);
+    return row;
+  });
+}
+
+/**
+ * CS-C11 — the SAFE-RECIPIENT resolver. Fail-closed: safe=true ONLY when the workspace is FAMILY, the
+ * profile is ACTIVE, the relationship is active, the guardian membership is active, an EFFECTIVE CS-C10
+ * consent exists, AND an APPROVED, non-suspended, non-expired assessment exists for the purpose. Authority
+ * or consent ALONE never suffice. Returns { safe, state, reason } with a BOUNDED reason.
+ */
+export type SafeRecipientState = "not_found" | "blocked" | "pending" | "approved" | "suspended" | "rejected" | "expired";
+export interface SafeRecipientDecision { safe: boolean; state: SafeRecipientState; reason: SafeRecipientReason }
+export async function evaluateSafeRecipientAssessment(actor: FamilyActorContext, guardianRelationshipId: string, purpose: string, now: Date = new Date()): Promise<SafeRecipientDecision> {
+  assertFamily(actor, FamilyAction.SafeRecipientView); // FAMILY workspace enforced here
+  return withTenant(actor.tenantId, async (db) => {
+    const rel = await db.guardianRelationship.findFirst({ where: { id: guardianRelationshipId, tenantId: actor.tenantId }, select: { id: true, status: true, revokedAt: true, archivedAt: true, protectedProfileId: true, guardianMembershipId: true } });
+    if (!rel || !isActiveGuardianRelationship(rel)) return { safe: false, state: "blocked", reason: SafeRecipientReason.InactiveRelationship };
+    const [profile, gm] = await Promise.all([
+      db.protectedProfile.findFirst({ where: { id: rel.protectedProfileId, tenantId: actor.tenantId }, select: { archivedAt: true } }),
+      db.membership.findFirst({ where: { id: rel.guardianMembershipId, tenantId: actor.tenantId }, select: { id: true } }),
+    ]);
+    if (!profile || profile.archivedAt != null) return { safe: false, state: "blocked", reason: SafeRecipientReason.ArchivedProfile };
+    if (!gm) return { safe: false, state: "blocked", reason: SafeRecipientReason.InactiveMembership };
+    // CS-C10 effective consent (Guardian consent) is REQUIRED — authority/consent alone are not enough.
+    const consents = await db.consentRecord.findMany({ where: { tenantId: actor.tenantId, protectedProfileId: rel.protectedProfileId, guardianRelationshipId, consentType: ConsentType.Guardian, consentStatus: ConsentStatus.Active, revokedAt: null, archivedAt: null }, orderBy: { createdAt: "desc" }, select: CONSENT_SELECT });
+    if (!consents.some((c) => isConsentEffective(c, now))) return { safe: false, state: "blocked", reason: SafeRecipientReason.NoEffectiveConsent };
+    // Assessment for the purpose.
+    const rows = await db.safeRecipientAssessment.findMany({ where: { tenantId: actor.tenantId, guardianRelationshipId, purpose }, orderBy: { createdAt: "desc" }, select: ASSESS_SELECT });
+    if (rows.length === 0) return { safe: false, state: "not_found", reason: SafeRecipientReason.AssessmentNotFound };
+    const approved = rows.find((a) => a.assessmentStatus === SafeRecipientAssessmentStatus.Approved && isSafeRecipientAssessmentApproved(a, now));
+    if (approved) return { safe: true, state: "approved", reason: SafeRecipientReason.Safe };
+    const live = rows.find((a) => a.revokedAt === null && a.archivedAt === null);
+    if (live?.assessmentStatus === SafeRecipientAssessmentStatus.Suspended) return { safe: false, state: "suspended", reason: SafeRecipientReason.AssessmentSuspended };
+    if (live?.assessmentStatus === SafeRecipientAssessmentStatus.Approved) return { safe: false, state: "expired", reason: SafeRecipientReason.AssessmentExpired }; // approved but past validUntil
+    if (live?.assessmentStatus === SafeRecipientAssessmentStatus.Expired) return { safe: false, state: "expired", reason: SafeRecipientReason.AssessmentExpired };
+    return { safe: false, state: (live?.assessmentStatus as SafeRecipientState) ?? "not_found", reason: SafeRecipientReason.AssessmentNotApproved };
+  });
+}
+
+/** CS-C11 — content-free, append-only safe-recipient timeline for one relationship (newest first). */
+export interface SafeRecipientTimelineEntryVM { id: string; event: string; actorUserId: string | null; targetId: string | null; metadata: Record<string, unknown> | null; createdAt: Date }
+export async function listGuardianSafeRecipientTimeline(actor: FamilyActorContext, guardianRelationshipId: string, opts: { limit?: number } = {}): Promise<SafeRecipientTimelineEntryVM[]> {
+  assertFamily(actor, FamilyAction.SafeRecipientView);
+  return withTenant(actor.tenantId, async (db) => {
+    const recs = await db.safeRecipientAssessment.findMany({ where: { tenantId: actor.tenantId, guardianRelationshipId }, select: { id: true } });
+    const ids = recs.map((r) => r.id);
+    if (ids.length === 0) return [];
+    const rows = await db.auditLog.findMany({
+      where: { tenantId: actor.tenantId, targetType: "safe_recipient_assessment", targetId: { in: ids } },
+      orderBy: { createdAt: "desc" }, take: Math.min(Math.max(opts.limit ?? 100, 1), 200),
+      select: { id: true, event: true, actorUserId: true, targetId: true, metadata: true, createdAt: true },
+    });
+    return rows.map((r) => ({ ...r, metadata: (r.metadata ?? null) as Record<string, unknown> | null }));
   });
 }
 

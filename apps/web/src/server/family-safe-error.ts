@@ -1,6 +1,6 @@
 import "server-only";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError, DeliveryNotEligibleError } from "@guardora/db";
-import { isFamilyInvitationErrorCode, isFamilyAuthorityErrorCode, isFamilyConsentErrorCode, type FamilyActionErrorCode, type FamilyInvitationErrorCode, type FamilyAuthorityErrorCode, type FamilyConsentErrorCode } from "@/app/family/family-i18n";
+import { isFamilyInvitationErrorCode, isFamilyAuthorityErrorCode, isFamilyConsentErrorCode, isFamilyAssessmentErrorCode, type FamilyActionErrorCode, type FamilyInvitationErrorCode, type FamilyAuthorityErrorCode, type FamilyConsentErrorCode, type FamilyAssessmentErrorCode } from "@/app/family/family-i18n";
 
 /**
  * CS-C6.1 — map a repository exception to ONE safe, serializable, non-PII error group. This is the ONLY
@@ -65,3 +65,18 @@ export function toFamilyConsentErrorCode(e: unknown): FamilyConsentErrorCode {
 }
 /** CS-C10 — the safe result shape a consent destructive action returns to `useActionState`. */
 export type FamilyConsentActionState = { ok: true } | { ok: false; error: FamilyConsentErrorCode };
+
+/**
+ * CS-C11 — map a safe-recipient-assessment exception to ONE safe assessment error GROUP. FamilyValidationError
+ * carries the precise safe code in `.field`; a not-found record → assessment_not_found; a forbidden actor →
+ * invalid_state; anything else fails closed to invalid_state / retry_later. Never leaks a stack, SQL/Prisma
+ * detail, id, PII or chain.
+ */
+export function toFamilyAssessmentErrorCode(e: unknown): FamilyAssessmentErrorCode {
+  if (e instanceof FamilyForbiddenError) return "invalid_state";
+  if (e instanceof FamilyNotFoundError) return "assessment_not_found";
+  if (e instanceof FamilyValidationError) return isFamilyAssessmentErrorCode(e.field) ? e.field : "invalid_state";
+  return "retry_later";
+}
+/** CS-C11 — the safe result shape an assessment destructive action returns to `useActionState`. */
+export type FamilyAssessmentActionState = { ok: true } | { ok: false; error: FamilyAssessmentErrorCode };

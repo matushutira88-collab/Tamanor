@@ -57,9 +57,46 @@ export enum SafeRecipientAssessmentStatus {
   NotStarted = "not_started",
   Pending = "pending",
   Approved = "approved",
+  // CS-C11 — a reversible pause. A SUSPENDED assessment is NOT approved/effective; resume returns it to
+  // Approved after re-checking every condition.
+  Suspended = "suspended",
   Rejected = "rejected",
   Revoked = "revoked",
   Expired = "expired",
+}
+
+/**
+ * CS-C11 — the PURPOSE a guardian is assessed for as a SAFE RECIPIENT of Family safety information. An
+ * assessment ONLY decides safe-recipient eligibility for this purpose; it NEVER grants access to data
+ * (that is CS-C12 RecipientAuthorization). Bounded — never free text.
+ */
+export enum AssessmentPurpose {
+  SafetyInformation = "safety_information",
+  SafetySignal = "safety_signal",
+  IncidentSummary = "incident_summary",
+  EmergencyContact = "emergency_contact",
+}
+export const ALL_ASSESSMENT_PURPOSES: readonly AssessmentPurpose[] = Object.values(AssessmentPurpose);
+export const isAssessmentPurpose = (x: unknown): x is AssessmentPurpose => (ALL_ASSESSMENT_PURPOSES as readonly string[]).includes(x as string);
+
+/** CS-C11 — the fields a client may submit to REQUEST an assessment. Bounded; never PII/document/free text. */
+export const SAFE_RECIPIENT_REQUEST_FIELDS: readonly string[] = ["guardianRelationshipId", "purpose"];
+
+/**
+ * CS-C11 — the bounded reason the safe-recipient resolver returns. Fail-closed: any non-"safe" reason means
+ * the guardian must NOT be treated as a safe recipient. Never free text / internal detail.
+ */
+export enum SafeRecipientReason {
+  Safe = "safe",
+  NotFamilyWorkspace = "not_family_workspace",
+  ArchivedProfile = "archived_profile",
+  InactiveRelationship = "inactive_relationship",
+  InactiveMembership = "inactive_membership",
+  NoEffectiveConsent = "no_effective_consent",
+  AssessmentNotFound = "assessment_not_found",
+  AssessmentNotApproved = "assessment_not_approved",
+  AssessmentSuspended = "assessment_suspended",
+  AssessmentExpired = "assessment_expired",
 }
 export const ALL_SAFE_RECIPIENT_ASSESSMENT_STATUSES: readonly SafeRecipientAssessmentStatus[] = Object.values(SafeRecipientAssessmentStatus);
 

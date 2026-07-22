@@ -4,7 +4,8 @@ import {
   getProtectedProfile, listRelationshipsForProfile, listFamilyMembers, listProfileTimeline,
   listConsentRecords, listSafetySignals, guardianLifecycleState, isActiveGuardianRelationship,
   listGuardianAuthorityRecords, evaluateEffectiveGuardianAuthority, listGuardianAuthorityTimeline,
-  listGuardianConsents, evaluateEffectiveGuardianConsent, listGuardianConsentTimeline, FamilyNotFoundError,
+  listGuardianConsents, evaluateEffectiveGuardianConsent, listGuardianConsentTimeline,
+  listSafeRecipientAssessments, evaluateSafeRecipientAssessment, listGuardianSafeRecipientTimeline, FamilyNotFoundError,
 } from "@guardora/db";
 import {
   ALL_AGE_BANDS, ProtectionStatus, PROFILE_LANGUAGES, ALL_GUARDIAN_ROLES,
@@ -19,7 +20,8 @@ import { updateProtectedProfileAction, archiveProtectedProfileAction, restorePro
 import { createGuardianRelationshipAction, updateGuardianRoleAction, deactivateGuardianRelationshipAction, reactivateGuardianRelationshipAction } from "./actions";
 import { GuardianAuthoritySection } from "./authority-section";
 import { GuardianConsentSection } from "./consent-section";
-import { ConsentType } from "@guardora/core";
+import { GuardianAssessmentSection } from "./assessment-section";
+import { ConsentType, AssessmentPurpose } from "@guardora/core";
 
 export const dynamic = "force-dynamic";
 function fmt(d: Date | null): string { return d ? new Date(d).toISOString().slice(0, 10) : "—"; }
@@ -62,9 +64,17 @@ export default async function ProfileDetailPage({ params, searchParams }: { para
     effective: await evaluateEffectiveGuardianConsent(actor, r.id, ConsentType.Guardian),
     timeline: await listGuardianConsentTimeline(actor, r.id),
   })));
+  // CS-C11 — safe-recipient assessment per ACTIVE guardian (records + resolver decision + timeline).
+  const canManageAssessment = familyCan(actor, FamilyAction.SafeRecipientAssess);
+  const assessmentData = await Promise.all(activeGuardians.map(async (r) => ({
+    rel: r,
+    records: await listSafeRecipientAssessments(actor, r.id, { includeInactive: true }),
+    decision: await evaluateSafeRecipientAssessment(actor, r.id, AssessmentPurpose.SafetyInformation),
+    timeline: await listGuardianSafeRecipientTimeline(actor, r.id),
+  })));
 
   const archived = profile.archivedAt !== null;
-  const banner = sp.ok ? { tone: "ok" as const, msg: sp.ok } : sp.e ? { tone: "danger" as const, msg: t.actionErrors[sp.e] ?? t.c9.errors[sp.e] ?? t.c10.errors[sp.e] ?? t.actionErrors.retry_later } : null;
+  const banner = sp.ok ? { tone: "ok" as const, msg: sp.ok } : sp.e ? { tone: "danger" as const, msg: t.actionErrors[sp.e] ?? t.c9.errors[sp.e] ?? t.c10.errors[sp.e] ?? t.c11.errors[sp.e] ?? t.actionErrors.retry_later } : null;
   const ageOptions = (ALL_AGE_BANDS as readonly string[]).map((v) => ({ value: v, label: famLabel(t.labels.ageBand, v) }));
   const statusOptions = Object.values(ProtectionStatus).map((v) => ({ value: v, label: famLabel(t.labels.protectionStatus, v) }));
   const langOptions = [{ value: "", label: t.c7.languageAuto }, ...(PROFILE_LANGUAGES as readonly string[]).map((v) => ({ value: v, label: v.toUpperCase() }))];
@@ -183,6 +193,19 @@ export default async function ProfileDetailPage({ params, searchParams }: { para
           <div className="space-y-3">
             {consentData.map((a) => (
               <GuardianConsentSection key={a.rel.id} t={t} profileId={profile.id} relationshipId={a.rel.id} guardianRoleLabel={famLabel(t.c7.roles, a.rel.guardianRole)} records={a.records} effective={a.effective} timeline={a.timeline} canManage={canManageConsent} />
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* CS-C11 — safe recipient assessment (request/approve/reject/suspend/resume/expire) per active guardian */}
+      {activeGuardians.length > 0 && (
+        <Card>
+          <SectionHeader title={t.c11.title} />
+          <p className="mb-3 text-xs text-[var(--color-muted)]">{t.c11.disclaimer}</p>
+          <div className="space-y-3">
+            {assessmentData.map((a) => (
+              <GuardianAssessmentSection key={a.rel.id} t={t} profileId={profile.id} relationshipId={a.rel.id} guardianRoleLabel={famLabel(t.c7.roles, a.rel.guardianRole)} records={a.records} decision={a.decision} timeline={a.timeline} canManage={canManageAssessment} />
             ))}
           </div>
         </Card>

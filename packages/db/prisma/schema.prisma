@@ -2816,8 +2816,11 @@ model SafeRecipientAssessment {
   id                     String    @id @default(cuid())
   tenantId               String
   guardianRelationshipId String
+  // CS-C11 — the AssessmentPurpose (safety_information|safety_signal|incident_summary|emergency_contact).
+  // Bounded CHECK in the hand-authored CS-C11 migration. Default keeps pre-C11 + CS-C2 creates valid.
+  purpose                String    @default("safety_information")
   eligibilityStatus      String    @default("not_verified") // SafetyRecipientEligibility (never auto-eligible)
-  assessmentStatus       String    @default("not_started") // SafeRecipientAssessmentStatus
+  assessmentStatus       String    @default("not_started") // SafeRecipientAssessmentStatus (…|suspended)
   assessedByMembershipId String? // required for APPROVED — same-tenant enforced in repository (no DB FK)
   assessedAt             DateTime?
   reasonCode             String? // SafeRecipientReasonCode (allow-listed enum, NEVER free text)

@@ -101,6 +101,18 @@ export interface FamilyDict {
     revokeDialogTitle: string; revokeDialogBody: string; revokeDialogConfirm: string;
     statuses: Record<string, string>; types: Record<string, string>; reasons: Record<string, string>; events: Record<string, string>; errors: Record<string, string>;
   };
+  // CS-C11 — safe recipient assessment lifecycle UI (content-free; assessment ≠ data access).
+  c11: {
+    title: string; disclaimer: string; noAssessment: string;
+    statusLabel: string; purposeLabel: string; expiresLabel: string; optional: string;
+    safe: string; notSafe: string; safeReason: string;
+    request: string; approve: string; reject: string; suspend: string; resume: string; expire: string; changeExpiry: string; save: string;
+    timelineTitle: string; timelineEmpty: string;
+    suspendDialogTitle: string; suspendDialogBody: string; suspendDialogConfirm: string;
+    rejectDialogTitle: string; rejectDialogBody: string; rejectDialogConfirm: string;
+    expireDialogTitle: string; expireDialogBody: string; expireDialogConfirm: string;
+    statuses: Record<string, string>; purposes: Record<string, string>; reasons: Record<string, string>; events: Record<string, string>; errors: Record<string, string>;
+  };
 }
 
 /** CS-C6.1 — the safe, serializable Family destructive-action error groups (frozen). */
@@ -129,7 +141,13 @@ export const FAMILY_CONSENT_ERROR_CODES = [
   "inactive_relationship", "inactive_membership", "archived_profile", "invalid_state", "retry_later",
 ] as const;
 export type FamilyConsentErrorCode = (typeof FAMILY_CONSENT_ERROR_CODES)[number];
-const ALL_SAFE_ERROR_CODES: ReadonlySet<string> = new Set<string>([...FAMILY_ACTION_ERROR_CODES, ...FAMILY_INVITATION_ERROR_CODES, ...FAMILY_AUTHORITY_ERROR_CODES, ...FAMILY_CONSENT_ERROR_CODES]);
+/** CS-C11 — additional safe error groups for the safe-recipient assessment lifecycle (superset). */
+export const FAMILY_ASSESSMENT_ERROR_CODES = [
+  "assessment_not_found", "assessment_already_active", "assessment_expired",
+  "inactive_relationship", "inactive_membership", "archived_profile", "invalid_state", "retry_later",
+] as const;
+export type FamilyAssessmentErrorCode = (typeof FAMILY_ASSESSMENT_ERROR_CODES)[number];
+const ALL_SAFE_ERROR_CODES: ReadonlySet<string> = new Set<string>([...FAMILY_ACTION_ERROR_CODES, ...FAMILY_INVITATION_ERROR_CODES, ...FAMILY_AUTHORITY_ERROR_CODES, ...FAMILY_CONSENT_ERROR_CODES, ...FAMILY_ASSESSMENT_ERROR_CODES]);
 /** Accepts ANY safe serializable group (CS-C6.1 destructive OR CS-C8 invitation). Never a raw string/PII. */
 export function isFamilyActionErrorCode(v: unknown): v is FamilyActionErrorCode {
   return typeof v === "string" && ALL_SAFE_ERROR_CODES.has(v);
@@ -142,6 +160,9 @@ export function isFamilyAuthorityErrorCode(v: unknown): v is FamilyAuthorityErro
 }
 export function isFamilyConsentErrorCode(v: unknown): v is FamilyConsentErrorCode {
   return typeof v === "string" && (FAMILY_CONSENT_ERROR_CODES as readonly string[]).includes(v);
+}
+export function isFamilyAssessmentErrorCode(v: unknown): v is FamilyAssessmentErrorCode {
+  return typeof v === "string" && (FAMILY_ASSESSMENT_ERROR_CODES as readonly string[]).includes(v);
 }
 
 const en: FamilyDict = {
@@ -325,6 +346,34 @@ const en: FamilyDict = {
     errors: {
       consent_not_found: "That consent could not be found.", consent_already_active: "This guardian already has an active consent of this type.", consent_suspended: "This consent is suspended.", consent_revoked: "This consent was revoked.", consent_expired: "This consent has expired.",
       inactive_relationship: "The guardian relationship is not active.", inactive_membership: "The guardian is no longer a member.", archived_profile: "The profile is archived.", invalid_state: "This action isn't possible for the consent's current state.", retry_later: "Something went wrong. Please try again in a moment.",
+    },
+  },
+  c11: {
+    title: "Safe recipient", disclaimer: "An assessment only decides whether a guardian may be a safe recipient of Family safety information. It does NOT grant access to any data.",
+    noAssessment: "No assessment yet.", statusLabel: "Status", purposeLabel: "Purpose", expiresLabel: "Expires", optional: "optional",
+    safe: "Safe recipient", notSafe: "Not a safe recipient", safeReason: "Reason",
+    request: "Request assessment", approve: "Approve", reject: "Reject", suspend: "Suspend", resume: "Resume", expire: "Expire", changeExpiry: "Change expiry", save: "Save",
+    timelineTitle: "Assessment history", timelineEmpty: "No assessment activity yet.",
+    suspendDialogTitle: "Suspend this assessment?", suspendDialogBody: "Suspending immediately makes the guardian not a safe recipient. It can be resumed later after re-checking conditions.", suspendDialogConfirm: "Suspend assessment",
+    rejectDialogTitle: "Reject this assessment?", rejectDialogBody: "Rejecting permanently declines this assessment. The guardian is not a safe recipient for this purpose. This cannot be undone.", rejectDialogConfirm: "Reject assessment",
+    expireDialogTitle: "Expire this assessment?", expireDialogBody: "Expiring permanently ends this assessment. This cannot be undone; request a new assessment if needed.", expireDialogConfirm: "Expire assessment",
+    statuses: { not_started: "Not started", pending: "Pending", approved: "Approved", suspended: "Suspended", rejected: "Rejected", revoked: "Revoked", expired: "Expired" },
+    purposes: { safety_information: "Safety information", safety_signal: "Safety signal", incident_summary: "Incident summary", emergency_contact: "Emergency contact" },
+    reasons: { safe: "Safe", not_family_workspace: "Not a Family workspace.", archived_profile: "The profile is archived.", inactive_relationship: "The guardian relationship is not active.", inactive_membership: "The guardian is no longer a member.", no_effective_consent: "No effective consent.", assessment_not_found: "No assessment.", assessment_not_approved: "The assessment is not approved.", assessment_suspended: "The assessment is suspended.", assessment_expired: "The assessment has expired." },
+    events: {
+      "child_safety.safe_recipient_assessment.requested": "Assessment requested",
+      "child_safety.safe_recipient_assessment.approved": "Assessment approved",
+      "child_safety.safe_recipient_assessment.rejected": "Assessment rejected",
+      "child_safety.safe_recipient_assessment.suspended": "Assessment suspended",
+      "child_safety.safe_recipient_assessment.resumed": "Assessment resumed",
+      "child_safety.safe_recipient_assessment.expired": "Assessment expired",
+      "child_safety.safe_recipient_assessment.expiry_changed": "Assessment expiry changed",
+      "child_safety.safe_recipient_assessment.created": "Assessment created",
+      "child_safety.safe_recipient_assessment.revoked": "Assessment revoked",
+    },
+    errors: {
+      assessment_not_found: "That assessment could not be found.", assessment_already_active: "This guardian already has an active assessment for this purpose.", assessment_expired: "This assessment has expired.",
+      inactive_relationship: "The guardian relationship is not active.", inactive_membership: "The guardian is no longer a member.", archived_profile: "The profile is archived.", invalid_state: "This action isn't possible for the assessment's current state.", retry_later: "Something went wrong. Please try again in a moment.",
     },
   },
 };
@@ -512,6 +561,34 @@ const sk: FamilyDict = {
       inactive_relationship: "Vzťah opatrovníka nie je aktívny.", inactive_membership: "Opatrovník už nie je členom.", archived_profile: "Profil je archivovaný.", invalid_state: "Táto akcia nie je možná pre aktuálny stav súhlasu.", retry_later: "Niečo sa pokazilo. Skúste to o chvíľu znova.",
     },
   },
+  c11: {
+    title: "Bezpečný príjemca", disclaimer: "Posúdenie iba určuje, či opatrovník môže byť bezpečným príjemcom rodinných bezpečnostných informácií. NEudeľuje prístup k žiadnym dátam.",
+    noAssessment: "Zatiaľ žiadne posúdenie.", statusLabel: "Stav", purposeLabel: "Účel", expiresLabel: "Platí do", optional: "voliteľné",
+    safe: "Bezpečný príjemca", notSafe: "Nie je bezpečný príjemca", safeReason: "Dôvod",
+    request: "Požiadať o posúdenie", approve: "Schváliť", reject: "Zamietnuť", suspend: "Pozastaviť", resume: "Obnoviť", expire: "Ukončiť", changeExpiry: "Zmeniť platnosť", save: "Uložiť",
+    timelineTitle: "História posúdenia", timelineEmpty: "Zatiaľ žiadna aktivita posúdenia.",
+    suspendDialogTitle: "Pozastaviť toto posúdenie?", suspendDialogBody: "Pozastavením opatrovník okamžite prestane byť bezpečným príjemcom. Neskôr ho možno obnoviť po opätovnom overení podmienok.", suspendDialogConfirm: "Pozastaviť posúdenie",
+    rejectDialogTitle: "Zamietnuť toto posúdenie?", rejectDialogBody: "Zamietnutím sa posúdenie natrvalo odmietne. Opatrovník nie je bezpečným príjemcom pre tento účel. Nedá sa to vrátiť.", rejectDialogConfirm: "Zamietnuť posúdenie",
+    expireDialogTitle: "Ukončiť toto posúdenie?", expireDialogBody: "Ukončením sa posúdenie natrvalo skončí. Nedá sa to vrátiť; v prípade potreby požiadajte o nové posúdenie.", expireDialogConfirm: "Ukončiť posúdenie",
+    statuses: { not_started: "Nezačaté", pending: "Čaká", approved: "Schválené", suspended: "Pozastavené", rejected: "Zamietnuté", revoked: "Zrušené", expired: "Vypršané" },
+    purposes: { safety_information: "Bezpečnostné informácie", safety_signal: "Bezpečnostný signál", incident_summary: "Zhrnutie incidentu", emergency_contact: "Núdzový kontakt" },
+    reasons: { safe: "Bezpečný", not_family_workspace: "Nie je rodinný priestor.", archived_profile: "Profil je archivovaný.", inactive_relationship: "Vzťah opatrovníka nie je aktívny.", inactive_membership: "Opatrovník už nie je členom.", no_effective_consent: "Žiadny účinný súhlas.", assessment_not_found: "Žiadne posúdenie.", assessment_not_approved: "Posúdenie nie je schválené.", assessment_suspended: "Posúdenie je pozastavené.", assessment_expired: "Posúdenie vypršalo." },
+    events: {
+      "child_safety.safe_recipient_assessment.requested": "Posúdenie vyžiadané",
+      "child_safety.safe_recipient_assessment.approved": "Posúdenie schválené",
+      "child_safety.safe_recipient_assessment.rejected": "Posúdenie zamietnuté",
+      "child_safety.safe_recipient_assessment.suspended": "Posúdenie pozastavené",
+      "child_safety.safe_recipient_assessment.resumed": "Posúdenie obnovené",
+      "child_safety.safe_recipient_assessment.expired": "Posúdenie vypršalo",
+      "child_safety.safe_recipient_assessment.expiry_changed": "Platnosť posúdenia zmenená",
+      "child_safety.safe_recipient_assessment.created": "Posúdenie vytvorené",
+      "child_safety.safe_recipient_assessment.revoked": "Posúdenie zrušené",
+    },
+    errors: {
+      assessment_not_found: "Posúdenie sa nenašlo.", assessment_already_active: "Tento opatrovník už má aktívne posúdenie pre tento účel.", assessment_expired: "Toto posúdenie vypršalo.",
+      inactive_relationship: "Vzťah opatrovníka nie je aktívny.", inactive_membership: "Opatrovník už nie je členom.", archived_profile: "Profil je archivovaný.", invalid_state: "Táto akcia nie je možná pre aktuálny stav posúdenia.", retry_later: "Niečo sa pokazilo. Skúste to o chvíľu znova.",
+    },
+  },
 };
 
 const de: FamilyDict = {
@@ -695,6 +772,34 @@ const de: FamilyDict = {
     errors: {
       consent_not_found: "Diese Einwilligung wurde nicht gefunden.", consent_already_active: "Dieser Betreuer hat bereits eine aktive Einwilligung dieses Typs.", consent_suspended: "Diese Einwilligung ist ausgesetzt.", consent_revoked: "Diese Einwilligung wurde widerrufen.", consent_expired: "Diese Einwilligung ist abgelaufen.",
       inactive_relationship: "Die Betreuungsbeziehung ist nicht aktiv.", inactive_membership: "Der Betreuer ist kein Mitglied mehr.", archived_profile: "Das Profil ist archiviert.", invalid_state: "Diese Aktion ist im aktuellen Zustand der Einwilligung nicht möglich.", retry_later: "Etwas ist schiefgelaufen. Bitte versuchen Sie es gleich erneut.",
+    },
+  },
+  c11: {
+    title: "Sicherer Empfänger", disclaimer: "Eine Bewertung entscheidet nur, ob ein Betreuer ein sicherer Empfänger von Familien-Sicherheitsinformationen sein darf. Sie gewährt KEINEN Zugriff auf Daten.",
+    noAssessment: "Noch keine Bewertung.", statusLabel: "Status", purposeLabel: "Zweck", expiresLabel: "Gültig bis", optional: "optional",
+    safe: "Sicherer Empfänger", notSafe: "Kein sicherer Empfänger", safeReason: "Grund",
+    request: "Bewertung anfordern", approve: "Genehmigen", reject: "Ablehnen", suspend: "Aussetzen", resume: "Fortsetzen", expire: "Beenden", changeExpiry: "Gültigkeit ändern", save: "Speichern",
+    timelineTitle: "Bewertungs-Verlauf", timelineEmpty: "Noch keine Bewertungs-Aktivität.",
+    suspendDialogTitle: "Diese Bewertung aussetzen?", suspendDialogBody: "Durch das Aussetzen ist der Betreuer sofort kein sicherer Empfänger mehr. Sie kann später nach erneuter Prüfung der Bedingungen fortgesetzt werden.", suspendDialogConfirm: "Bewertung aussetzen",
+    rejectDialogTitle: "Diese Bewertung ablehnen?", rejectDialogBody: "Durch das Ablehnen wird diese Bewertung dauerhaft abgelehnt. Der Betreuer ist für diesen Zweck kein sicherer Empfänger. Dies kann nicht rückgängig gemacht werden.", rejectDialogConfirm: "Bewertung ablehnen",
+    expireDialogTitle: "Diese Bewertung beenden?", expireDialogBody: "Durch das Beenden endet diese Bewertung dauerhaft. Dies kann nicht rückgängig gemacht werden; fordern Sie bei Bedarf eine neue Bewertung an.", expireDialogConfirm: "Bewertung beenden",
+    statuses: { not_started: "Nicht begonnen", pending: "Ausstehend", approved: "Genehmigt", suspended: "Ausgesetzt", rejected: "Abgelehnt", revoked: "Widerrufen", expired: "Abgelaufen" },
+    purposes: { safety_information: "Sicherheitsinformationen", safety_signal: "Sicherheitssignal", incident_summary: "Vorfallzusammenfassung", emergency_contact: "Notfallkontakt" },
+    reasons: { safe: "Sicher", not_family_workspace: "Kein Familienbereich.", archived_profile: "Das Profil ist archiviert.", inactive_relationship: "Die Betreuungsbeziehung ist nicht aktiv.", inactive_membership: "Der Betreuer ist kein Mitglied mehr.", no_effective_consent: "Keine wirksame Einwilligung.", assessment_not_found: "Keine Bewertung.", assessment_not_approved: "Die Bewertung ist nicht genehmigt.", assessment_suspended: "Die Bewertung ist ausgesetzt.", assessment_expired: "Die Bewertung ist abgelaufen." },
+    events: {
+      "child_safety.safe_recipient_assessment.requested": "Bewertung angefordert",
+      "child_safety.safe_recipient_assessment.approved": "Bewertung genehmigt",
+      "child_safety.safe_recipient_assessment.rejected": "Bewertung abgelehnt",
+      "child_safety.safe_recipient_assessment.suspended": "Bewertung ausgesetzt",
+      "child_safety.safe_recipient_assessment.resumed": "Bewertung fortgesetzt",
+      "child_safety.safe_recipient_assessment.expired": "Bewertung abgelaufen",
+      "child_safety.safe_recipient_assessment.expiry_changed": "Bewertungsgültigkeit geändert",
+      "child_safety.safe_recipient_assessment.created": "Bewertung erstellt",
+      "child_safety.safe_recipient_assessment.revoked": "Bewertung widerrufen",
+    },
+    errors: {
+      assessment_not_found: "Diese Bewertung wurde nicht gefunden.", assessment_already_active: "Dieser Betreuer hat bereits eine aktive Bewertung für diesen Zweck.", assessment_expired: "Diese Bewertung ist abgelaufen.",
+      inactive_relationship: "Die Betreuungsbeziehung ist nicht aktiv.", inactive_membership: "Der Betreuer ist kein Mitglied mehr.", archived_profile: "Das Profil ist archiviert.", invalid_state: "Diese Aktion ist im aktuellen Zustand der Bewertung nicht möglich.", retry_later: "Etwas ist schiefgelaufen. Bitte versuchen Sie es gleich erneut.",
     },
   },
 };
