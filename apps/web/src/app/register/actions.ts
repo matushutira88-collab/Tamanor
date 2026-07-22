@@ -21,7 +21,18 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * renders a localized message) — no plaintext password ever leaves this action.
  */
 export async function registerAction(formData: FormData): Promise<void> {
-  const fail = (code: string): never => redirect(`/register?error=${encodeURIComponent(code)}`);
+  const kindRaw = String(formData.get("kind") ?? "").trim();
+  const selectedKind = isSelectableWorkspaceKind(kindRaw) ? kindRaw : null;
+
+  const fail = (code: string): never => {
+    const query = new URLSearchParams({ error: code });
+
+    if (selectedKind) {
+      query.set("kind", selectedKind);
+    }
+
+    redirect(`/register?${query.toString()}`);
+  };
 
   if (!(await isSameOrigin())) fail("csrf");
 
@@ -33,9 +44,8 @@ export async function registerAction(formData: FormData): Promise<void> {
 
   // CS-C6 — the workspace kind is server-authoritative and allow-listed. It comes from the mandatory
   // /register/workspace-type choice (hidden field); an unknown/missing kind fails closed to the chooser.
-  const kindRaw = String(formData.get("kind") ?? "").trim();
-  if (!isSelectableWorkspaceKind(kindRaw)) redirect("/register/workspace-type");
-  const kind = kindRaw as WorkspaceKind;
+  if (!selectedKind) redirect("/register/workspace-type");
+  const kind = selectedKind as WorkspaceKind;
 
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
