@@ -34,7 +34,7 @@ const fam = (tenantId: string, userId: string, role: string): FamilyActorContext
 let keyN = 0; const key = () => `dlv_key_${sfx}_${keyN++}`;
 
 async function fullChain(tenantId: string, profileId: string, guardianMembershipId: string, relType: string, grantorMembershipId: string) {
-  const rel = await systemDb.guardianRelationship.create({ data: { tenantId, guardianMembershipId, protectedProfileId: profileId, relationshipType: relType, authorityLevel: GuardianAuthorityLevel.Full, status: "verified" } });
+  const rel = await systemDb.guardianRelationship.create({ data: { tenantId, guardianMembershipId, protectedProfileId: profileId, relationshipType: relType, authorityLevel: GuardianAuthorityLevel.Full, guardianRole: "secondary", status: "verified" } });
   await systemDb.guardianAuthorityRecord.create({ data: { tenantId, guardianRelationshipId: rel.id, authorityType: "legal_guardian", authorityStatus: "verified", verifiedAt: new Date(), validUntil: future } });
   await systemDb.safeRecipientAssessment.create({ data: { tenantId, guardianRelationshipId: rel.id, assessmentStatus: "approved", eligibilityStatus: "eligible", assessedByMembershipId: grantorMembershipId, assessedAt: new Date(), validUntil: future } });
   return rel;

@@ -19,6 +19,7 @@ import { FamilyRole, WorkspaceCapability, WorkspaceKind, capabilityAllowedInWork
 import {
   AgeBand, ALL_AGE_BANDS, ProtectionStatus,
   GuardianRelationshipType, GuardianAuthorityLevel, GuardianRelationshipStatus,
+  GuardianRole, ALL_GUARDIAN_ROLES,
   ConsentStatus, ConsentType, SafetyRecipientEligibility,
 } from "./child-safety-signal";
 
@@ -188,6 +189,13 @@ export const CHILD_SAFETY_AUDIT_EVENTS = {
   guardianRelationshipCreated: "child_safety.guardian_relationship.created",
   guardianRelationshipRevoked: "child_safety.guardian_relationship.revoked",
   guardianRelationshipArchived: "child_safety.guardian_relationship.archived",
+  // CS-C7 — profile edit/restore + guardian lifecycle (content-free: field NAMES + enum transitions only,
+  // NEVER a label/PII value or raw input).
+  protectedProfileUpdated: "child_safety.protected_profile.updated",
+  protectedProfileRestored: "child_safety.protected_profile.restored",
+  guardianRelationshipDeactivated: "child_safety.guardian_relationship.deactivated",
+  guardianRelationshipReactivated: "child_safety.guardian_relationship.reactivated",
+  guardianRelationshipRoleChanged: "child_safety.guardian_relationship.role_changed",
   // CS-C2 — guardian authority, consent & safe-recipient assessment (content-free).
   guardianAuthorityCreated: "child_safety.guardian_authority.created",
   guardianAuthorityVerified: "child_safety.guardian_authority.verified",
@@ -248,10 +256,21 @@ export const CHILD_SAFETY_FORBIDDEN_FIELDS: readonly string[] = [
   "latitude", "longitude", "address", "gps", "coordinates",
 ];
 
-export const PROTECTED_PROFILE_CREATE_FIELDS: readonly string[] = ["guardianLabel", "ageBand", "protectionStatus"];
+export const PROTECTED_PROFILE_CREATE_FIELDS: readonly string[] = ["guardianLabel", "ageBand", "protectionStatus", "language"];
+// CS-C7 — the ONLY editable profile fields. Deliberately content-free: a guardian-chosen label, a coarse
+// age band, a bounded protection status and a preferred UI language — NEVER a real name, exact age/DOB,
+// avatar, free-text note, contact, identifier or raw content (those stay in CHILD_SAFETY_FORBIDDEN_FIELDS).
+export const PROTECTED_PROFILE_UPDATE_FIELDS: readonly string[] = ["guardianLabel", "ageBand", "protectionStatus", "language"];
 export const GUARDIAN_RELATIONSHIP_CREATE_FIELDS: readonly string[] = [
-  "guardianMembershipId", "protectedProfileId", "relationshipType", "authorityLevel", "consentType",
+  "guardianMembershipId", "protectedProfileId", "relationshipType", "authorityLevel", "guardianRole", "consentType",
 ];
+
+/**
+ * CS-C7 — a ProtectedProfile's preferred UI/language is bounded to the app locales. It is a display
+ * preference, NOT evidence of nationality/ethnicity, and never free text.
+ */
+export const PROFILE_LANGUAGES: readonly string[] = ["en", "sk", "de"];
+export const isProfileLanguage = (x: unknown): x is string => typeof x === "string" && PROFILE_LANGUAGES.includes(x);
 
 export type ChildSafetyInputErrorCode = "forbidden_field" | "unknown_field" | "invalid_value" | "not_object";
 export interface ChildSafetyInputValidation { ok: boolean; errors: { code: ChildSafetyInputErrorCode; field: string }[] }
@@ -276,6 +295,7 @@ export const isProtectionStatus = (x: unknown): x is ProtectionStatus => Object.
 export const isGuardianRelationshipType = (x: unknown): x is GuardianRelationshipType => Object.values(GuardianRelationshipType).includes(x as GuardianRelationshipType);
 export const isGuardianAuthorityLevel = (x: unknown): x is GuardianAuthorityLevel => Object.values(GuardianAuthorityLevel).includes(x as GuardianAuthorityLevel);
 export const isGuardianRelationshipStatus = (x: unknown): x is GuardianRelationshipStatus => Object.values(GuardianRelationshipStatus).includes(x as GuardianRelationshipStatus);
+export const isGuardianRole = (x: unknown): x is GuardianRole => (ALL_GUARDIAN_ROLES as readonly string[]).includes(x as string);
 export const isConsentStatus = (x: unknown): x is ConsentStatus => Object.values(ConsentStatus).includes(x as ConsentStatus);
 export const isConsentType = (x: unknown): x is ConsentType => Object.values(ConsentType).includes(x as ConsentType);
 export const isSafetyRecipientEligibility = (x: unknown): x is SafetyRecipientEligibility => Object.values(SafetyRecipientEligibility).includes(x as SafetyRecipientEligibility);

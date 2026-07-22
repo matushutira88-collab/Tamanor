@@ -123,6 +123,16 @@ export enum GuardianRelationshipType { Parent = "parent", LegalGuardian = "legal
 export enum GuardianAuthorityLevel { Full = "full", Limited = "limited", ReadOnly = "read_only" }
 export enum GuardianRelationshipStatus { Pending = "pending", Verified = "verified", Suspended = "suspended", Revoked = "revoked" }
 
+/**
+ * CS-C7 — the guardian's ROLE within a ProtectedProfile's circle. This is a SEPARATE axis from
+ * `relationshipType` (legal nature) and `authorityLevel` (permission depth): it never derives or
+ * changes either. At most ONE ACTIVE `Primary` guardian may exist per profile (DB partial-unique
+ * index + repository check). A `ViewOnly` role grants no management ability by itself — Family
+ * role/permission gating still applies above it.
+ */
+export enum GuardianRole { Primary = "primary", Secondary = "secondary", Emergency = "emergency", ViewOnly = "view_only" }
+export const ALL_GUARDIAN_ROLES: readonly GuardianRole[] = Object.values(GuardianRole);
+
 /** A guardian is NOT automatically a safe recipient — eligibility is evaluated (no auto-decision in CS-C0). */
 export enum SafetyRecipientEligibility { Eligible = "eligible", RequiresExpertReview = "requires_expert_review", Suppressed = "suppressed", NotVerified = "not_verified", Conflicted = "conflicted" }
 

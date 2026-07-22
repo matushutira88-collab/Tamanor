@@ -71,11 +71,11 @@ async function main() {
   check("read-only Family role CAN list (view)", (await listProtectedProfiles(viewerA)).some((p) => p.id === p1.id));
 
   // ---- GuardianRelationship: same-tenant only, no auto safe-recipient ---------------------------
-  const r1 = await createGuardianRelationship(ownerA, { guardianMembershipId: mOwnerA.id, protectedProfileId: p1.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full });
+  const r1 = await createGuardianRelationship(ownerA, { guardianMembershipId: mOwnerA.id, protectedProfileId: p1.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full, guardianRole: "primary" });
   check("guardian relationship created", !!r1.id && r1.status === GuardianRelationshipStatus.Pending);
   check("guardian relationship does NOT imply safe-recipient eligibility", r1.safeRecipientEligibility === SafetyRecipientEligibility.NotVerified && r1.safeRecipientEligibility !== "eligible");
   check("consent is separate + not auto-granted", r1.consentStatus === "not_requested");
-  check("cross-tenant Membership relationship creation is rejected", await throws(() => createGuardianRelationship(ownerA, { guardianMembershipId: mOwnerB.id, protectedProfileId: p1.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full }), (e) => e instanceof FamilyNotFoundError));
+  check("cross-tenant Membership relationship creation is rejected", await throws(() => createGuardianRelationship(ownerA, { guardianMembershipId: mOwnerB.id, protectedProfileId: p1.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full, guardianRole: "primary" }), (e) => e instanceof FamilyNotFoundError));
 
   // ---- Revoked ≠ active ------------------------------------------------------------------------
   const revoked = await revokeGuardianRelationship(ownerA, r1.id);

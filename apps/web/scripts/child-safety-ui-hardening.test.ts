@@ -16,8 +16,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyWorkspaceRouting, WorkspaceKind, SELECTABLE_WORKSPACE_KINDS } from "@guardora/core";
-import { familyDict, FAMILY_ACTION_ERROR_CODES, isFamilyActionErrorCode } from "../src/app/family/family-i18n.ts";
-import type { Locale } from "../src/i18n/config.ts";
+import { familyDict, FAMILY_ACTION_ERROR_CODES, isFamilyActionErrorCode } from "../src/app/family/family-i18n";
+import type { Locale } from "../src/i18n/config";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail = "") => {

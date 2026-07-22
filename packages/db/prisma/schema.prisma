@@ -2637,6 +2637,9 @@ model ProtectedProfile {
   guardianLabel    String?
   ageBand          String // AgeBand (under_10 | age_10_12 | age_13_15 | age_16_17)
   protectionStatus String    @default("inactive") // ProtectionStatus (inactive|monitoring|active|paused)
+  // CS-C7 — preferred Family UI language (bounded: en|sk|de). A display preference only — content-free,
+  // NEVER the child's real name/DOB/identity.
+  language         String? // PROFILE_LANGUAGES (en|sk|de) or null
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   // Archiving is soft: the row and its guardian relationships remain historically referencable.
@@ -2661,6 +2664,11 @@ model GuardianRelationship {
   protectedProfileId       String
   relationshipType         String // GuardianRelationshipType (parent|legal_guardian|trusted_adult|safety_professional)
   authorityLevel           String // GuardianAuthorityLevel (full|limited|read_only)
+  // CS-C7 — the guardian's ROLE within the profile's circle (GuardianRole: primary|secondary|emergency|
+  // view_only). Separate axis from relationshipType/authorityLevel; a role change never alters those.
+  // App-required (no DB default). At most one ACTIVE primary per profile — enforced by the partial unique
+  // index `gr_one_active_primary_per_profile` (SQL-only; Prisma cannot express a WHERE-partial unique).
+  guardianRole             String
   // Status, consent and safe-recipient eligibility are DELIBERATELY SEPARATE axes. A guardian
   // relationship NEVER implies consent or safe-recipient eligibility (defaults below). No automatic
   // status transitions in CS-C1 — everything is an explicit, audited action.

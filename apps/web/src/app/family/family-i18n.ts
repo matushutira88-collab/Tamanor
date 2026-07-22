@@ -44,11 +44,25 @@ export interface FamilyDict {
     revokeAuthTitle: string; revokeAuthBody: string; revokeAuthConfirm: string;
     revokeDeliveryTitle: string; revokeDeliveryBody: string; revokeDeliveryConfirm: string;
     archiveDeliveryTitle: string; archiveDeliveryBody: string; archiveDeliveryConfirm: string;
+    restoreProfileTitle: string; restoreProfileBody: string; restoreProfileConfirm: string;
+    deactivateGuardianTitle: string; deactivateGuardianBody: string; deactivateGuardianConfirm: string;
   };
   // CS-C6.1 — Family route-level error boundary (safe, no stack/PII/tenant).
   errorBoundary: { title: string; body: string; retry: string; back: string };
   // CS-C6.1 — safe, serializable action-error groups → localized text (never raw/DB/PII details).
   actionErrors: Record<string, string>;
+  // CS-C7 — profile lifecycle + guardian workflow UI (content-free).
+  c7: {
+    editTitle: string; edit: string; save: string; noPiiHint: string; languageAuto: string;
+    restore: string; restored: string;
+    searchTitle: string; searchPlaceholder: string; filterAge: string; filterStatus: string; filterLanguage: string; filterState: string; filterRole: string;
+    stateActive: string; stateArchived: string; stateAll: string; anyOption: string; apply: string; clear: string;
+    guardiansTitle: string; addGuardian: string; guardianMember: string; roleLabel: string; relationshipLabel: string; authorityLabel: string;
+    create: string; changeRole: string; deactivate: string; reactivate: string;
+    noGuardians: string; noMembers: string; guardianAddHint: string;
+    timelineTitle: string; timelineEmpty: string; timelineBy: string;
+    roles: Record<string, string>; authority: Record<string, string>; lifecycle: Record<string, string>; events: Record<string, string>;
+  };
 }
 
 /** CS-C6.1 — the ONLY safe, serializable Family action-error groups the UI may surface. */
@@ -121,6 +135,12 @@ const en: FamilyDict = {
     archiveDeliveryTitle: "Archive this internal delivery?",
     archiveDeliveryBody: "Archiving removes this delivery from the active list. The record is kept for history. This does not delete anything.",
     archiveDeliveryConfirm: "Archive delivery",
+    restoreProfileTitle: "Restore this profile?",
+    restoreProfileBody: "Restoring brings this profile back to active. Its history and guardians are unchanged. The identifier stays the same.",
+    restoreProfileConfirm: "Restore profile",
+    deactivateGuardianTitle: "Deactivate this guardian?",
+    deactivateGuardianBody: "Deactivating pauses this guardian relationship and removes its authorization until it is reactivated. Nothing is deleted and it can be reactivated later.",
+    deactivateGuardianConfirm: "Deactivate guardian",
   },
   errorBoundary: {
     title: "Something went wrong",
@@ -135,6 +155,34 @@ const en: FamilyDict = {
     archived: "That item is already archived.",
     already_revoked: "That item has already been revoked.",
     retry_later: "Something went wrong. Please try again in a moment.",
+  },
+  c7: {
+    editTitle: "Edit profile", edit: "Edit", save: "Save changes",
+    noPiiHint: "Use a guardian-chosen label only (e.g. „Child 1“, „Older child“). Never enter a real name, birth date or any personal data.",
+    languageAuto: "Automatic",
+    restore: "Restore", restored: "Profile restored",
+    searchTitle: "Search & filter", searchPlaceholder: "Search by label…",
+    filterAge: "Age band", filterStatus: "Protection status", filterLanguage: "Language", filterState: "State", filterRole: "Guardian role",
+    stateActive: "Active", stateArchived: "Archived", stateAll: "All", anyOption: "Any", apply: "Apply", clear: "Clear",
+    guardiansTitle: "Guardians", addGuardian: "Add guardian", guardianMember: "Family member", roleLabel: "Role", relationshipLabel: "Relationship", authorityLabel: "Authority",
+    create: "Add", changeRole: "Change role", deactivate: "Deactivate", reactivate: "Reactivate",
+    noGuardians: "No guardians yet.", noMembers: "No eligible family members.", guardianAddHint: "At most one active primary guardian per profile.",
+    timelineTitle: "History", timelineEmpty: "No activity yet.", timelineBy: "by",
+    roles: { primary: "Primary", secondary: "Secondary", emergency: "Emergency", view_only: "View only" },
+    authority: { full: "Full", limited: "Limited", read_only: "Read only" },
+    lifecycle: { active: "Active", inactive: "Inactive" },
+    events: {
+      "child_safety.protected_profile.created": "Profile created",
+      "child_safety.protected_profile.updated": "Profile edited",
+      "child_safety.protected_profile.archived": "Profile archived",
+      "child_safety.protected_profile.restored": "Profile restored",
+      "child_safety.guardian_relationship.created": "Guardian added",
+      "child_safety.guardian_relationship.role_changed": "Guardian role changed",
+      "child_safety.guardian_relationship.deactivated": "Guardian deactivated",
+      "child_safety.guardian_relationship.reactivated": "Guardian reactivated",
+      "child_safety.guardian_relationship.revoked": "Guardian revoked",
+      "child_safety.guardian_relationship.archived": "Guardian archived",
+    },
   },
 };
 
@@ -198,6 +246,12 @@ const sk: FamilyDict = {
     archiveDeliveryTitle: "Archivovať toto interné doručenie?",
     archiveDeliveryBody: "Archiváciou sa doručenie odstráni z aktívneho zoznamu. Záznam sa zachová pre históriu. Nič sa nevymaže.",
     archiveDeliveryConfirm: "Archivovať doručenie",
+    restoreProfileTitle: "Obnoviť tento profil?",
+    restoreProfileBody: "Obnovením sa profil vráti medzi aktívne. Jeho história a opatrovníci ostávajú nezmenené. Identifikátor zostáva rovnaký.",
+    restoreProfileConfirm: "Obnoviť profil",
+    deactivateGuardianTitle: "Deaktivovať tohto opatrovníka?",
+    deactivateGuardianBody: "Deaktiváciou sa vzťah opatrovníka pozastaví a odoberie sa mu autorizácia až do reaktivácie. Nič sa nevymaže a možno ho neskôr reaktivovať.",
+    deactivateGuardianConfirm: "Deaktivovať opatrovníka",
   },
   errorBoundary: {
     title: "Niečo sa pokazilo",
@@ -212,6 +266,34 @@ const sk: FamilyDict = {
     archived: "Položka je už archivovaná.",
     already_revoked: "Položka už bola zrušená.",
     retry_later: "Niečo sa pokazilo. Skúste to o chvíľu znova.",
+  },
+  c7: {
+    editTitle: "Upraviť profil", edit: "Upraviť", save: "Uložiť zmeny",
+    noPiiHint: "Použite len označenie zvolené opatrovníkom (napr. „Dieťa 1“, „Staršie dieťa“). Nikdy nezadávajte skutočné meno, dátum narodenia ani žiadne osobné údaje.",
+    languageAuto: "Automaticky",
+    restore: "Obnoviť", restored: "Profil obnovený",
+    searchTitle: "Hľadať a filtrovať", searchPlaceholder: "Hľadať podľa označenia…",
+    filterAge: "Veková skupina", filterStatus: "Stav ochrany", filterLanguage: "Jazyk", filterState: "Stav", filterRole: "Rola opatrovníka",
+    stateActive: "Aktívne", stateArchived: "Archivované", stateAll: "Všetky", anyOption: "Ľubovoľné", apply: "Použiť", clear: "Vymazať",
+    guardiansTitle: "Opatrovníci", addGuardian: "Pridať opatrovníka", guardianMember: "Člen rodiny", roleLabel: "Rola", relationshipLabel: "Vzťah", authorityLabel: "Oprávnenie",
+    create: "Pridať", changeRole: "Zmeniť rolu", deactivate: "Deaktivovať", reactivate: "Reaktivovať",
+    noGuardians: "Zatiaľ žiadni opatrovníci.", noMembers: "Žiadni vhodní členovia rodiny.", guardianAddHint: "Najviac jeden aktívny primárny opatrovník na profil.",
+    timelineTitle: "História", timelineEmpty: "Zatiaľ žiadna aktivita.", timelineBy: "—",
+    roles: { primary: "Primárny", secondary: "Sekundárny", emergency: "Núdzový", view_only: "Iba na čítanie" },
+    authority: { full: "Plné", limited: "Obmedzené", read_only: "Iba na čítanie" },
+    lifecycle: { active: "Aktívny", inactive: "Neaktívny" },
+    events: {
+      "child_safety.protected_profile.created": "Profil vytvorený",
+      "child_safety.protected_profile.updated": "Profil upravený",
+      "child_safety.protected_profile.archived": "Profil archivovaný",
+      "child_safety.protected_profile.restored": "Profil obnovený",
+      "child_safety.guardian_relationship.created": "Opatrovník pridaný",
+      "child_safety.guardian_relationship.role_changed": "Rola opatrovníka zmenená",
+      "child_safety.guardian_relationship.deactivated": "Opatrovník deaktivovaný",
+      "child_safety.guardian_relationship.reactivated": "Opatrovník reaktivovaný",
+      "child_safety.guardian_relationship.revoked": "Opatrovník zrušený",
+      "child_safety.guardian_relationship.archived": "Opatrovník archivovaný",
+    },
   },
 };
 
@@ -275,6 +357,12 @@ const de: FamilyDict = {
     archiveDeliveryTitle: "Diese interne Zustellung archivieren?",
     archiveDeliveryBody: "Durch das Archivieren wird diese Zustellung aus der aktiven Liste entfernt. Der Datensatz bleibt für die Historie erhalten. Es wird nichts gelöscht.",
     archiveDeliveryConfirm: "Zustellung archivieren",
+    restoreProfileTitle: "Dieses Profil wiederherstellen?",
+    restoreProfileBody: "Durch die Wiederherstellung wird dieses Profil wieder aktiv. Seine Historie und Betreuer bleiben unverändert. Die Kennung bleibt gleich.",
+    restoreProfileConfirm: "Profil wiederherstellen",
+    deactivateGuardianTitle: "Diesen Betreuer deaktivieren?",
+    deactivateGuardianBody: "Durch das Deaktivieren wird diese Betreuungsbeziehung pausiert und ihre Autorisierung bis zur Reaktivierung entfernt. Es wird nichts gelöscht und sie kann später reaktiviert werden.",
+    deactivateGuardianConfirm: "Betreuer deaktivieren",
   },
   errorBoundary: {
     title: "Etwas ist schiefgelaufen",
@@ -289,6 +377,34 @@ const de: FamilyDict = {
     archived: "Dieses Element ist bereits archiviert.",
     already_revoked: "Dieses Element wurde bereits widerrufen.",
     retry_later: "Etwas ist schiefgelaufen. Bitte versuchen Sie es gleich erneut.",
+  },
+  c7: {
+    editTitle: "Profil bearbeiten", edit: "Bearbeiten", save: "Änderungen speichern",
+    noPiiHint: "Verwenden Sie nur eine vom Betreuer gewählte Bezeichnung (z. B. „Kind 1“, „Älteres Kind“). Geben Sie niemals einen echten Namen, ein Geburtsdatum oder personenbezogene Daten ein.",
+    languageAuto: "Automatisch",
+    restore: "Wiederherstellen", restored: "Profil wiederhergestellt",
+    searchTitle: "Suchen & filtern", searchPlaceholder: "Nach Bezeichnung suchen…",
+    filterAge: "Altersgruppe", filterStatus: "Schutzstatus", filterLanguage: "Sprache", filterState: "Zustand", filterRole: "Betreuerrolle",
+    stateActive: "Aktiv", stateArchived: "Archiviert", stateAll: "Alle", anyOption: "Beliebig", apply: "Anwenden", clear: "Zurücksetzen",
+    guardiansTitle: "Betreuer", addGuardian: "Betreuer hinzufügen", guardianMember: "Familienmitglied", roleLabel: "Rolle", relationshipLabel: "Beziehung", authorityLabel: "Befugnis",
+    create: "Hinzufügen", changeRole: "Rolle ändern", deactivate: "Deaktivieren", reactivate: "Reaktivieren",
+    noGuardians: "Noch keine Betreuer.", noMembers: "Keine geeigneten Familienmitglieder.", guardianAddHint: "Höchstens ein aktiver Hauptbetreuer pro Profil.",
+    timelineTitle: "Verlauf", timelineEmpty: "Noch keine Aktivität.", timelineBy: "—",
+    roles: { primary: "Hauptbetreuer", secondary: "Zweitbetreuer", emergency: "Notfall", view_only: "Nur Ansicht" },
+    authority: { full: "Voll", limited: "Eingeschränkt", read_only: "Nur Lesen" },
+    lifecycle: { active: "Aktiv", inactive: "Inaktiv" },
+    events: {
+      "child_safety.protected_profile.created": "Profil erstellt",
+      "child_safety.protected_profile.updated": "Profil bearbeitet",
+      "child_safety.protected_profile.archived": "Profil archiviert",
+      "child_safety.protected_profile.restored": "Profil wiederhergestellt",
+      "child_safety.guardian_relationship.created": "Betreuer hinzugefügt",
+      "child_safety.guardian_relationship.role_changed": "Betreuerrolle geändert",
+      "child_safety.guardian_relationship.deactivated": "Betreuer deaktiviert",
+      "child_safety.guardian_relationship.reactivated": "Betreuer reaktiviert",
+      "child_safety.guardian_relationship.revoked": "Betreuer widerrufen",
+      "child_safety.guardian_relationship.archived": "Betreuer archiviert",
+    },
   },
 };
 

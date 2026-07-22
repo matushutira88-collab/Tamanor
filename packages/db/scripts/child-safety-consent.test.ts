@@ -46,8 +46,8 @@ async function main() {
   await systemDb.membership.create({ data: { userId: uB, tenantId: biz.id, role: "owner" as never } });
   const pA = await systemDb.protectedProfile.create({ data: { tenantId: famA.id, ageBand: "age_10_12" } });
   const pB = await systemDb.protectedProfile.create({ data: { tenantId: famB.id, ageBand: "age_10_12" } });
-  const relA = await systemDb.guardianRelationship.create({ data: { tenantId: famA.id, guardianMembershipId: mOwnerA.id, protectedProfileId: pA.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full, status: "verified" } });
-  const relB = await systemDb.guardianRelationship.create({ data: { tenantId: famB.id, guardianMembershipId: mOwnerB.id, protectedProfileId: pB.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full, status: "verified" } });
+  const relA = await systemDb.guardianRelationship.create({ data: { tenantId: famA.id, guardianMembershipId: mOwnerA.id, protectedProfileId: pA.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full, guardianRole: "secondary", status: "verified" } });
+  const relB = await systemDb.guardianRelationship.create({ data: { tenantId: famB.id, guardianMembershipId: mOwnerB.id, protectedProfileId: pB.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full, guardianRole: "secondary", status: "verified" } });
 
   const ownerA = fam(famA.id, uOwner, "owner");   // PrimaryGuardian
   const viewerA = fam(famA.id, uView, "viewer");  // FamilyViewer
@@ -115,7 +115,7 @@ async function main() {
   // canGuardianManageProtectedProfile: verified relationship ⇒ true; pending ⇒ false
   check("verified guardian relationship ⇒ canManage true", (await canGuardianManageProtectedProfile(ownerA, pA.id)) === true);
   const pPending = await systemDb.protectedProfile.create({ data: { tenantId: famA.id, ageBand: "under_10" } });
-  await systemDb.guardianRelationship.create({ data: { tenantId: famA.id, guardianMembershipId: mOwnerA.id, protectedProfileId: pPending.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full, status: "pending" } });
+  await systemDb.guardianRelationship.create({ data: { tenantId: famA.id, guardianMembershipId: mOwnerA.id, protectedProfileId: pPending.id, relationshipType: GuardianRelationshipType.Parent, authorityLevel: GuardianAuthorityLevel.Full, guardianRole: "secondary", status: "pending" } });
   check("PENDING guardian relationship ⇒ canManage false", (await canGuardianManageProtectedProfile(ownerA, pPending.id)) === false);
 
   // 2/16/17) Cross-tenant + RLS ------------------------------------------------------------------
