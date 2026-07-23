@@ -19,7 +19,7 @@ export default async function FamilyAuthorizationsPage() {
   catch (e) { if (e instanceof FamilyForbiddenError) return <NotAllowed t={t} />; throw e; }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t.authorizations.title} description={t.guardians.intro} />
       <Card>
         <SectionHeader title={t.authorizations.title} />
@@ -67,5 +67,5 @@ export default async function FamilyAuthorizationsPage() {
 }
 
 function NotAllowed({ t }: { t: ReturnType<typeof familyDict> }) {
-  return <div className="mx-auto max-w-5xl"><PageHeader title={t.authorizations.title} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>;
+  return <div><PageHeader title={t.authorizations.title} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>;
 }

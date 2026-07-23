@@ -13,7 +13,7 @@ export default async function FamilyConsoleLayout({ children }: { children: Reac
   const { session } = await requireFamilyConsole();
   const t = familyDict(await getLocale());
   return (
-    <FamilyShell nav={t.nav} brand={t.brand} workspaceName={session.tenantName} userName={session.userName}>
+    <FamilyShell nav={t.nav} shell={t.shell} brand={t.brand} workspaceName={session.tenantName} userName={session.userName}>
       {children}
     </FamilyShell>
   );

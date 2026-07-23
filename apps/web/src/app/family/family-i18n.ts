@@ -18,14 +18,30 @@ export interface FamilyDict {
     privacyTitle: string; doesTitle: string; doesnotTitle: string;
     completeTitle: string; completeText: string; goToDashboard: string;
   };
-  dash: { welcome: string; onboardingIncomplete: string; primaryGuardian: string; kpiProfiles: string; kpiGuardians: string; kpiSignals: string; kpiPendingAuth: string; kpiDeliveries: string; recentProfiles: string; recentSignals: string; pendingAuth: string; deliveriesSection: string; emptyTitle: string; emptyText: string };
+  dash: {
+    welcome: string; onboardingIncomplete: string; primaryGuardian: string; kpiProfiles: string; kpiGuardians: string; kpiSignals: string; kpiPendingAuth: string; kpiDeliveries: string; recentProfiles: string; recentSignals: string; pendingAuth: string; deliveriesSection: string; emptyTitle: string; emptyText: string;
+    // FAMILY-UI-01 — hero, "open signals" KPI, activity feed and setup checklist.
+    heroTitle: string; heroBody: string; addProfile: string; kpiOpenSignals: string; kpiActiveAuth: string;
+    activityTitle: string; activityEmpty: string; activitySignal: string; activityDelivery: string;
+    checklistTitle: string; checklistBody: string; checklistDone: string; checklistTodo: string;
+    checklistProfile: string; checklistProfileHint: string; checklistGuardian: string; checklistGuardianHint: string; checklistPrivacy: string; checklistPrivacyHint: string;
+  };
   privacy: { messages: string; signal: string; delivery: string; integrations: string };
   profiles: { title: string; create: string; label: string; ageBand: string; status: string; relationships: string; signals: string; created: string; detailTabs: { overview: string; guardians: string; consent: string; signals: string; deliveries: string }; archive: string; archived: string; newLabel: string; emptyText: string };
   guardians: { title: string; intro: string; pipeline: string[]; incomplete: string; relationship: string; authority: string; consent: string; assessment: string; eligibility: string };
   authorizations: { title: string; signal: string; profile: string; recipient: string; status: string; scope: string; reason: string; evaluatedAt: string; validUntil: string; revoke: string; emptyText: string };
   signals: { title: string; type: string; severity: string; confidence: string; bucket: string; review: string; created: string; disclaimer: string; emptyText: string; detailTitle: string };
   deliveries: { title: string; status: string; recipient: string; profile: string; signalType: string; scope: string; preparedAt: string; availableAt: string; acknowledgedAt: string; declinedAt: string; makeAvailable: string; acknowledge: string; decline: string; revoke: string; archive: string; availableMeans: string; emptyText: string };
-  settings: { title: string; workspaceName: string; language: string; timezone: string; workspaceTypeRO: string; primaryGuardian: string; limits: string; auditLink: string };
+  settings: {
+    title: string; workspaceName: string; language: string; timezone: string; workspaceTypeRO: string; primaryGuardian: string; limits: string; auditLink: string;
+    // FAMILY-UI-01 — page intro + the three explicit settings sections (read-only).
+    description: string; readOnlyHint: string;
+    spaceSection: string; spaceDescription: string;
+    privacySection: string; privacyDescription: string;
+    integrationsSection: string; integrationsDescription: string;
+  };
+  // FAMILY-UI-01 — Family app-shell chrome strings (sidebar / drawer / user block).
+  shell: { workspaceLabel: string; signedInAs: string; signOut: string; openMenu: string; closeMenu: string; navLabel: string };
   labels: {
     ageBand: Record<string, string>; protectionStatus: Record<string, string>; relationshipType: Record<string, string>;
     relationshipStatus: Record<string, string>; authorityStatus: Record<string, string>; consentStatus: Record<string, string>;
@@ -178,14 +194,31 @@ const en: FamilyDict = {
     privacyTitle: "Privacy and limits", doesTitle: "Tamanor Family now:", doesnotTitle: "Tamanor Family does NOT:",
     completeTitle: "You're all set", completeText: "Your family workspace is ready.", goToDashboard: "Go to Family dashboard",
   },
-  dash: { welcome: "Your family space", onboardingIncomplete: "Finish setup", primaryGuardian: "Primary guardian", kpiProfiles: "Protected profiles", kpiGuardians: "Active authorized people", kpiSignals: "Safety signals", kpiPendingAuth: "Pending authorizations", kpiDeliveries: "Available internal deliveries", recentProfiles: "Protected profiles", recentSignals: "Recent safety signals", pendingAuth: "Pending authorization decisions", deliveriesSection: "Internal deliveries", emptyTitle: "Your family space is ready", emptyText: "Safety signals will appear here after a future authorized integration with a social or communication platform." },
+  dash: {
+    welcome: "Your family space", onboardingIncomplete: "Finish setup", primaryGuardian: "Primary guardian", kpiProfiles: "Protected profiles", kpiGuardians: "Active authorized people", kpiSignals: "Safety signals", kpiPendingAuth: "Pending authorizations", kpiDeliveries: "Available internal deliveries", recentProfiles: "Protected profiles", recentSignals: "Recent safety signals", pendingAuth: "Pending authorization decisions", deliveriesSection: "Internal deliveries", emptyTitle: "Your family space is ready", emptyText: "Safety signals will appear here after a future authorized integration with a social or communication platform.",
+    heroTitle: "Your family is protected", heroBody: "Protected profiles, authorized people and safety signals are managed in one private space. Tamanor shares information only through a complete authorization chain.",
+    addProfile: "Add protected profile", kpiOpenSignals: "Open safety signals", kpiActiveAuth: "Active authorizations",
+    activityTitle: "Recent events", activityEmpty: "No events yet. Activity will appear here as your family space is used.", activitySignal: "Safety signal", activityDelivery: "Internal delivery",
+    checklistTitle: "Finish setting up your space", checklistBody: "A few short steps and your family space is fully ready.", checklistDone: "Done", checklistTodo: "To do",
+    checklistProfile: "Create a protected profile", checklistProfileHint: "A safe label and an age band are enough — no names or accounts.",
+    checklistGuardian: "Add an authorized person", checklistGuardianHint: "Invite another adult and verify their relationship to the profile.",
+    checklistPrivacy: "Review privacy and limitations", checklistPrivacyHint: "See exactly what Tamanor does and does not do with your data.",
+  },
   privacy: { messages: "Tamanor currently does not read private messages or monitor devices.", signal: "A safety signal contains only minimal structured information about a risk — not the content of communication.", delivery: "An internal delivery means information is made available inside Tamanor Family. It does NOT mean an email, SMS or push notification was sent.", integrations: "Integrations with social and communication platforms will only be available through official partnerships and authorized APIs." },
   profiles: { title: "Protected profiles", create: "New profile", label: "Label", ageBand: "Age band", status: "Status", relationships: "Guardians", signals: "Signals", created: "Created", detailTabs: { overview: "Overview", guardians: "Authorized people", consent: "Consent & authority", signals: "Safety signals", deliveries: "Internal deliveries" }, archive: "Archive", archived: "Archived", newLabel: "e.g. Younger child", emptyText: "No protected profiles yet. Create one to begin." },
   guardians: { title: "Authorized people", intro: "A guardian role alone is never automatically authorized. Each recipient passes an explicit chain:", pipeline: ["Relationship", "Authority", "Consent", "Safe-recipient assessment", "Authorization"], incomplete: "Setup will be completed in a later step.", relationship: "Relationship", authority: "Authority", consent: "Consent", assessment: "Assessment", eligibility: "Effective eligibility" },
   authorizations: { title: "Authorizations", signal: "Signal", profile: "Profile", recipient: "Recipient", status: "Status", scope: "Disclosure scope", reason: "Reason", evaluatedAt: "Evaluated", validUntil: "Valid until", revoke: "Revoke", emptyText: "No authorization decisions yet." },
   signals: { title: "Safety signals", type: "Risk type", severity: "Severity", confidence: "Confidence", bucket: "Time window", review: "Review", created: "Created", disclaimer: "This record contains only a minimal safety signal, not the content of communication.", emptyText: "No safety signals. Platform integrations are not active yet.", detailTitle: "Safety signal" },
   deliveries: { title: "Internal deliveries", status: "Status", recipient: "Recipient", profile: "Profile", signalType: "Risk type", scope: "Disclosure scope", preparedAt: "Prepared", availableAt: "Available", acknowledgedAt: "Acknowledged", declinedAt: "Declined", makeAvailable: "Make available", acknowledge: "Acknowledge", decline: "Decline", revoke: "Revoke", archive: "Archive", availableMeans: "\"Available\" means available inside Tamanor Family — not an email, SMS or push.", emptyText: "No internal deliveries yet." },
-  settings: { title: "Settings", workspaceName: "Family workspace name", language: "Language", timezone: "Time zone", workspaceTypeRO: "Workspace type", primaryGuardian: "Primary guardian", limits: "Privacy & limitations", auditLink: "Audit log" },
+  settings: {
+    title: "Settings", workspaceName: "Family workspace name", language: "Language", timezone: "Time zone", workspaceTypeRO: "Workspace type", primaryGuardian: "Primary guardian", limits: "Privacy & limitations", auditLink: "Audit log",
+    description: "An overview of your family space and the rules Tamanor follows when handling your data.",
+    readOnlyHint: "These values are read-only in this version.",
+    spaceSection: "Family space", spaceDescription: "Who this space belongs to and who manages it.",
+    privacySection: "Privacy and data processing", privacyDescription: "What Tamanor does and does not process.",
+    integrationsSection: "Integrations and limitations", integrationsDescription: "Which external connections are possible today.",
+  },
+  shell: { workspaceLabel: "Family space", signedInAs: "Signed in as", signOut: "Sign out", openMenu: "Open menu", closeMenu: "Close menu", navLabel: "Family navigation" },
   labels: {
     ageBand: { under_10: "Under 10", age_10_12: "10–12", age_13_15: "13–15", age_16_17: "16–17" },
     protectionStatus: { inactive: "Inactive", monitoring: "Monitoring", active: "Active", paused: "Paused" },
@@ -391,14 +424,31 @@ const sk: FamilyDict = {
     privacyTitle: "Súkromie a hranice", doesTitle: "Tamanor Rodina teraz:", doesnotTitle: "Tamanor Rodina teraz NErobí:",
     completeTitle: "Všetko je pripravené", completeText: "Váš rodinný priestor je pripravený.", goToDashboard: "Prejsť na rodinný prehľad",
   },
-  dash: { welcome: "Vaše rodinné prostredie", onboardingIncomplete: "Dokončiť nastavenie", primaryGuardian: "Primárny opatrovník", kpiProfiles: "Chránené profily", kpiGuardians: "Aktívne oprávnené osoby", kpiSignals: "Bezpečnostné signály", kpiPendingAuth: "Čakajúce autorizácie", kpiDeliveries: "Dostupné interné doručenia", recentProfiles: "Chránené profily", recentSignals: "Najnovšie bezpečnostné signály", pendingAuth: "Čakajúce autorizačné rozhodnutia", deliveriesSection: "Interné doručenia", emptyTitle: "Vaše rodinné prostredie je pripravené", emptyText: "Bezpečnostné signály sa tu zobrazia až po budúcej autorizovanej integrácii so sociálnou alebo komunikačnou platformou." },
+  dash: {
+    welcome: "Vaše rodinné prostredie", onboardingIncomplete: "Dokončiť nastavenie", primaryGuardian: "Primárny opatrovník", kpiProfiles: "Chránené profily", kpiGuardians: "Aktívne oprávnené osoby", kpiSignals: "Bezpečnostné signály", kpiPendingAuth: "Čakajúce autorizácie", kpiDeliveries: "Dostupné interné doručenia", recentProfiles: "Chránené profily", recentSignals: "Najnovšie bezpečnostné signály", pendingAuth: "Čakajúce autorizačné rozhodnutia", deliveriesSection: "Interné doručenia", emptyTitle: "Vaše rodinné prostredie je pripravené", emptyText: "Bezpečnostné signály sa tu zobrazia až po budúcej autorizovanej integrácii so sociálnou alebo komunikačnou platformou.",
+    heroTitle: "Vaša rodina je chránená", heroBody: "Chránené profily, oprávnené osoby a bezpečnostné signály spravujete na jednom súkromnom mieste. Tamanor sprístupní informáciu iba cez úplnú autorizačnú reťaz.",
+    addProfile: "Pridať chránený profil", kpiOpenSignals: "Otvorené bezpečnostné signály", kpiActiveAuth: "Aktívne autorizácie",
+    activityTitle: "Posledné udalosti", activityEmpty: "Zatiaľ žiadne udalosti. Aktivita sa tu zobrazí pri používaní rodinného priestoru.", activitySignal: "Bezpečnostný signál", activityDelivery: "Interné doručenie",
+    checklistTitle: "Dokončite nastavenie priestoru", checklistBody: "Pár krátkych krokov a váš rodinný priestor je úplne pripravený.", checklistDone: "Hotové", checklistTodo: "Zostáva",
+    checklistProfile: "Vytvorte chránený profil", checklistProfileHint: "Stačí bezpečný názov a veková skupina — žiadne mená ani účty.",
+    checklistGuardian: "Pridajte oprávnenú osobu", checklistGuardianHint: "Pozvite ďalšieho dospelého a overte jeho vzťah k profilu.",
+    checklistPrivacy: "Prejdite si súkromie a obmedzenia", checklistPrivacyHint: "Pozrite si presne, čo Tamanor s vašimi údajmi robí a čo nerobí.",
+  },
   privacy: { messages: "Tamanor momentálne nečíta súkromné správy ani nesleduje zariadenia.", signal: "Bezpečnostný signál obsahuje iba minimálne štruktúrované informácie o riziku, nie obsah komunikácie.", delivery: "Interné doručenie znamená sprístupnenie informácie v Tamanor Rodina. Neznamená odoslanie emailu, SMS alebo push notifikácie.", integrations: "Integrácie so sociálnymi a komunikačnými platformami budú dostupné iba prostredníctvom oficiálnych partnerstiev a autorizovaných API." },
   profiles: { title: "Chránené profily", create: "Nový profil", label: "Názov", ageBand: "Veková skupina", status: "Stav", relationships: "Opatrovníci", signals: "Signály", created: "Vytvorené", detailTabs: { overview: "Prehľad", guardians: "Oprávnené osoby", consent: "Súhlas a oprávnenie", signals: "Bezpečnostné signály", deliveries: "Interné doručenia" }, archive: "Archivovať", archived: "Archivované", newLabel: "napr. Mladšie dieťa", emptyText: "Zatiaľ žiadne chránené profily. Vytvorte prvý." },
   guardians: { title: "Oprávnené osoby", intro: "Samotná rola opatrovníka nie je nikdy automaticky autorizovaná. Každý príjemca prechádza explicitnou reťazou:", pipeline: ["Vzťah", "Oprávnenie", "Súhlas", "Posúdenie bezpečného príjemcu", "Autorizácia"], incomplete: "Nastavenie bude dokončené v ďalšom kroku.", relationship: "Vzťah", authority: "Oprávnenie", consent: "Súhlas", assessment: "Posúdenie", eligibility: "Efektívna oprávnenosť" },
   authorizations: { title: "Autorizácie", signal: "Signál", profile: "Profil", recipient: "Príjemca", status: "Stav", scope: "Rozsah sprístupnenia", reason: "Dôvod", evaluatedAt: "Vyhodnotené", validUntil: "Platné do", revoke: "Zrušiť", emptyText: "Zatiaľ žiadne autorizačné rozhodnutia." },
   signals: { title: "Bezpečnostné signály", type: "Typ rizika", severity: "Závažnosť", confidence: "Istota", bucket: "Časové obdobie", review: "Posúdenie", created: "Vytvorené", disclaimer: "Tento záznam obsahuje iba minimálny bezpečnostný signál, nie obsah komunikácie.", emptyText: "Žiadne bezpečnostné signály. Platformové integrácie zatiaľ nie sú aktívne.", detailTitle: "Bezpečnostný signál" },
   deliveries: { title: "Interné doručenia", status: "Stav", recipient: "Príjemca", profile: "Profil", signalType: "Typ rizika", scope: "Rozsah sprístupnenia", preparedAt: "Pripravené", availableAt: "Dostupné", acknowledgedAt: "Potvrdené", declinedAt: "Odmietnuté", makeAvailable: "Sprístupniť", acknowledge: "Potvrdiť", decline: "Odmietnuť", revoke: "Zrušiť", archive: "Archivovať", availableMeans: "„Dostupné“ znamená dostupné v Tamanor Rodina — nie email, SMS ani push.", emptyText: "Zatiaľ žiadne interné doručenia." },
-  settings: { title: "Nastavenia", workspaceName: "Názov rodinného priestoru", language: "Jazyk", timezone: "Časové pásmo", workspaceTypeRO: "Typ priestoru", primaryGuardian: "Primárny opatrovník", limits: "Súkromie a obmedzenia", auditLink: "Audit log" },
+  settings: {
+    title: "Nastavenia", workspaceName: "Názov rodinného priestoru", language: "Jazyk", timezone: "Časové pásmo", workspaceTypeRO: "Typ priestoru", primaryGuardian: "Primárny opatrovník", limits: "Súkromie a obmedzenia", auditLink: "Audit log",
+    description: "Prehľad vášho rodinného priestoru a pravidiel, ktoré Tamanor dodržiava pri práci s vašimi údajmi.",
+    readOnlyHint: "Tieto hodnoty sú v tejto verzii iba na čítanie.",
+    spaceSection: "Rodinný priestor", spaceDescription: "Komu tento priestor patrí a kto ho spravuje.",
+    privacySection: "Súkromie a spracovanie údajov", privacyDescription: "Čo Tamanor spracúva a čo nie.",
+    integrationsSection: "Integrácie a obmedzenia", integrationsDescription: "Aké externé prepojenia sú dnes možné.",
+  },
+  shell: { workspaceLabel: "Rodinný priestor", signedInAs: "Prihlásený ako", signOut: "Odhlásiť", openMenu: "Otvoriť menu", closeMenu: "Zavrieť menu", navLabel: "Rodinná navigácia" },
   labels: {
     ageBand: { under_10: "Do 10", age_10_12: "10–12", age_13_15: "13–15", age_16_17: "16–17" },
     protectionStatus: { inactive: "Neaktívny", monitoring: "Sledovanie", active: "Aktívny", paused: "Pozastavený" },
@@ -604,14 +654,31 @@ const de: FamilyDict = {
     privacyTitle: "Datenschutz und Grenzen", doesTitle: "Tamanor Familie jetzt:", doesnotTitle: "Tamanor Familie tut jetzt NICHT:",
     completeTitle: "Alles bereit", completeText: "Ihr Familienbereich ist bereit.", goToDashboard: "Zum Familien-Dashboard",
   },
-  dash: { welcome: "Ihr Familienbereich", onboardingIncomplete: "Einrichtung abschließen", primaryGuardian: "Hauptbetreuer", kpiProfiles: "Geschützte Profile", kpiGuardians: "Aktive berechtigte Personen", kpiSignals: "Sicherheitssignale", kpiPendingAuth: "Ausstehende Autorisierungen", kpiDeliveries: "Verfügbare interne Zustellungen", recentProfiles: "Geschützte Profile", recentSignals: "Neueste Sicherheitssignale", pendingAuth: "Ausstehende Autorisierungsentscheidungen", deliveriesSection: "Interne Zustellungen", emptyTitle: "Ihr Familienbereich ist bereit", emptyText: "Sicherheitssignale erscheinen hier nach einer künftigen autorisierten Integration mit einer sozialen oder Kommunikationsplattform." },
+  dash: {
+    welcome: "Ihr Familienbereich", onboardingIncomplete: "Einrichtung abschließen", primaryGuardian: "Hauptbetreuer", kpiProfiles: "Geschützte Profile", kpiGuardians: "Aktive berechtigte Personen", kpiSignals: "Sicherheitssignale", kpiPendingAuth: "Ausstehende Autorisierungen", kpiDeliveries: "Verfügbare interne Zustellungen", recentProfiles: "Geschützte Profile", recentSignals: "Neueste Sicherheitssignale", pendingAuth: "Ausstehende Autorisierungsentscheidungen", deliveriesSection: "Interne Zustellungen", emptyTitle: "Ihr Familienbereich ist bereit", emptyText: "Sicherheitssignale erscheinen hier nach einer künftigen autorisierten Integration mit einer sozialen oder Kommunikationsplattform.",
+    heroTitle: "Ihre Familie ist geschützt", heroBody: "Geschützte Profile, berechtigte Personen und Sicherheitssignale verwalten Sie an einem privaten Ort. Tamanor gibt Informationen nur über eine vollständige Autorisierungskette frei.",
+    addProfile: "Geschütztes Profil hinzufügen", kpiOpenSignals: "Offene Sicherheitssignale", kpiActiveAuth: "Aktive Autorisierungen",
+    activityTitle: "Letzte Ereignisse", activityEmpty: "Noch keine Ereignisse. Aktivitäten erscheinen hier, sobald der Familienbereich genutzt wird.", activitySignal: "Sicherheitssignal", activityDelivery: "Interne Zustellung",
+    checklistTitle: "Einrichtung des Bereichs abschließen", checklistBody: "Wenige kurze Schritte und Ihr Familienbereich ist vollständig bereit.", checklistDone: "Erledigt", checklistTodo: "Offen",
+    checklistProfile: "Geschütztes Profil erstellen", checklistProfileHint: "Ein sicheres Label und eine Altersgruppe genügen — keine Namen oder Konten.",
+    checklistGuardian: "Berechtigte Person hinzufügen", checklistGuardianHint: "Laden Sie eine weitere erwachsene Person ein und bestätigen Sie ihre Beziehung zum Profil.",
+    checklistPrivacy: "Datenschutz und Einschränkungen prüfen", checklistPrivacyHint: "Sehen Sie genau, was Tamanor mit Ihren Daten tut und was nicht.",
+  },
   privacy: { messages: "Tamanor liest derzeit keine privaten Nachrichten und überwacht keine Geräte.", signal: "Ein Sicherheitssignal enthält nur minimale strukturierte Informationen über ein Risiko — nicht den Inhalt der Kommunikation.", delivery: "Eine interne Zustellung bedeutet, dass Informationen innerhalb von Tamanor Familie bereitgestellt werden. Es bedeutet NICHT, dass eine E-Mail, SMS oder Push gesendet wurde.", integrations: "Integrationen mit sozialen und Kommunikationsplattformen sind nur über offizielle Partnerschaften und autorisierte APIs verfügbar." },
   profiles: { title: "Geschützte Profile", create: "Neues Profil", label: "Label", ageBand: "Altersgruppe", status: "Status", relationships: "Betreuer", signals: "Signale", created: "Erstellt", detailTabs: { overview: "Übersicht", guardians: "Berechtigte Personen", consent: "Einwilligung & Befugnis", signals: "Sicherheitssignale", deliveries: "Interne Zustellungen" }, archive: "Archivieren", archived: "Archiviert", newLabel: "z. B. Jüngeres Kind", emptyText: "Noch keine geschützten Profile. Erstellen Sie eines." },
   guardians: { title: "Berechtigte Personen", intro: "Eine Betreuerrolle allein ist nie automatisch autorisiert. Jeder Empfänger durchläuft eine explizite Kette:", pipeline: ["Beziehung", "Befugnis", "Einwilligung", "Bewertung sicherer Empfänger", "Autorisierung"], incomplete: "Die Einrichtung wird in einem späteren Schritt abgeschlossen.", relationship: "Beziehung", authority: "Befugnis", consent: "Einwilligung", assessment: "Bewertung", eligibility: "Effektive Berechtigung" },
   authorizations: { title: "Autorisierungen", signal: "Signal", profile: "Profil", recipient: "Empfänger", status: "Status", scope: "Offenlegungsumfang", reason: "Grund", evaluatedAt: "Bewertet", validUntil: "Gültig bis", revoke: "Widerrufen", emptyText: "Noch keine Autorisierungsentscheidungen." },
   signals: { title: "Sicherheitssignale", type: "Risikotyp", severity: "Schweregrad", confidence: "Konfidenz", bucket: "Zeitfenster", review: "Prüfung", created: "Erstellt", disclaimer: "Dieser Datensatz enthält nur ein minimales Sicherheitssignal, nicht den Inhalt der Kommunikation.", emptyText: "Keine Sicherheitssignale. Plattform-Integrationen sind noch nicht aktiv.", detailTitle: "Sicherheitssignal" },
   deliveries: { title: "Interne Zustellungen", status: "Status", recipient: "Empfänger", profile: "Profil", signalType: "Risikotyp", scope: "Offenlegungsumfang", preparedAt: "Vorbereitet", availableAt: "Verfügbar", acknowledgedAt: "Bestätigt", declinedAt: "Abgelehnt", makeAvailable: "Bereitstellen", acknowledge: "Bestätigen", decline: "Ablehnen", revoke: "Widerrufen", archive: "Archivieren", availableMeans: "„Verfügbar“ bedeutet verfügbar in Tamanor Familie — keine E-Mail, SMS oder Push.", emptyText: "Noch keine internen Zustellungen." },
-  settings: { title: "Einstellungen", workspaceName: "Name des Familienbereichs", language: "Sprache", timezone: "Zeitzone", workspaceTypeRO: "Bereichstyp", primaryGuardian: "Hauptbetreuer", limits: "Datenschutz & Einschränkungen", auditLink: "Audit-Log" },
+  settings: {
+    title: "Einstellungen", workspaceName: "Name des Familienbereichs", language: "Sprache", timezone: "Zeitzone", workspaceTypeRO: "Bereichstyp", primaryGuardian: "Hauptbetreuer", limits: "Datenschutz & Einschränkungen", auditLink: "Audit-Log",
+    description: "Ein Überblick über Ihren Familienbereich und die Regeln, nach denen Tamanor Ihre Daten behandelt.",
+    readOnlyHint: "Diese Werte sind in dieser Version schreibgeschützt.",
+    spaceSection: "Familienbereich", spaceDescription: "Wem dieser Bereich gehört und wer ihn verwaltet.",
+    privacySection: "Datenschutz und Datenverarbeitung", privacyDescription: "Was Tamanor verarbeitet und was nicht.",
+    integrationsSection: "Integrationen und Einschränkungen", integrationsDescription: "Welche externen Verbindungen heute möglich sind.",
+  },
+  shell: { workspaceLabel: "Familienbereich", signedInAs: "Angemeldet als", signOut: "Abmelden", openMenu: "Menü öffnen", closeMenu: "Menü schließen", navLabel: "Familien-Navigation" },
   labels: {
     ageBand: { under_10: "Unter 10", age_10_12: "10–12", age_13_15: "13–15", age_16_17: "16–17" },
     protectionStatus: { inactive: "Inaktiv", monitoring: "Beobachtung", active: "Aktiv", paused: "Pausiert" },

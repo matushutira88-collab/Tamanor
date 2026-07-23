@@ -35,7 +35,7 @@ export default async function FamilyProfilesPage({ searchParams }: { searchParam
   const banner = sp.ok ? { tone: "ok" as const, msg: sp.ok === "restored" ? t.c7.restored : sp.ok } : sp.e ? { tone: "danger" as const, msg: t.actionErrors[sp.e] ?? t.actionErrors.retry_later } : null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t.profiles.title} description={t.privacy.messages} />
       {banner ? <p role={banner.tone === "danger" ? "alert" : "status"} className={`rounded-lg border px-3 py-2 text-sm border-[var(--color-${banner.tone})] bg-[var(--color-${banner.tone}-soft)] text-[var(--color-${banner.tone})]`}>{banner.msg}</p> : null}
 

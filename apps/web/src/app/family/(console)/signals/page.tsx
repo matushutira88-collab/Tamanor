@@ -13,7 +13,7 @@ export default async function FamilySignalsPage() {
   const page = await listSafetySignals(actor, { limit: 50 });
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t.signals.title} description={t.signals.disclaimer} />
       <Card>
         <SectionHeader title={t.signals.title} />

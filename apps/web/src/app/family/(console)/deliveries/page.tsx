@@ -22,7 +22,7 @@ export default async function FamilyDeliveriesPage() {
   const page = await listSafetySignalDeliveries(actor, { limit: 50 });
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t.deliveries.title} description={t.privacy.delivery} />
       <Card>
         <SectionHeader title={t.deliveries.title} />

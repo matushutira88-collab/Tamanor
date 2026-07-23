@@ -18,7 +18,7 @@ export default async function FamilyInvitationsPage({ searchParams }: { searchPa
   const t = familyDict(await getLocale());
   const sp = await searchParams;
   if (!familyCan(actor, FamilyAction.FamilyInvitationView)) {
-    return <div className="mx-auto max-w-5xl"><PageHeader title={t.c8.title} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>;
+    return <div><PageHeader title={t.c8.title} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>;
   }
   const canManage = familyCan(actor, FamilyAction.FamilyInvitationCreate);
   const canRevoke = familyCan(actor, FamilyAction.FamilyInvitationRevoke);
@@ -36,14 +36,14 @@ export default async function FamilyInvitationsPage({ searchParams }: { searchPa
       listFamilyGuardianInvitations(actor, filters),
       searchProtectedProfiles(actor, { state: "all" }),
     ]);
-  } catch (e) { if (e instanceof FamilyForbiddenError) return <div className="mx-auto max-w-5xl"><PageHeader title={t.c8.title} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>; throw e; }
+  } catch (e) { if (e instanceof FamilyForbiddenError) return <div><PageHeader title={t.c8.title} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>; throw e; }
 
   const profileLabel = (id: string) => { const p = profiles.find((x) => x.id === id); return p ? (p.guardianLabel ?? famLabel(t.labels.ageBand, p.ageBand)) : "—"; };
   const anyOpt = { value: "", label: t.c8.anyOption };
   const banner = sp.ok ? { tone: "ok" as const, msg: t.c8.statuses.revoked } : sp.e ? { tone: "danger" as const, msg: t.c8.errors[sp.e] ?? t.c8.errors.retry_later } : null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t.c8.title} description={t.c8.subtitle} action={canManage ? <Link href="/family/invitations/new" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)]">{t.c8.create}</Link> : undefined} />
       {banner ? <p role={banner.tone === "danger" ? "alert" : "status"} className={`rounded-lg border px-3 py-2 text-sm border-[var(--color-${banner.tone})] bg-[var(--color-${banner.tone}-soft)] text-[var(--color-${banner.tone})]`}>{banner.msg}</p> : null}
 

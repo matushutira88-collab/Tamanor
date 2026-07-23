@@ -16,7 +16,7 @@ function CardBox({ children }: { children: React.ReactNode }) {
 /** Generic page header + a couple of stacked cards. */
 export function FamilyPageSkeleton() {
   return (
-    <div role="status" aria-busy="true" className="mx-auto max-w-5xl space-y-6">
+    <div role="status" aria-busy="true" className="space-y-6">
       <span className="sr-only">Loading…</span>
       <div className="space-y-2">
         <Bar className="h-6 w-48" />
@@ -37,7 +37,7 @@ export function FamilyPageSkeleton() {
 /** KPI grid + two section cards — for the Family overview/dashboard. */
 export function FamilyKpiSkeleton() {
   return (
-    <div role="status" aria-busy="true" className="mx-auto max-w-6xl space-y-6">
+    <div role="status" aria-busy="true" className="space-y-6">
       <span className="sr-only">Loading…</span>
       <Bar className="h-6 w-56" />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -67,7 +67,7 @@ export function FamilyKpiSkeleton() {
 /** A table placeholder — for list routes (profiles, authorizations, signals, deliveries, guardians). */
 export function FamilyTableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div role="status" aria-busy="true" className="mx-auto max-w-5xl space-y-6">
+    <div role="status" aria-busy="true" className="space-y-6">
       <span className="sr-only">Loading…</span>
       <div className="space-y-2">
         <Bar className="h-6 w-48" />
@@ -91,7 +91,7 @@ export function FamilyTableSkeleton({ rows = 5 }: { rows?: number }) {
 /** A detail placeholder — header + tab row + a body card (protected-profile detail). */
 export function FamilyDetailSkeleton() {
   return (
-    <div role="status" aria-busy="true" className="mx-auto max-w-5xl space-y-6">
+    <div role="status" aria-busy="true" className="space-y-6">
       <span className="sr-only">Loading…</span>
       <Bar className="h-4 w-24" />
       <div className="space-y-2">

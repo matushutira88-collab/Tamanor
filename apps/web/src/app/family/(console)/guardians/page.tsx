@@ -40,7 +40,7 @@ export default async function FamilyGuardiansPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t.guardians.title} description={t.guardians.intro} />
       <Card>
         <SectionHeader title={t.guardians.title} />
