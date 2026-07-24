@@ -170,7 +170,15 @@ async function hydrate(
 ): Promise<ReadSessionResult> {
   const membership = await prisma.membership.findUnique({
     where: { userId_tenantId: { userId, tenantId } },
-    include: { user: true, tenant: true },
+    // Explicit select (NOT `include: { tenant: true }`) so we only read the exact user/tenant
+    // fields this hydrate uses — never the whole Tenant row. This keeps login + session reads
+    // working even if a newer additive Tenant column (e.g. familyTrialConsumedAt) has not yet
+    // reached this environment's database. Forward-compatible: harmless once the column exists.
+    select: {
+      role: true,
+      user: { select: { id: true, name: true, email: true, emailVerifiedAt: true, passwordChangedAt: true } },
+      tenant: { select: { id: true, name: true, workspaceKind: true, deletionState: true } },
+    },
   });
   if (!membership) return { ok: false, reason: "membership_missing" };
   if (membership.tenant.deletionState !== "active") return { ok: false, reason: "tenant_deleting" };
