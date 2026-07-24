@@ -31,6 +31,10 @@ export * from "./security-score";
 export * from "./auto-hide-decision";
 export * from "./billing";
 export * from "./entitlements";
+// FAMILY-BILLING S1 — Family plan catalogue + entitlement engine (own identity; shares only the
+// AccessState primitive from ./billing). Additive: no Business export is changed.
+export * from "./family-billing";
+export * from "./family-entitlements";
 export * from "./pricing-projection";
 export * from "./rate-limit";
 export * from "./rate-limit-store";

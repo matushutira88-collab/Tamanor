@@ -115,6 +115,7 @@
     "stripe-smoke-verify": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/stripe-smoke-verify.ts",
     "entitlements:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/entitlements.test.ts",
     "entitlement-limits:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/entitlement-limits.test.ts",
+    "family-entitlements:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/family-entitlements.test.ts",
     "env-separation:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/env-separation.test.ts",
     "google-email:test": "pnpm --filter @guardora/db exec tsx scripts/google-email.test.ts",
     "rate-limit-store:test": "pnpm --filter @guardora/db exec tsx scripts/rate-limit-store.test.ts",
