@@ -28,6 +28,7 @@ import { Prisma } from "@prisma/client";
 import {
   resolveFamilyEntitlements,
   familyResourceLimit,
+  familyBillingEnabled,
   FamilyEntitlementError,
   type FamilyEntitlements,
   type FamilyLimitedResource,
@@ -43,8 +44,9 @@ import type { TenantTx } from "./tenant-db";
  *   unset / anything else                  → no enforcement (current behaviour preserved)
  */
 export function familyBillingEnforcementEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  const v = env.FAMILY_BILLING_ENABLED?.trim().toLowerCase();
-  return v === "1" || v === "true";
+  // Delegates to the single core reader — one source of truth for the FAMILY_BILLING_ENABLED gate
+  // (checkout, trial start, webhook mutations, and this capacity enforcement all read the same flag).
+  return familyBillingEnabled(env);
 }
 
 /**

@@ -12,7 +12,7 @@ import {
   ConnectorHealth, ConnectorStatus, ActorKind, DecisionStatus, ModerationAction, ReputationStatus,
   findAccountsForTokenCheck, findItemsForProposal, findActiveMetaAccounts,
   deleteExpiredOnboardingSessions, minimizeWebhookPayloads, purgeExpiredWebhookEvents,
-  cleanupExpiredAuthTokens, sweepTrialExpirations, sweepTrialEndingNotifications, expireStaleInvites, purgeStripeWebhookEvents,
+  cleanupExpiredAuthTokens, sweepTrialExpirations, sweepTrialEndingNotifications, sweepFamilyTrialExpirations, expireStaleInvites, purgeStripeWebhookEvents,
 } from "@guardora/db";
 import { loadEnv, getWebhookRetentionConfig } from "@guardora/config";
 import { classifyTokenLifecycle, emitOpsEvent, metrics } from "@guardora/core";
@@ -151,6 +151,7 @@ export interface MaintenanceSummary {
   webhookRetention: { minimized: number; deleted: number } | { failed: true };
   trialSweep: number | { failed: true };
   trialEndingNotify: number | { failed: true };
+  familyTrialSweep: number | { failed: true };
   invitesExpired: number | { failed: true };
   stripePurge: number | { failed: true };
   metaHealth: { enabled: boolean; checked: number; changed: number } | { failed: true };
@@ -171,6 +172,7 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
     webhookRetention: await guard("webhook_retention", () => runWebhookRetentionTick(now)),
     trialSweep: await guard("trial_sweep", () => sweepTrialExpirations(now)),
     trialEndingNotify: await guard("trial_ending_notify", () => sweepTrialEndingNotifications(now)),
+    familyTrialSweep: await guard("family_trial_sweep", () => sweepFamilyTrialExpirations(now)),
     invitesExpired: await guard("invites_expire", () => expireStaleInvites(now)),
     stripePurge: await guard("stripe_purge", () => purgeStripeWebhookEvents(new Date(now.getTime() - 90 * DAY_MS))),
     metaHealth: await guard("meta_health", () => runMetaConnectorHealth()),

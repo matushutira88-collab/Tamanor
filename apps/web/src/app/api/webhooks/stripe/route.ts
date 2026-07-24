@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { getStripe, webhookSecret } from "@/server/billing/stripe";
-import { normalizeSubscription, subscriptionFromEvent } from "@/server/billing/service";
+import { normalizeSubscription, familyNormalizeSubscription, subscriptionFromEvent } from "@/server/billing/service";
 import {
   recordAndApplyStripeEvent, enforceMonitoringLimits,
   completeCheckoutAttemptBySession, expireCheckoutAttemptBySession, completeLiveCheckoutAttemptsForTenant,
   type StripeSubStateInput,
 } from "@guardora/db";
-import { emitOpsEvent, metrics, notificationDedupeKey, dayBucket } from "@guardora/core";
+import { emitOpsEvent, metrics, notificationDedupeKey, dayBucket, familyBillingEnabled } from "@guardora/core";
 import { createNotification, sendCriticalNotificationEmail } from "@guardora/db";
 
 export const runtime = "nodejs";
@@ -76,7 +76,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const obj = event.data.object as unknown as Record<string, unknown>;
       const latestInvoiceStatus = event.type.startsWith("invoice.") && typeof obj.status === "string" ? obj.status : null;
       const sub = await subscriptionFromEvent(stripe, event);
-      input = sub ? normalizeSubscription(sub, latestInvoiceStatus) : null;
+      if (sub) {
+        // Business mapping first. If the price is not a Business price, try the FAMILY mapping — but
+        // only when FAMILY_BILLING_ENABLED is on; otherwise a Family subscription event stays null and
+        // is recorded as "ignored" (safely quarantined). recordAndApplyStripeEvent additionally verifies
+        // the tenant's persisted workspaceKind matches the mapped plan before applying anything.
+        input = normalizeSubscription(sub, latestInvoiceStatus);
+        if (!input && familyBillingEnabled()) input = familyNormalizeSubscription(sub, latestInvoiceStatus);
+      }
     }
 
     const res = await recordAndApplyStripeEvent(event.id, event.type, input, event.created);

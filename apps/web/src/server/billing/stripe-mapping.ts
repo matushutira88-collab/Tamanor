@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { planForStripePriceId } from "@guardora/core";
+import { planForStripePriceId, familyPlanForStripePriceId } from "@guardora/core";
 import type { StripeSubStateInput } from "@guardora/db";
 
 /**
@@ -53,6 +53,38 @@ export function normalizeSubscription(sub: Stripe.Subscription, latestInvoiceSta
   const priceId = sub.items?.data?.[0]?.price?.id ?? null;
   const mapped = priceId ? planForStripePriceId(priceId) : null;
   if (!mapped) return null; // unrecognised price → do not grant an arbitrary plan
+  const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
+  if (!customerId) return null;
+
+  const period = subscriptionPeriod(sub);
+  return {
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: sub.id,
+    stripePriceId: priceId,
+    plan: mapped.plan,
+    billingInterval: mapped.interval,
+    status: sub.status,
+    currentPeriodStart: period.start,
+    currentPeriodEnd: period.end,
+    cancelAtPeriodEnd: sub.cancel_at_period_end,
+    canceledAt: toDate(sub.canceled_at),
+    trialEndsAt: toDate(sub.trial_end),
+    latestInvoiceStatus: latestInvoiceStatus ?? null,
+  };
+}
+
+/**
+ * FAMILY-BILLING S3 — normalize a Stripe Subscription whose Price is a FAMILY price into our trusted
+ * subscription-state input (plan = a Family plan). Fails closed (null) when the price is not a
+ * configured Family price or the customer is missing — the webhook then records the event without
+ * granting an arbitrary plan. Kept SEPARATE from `normalizeSubscription` so a Family price can never
+ * yield a Business plan: the caller tries the Business mapping first, then this Family mapping. The
+ * downstream apply (recordAndApplyStripeEvent) still verifies the tenant's workspaceKind matches.
+ */
+export function familyNormalizeSubscription(sub: Stripe.Subscription, latestInvoiceStatus?: string | null): StripeSubStateInput | null {
+  const priceId = sub.items?.data?.[0]?.price?.id ?? null;
+  const mapped = priceId ? familyPlanForStripePriceId(priceId) : null;
+  if (!mapped) return null; // not a configured Family price → do not grant an arbitrary Family plan
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
   if (!customerId) return null;
 

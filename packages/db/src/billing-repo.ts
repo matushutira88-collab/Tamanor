@@ -3,8 +3,9 @@ import { Prisma } from "@prisma/client";
 import {
   resolveEffectiveAccessState, resolveEntitlements, accessAllowsOperations, evaluateCheckoutGuard,
   resolveTenantLifecycle, trialDaysRemaining, notificationDedupeKey, dayBucket,
+  isFamilyPlanId, resolveFamilyBillingState, familyBillingEnabled,
   type AccessState, type BillingStatus, type PlanEntitlements, type CheckoutGuardReason,
-  type TenantLifecycleState,
+  type TenantLifecycleState, type FamilyPlanId,
 } from "@guardora/core";
 import { systemDb } from "./index";
 import { createNotification } from "./notification-repo";
@@ -391,13 +392,50 @@ export async function recordAndApplyStripeEvent(
     return { outcome: "ignored", tenantId: null, accessState: null };
   }
 
-  const accessState = resolveEffectiveAccessState({
-    status: input.status,
-    trialEndsAt: input.trialEndsAt ?? null,
-    currentPeriodEnd: input.currentPeriodEnd ?? null,
-    cancelAtPeriodEnd: input.cancelAtPeriodEnd,
-    now,
-  });
+  // FAMILY-BILLING S3 — workspace-aware routing. The tenant's persisted workspaceKind is trusted
+  // server state; the price's workspace is encoded by the mapped plan (Family plan vs Business plan).
+  // Reject safely (record ignored; NO billing mutation) when they disagree — a Family price landing on
+  // a Business tenant, or a Business price on a Family tenant — or when a Family event arrives while
+  // FAMILY_BILLING_ENABLED is off (quarantine). Business behaviour is completely unchanged.
+  const workspaceKind = (await systemDb.tenant.findUnique({ where: { id: tenantId }, select: { workspaceKind: true } }))?.workspaceKind ?? "business";
+  const inputIsFamily = isFamilyPlanId(input.plan);
+  const workspaceMismatch = inputIsFamily ? workspaceKind !== "family" : workspaceKind === "family";
+  const familyGateClosed = inputIsFamily && !familyBillingEnabled();
+  if (workspaceMismatch || familyGateClosed) {
+    await systemDb.stripeWebhookEvent.upsert({
+      where: { stripeEventId },
+      create: { stripeEventId, eventType, result: "ignored", processedAt: now },
+      update: { result: "ignored", processedAt: now },
+    }).catch((e) => { if (!isUnique(e)) throw e; });
+    return { outcome: "ignored", tenantId: null, accessState: null };
+  }
+
+  // Effective (plan, access) to persist on the TENANT. Family uses its floor mapping — a canceled /
+  // expired / unpaid Family subscription falls back to family_free at full_access (never restricted;
+  // data preserved). Business is unchanged (resolveEffectiveAccessState + the subscription's plan).
+  let planToPersist: string;
+  let accessState: AccessState;
+  if (inputIsFamily) {
+    const r = resolveFamilyBillingState({
+      paidPlan: input.plan as FamilyPlanId,
+      status: input.status,
+      trialEndsAt: input.trialEndsAt ?? null,
+      currentPeriodEnd: input.currentPeriodEnd ?? null,
+      cancelAtPeriodEnd: input.cancelAtPeriodEnd,
+      now,
+    });
+    planToPersist = r.plan;
+    accessState = r.accessState;
+  } else {
+    accessState = resolveEffectiveAccessState({
+      status: input.status,
+      trialEndsAt: input.trialEndsAt ?? null,
+      currentPeriodEnd: input.currentPeriodEnd ?? null,
+      cancelAtPeriodEnd: input.cancelAtPeriodEnd,
+      now,
+    });
+    planToPersist = input.plan;
+  }
 
   // V1.58.4 — out-of-order guard. This subscription aggregate advances only to a NEWER event; an
   // older (delayed/retried) event is stale. Terminality = the subscription ended (deleted / canceled).
@@ -435,11 +473,13 @@ export async function recordAndApplyStripeEvent(
         },
       });
       applied = upd.count > 0;
-      // Only advance tenant access when THIS event actually applied (won the ordering guard).
+      // Only advance tenant access when THIS event actually applied (won the ordering guard). The
+      // TENANT plan is the EFFECTIVE plan (Family fallback → family_free); the subscription row above
+      // keeps the raw Stripe plan (input.plan) so the subscription's true product stays truthful.
       if (applied) {
         await tx.tenant.update({
           where: { id: tenantId },
-          data: { plan: input.plan, billingStatus: String(input.status), accessState },
+          data: { plan: planToPersist, billingStatus: String(input.status), accessState },
         });
       }
       // Record the event barrier either way (idempotent replay-safe); a stale event is recorded as
@@ -472,6 +512,10 @@ export async function recordAndApplyStripeEvent(
 export async function sweepTrialExpirations(now: Date = new Date(), batchSize = 500): Promise<number> {
   const candidates = await systemDb.tenant.findMany({
     where: {
+      // FAMILY-BILLING S3 — never restrict a Family workspace here: Family is never billing-restricted
+      // (family_free is the always-usable floor; critical safety always on). Family trial expiry is
+      // handled by sweepFamilyTrialExpirations below, which converts to family_free, not restricted.
+      workspaceKind: { not: "family" },
       billingStatus: "no_subscription",
       accessState: "full_access",
       trialEndsAt: { lt: now },
@@ -482,7 +526,7 @@ export async function sweepTrialExpirations(now: Date = new Date(), batchSize = 
   let restricted = 0;
   for (const c of candidates) {
     const r = await systemDb.tenant.updateMany({
-      where: { id: c.id, billingStatus: "no_subscription", accessState: "full_access" },
+      where: { id: c.id, workspaceKind: { not: "family" }, billingStatus: "no_subscription", accessState: "full_access" },
       data: { accessState: "restricted" },
     });
     restricted += r.count;
@@ -497,6 +541,52 @@ export async function sweepTrialExpirations(now: Date = new Date(), batchSize = 
     }
   }
   return restricted;
+}
+
+/**
+ * FAMILY-BILLING S3 — worker sweep for EXPIRED explicit Family trials that never converted to a paid
+ * subscription. A Family tenant on an explicit trial (billingStatus="trialing", trialEndsAt in the
+ * past) with no active/trialing paid subscription is moved to the Family Free floor:
+ *   plan          → "family_free"
+ *   accessState   → "full_access"    (Family is NEVER restricted)
+ *   billingStatus → "no_subscription"
+ *   trialStartsAt → null, trialEndsAt → null   (active trial window cleared)
+ * `familyTrialConsumedAt` is DELIBERATELY preserved (the one-time trial stays consumed forever). No
+ * data is ever deleted. Bounded, idempotent. Returns the count converted this pass.
+ *
+ * Like the Business sweep this is a persistence step, not the authority for critical safety (which is
+ * always active regardless). A converted family_free tenant reads with Free admin caps thereafter;
+ * existing over-cap usage is preserved (S2 enforcement blocks only NEW capacity).
+ */
+export async function sweepFamilyTrialExpirations(now: Date = new Date(), batchSize = 500): Promise<number> {
+  const candidates = await systemDb.tenant.findMany({
+    where: {
+      workspaceKind: "family",
+      billingStatus: "trialing",
+      trialEndsAt: { lt: now },
+      // Exclude tenants that converted to a live paid subscription during the trial.
+      OR: [{ subscription: { is: null } }, { subscription: { status: { notIn: ["active", "trialing"] } } }],
+    },
+    select: { id: true },
+    take: Math.min(Math.max(batchSize, 1), 5000),
+  });
+  let converted = 0;
+  for (const c of candidates) {
+    const r = await systemDb.tenant.updateMany({
+      // Re-assert the predicate in the write so a concurrent conversion (webhook) is never overwritten.
+      where: { id: c.id, workspaceKind: "family", billingStatus: "trialing", trialEndsAt: { lt: now } },
+      data: {
+        plan: "family_free",
+        accessState: "full_access",
+        billingStatus: "no_subscription",
+        trialStartsAt: null,
+        trialEndsAt: null,
+        // familyTrialConsumedAt intentionally NOT cleared — the one-time trial remains consumed.
+      },
+    });
+    converted += r.count;
+  }
+  return converted;
 }
 
 /**

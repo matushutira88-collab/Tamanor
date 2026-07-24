@@ -127,6 +127,8 @@ export * from "./child-safety-family-onboarding";
 export * from "./family-invitation";
 // FAMILY-BILLING S2 — centralized server-side capacity enforcement (flag-gated, default off).
 export * from "./family-billing-guard";
+// FAMILY-BILLING S3 — the explicit one-time Family trial (flag-gated, atomic, concurrency-safe).
+export * from "./family-trial";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

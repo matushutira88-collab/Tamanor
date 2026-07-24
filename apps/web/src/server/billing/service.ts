@@ -2,7 +2,8 @@ import "server-only";
 import type Stripe from "stripe";
 import {
   resolveStripePriceId, planForStripePriceId, isSelfServePlan,
-  type BillingPlanId, type BillingInterval,
+  resolveFamilyStripePriceId, isFamilySelfServePlan, familyBillingEnabled,
+  type BillingPlanId, type BillingInterval, type FamilyPlanId,
 } from "@guardora/core";
 import {
   getStripeCustomerId, ensureStripeCustomer,
@@ -12,8 +13,8 @@ import {
 import { getStripe, portalReturnUrl } from "./stripe";
 import { invoiceSubscriptionId, normalizeSubscription } from "./stripe-mapping";
 
-// Re-export the pure mapping (single source in ./stripe-mapping) for existing importers (webhook route).
-export { normalizeSubscription } from "./stripe-mapping";
+// Re-export the pure mappings (single source in ./stripe-mapping) for existing importers (webhook route).
+export { normalizeSubscription, familyNormalizeSubscription } from "./stripe-mapping";
 
 /**
  * V1.50D — high-level Stripe operations. Checkout/portal are authorized + tenant-scoped by the
@@ -23,6 +24,11 @@ export { normalizeSubscription } from "./stripe-mapping";
  */
 
 export type OpResult = { ok: true; url: string } | { ok: false; reason: string };
+
+/** Where Stripe returns after checkout — the billing surface differs by workspace (Business vs Family). */
+type CheckoutSurface = { successPath: string; cancelPath: string };
+const BUSINESS_SURFACE: CheckoutSurface = { successPath: "/dashboard/billing", cancelPath: "/dashboard/billing" };
+const FAMILY_SURFACE: CheckoutSurface = { successPath: "/family/billing", cancelPath: "/family/billing" };
 
 export async function createCheckout(args: {
   tenantId: string; ownerEmail: string; plan: BillingPlanId; interval: BillingInterval; origin: string; userId?: string | null;
@@ -49,11 +55,43 @@ export async function createCheckout(args: {
     // key. Stripe deduplicates on that key, so an ambiguous earlier failure (session may already
     // exist) resolves to the SAME Session — never a duplicate.
     if (reservation.url) return { ok: true, url: reservation.url };
-    return driveCheckoutSession(stripe, args, priceId, reservation.attemptId, reservation.idempotencyKey);
+    return driveCheckoutSession(stripe, { ...args, surface: BUSINESS_SURFACE }, priceId, reservation.attemptId, reservation.idempotencyKey);
   }
 
   // reservation.kind === "reserved" — create EXACTLY ONE Session with the reserved per-attempt key.
-  return driveCheckoutSession(stripe, args, priceId, reservation.attemptId, reservation.idempotencyKey);
+  return driveCheckoutSession(stripe, { ...args, surface: BUSINESS_SURFACE }, priceId, reservation.attemptId, reservation.idempotencyKey);
+}
+
+/**
+ * FAMILY-BILLING S3 — Family Stripe Checkout. Reuses the SAME hardened infrastructure as Business
+ * (durable reservation, one-live-checkout partial unique index, subscription guard, per-attempt
+ * idempotency key) — only the plan catalogue, price resolution and return surface differ. Family-only:
+ *   • gated by FAMILY_BILLING_ENABLED (off → fails safe, no Stripe call);
+ *   • only self-serve Family plans (family_plus / family_premium), monthly / yearly;
+ *   • price resolved server-side from the trusted (plan, interval) — never a client-supplied price;
+ *   • tenantId / ownerEmail come from the authenticated caller, never the browser body.
+ * Returns to /family/billing?checkout=success|cancel.
+ */
+export async function createFamilyCheckout(args: {
+  tenantId: string; ownerEmail: string; plan: FamilyPlanId; interval: BillingInterval; origin: string; userId?: string | null;
+}): Promise<OpResult> {
+  const stripe = getStripe();
+  if (!stripe) return { ok: false, reason: "not_configured" };
+  if (!familyBillingEnabled()) return { ok: false, reason: "family_billing_disabled" };
+  if (!isFamilySelfServePlan(args.plan)) return { ok: false, reason: "invalid_plan" };
+  const priceId = resolveFamilyStripePriceId(args.plan, args.interval);
+  if (!priceId) return { ok: false, reason: "price_not_configured" };
+
+  const reservation = await reserveCheckoutAttempt({
+    tenantId: args.tenantId, userId: args.userId ?? null, plan: args.plan, interval: args.interval, priceId,
+  });
+  if (reservation.kind === "blocked") return { ok: false, reason: reservation.reason };
+  if (reservation.kind === "existing") {
+    if (!reservation.samePlan) return { ok: false, reason: "checkout_in_progress" };
+    if (reservation.url) return { ok: true, url: reservation.url };
+    return driveCheckoutSession(stripe, { ...args, surface: FAMILY_SURFACE }, priceId, reservation.attemptId, reservation.idempotencyKey);
+  }
+  return driveCheckoutSession(stripe, { ...args, surface: FAMILY_SURFACE }, priceId, reservation.attemptId, reservation.idempotencyKey);
 }
 
 /**
@@ -62,7 +100,7 @@ export async function createCheckout(args: {
  * returns the SAME Session (no duplicate). Runs AFTER the reservation transaction has committed.
  */
 async function driveCheckoutSession(
-  stripe: Stripe, args: { tenantId: string; ownerEmail: string; origin: string }, priceId: string,
+  stripe: Stripe, args: { tenantId: string; ownerEmail: string; origin: string; surface: CheckoutSurface }, priceId: string,
   attemptId: string, idempotencyKey: string,
 ): Promise<OpResult> {
   try {
@@ -80,8 +118,8 @@ async function driveCheckoutSession(
         mode: "subscription",
         customer: customerId,
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${args.origin}/dashboard/billing?checkout=success`,
-        cancel_url: `${args.origin}/dashboard/billing?checkout=cancel`,
+        success_url: `${args.origin}${args.surface.successPath}?checkout=success`,
+        cancel_url: `${args.origin}${args.surface.cancelPath}?checkout=cancel`,
         subscription_data: { metadata: { tenantId: args.tenantId, checkoutAttemptId: attemptId } },
         metadata: { tenantId: args.tenantId, checkoutAttemptId: attemptId },
         client_reference_id: args.tenantId,
@@ -112,6 +150,22 @@ export async function createPortal(args: { tenantId: string; origin: string }): 
   const customerId = await getStripeCustomerId(args.tenantId);
   if (!customerId) return { ok: false, reason: "no_customer" };
   const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: portalReturnUrl(args.origin) });
+  return { ok: true, url: session.url };
+}
+
+/**
+ * FAMILY-BILLING S3 — Family Stripe Customer Portal. Same shared Stripe portal service; Family-only
+ * (gated by FAMILY_BILLING_ENABLED) and always returns to the Family billing surface (/family/billing),
+ * same-origin (never the Business env override). Fails safe when billing is unconfigured or the tenant
+ * has no Stripe customer yet.
+ */
+export async function createFamilyPortal(args: { tenantId: string; origin: string }): Promise<OpResult> {
+  const stripe = getStripe();
+  if (!stripe) return { ok: false, reason: "not_configured" };
+  if (!familyBillingEnabled()) return { ok: false, reason: "family_billing_disabled" };
+  const customerId = await getStripeCustomerId(args.tenantId);
+  if (!customerId) return { ok: false, reason: "no_customer" };
+  const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: `${args.origin}/family/billing` });
   return { ok: true, url: session.url };
 }
 
