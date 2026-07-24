@@ -144,7 +144,9 @@ export type RegisterInput = {
   country?: string | null;
   locale?: string;
 };
-export type RegisterResult = { userId: string; tenantId: string; trialEndsAt: Date };
+// `trialEndsAt` is Date for a Business free-trial registration and null for a Family registration
+// (Family starts on family_free with no auto-trial — S3A). No caller consumes it (userId only).
+export type RegisterResult = { userId: string; tenantId: string; trialEndsAt: Date | null };
 
 export async function registerUser(input: RegisterInput): Promise<RegisterResult> {
   const email = normalizeEmail(input.email);
@@ -182,8 +184,6 @@ export async function registerFamilyUser(input: RegisterFamilyInput): Promise<Re
   const workspaceName = input.workspaceName.trim() || "Family";
   const locale = input.locale ?? "en";
   const timezone = (input.timezone ?? "").trim() || "Europe/Bratislava";
-  const now = new Date();
-  const trialEndsAt = new Date(now.getTime() + FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
   const slugBase = slugifyBase(workspaceName);
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -194,14 +194,18 @@ export async function registerFamilyUser(input: RegisterFamilyInput): Promise<Re
           data: { email, passwordHash: input.passwordHash, locale, emailVerifiedAt: null },
           select: { id: true },
         });
+        // FAMILY-BILLING S3A — a new Family workspace starts on the Family Free baseline with NO
+        // auto-trial (approved decisions 1 & 2): plan=family_free, full_access, trial dates null,
+        // familyTrialConsumedAt null (defaults). It never uses the Business FREE_TRIAL_PLAN. The
+        // future explicit startFamilyTrial is the ONLY way a Family trial begins.
         const tenant = await tx.tenant.create({
-          data: { name: workspaceName, slug, plan: FREE_TRIAL_PLAN, workspaceKind: "family", trialStartsAt: now, trialEndsAt, onboardingCompletedAt: null },
+          data: { name: workspaceName, slug, plan: "family_free", workspaceKind: "family", accessState: "full_access", trialStartsAt: null, trialEndsAt: null, onboardingCompletedAt: null },
           select: { id: true },
         });
         await tx.membership.create({ data: { userId: user.id, tenantId: tenant.id, role: Role.owner } }); // owner → PrimaryGuardian in a FAMILY workspace
         await tx.workspaceOnboardingState.create({ data: { tenantId: tenant.id, workspaceKind: "family", currentStep: "welcome" } });
         await tx.auditLog.create({ data: { tenantId: tenant.id, event: "workspace.kind.selected", actorKind: "human", actorUserId: user.id, targetType: "tenant", targetId: tenant.id, metadata: { workspaceKind: "family" } as never } });
-        return { userId: user.id, tenantId: tenant.id, trialEndsAt };
+        return { userId: user.id, tenantId: tenant.id, trialEndsAt: null };
       });
     } catch (e) {
       if (isUniqueViolation(e, "email")) throw new EmailAlreadyRegisteredError();

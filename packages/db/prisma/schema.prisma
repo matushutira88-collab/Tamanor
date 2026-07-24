@@ -362,6 +362,13 @@ model Tenant {
   // 14-day window. Billing is out of scope (V1.50B+); these are informational only.
   trialStartsAt         DateTime?
   trialEndsAt           DateTime?
+  // FAMILY-BILLING S3A — the AUTHORITATIVE one-time introductory Family-trial marker.
+  //   null     = the introductory Family trial has never been consumed (eligible)
+  //   non-null = it has already been consumed (never again)
+  // Family-only authority. trialStartsAt/trialEndsAt are NOT proof of historical eligibility (the
+  // legacy Business-style registration trial set them for every workspace). A future startFamilyTrial
+  // sets this atomically; it is never derived from the trial dates.
+  familyTrialConsumedAt DateTime?
   // Optional company country captured at registration (no downstream logic yet).
   country               String?
   // V1.50B — onboarding state. NULL = onboarding pending (new workspace); set when the
