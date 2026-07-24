@@ -74,7 +74,7 @@ async function main() {
   const deleting = await mkTenant("family_plus", "full_access", "deleting"); created.push(deleting.id);
   const unknownPlan = await mkTenant("nonsense_plan"); created.push(unknownPlan.id);
 
-  check("free → plan caps, can manage", (await resolveFamilyEntitlementsForTenant(free.id)).maxProtectedProfiles === 2);
+  check("free → plan caps, can manage", (await resolveFamilyEntitlementsForTenant(free.id)).maxProtectedProfiles === 1);
   check("premium → unlimited profiles", (await resolveFamilyEntitlementsForTenant(prem.id)).maxProtectedProfiles === null);
   check("grace → plan honored (can manage)", (await resolveFamilyEntitlementsForTenant(grace.id)).canManageFamily === true);
   check("restricted → locked (cannot manage)", (await resolveFamilyEntitlementsForTenant(restricted.id)).canManageFamily === false);
@@ -91,7 +91,7 @@ async function main() {
   // ===========================================================================
   console.log("\nC. protected profiles enforcement");
   check("below cap succeeds (free, 0 profiles)", await succeeds(() => guard(free.id, "protected_profile")));
-  await seedProfiles(free.id, 2); // now at cap (2)
+  await seedProfiles(free.id, 1); // now at cap (1)
   check("exactly AT cap fails (family_plan_limit_reached)", await denies(() => guard(free.id, "protected_profile"), "family_plan_limit_reached"));
   check("unlimited plan succeeds (premium, 5 seeded)", (await seedProfiles(prem.id, 5), await succeeds(() => guard(prem.id, "protected_profile"))));
   check("restricted fails (family_access_restricted)", await denies(() => guard(restricted.id, "protected_profile"), "family_access_restricted"));
@@ -169,7 +169,7 @@ async function main() {
   let caught: FamilyEntitlementError | null = null;
   try { await guard(free.id, "protected_profile"); } catch (e) { if (isFamilyEntitlementError(e)) caught = e as FamilyEntitlementError; }
   check("throws typed FamilyEntitlementError with stable code + capability + current/max",
-    !!caught && caught.code === "family_plan_limit_reached" && caught.capability === "protected_profile" && caught.current === 2 && caught.max === 2);
+    !!caught && caught.code === "family_plan_limit_reached" && caught.capability === "protected_profile" && caught.current === 1 && caught.max === 1);
   check("error exposes NO sensitive data (message = code; detail safe)",
     !!caught && caught.message === "family_plan_limit_reached" && !/stripe|price_|sk_|secret|token|email|@|child/i.test(JSON.stringify(caught.detail())));
 
@@ -177,8 +177,8 @@ async function main() {
   // H. Concurrency — advisory lock prevents double-create cap bypass
   // ===========================================================================
   console.log("\nH. concurrency (race-safe cap)");
-  const race = await mkTenant("family_free"); created.push(race.id); // cap 2
-  await seedProfiles(race.id, 1); // 1 existing → exactly 1 slot left
+  const race = await mkTenant("family_basic"); created.push(race.id); // cap 3
+  await seedProfiles(race.id, 2); // 2 existing → exactly 1 slot left
   process.env.FAMILY_BILLING_ENABLED = "1"; // exercise the real repo path (env flag)
   const results = await Promise.allSettled([
     createProtectedProfile(race.actor, { ageBand: AgeBand.Age10to12 }),
@@ -189,7 +189,7 @@ async function main() {
   const denied = results.filter((r) => r.status === "rejected" && isFamilyEntitlementError((r as PromiseRejectedResult).reason)).length;
   const finalCount = await systemDb.protectedProfile.count({ where: { tenantId: race.id, archivedAt: null } });
   check("exactly ONE of two concurrent creates succeeds (no bypass)", ok === 1 && denied === 1, `ok=${ok} denied=${denied}`);
-  check("final active profile count == cap (2), never 3", finalCount === 2, `count=${finalCount}`);
+  check("final active profile count == cap (3), never 4", finalCount === 3, `count=${finalCount}`);
 
   // ===========================================================================
   // I. ★ Critical safety independent of billing (flag ON + restricted + at cap)

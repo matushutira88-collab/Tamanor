@@ -96,16 +96,38 @@ async function main() {
   // ===========================================================================
   console.log("\nC. S2 entitlement compatibility");
   const entFree = resolveFamilyEntitlements("family_free", "full_access");
-  check("reconciled family_free resolves to Free entitlements (can manage, cap 2)", entFree.canManageFamily === true && entFree.maxProtectedProfiles === 2);
+  check("reconciled family_free resolves to Free entitlements (can manage, cap 1)", entFree.canManageFamily === true && entFree.maxProtectedProfiles === 1);
   check("★ NO unknown-plan lockout: family_free is NOT the fail-safe minimal", entFree.canManageFamily === true);
   // guard on a family_free tenant with existing over-cap usage: existing preserved, NEW blocked.
   const overCap = await seedTenant("family", "family_free");
   const actor: FamilyActorContext = { tenantId: overCap, userId: `u_${overCap}`, role: "owner", workspaceKind: WorkspaceKind.Family };
-  for (let i = 0; i < 3; i++) await systemDb.protectedProfile.create({ data: { tenantId: overCap, ageBand: AgeBand.Age10to12, protectionStatus: "active" } }); // 3 > cap 2
+  for (let i = 0; i < 3; i++) await systemDb.protectedProfile.create({ data: { tenantId: overCap, ageBand: AgeBand.Age10to12, protectionStatus: "active" } }); // 3 > cap 1
   const before = await systemDb.protectedProfile.count({ where: { tenantId: overCap, archivedAt: null } });
   const blocked = await denies(() => withTenant(overCap, (tx) => enforceFamilyCapacity(tx, overCap, "protected_profile", { enabled: true })), "family_plan_limit_reached");
   const after = await systemDb.protectedProfile.count({ where: { tenantId: overCap, archivedAt: null } });
   check("existing over-cap usage (3) preserved; NEW creation blocked by S2 rules", before === 3 && after === 3 && blocked);
+
+  // ── Data-preservation ladder on a paid family_basic tenant (cap 3) with 4 existing profiles ──
+  // Downgrade/over-limit must NEVER delete data: all existing profiles remain, updates + deletion stay
+  // allowed, and creation only resumes once usage drops BELOW the cap.
+  const basicOver = await seedTenant("family", "family_basic");
+  const pIds: string[] = [];
+  for (let i = 0; i < 4; i++) pIds.push((await systemDb.protectedProfile.create({ data: { tenantId: basicOver, ageBand: AgeBand.Age10to12, protectionStatus: "active" } })).id); // 4 > cap 3
+  const b4 = await systemDb.protectedProfile.count({ where: { tenantId: basicOver, archivedAt: null } });
+  const basicBlocked = await denies(() => withTenant(basicOver, (tx) => enforceFamilyCapacity(tx, basicOver, "protected_profile", { enabled: true })), "family_plan_limit_reached");
+  check("★ family_basic (cap 3) with 4 profiles: all 4 preserved, NEW creation blocked", b4 === 4 && basicBlocked);
+  // Update stays allowed while over limit (enforcement gates only creation, never mutation).
+  await systemDb.protectedProfile.update({ where: { id: pIds[0] }, data: { protectionStatus: "paused" } });
+  check("★ profile UPDATE allowed while over limit", (await systemDb.protectedProfile.findUnique({ where: { id: pIds[0] }, select: { protectionStatus: true } }))?.protectionStatus === "paused");
+  // Deletion (archive) stays allowed; still at cap (3 >= 3) → still blocked.
+  await systemDb.protectedProfile.update({ where: { id: pIds[1] }, data: { archivedAt: new Date() } });
+  const atCap = await denies(() => withTenant(basicOver, (tx) => enforceFamilyCapacity(tx, basicOver, "protected_profile", { enabled: true })), "family_plan_limit_reached");
+  check("★ DELETION allowed while over limit; still blocked at exactly the cap (3/3)", (await systemDb.protectedProfile.count({ where: { tenantId: basicOver, archivedAt: null } })) === 3 && atCap);
+  // Drop BELOW the cap → creation resumes (enforceFamilyCapacity no longer throws).
+  await systemDb.protectedProfile.update({ where: { id: pIds[2] }, data: { archivedAt: new Date() } });
+  let resumes = false;
+  try { await withTenant(basicOver, (tx) => enforceFamilyCapacity(tx, basicOver, "protected_profile", { enabled: true })); resumes = true; } catch { resumes = false; }
+  check("★ once usage (2) drops below cap (3), creation resumes", resumes);
 
   // ===========================================================================
   // D. Critical safety non-interference

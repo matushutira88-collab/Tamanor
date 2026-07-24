@@ -83,8 +83,8 @@ const free = familyPlanEntitlements("family_free");
 const plus = familyPlanEntitlements("family_plus");
 const prem = familyPlanEntitlements("family_premium");
 
-check("Free is a usable long-term plan (>=2 profiles, >=2 guardians, can manage)",
-  (free.maxProtectedProfiles ?? 0) >= 2 && (free.maxGuardians ?? 0) >= 2 && free.canManageFamily === true);
+check("Free is a usable long-term plan (1 profile floor, >=2 guardians, can manage)",
+  free.maxProtectedProfiles === 1 && (free.maxGuardians ?? 0) >= 2 && free.canManageFamily === true);
 check("Free keeps billing + deletion access", free.billingAccess && free.deletionAccess);
 check("Plus extends capacity beyond Free",
   (plus.maxProtectedProfiles ?? 0) > (free.maxProtectedProfiles ?? 0) &&
@@ -97,11 +97,12 @@ check("Premium is unlimited capacity (null caps)",
 check("Premium adds full AI + priority support", prem.aiAnalysis === "full" && prem.prioritySupport === true);
 // family_basic (public "Family") — entry paid tier: 1 marketed profile, paid history/alerts/AI, can manage.
 const basic = familyPlanEntitlements("family_basic");
-check("★ Basic (public Family) has 1 protected profile (matches the pricing page)", basic.maxProtectedProfiles === 1);
+check("★ Basic (public Family) has 3 protected profiles (matches the pricing page)", basic.maxProtectedProfiles === 3);
 check("★ Basic can manage + keeps billing/deletion + paid history (365d)", basic.canManageFamily === true && basic.billingAccess && basic.deletionAccess && basic.historyRetentionDays === 365);
 check("★ Basic is a paid step up from Free in service (push alerts, standard AI, reporting)",
   basic.nonCriticalAlerts === "email_push" && basic.aiAnalysis === "standard" && basic.reporting === true);
-check("★ Plus profiles (5) exceed Basic (1) which is the entry tier", (plus.maxProtectedProfiles ?? 0) === 5 && (basic.maxProtectedProfiles ?? 0) === 1);
+check("★ monotonic profile ladder: free 1 < basic 3 < plus 5 < premium unlimited (no paid plan below free)",
+  free.maxProtectedProfiles === 1 && basic.maxProtectedProfiles === 3 && plus.maxProtectedProfiles === 5 && prem.maxProtectedProfiles === null);
 check("★ Critical safety ALWAYS on across free/basic/plus/premium", [free, basic, plus, prem].every((e) => e.criticalSafety.detection && e.criticalSafety.incident && e.criticalSafety.escalation && e.criticalSafety.notification));
 check("unknown plan → fail-safe minimal (no management, no capacity)",
   (() => { const m = familyPlanEntitlements("nonsense"); return m.canManageFamily === false && m.maxProtectedProfiles === 0 && m.maxGuardians === 0; })());
@@ -180,7 +181,7 @@ check("4 limited resources", FAMILY_LIMITED_RESOURCES.length === 4 &&
   JSON.stringify([...FAMILY_LIMITED_RESOURCES]) === JSON.stringify(["protected_profile", "guardian", "family_member", "invitation"]));
 check("familyResourceLimit maps Free caps", (() => {
   const f = familyPlanEntitlements("family_free");
-  return familyResourceLimit(f, "protected_profile") === 2 && familyResourceLimit(f, "guardian") === 2 &&
+  return familyResourceLimit(f, "protected_profile") === 1 && familyResourceLimit(f, "guardian") === 2 &&
     familyResourceLimit(f, "family_member") === 3 && familyResourceLimit(f, "invitation") === 2;
 })());
 check("familyResourceLimit maps Premium unlimited (null)", (() => {

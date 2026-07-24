@@ -22,13 +22,21 @@ export type FamilyPublicCard = {
   monthly: number | null;
   /** Whether this card is purchasable via self-service Stripe Checkout. */
   selfServe: boolean;
+  /**
+   * Marketed protected-profile capacity — MUST equal the plan's entitlement cap
+   * (familyPlanEntitlements(planId).maxProtectedProfiles); test-enforced so the public claim can never
+   * exceed enforcement. null = unlimited (Family Pro) or Custom.
+   */
+  maxProfiles: number | null;
 };
 
+// Profile ladder (matches family-entitlements FAMILY_BASE): family_basic 3 · family_plus 5 · family_premium
+// unlimited. The free fallback (1) is never a card here.
 export const FAMILY_PUBLIC_CARDS: readonly FamilyPublicCard[] = [
-  { name: "Family", planId: "family_basic", monthly: 7.99, selfServe: true },
-  { name: "Family Plus", planId: "family_plus", monthly: 14.99, selfServe: true },
-  { name: "Family Pro", planId: "family_premium", monthly: 24.99, selfServe: true },
-  { name: "Custom", planId: null, monthly: null, selfServe: false },
+  { name: "Family", planId: "family_basic", monthly: 7.99, selfServe: true, maxProfiles: 3 },
+  { name: "Family Plus", planId: "family_plus", monthly: 14.99, selfServe: true, maxProfiles: 5 },
+  { name: "Family Pro", planId: "family_premium", monthly: 24.99, selfServe: true, maxProfiles: null },
+  { name: "Custom", planId: null, monthly: null, selfServe: false, maxProfiles: null },
 ];
 
 /** Yearly price for a monthly amount: 10 months charged (~2 months free), rounded to cents. */

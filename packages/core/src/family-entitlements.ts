@@ -82,7 +82,9 @@ export type FamilyEntitlements = {
 const FAMILY_BASE: Record<FamilyPlanId, FamilyEntitlements> = {
   family_free: {
     plan: "family_free",
-    maxProtectedProfiles: 2,
+    // Free fallback: 1 protected profile — the floor of the profile ladder (free 1 < basic 3 < plus 5
+    // < premium unlimited), so no paid plan ever has a lower primary capacity than free.
+    maxProtectedProfiles: 1,
     maxGuardians: 2,
     maxFamilyMembers: 3,
     maxPendingInvitations: 2,
@@ -105,7 +107,8 @@ const FAMILY_BASE: Record<FamilyPlanId, FamilyEntitlements> = {
   // is NOT this plan — it remains the safe no-subscription floor.
   family_basic: {
     plan: "family_basic",
-    maxProtectedProfiles: 1,
+    // Public "Family": 3 protected profiles — a paid step above the free floor (1), below Plus (5).
+    maxProtectedProfiles: 3,
     maxGuardians: 4,
     maxFamilyMembers: 5,
     maxPendingInvitations: 4,

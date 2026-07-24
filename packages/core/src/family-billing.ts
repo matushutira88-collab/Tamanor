@@ -55,7 +55,7 @@ export const FAMILY_BILLING_PLANS: Record<FamilyPlanId, FamilyPlanCatalogueEntry
     tagline: "Calm protection for one child.",
     features: [
       "Real-time critical safety alerts — always included, never limited",
-      "1 protected profile",
+      "Up to 3 protected profiles",
       "Authorized guardians and consent",
       "Safety signals and internal deliveries",
       "12 months of safety history",

@@ -5,8 +5,13 @@
  * catalogue (FAMILY_BILLING_PLANS) so the two can never drift.
  * Run: pnpm family-plans-ui:test
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { FAMILY_PUBLIC_CARDS, familyYearlyPrice, FAMILY_CARD_MONTHLY_PRICES } from "../src/components/landing-v2/family-plans";
-import { FAMILY_BILLING_PLANS, isFamilySelfServePlan } from "@guardora/core";
+import { FAMILY_BILLING_PLANS, familyPlanEntitlements, isFamilySelfServePlan } from "@guardora/core";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 let pass = 0, fail = 0;
 const check = (l: string, c: boolean, d = "") => { console.log(`${c ? "  ✓" : "  ✗"} ${l}${c ? "" : `  — ${d}`}`); c ? pass++ : fail++; };
@@ -36,6 +41,21 @@ for (const card of FAMILY_PUBLIC_CARDS) {
   if (!card.planId) continue; // Custom has no internal plan
   check(`${card.name} → ${card.planId} catalogue name matches`, FAMILY_BILLING_PLANS[card.planId].name === card.name);
 }
+
+console.log("\nE. profile-capacity ladder — public claim never exceeds enforcement");
+check("card maxProfiles: 3 / 5 / unlimited / Custom", JSON.stringify(FAMILY_PUBLIC_CARDS.map((c) => c.maxProfiles)) === JSON.stringify([3, 5, null, null]));
+for (const card of FAMILY_PUBLIC_CARDS) {
+  if (!card.planId) continue;
+  // The marketed profile count MUST equal the plan's enforced entitlement cap (null = unlimited).
+  check(`★ ${card.name} maxProfiles matches entitlement cap`, card.maxProfiles === familyPlanEntitlements(card.planId).maxProtectedProfiles);
+}
+
+console.log("\nF. rendered landing card feature text (source-level)");
+const landing = readFileSync(join(HERE, "..", "src", "components", "landing-v2", "landing-v2.tsx"), "utf8");
+check("★ Family card says 'Up to 3 profiles' (EN)", landing.includes("Up to 3 profiles"));
+check("Family Plus card says 'Up to 5 profiles' (EN)", landing.includes("Up to 5 profiles"));
+check("Family Pro card says 'Unlimited profiles' (EN)", landing.includes("Unlimited profiles"));
+check("★ stale '\"1 profile\"' Family feature is gone", !landing.includes('"1 profile"'));
 
 console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — FAMILY public pricing-card alignment: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
