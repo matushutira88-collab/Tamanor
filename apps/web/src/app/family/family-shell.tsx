@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/logo";
 import { signOut } from "@/server/session-actions";
 import { FamilyIconGlyph, type FamilyIcon } from "./family-icons";
+import { FAMILY_FOCUS } from "./family-ui";
 import type { FamilyDict } from "./family-i18n";
 
 interface NavItem { href: string; label: string; icon: FamilyIcon }
@@ -80,7 +81,7 @@ export function FamilyShell({ nav, shell, workspaceName, userName, brand, childr
               href={it.href}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
-              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${FAMILY_FOCUS} ${
                 active
                   ? "bg-[var(--color-brand-soft)] font-semibold text-[var(--color-brand-strong)] ring-1 ring-inset ring-current/20 before:absolute before:left-0 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-r-full before:bg-[var(--color-brand)]"
                   : "text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
@@ -110,7 +111,7 @@ export function FamilyShell({ nav, shell, workspaceName, userName, brand, childr
               type="submit"
               title={shell.signOut}
               aria-label={shell.signOut}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-muted)] transition hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
+              className={`flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-muted)] transition hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)] ${FAMILY_FOCUS}`}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -160,7 +161,7 @@ export function FamilyShell({ nav, shell, workspaceName, userName, brand, childr
             onClick={() => setOpen(true)}
             aria-label={shell.openMenu}
             aria-expanded={open}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-[var(--color-fg)] transition hover:bg-[var(--color-surface-2)]"
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-[var(--color-fg)] transition hover:bg-[var(--color-surface-2)] ${FAMILY_FOCUS}`}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
               <path d="M4 6h16M4 12h16M4 18h16" />

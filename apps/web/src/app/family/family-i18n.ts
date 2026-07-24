@@ -42,6 +42,28 @@ export interface FamilyDict {
   };
   // FAMILY-UI-01 — Family app-shell chrome strings (sidebar / drawer / user block).
   shell: { workspaceLabel: string; signedInAs: string; signOut: string; openMenu: string; closeMenu: string; navLabel: string };
+  /**
+   * FAMILY-UI-02 — one empty state per list route. Each is title + body (+ optional hint) +
+   * a primary CTA and, where a genuine next step exists, a secondary link. The body explains
+   * WHY the list is empty: in this product "empty" is usually the healthy state.
+   */
+  empty: {
+    dashTitle: string; dashBody: string; dashCta: string; dashSecondary: string;
+    profilesTitle: string; profilesBody: string; profilesCta: string; profilesSecondary: string;
+    guardiansTitle: string; guardiansBody: string; guardiansCta: string; guardiansSecondary: string;
+    invitationsTitle: string; invitationsBody: string; invitationsCta: string; invitationsSecondary: string;
+    authorizationsTitle: string; authorizationsBody: string; authorizationsCta: string; authorizationsSecondary: string;
+    signalsTitle: string; signalsBody: string; signalsCta: string; signalsSecondary: string;
+    deliveriesTitle: string; deliveriesBody: string; deliveriesCta: string; deliveriesSecondary: string;
+    filteredTitle: string; filteredBody: string; filteredCta: string;
+    noticeTitle: string;
+  };
+  /**
+   * FAMILY-UI-02 / 02B — success/status feedback (toast region + inline success badge).
+   * `messages` maps each server-action `?ok=<verb>` to a specific localized confirmation;
+   * an unmapped verb falls back to `saved`.
+   */
+  feedback: { regionLabel: string; dismiss: string; saved: string; working: string; done: string; messages: Record<string, string> };
   labels: {
     ageBand: Record<string, string>; protectionStatus: Record<string, string>; relationshipType: Record<string, string>;
     relationshipStatus: Record<string, string>; authorityStatus: Record<string, string>; consentStatus: Record<string, string>;
@@ -219,6 +241,27 @@ const en: FamilyDict = {
     integrationsSection: "Integrations and limitations", integrationsDescription: "Which external connections are possible today.",
   },
   shell: { workspaceLabel: "Family space", signedInAs: "Signed in as", signOut: "Sign out", openMenu: "Open menu", closeMenu: "Close menu", navLabel: "Family navigation" },
+  empty: {
+    dashTitle: "Nothing needs your attention", dashBody: "No safety signals and no internal deliveries yet. That is the expected state until an authorized platform integration is active.", dashCta: "Add protected profile", dashSecondary: "Privacy and limitations",
+    profilesTitle: "No protected profiles yet", profilesBody: "A protected profile is how Tamanor keeps track of a family member. A safe label and an age band are all it needs — no names, accounts or messages.", profilesCta: "Create the first profile", profilesSecondary: "How your data is handled",
+    guardiansTitle: "No authorized people yet", guardiansBody: "Authorized people are adults who may receive safety information. A guardian role alone is never enough — each recipient passes relationship, authority, consent and a safe-recipient assessment.", guardiansCta: "Invite an adult", guardiansSecondary: "Protected profiles",
+    invitationsTitle: "No invitations yet", invitationsBody: "Invite another adult to help protect a profile. Tamanor never emails or messages them — you create a one-time link and hand it over yourself.", invitationsCta: "New invitation", invitationsSecondary: "Authorized people",
+    authorizationsTitle: "No authorization decisions yet", authorizationsBody: "An authorization is recorded when a safety signal is evaluated against a recipient's complete chain. None have been evaluated so far.", authorizationsCta: "Review authorized people", authorizationsSecondary: "Safety signals",
+    signalsTitle: "No safety signals", signalsBody: "Nothing has been detected. Safety signals will only appear after an authorized integration with a social or communication platform becomes available.", signalsCta: "Protected profiles", signalsSecondary: "Privacy and limitations",
+    deliveriesTitle: "No internal deliveries", deliveriesBody: "An internal delivery makes an authorized signal available to a recipient inside Tamanor Family. Nothing has been prepared yet.", deliveriesCta: "Review authorizations", deliveriesSecondary: "Authorized people",
+    filteredTitle: "Nothing matches this filter", filteredBody: "No records match the filter you applied. Clear it to see everything again.", filteredCta: "Clear filter",
+    noticeTitle: "Not available here",
+  },
+  feedback: {
+    regionLabel: "Status messages", dismiss: "Dismiss", saved: "Saved", working: "Working…", done: "Done",
+    messages: {
+      created: "Created", updated: "Changes saved", archived: "Archived", restored: "Restored",
+      revoked: "Revoked", evaluated: "Authorization evaluated", guardian_deactivated: "Guardian deactivated",
+      authority_revoked: "Authority revoked", authority_suspended: "Authority suspended",
+      consent_revoked: "Consent revoked", consent_suspended: "Consent suspended",
+      assessment_rejected: "Assessment rejected", assessment_suspended: "Assessment suspended", assessment_expired: "Assessment expired",
+    },
+  },
   labels: {
     ageBand: { under_10: "Under 10", age_10_12: "10–12", age_13_15: "13–15", age_16_17: "16–17" },
     protectionStatus: { inactive: "Inactive", monitoring: "Monitoring", active: "Active", paused: "Paused" },
@@ -449,6 +492,27 @@ const sk: FamilyDict = {
     integrationsSection: "Integrácie a obmedzenia", integrationsDescription: "Aké externé prepojenia sú dnes možné.",
   },
   shell: { workspaceLabel: "Rodinný priestor", signedInAs: "Prihlásený ako", signOut: "Odhlásiť", openMenu: "Otvoriť menu", closeMenu: "Zavrieť menu", navLabel: "Rodinná navigácia" },
+  empty: {
+    dashTitle: "Nič nevyžaduje vašu pozornosť", dashBody: "Zatiaľ žiadne bezpečnostné signály ani interné doručenia. Je to očakávaný stav, kým nebude aktívna autorizovaná integrácia s platformou.", dashCta: "Pridať chránený profil", dashSecondary: "Súkromie a obmedzenia",
+    profilesTitle: "Zatiaľ žiadne chránené profily", profilesBody: "Chránený profil je spôsob, akým Tamanor eviduje člena rodiny. Stačí bezpečný názov a veková skupina — žiadne mená, účty ani správy.", profilesCta: "Vytvoriť prvý profil", profilesSecondary: "Ako narábame s údajmi",
+    guardiansTitle: "Zatiaľ žiadne oprávnené osoby", guardiansBody: "Oprávnené osoby sú dospelí, ktorí môžu dostávať bezpečnostné informácie. Samotná rola opatrovníka nikdy nestačí — každý príjemca prechádza vzťahom, oprávnením, súhlasom a posúdením bezpečného príjemcu.", guardiansCta: "Pozvať dospelú osobu", guardiansSecondary: "Chránené profily",
+    invitationsTitle: "Zatiaľ žiadne pozvánky", invitationsBody: "Pozvite ďalšieho dospelého, aby pomohol chrániť profil. Tamanor mu nič neposiela — vytvoríte jednorazový odkaz a odovzdáte ho osobne.", invitationsCta: "Nová pozvánka", invitationsSecondary: "Oprávnené osoby",
+    authorizationsTitle: "Zatiaľ žiadne autorizačné rozhodnutia", authorizationsBody: "Autorizácia vznikne, keď sa bezpečnostný signál vyhodnotí voči úplnej reťazi príjemcu. Zatiaľ sa nevyhodnocovalo nič.", authorizationsCta: "Prejsť na oprávnené osoby", authorizationsSecondary: "Bezpečnostné signály",
+    signalsTitle: "Žiadne bezpečnostné signály", signalsBody: "Nič nebolo zistené. Bezpečnostné signály sa objavia až po sprístupnení autorizovanej integrácie so sociálnou alebo komunikačnou platformou.", signalsCta: "Chránené profily", signalsSecondary: "Súkromie a obmedzenia",
+    deliveriesTitle: "Žiadne interné doručenia", deliveriesBody: "Interné doručenie sprístupní autorizovaný signál príjemcovi v Tamanor Rodina. Zatiaľ nebolo nič pripravené.", deliveriesCta: "Prejsť na autorizácie", deliveriesSecondary: "Oprávnené osoby",
+    filteredTitle: "Filtru nič nezodpovedá", filteredBody: "Zvolenému filtru nezodpovedajú žiadne záznamy. Zrušte ho a uvidíte všetko.", filteredCta: "Zrušiť filter",
+    noticeTitle: "Tu nie je dostupné",
+  },
+  feedback: {
+    regionLabel: "Stavové správy", dismiss: "Zavrieť", saved: "Uložené", working: "Pracujem…", done: "Hotovo",
+    messages: {
+      created: "Vytvorené", updated: "Zmeny uložené", archived: "Archivované", restored: "Obnovené",
+      revoked: "Zrušené", evaluated: "Autorizácia vyhodnotená", guardian_deactivated: "Opatrovník deaktivovaný",
+      authority_revoked: "Oprávnenie zrušené", authority_suspended: "Oprávnenie pozastavené",
+      consent_revoked: "Súhlas zrušený", consent_suspended: "Súhlas pozastavený",
+      assessment_rejected: "Posúdenie zamietnuté", assessment_suspended: "Posúdenie pozastavené", assessment_expired: "Posúdenie expirované",
+    },
+  },
   labels: {
     ageBand: { under_10: "Do 10", age_10_12: "10–12", age_13_15: "13–15", age_16_17: "16–17" },
     protectionStatus: { inactive: "Neaktívny", monitoring: "Sledovanie", active: "Aktívny", paused: "Pozastavený" },
@@ -679,6 +743,27 @@ const de: FamilyDict = {
     integrationsSection: "Integrationen und Einschränkungen", integrationsDescription: "Welche externen Verbindungen heute möglich sind.",
   },
   shell: { workspaceLabel: "Familienbereich", signedInAs: "Angemeldet als", signOut: "Abmelden", openMenu: "Menü öffnen", closeMenu: "Menü schließen", navLabel: "Familien-Navigation" },
+  empty: {
+    dashTitle: "Nichts erfordert Ihre Aufmerksamkeit", dashBody: "Noch keine Sicherheitssignale und keine internen Zustellungen. Das ist der erwartete Zustand, solange keine autorisierte Plattform-Integration aktiv ist.", dashCta: "Geschütztes Profil hinzufügen", dashSecondary: "Datenschutz und Einschränkungen",
+    profilesTitle: "Noch keine geschützten Profile", profilesBody: "Ein geschütztes Profil ist die Art, wie Tamanor ein Familienmitglied führt. Ein sicheres Label und eine Altersgruppe genügen — keine Namen, Konten oder Nachrichten.", profilesCta: "Erstes Profil erstellen", profilesSecondary: "Umgang mit Ihren Daten",
+    guardiansTitle: "Noch keine berechtigten Personen", guardiansBody: "Berechtigte Personen sind Erwachsene, die Sicherheitsinformationen erhalten dürfen. Eine Betreuerrolle allein genügt nie — jeder Empfänger durchläuft Beziehung, Befugnis, Einwilligung und eine Bewertung als sicherer Empfänger.", guardiansCta: "Erwachsene Person einladen", guardiansSecondary: "Geschützte Profile",
+    invitationsTitle: "Noch keine Einladungen", invitationsBody: "Laden Sie eine weitere erwachsene Person ein, ein Profil zu schützen. Tamanor sendet nichts — Sie erstellen einen einmaligen Link und übergeben ihn selbst.", invitationsCta: "Neue Einladung", invitationsSecondary: "Berechtigte Personen",
+    authorizationsTitle: "Noch keine Autorisierungsentscheidungen", authorizationsBody: "Eine Autorisierung entsteht, wenn ein Sicherheitssignal gegen die vollständige Kette eines Empfängers geprüft wird. Bisher wurde nichts geprüft.", authorizationsCta: "Zu berechtigten Personen", authorizationsSecondary: "Sicherheitssignale",
+    signalsTitle: "Keine Sicherheitssignale", signalsBody: "Es wurde nichts erkannt. Sicherheitssignale erscheinen erst, wenn eine autorisierte Integration mit einer sozialen oder Kommunikationsplattform verfügbar ist.", signalsCta: "Geschützte Profile", signalsSecondary: "Datenschutz und Einschränkungen",
+    deliveriesTitle: "Keine internen Zustellungen", deliveriesBody: "Eine interne Zustellung stellt ein autorisiertes Signal einem Empfänger innerhalb von Tamanor Familie bereit. Bisher wurde nichts vorbereitet.", deliveriesCta: "Zu den Autorisierungen", deliveriesSecondary: "Berechtigte Personen",
+    filteredTitle: "Nichts entspricht diesem Filter", filteredBody: "Keine Datensätze entsprechen dem gewählten Filter. Setzen Sie ihn zurück, um wieder alles zu sehen.", filteredCta: "Filter zurücksetzen",
+    noticeTitle: "Hier nicht verfügbar",
+  },
+  feedback: {
+    regionLabel: "Statusmeldungen", dismiss: "Schließen", saved: "Gespeichert", working: "Wird ausgeführt…", done: "Fertig",
+    messages: {
+      created: "Erstellt", updated: "Änderungen gespeichert", archived: "Archiviert", restored: "Wiederhergestellt",
+      revoked: "Widerrufen", evaluated: "Autorisierung ausgewertet", guardian_deactivated: "Betreuer deaktiviert",
+      authority_revoked: "Befugnis widerrufen", authority_suspended: "Befugnis ausgesetzt",
+      consent_revoked: "Einwilligung widerrufen", consent_suspended: "Einwilligung ausgesetzt",
+      assessment_rejected: "Bewertung abgelehnt", assessment_suspended: "Bewertung ausgesetzt", assessment_expired: "Bewertung abgelaufen",
+    },
+  },
   labels: {
     ageBand: { under_10: "Unter 10", age_10_12: "10–12", age_13_15: "13–15", age_16_17: "16–17" },
     protectionStatus: { inactive: "Inaktiv", monitoring: "Beobachtung", active: "Aktiv", paused: "Pausiert" },

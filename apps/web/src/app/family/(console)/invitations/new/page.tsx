@@ -5,6 +5,7 @@ import { requireFamilyConsole, familyCan } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../../family-i18n";
+import { FamilyNoticeCard } from "../../../family-ui";
 import { CreateInvitationForm } from "../create-form";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export default async function NewInvitationPage() {
   const { actor } = await requireFamilyConsole();
   const t = familyDict(await getLocale());
   if (!familyCan(actor, FamilyAction.FamilyInvitationCreate)) {
-    return <div className="mx-auto max-w-3xl"><PageHeader title={t.c8.newTitle} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>;
+    return <div className="mx-auto max-w-3xl space-y-6"><PageHeader title={t.c8.newTitle} /><FamilyNoticeCard title={t.empty.noticeTitle} body={t.common.notAvailable} /></div>;
   }
   const profiles = await searchProtectedProfiles(actor, { state: "active" });
 

@@ -1,8 +1,9 @@
 import { listSafetySignals } from "@guardora/db";
 import { requireFamilyConsole } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
-import { PageHeader, Card, SectionHeader, Badge, EmptyState } from "@/components/dashboard/ui";
+import { PageHeader, Card, SectionHeader, Badge } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../family-i18n";
+import { FamilyEmptyState } from "../../family-ui";
 
 export const dynamic = "force-dynamic";
 function fmt(d: Date): string { return new Date(d).toISOString().slice(0, 16).replace("T", " "); }
@@ -18,7 +19,14 @@ export default async function FamilySignalsPage() {
       <Card>
         <SectionHeader title={t.signals.title} />
         {page.items.length === 0 ? (
-          <EmptyState title={t.dash.emptyTitle} body={t.signals.emptyText} hint={t.privacy.integrations} />
+          <FamilyEmptyState
+            illustration="signals"
+            title={t.empty.signalsTitle}
+            body={t.empty.signalsBody}
+            hint={t.privacy.integrations}
+            primary={{ href: "/family/profiles", label: t.empty.signalsCta }}
+            secondary={{ href: "/family/settings", label: t.empty.signalsSecondary }}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">

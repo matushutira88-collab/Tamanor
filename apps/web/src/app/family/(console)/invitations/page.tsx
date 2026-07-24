@@ -5,6 +5,7 @@ import { requireFamilyConsole, familyCan } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, SectionHeader, Badge, StatCard, Field, Input, Select, PrimaryButton } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../family-i18n";
+import { FamilyEmptyState, FamilyNoticeCard, FamilyStatusBanner } from "../../family-ui";
 import { ConfirmDialog } from "../../confirm-dialog";
 import { revokeFamilyGuardianInvitationAction } from "./actions";
 
@@ -18,7 +19,7 @@ export default async function FamilyInvitationsPage({ searchParams }: { searchPa
   const t = familyDict(await getLocale());
   const sp = await searchParams;
   if (!familyCan(actor, FamilyAction.FamilyInvitationView)) {
-    return <div><PageHeader title={t.c8.title} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>;
+    return <div className="space-y-6"><PageHeader title={t.c8.title} /><FamilyNoticeCard title={t.empty.noticeTitle} body={t.common.notAvailable} /></div>;
   }
   const canManage = familyCan(actor, FamilyAction.FamilyInvitationCreate);
   const canRevoke = familyCan(actor, FamilyAction.FamilyInvitationRevoke);
@@ -36,7 +37,7 @@ export default async function FamilyInvitationsPage({ searchParams }: { searchPa
       listFamilyGuardianInvitations(actor, filters),
       searchProtectedProfiles(actor, { state: "all" }),
     ]);
-  } catch (e) { if (e instanceof FamilyForbiddenError) return <div><PageHeader title={t.c8.title} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>; throw e; }
+  } catch (e) { if (e instanceof FamilyForbiddenError) return <div className="space-y-6"><PageHeader title={t.c8.title} /><FamilyNoticeCard title={t.empty.noticeTitle} body={t.common.notAvailable} /></div>; throw e; }
 
   const profileLabel = (id: string) => { const p = profiles.find((x) => x.id === id); return p ? (p.guardianLabel ?? famLabel(t.labels.ageBand, p.ageBand)) : "—"; };
   const anyOpt = { value: "", label: t.c8.anyOption };
@@ -45,7 +46,7 @@ export default async function FamilyInvitationsPage({ searchParams }: { searchPa
   return (
     <div className="space-y-6">
       <PageHeader title={t.c8.title} description={t.c8.subtitle} action={canManage ? <Link href="/family/invitations/new" className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)]">{t.c8.create}</Link> : undefined} />
-      {banner ? <p role={banner.tone === "danger" ? "alert" : "status"} className={`rounded-lg border px-3 py-2 text-sm border-[var(--color-${banner.tone})] bg-[var(--color-${banner.tone}-soft)] text-[var(--color-${banner.tone})]`}>{banner.msg}</p> : null}
+      {banner?.tone === "danger" ? <FamilyStatusBanner tone="danger" message={banner.msg} /> : null}
 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label={famLabel(t.c8.statuses, "pending")} value={String(counts.pending)} tone="brand" />
@@ -72,7 +73,13 @@ export default async function FamilyInvitationsPage({ searchParams }: { searchPa
       <Card>
         <SectionHeader title={t.c8.title} />
         {invitations.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted)]">{t.c8.empty}</p>
+          <FamilyEmptyState
+            illustration="invitations"
+            title={t.empty.invitationsTitle}
+            body={t.empty.invitationsBody}
+            primary={{ href: "/family/invitations/new", label: t.empty.invitationsCta }}
+            secondary={{ href: "/family/guardians", label: t.empty.invitationsSecondary }}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">

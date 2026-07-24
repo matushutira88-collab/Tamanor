@@ -15,6 +15,7 @@ import { requireFamilyConsole, familyCan } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, SectionHeader, Badge, Field, Input, Select, PrimaryButton } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../../family-i18n";
+import { FamilyStatusBanner } from "../../../family-ui";
 import { ConfirmDialog } from "../../../confirm-dialog";
 import { updateProtectedProfileAction, archiveProtectedProfileAction, restoreProtectedProfileAction } from "../actions";
 import { createGuardianRelationshipAction, updateGuardianRoleAction, deactivateGuardianRelationshipAction, reactivateGuardianRelationshipAction } from "./actions";
@@ -87,7 +88,7 @@ export default async function ProfileDetailPage({ params, searchParams }: { para
         description={`${famLabel(t.labels.ageBand, profile.ageBand)} · ${archived ? t.profiles.archived : famLabel(t.labels.protectionStatus, profile.protectionStatus)}`}
         action={<Link href="/family/profiles" className="text-sm text-[var(--color-brand-strong)]">← {t.profiles.title}</Link>}
       />
-      {banner ? <p role={banner.tone === "danger" ? "alert" : "status"} className={`rounded-lg border px-3 py-2 text-sm border-[var(--color-${banner.tone})] bg-[var(--color-${banner.tone}-soft)] text-[var(--color-${banner.tone})]`}>{banner.msg}</p> : null}
+      {banner?.tone === "danger" ? <FamilyStatusBanner tone="danger" message={banner.msg} /> : null}
 
       {/* CS-C7 — edit (active) or restore (archived) */}
       {canManage && !archived && (

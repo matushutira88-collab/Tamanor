@@ -15,6 +15,50 @@
 export const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "host.docker.internal"]);
 export const OVERRIDE_ENV = "TAMANOR_ALLOW_REMOTE_DB";
 
+/**
+ * INCIDENT-01 — the exact local development target. The host-only check above was not
+ * enough: it accepts any localhost URL, including a different port or database, so a
+ * tunnel or a stray port-forward to a remote instance would still pass. `assertLocalTarget`
+ * pins all three parts.
+ */
+export const EXPECTED_LOCAL = { hosts: ["localhost", "127.0.0.1"], port: "5433", database: "tamanor_reconciled" } as const;
+
+/** Host / port / database of a Postgres URL, sanitized — never the user or password. */
+export function describeTarget(url: string | undefined | null): { host: string; port: string; database: string } | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return {
+      host: u.hostname.toLowerCase().replace(/^\[|\]$/g, ""),
+      port: u.port || "5432",
+      database: u.pathname.replace(/^\//, "").split("?")[0] ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Strict preflight for local dev / test / seed / destructive DB scripts: the target must be
+ * EXACTLY localhost (or 127.0.0.1) : 5433 / tamanor_reconciled. Fail-closed — an unset or
+ * unparseable URL is unsafe. Returns a sanitized description for the caller to print.
+ */
+export function assertLocalTarget(env: Record<string, string | undefined> = process.env): { host: string; port: string; database: string } {
+  const t = describeTarget(env.DATABASE_URL);
+  if (t === null) throw new Error("DATABASE_URL is missing or unparseable — refusing to run.");
+  const ok = (EXPECTED_LOCAL.hosts as readonly string[]).includes(t.host)
+    && t.port === EXPECTED_LOCAL.port
+    && t.database === EXPECTED_LOCAL.database;
+  if (!ok) {
+    throw new Error(
+      `Refusing to run against a non-local database.\n` +
+        `  target   : ${t.host}:${t.port}/${t.database}\n` +
+        `  expected : ${EXPECTED_LOCAL.hosts.join(" | ")}:${EXPECTED_LOCAL.port}/${EXPECTED_LOCAL.database}`,
+    );
+  }
+  return t;
+}
+
 /** The lowercased hostname of a Postgres URL, or null if it cannot be parsed. */
 export function hostOf(url: string | undefined | null): string | null {
   if (!url) return null;

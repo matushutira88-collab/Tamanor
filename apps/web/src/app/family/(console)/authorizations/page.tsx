@@ -4,6 +4,7 @@ import { requireFamilyConsole, familyCan } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, SectionHeader, Badge } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../family-i18n";
+import { FamilyEmptyState, FamilyNoticeCard } from "../../family-ui";
 import { ConfirmDialog } from "../../confirm-dialog";
 import { revokeRecipientAuthorizationDecisionAction } from "./actions";
 
@@ -24,7 +25,13 @@ export default async function FamilyAuthorizationsPage() {
       <Card>
         <SectionHeader title={t.authorizations.title} />
         {page.items.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted)]">{t.authorizations.emptyText}</p>
+          <FamilyEmptyState
+            illustration="authorizations"
+            title={t.empty.authorizationsTitle}
+            body={t.empty.authorizationsBody}
+            primary={{ href: "/family/guardians", label: t.empty.authorizationsCta }}
+            secondary={{ href: "/family/signals", label: t.empty.authorizationsSecondary }}
+          />
         ) : (
           <div className="space-y-2">
             {page.items.map((d) => {
@@ -67,5 +74,5 @@ export default async function FamilyAuthorizationsPage() {
 }
 
 function NotAllowed({ t }: { t: ReturnType<typeof familyDict> }) {
-  return <div><PageHeader title={t.authorizations.title} /><Card><p className="text-sm text-[var(--color-muted)]">{t.common.notAvailable}</p></Card></div>;
+  return <div className="space-y-6"><PageHeader title={t.authorizations.title} /><FamilyNoticeCard title={t.empty.noticeTitle} body={t.common.notAvailable} /></div>;
 }

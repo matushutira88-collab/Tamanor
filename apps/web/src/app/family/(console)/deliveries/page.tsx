@@ -4,6 +4,7 @@ import { requireFamilyConsole, familyCan } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, SectionHeader, Badge } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../family-i18n";
+import { FamilyEmptyState } from "../../family-ui";
 import { ConfirmDialog } from "../../confirm-dialog";
 import { makeSafetySignalDeliveryAvailableAction, acknowledgeSafetySignalDeliveryAction, declineSafetySignalDeliveryAction, revokeSafetySignalDeliveryAction, archiveSafetySignalDeliveryAction } from "./actions";
 
@@ -27,7 +28,14 @@ export default async function FamilyDeliveriesPage() {
       <Card>
         <SectionHeader title={t.deliveries.title} />
         {page.items.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted)]">{t.deliveries.emptyText}</p>
+          <FamilyEmptyState
+            illustration="deliveries"
+            title={t.empty.deliveriesTitle}
+            body={t.empty.deliveriesBody}
+            hint={t.deliveries.availableMeans}
+            primary={{ href: "/family/authorizations", label: t.empty.deliveriesCta }}
+            secondary={{ href: "/family/guardians", label: t.empty.deliveriesSecondary }}
+          />
         ) : (
           <div className="space-y-2">
             {page.items.map((d) => {

@@ -5,6 +5,8 @@ import { requireFamilyConsole, familyCan } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, SectionHeader, Badge, Field, Input, Select, PrimaryButton } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../family-i18n";
+import { FamilyEmptyState, FamilyStatusBanner } from "../../family-ui";
+import { FamilySubmitButton } from "../../family-feedback";
 import { ConfirmDialog } from "../../confirm-dialog";
 import { createProtectedProfileAction, archiveProtectedProfileAction, restoreProtectedProfileAction } from "./actions";
 
@@ -37,18 +39,21 @@ export default async function FamilyProfilesPage({ searchParams }: { searchParam
   return (
     <div className="space-y-6">
       <PageHeader title={t.profiles.title} description={t.privacy.messages} />
-      {banner ? <p role={banner.tone === "danger" ? "alert" : "status"} className={`rounded-lg border px-3 py-2 text-sm border-[var(--color-${banner.tone})] bg-[var(--color-${banner.tone}-soft)] text-[var(--color-${banner.tone})]`}>{banner.msg}</p> : null}
+      {/* Failures stay on the page; successes are announced by the console-wide toast. */}
+      {banner?.tone === "danger" ? <FamilyStatusBanner tone="danger" message={banner.msg} /> : null}
 
       {canManage && (
+        <div id="family-new-profile" className="scroll-mt-6">
         <Card>
           <SectionHeader title={t.profiles.create} />
           <p className="mb-3 text-xs text-[var(--color-muted)]">{t.c7.noPiiHint}</p>
           <form action={createProtectedProfileAction} className="grid gap-3 sm:grid-cols-[1.6fr_1fr_auto] sm:items-end">
             <Field label={t.profiles.label}><Input name="guardianLabel" maxLength={80} placeholder={t.profiles.newLabel} /></Field>
             <Field label={t.profiles.ageBand}><Select name="ageBand" options={ageOptions} required defaultValue="age_10_12" /></Field>
-            <PrimaryButton type="submit">{t.onboarding.create}</PrimaryButton>
+            <FamilySubmitButton label={t.onboarding.create} pendingLabel={t.feedback.working} />
           </form>
         </Card>
+        </div>
       )}
 
       {/* CS-C7 — content-free search & filters (label, age, status, language, state, guardian role) */}
@@ -71,7 +76,14 @@ export default async function FamilyProfilesPage({ searchParams }: { searchParam
       <Card>
         <SectionHeader title={t.profiles.title} />
         {profiles.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted)]">{t.profiles.emptyText}</p>
+          <FamilyEmptyState
+            illustration="profiles"
+            title={t.empty.profilesTitle}
+            body={t.empty.profilesBody}
+            hint={t.c7.noPiiHint}
+            primary={canManage ? { href: "#family-new-profile", label: t.empty.profilesCta } : undefined}
+            secondary={{ href: "/family/settings", label: t.empty.profilesSecondary }}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[680px] text-left text-sm">

@@ -4,6 +4,7 @@ import { requireFamilyConsole } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, SectionHeader, Badge } from "@/components/dashboard/ui";
 import { familyDict, famLabel } from "../../family-i18n";
+import { FamilyEmptyState } from "../../family-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,13 @@ export default async function FamilyGuardiansPage() {
       <Card>
         <SectionHeader title={t.guardians.title} />
         {rows.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted)]">{t.guardians.incomplete}</p>
+          <FamilyEmptyState
+            illustration="guardians"
+            title={t.empty.guardiansTitle}
+            body={t.empty.guardiansBody}
+            primary={{ href: "/family/invitations/new", label: t.empty.guardiansCta }}
+            secondary={{ href: "/family/profiles", label: t.empty.guardiansSecondary }}
+          />
         ) : (
           <div className="space-y-3">
             {rows.map((row) => (

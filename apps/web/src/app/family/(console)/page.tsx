@@ -2,9 +2,10 @@ import Link from "next/link";
 import { listProtectedProfiles, listSafetySignals, listSafetySignalDeliveries, withTenant } from "@guardora/db";
 import { requireFamilyConsole } from "@/server/family-guard";
 import { getLocale } from "@/i18n/locale-server";
-import { Card, SectionHeader, StatCard, Badge, EmptyState } from "@/components/dashboard/ui";
+import { Card, SectionHeader, StatCard, Badge } from "@/components/dashboard/ui";
 import { FamilyIconGlyph } from "../family-icons";
 import { familyDict, famLabel } from "../family-i18n";
+import { FamilyEmptyCard, FAMILY_CTA_PRIMARY, FAMILY_LINK } from "../family-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -81,7 +82,7 @@ export default async function FamilyDashboard() {
           </div>
           <Link
             href="/family/profiles"
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[var(--color-brand)] px-4 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] shadow-sm transition hover:bg-[var(--color-brand-strong)]"
+            className={`shrink-0 ${FAMILY_CTA_PRIMARY}`}
           >
             {t.dash.addProfile}
             <FamilyIconGlyph icon="arrow" />
@@ -131,7 +132,7 @@ export default async function FamilyDashboard() {
       <div className="grid gap-6 xl:grid-cols-2">
         {/* Protected profiles overview */}
         <Card>
-          <SectionHeader title={t.dash.recentProfiles} action={<Link href="/family/profiles" className="text-xs font-medium text-[var(--color-brand-strong)] hover:underline">{t.common.view}</Link>} />
+          <SectionHeader title={t.dash.recentProfiles} action={<Link href="/family/profiles" className={FAMILY_LINK}>{t.common.view}</Link>} />
           {recentProfiles.length === 0 ? (
             <p className="py-2 text-sm text-[var(--color-muted)]">{t.profiles.emptyText}</p>
           ) : (
@@ -151,7 +152,7 @@ export default async function FamilyDashboard() {
 
         {/* Recent events — signals + internal deliveries in one feed. */}
         <Card>
-          <SectionHeader title={t.dash.activityTitle} action={<Link href="/family/signals" className="text-xs font-medium text-[var(--color-brand-strong)] hover:underline">{t.common.view}</Link>} />
+          <SectionHeader title={t.dash.activityTitle} action={<Link href="/family/signals" className={FAMILY_LINK}>{t.common.view}</Link>} />
           {events.length === 0 ? (
             <p className="py-2 text-sm text-[var(--color-muted)]">{t.dash.activityEmpty}</p>
           ) : (
@@ -174,7 +175,14 @@ export default async function FamilyDashboard() {
 
       {/* Nothing has ever happened here — explain why, rather than leaving an empty box. */}
       {events.length === 0 ? (
-        <EmptyState title={t.dash.emptyTitle} body={t.dash.emptyText} hint={t.privacy.signal} />
+        <FamilyEmptyCard
+          illustration="protected"
+          title={t.empty.dashTitle}
+          body={t.empty.dashBody}
+          hint={t.privacy.signal}
+          primary={{ href: "/family/profiles", label: t.empty.dashCta }}
+          secondary={{ href: "/family/settings", label: t.empty.dashSecondary }}
+        />
       ) : null}
     </div>
   );
