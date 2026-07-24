@@ -1,0 +1,89 @@
+name: production-database-migrate
+
+# MANUAL, audited production migration path. Applies ONLY accepted Prisma migrations via
+# `prisma migrate deploy`, gated behind the GitHub `production` Environment (protection rules +
+# required reviewers) and three explicit arming inputs. Never triggers on push/PR. DATABASE_URL is
+# read ONLY from secrets.PRODUCTION_DATABASE_URL and is never printed. All safety logic lives in the
+# unit-tested scripts under packages/db/scripts — this YAML is thin orchestration only.
+#
+# Prohibited by construction (this workflow runs none of them): prisma migrate dev / db push /
+# migrate reset / schema push / ad-hoc destructive SQL. Only `prisma migrate deploy`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (only 'production' is accepted)"
+        required: true
+        type: choice
+        options:
+          - production
+      expected_migration:
+        description: "Must equal 20260812090000_family_billing_baseline_reconcile"
+        required: true
+        type: string
+      confirmation:
+        description: "Type APPLY_ACCEPTED_PRODUCTION_MIGRATIONS to arm"
+        required: true
+        type: string
+      max_legacy_family_tenants:
+        description: "Hard ceiling on legacy family/free_trial tenants the reconcile may touch"
+        required: false
+        default: "100"
+        type: string
+
+# Never allow two production migrations to run at once.
+concurrency:
+  group: production-database-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    # GitHub Environment `production` — configure required reviewers + protection rules on it so this
+    # job pauses for manual approval before any step runs.
+    environment: production
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      PRODUCTION_DATABASE_HOST_FINGERPRINT: ${{ secrets.PRODUCTION_DATABASE_HOST_FINGERPRINT }}
+      MIGRATE_ENVIRONMENT: ${{ inputs.environment }}
+      EXPECTED_MIGRATION: ${{ inputs.expected_migration }}
+      MIGRATE_CONFIRMATION: ${{ inputs.confirmation }}
+      MAX_LEGACY_FAMILY_TENANTS: ${{ inputs.max_legacy_family_tenants }}
+    steps:
+      - name: Refuse any non-main ref
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Refusing: this workflow may only run on main (got ${GITHUB_REF})."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @guardora/db exec prisma generate
+
+      - name: Validate arming inputs + production target (fail-closed; never prints the URL)
+        run: pnpm --filter @guardora/db exec tsx scripts/assert-production-target.cli.ts
+
+      - name: Pre-migration status + read-only counts + legacy ceiling (hard-stops)
+        run: pnpm --filter @guardora/db exec tsx scripts/production-migration-preflight.cli.ts
+
+      - name: Apply accepted migrations (prisma migrate deploy ONLY)
+        run: pnpm --filter @guardora/db exec prisma migrate deploy
+
+      - name: Post-migration verification (preservation; fails on any regression)
+        run: pnpm --filter @guardora/db exec tsx scripts/production-migration-verify.cli.ts

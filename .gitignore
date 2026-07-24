@@ -82,3 +82,6 @@ apps/web/e2e/.auth/
 .next-e2e/
 .vercel
 .env*
+
+# Family-billing production-migration preflight artifact (runtime, non-secret counts)
+packages/db/scripts/.preflight-counts.json
