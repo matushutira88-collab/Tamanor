@@ -19,6 +19,7 @@ import { SiteHeader } from "../site-header";
 import { SiteFooter } from "../site-footer";
 import { ShieldEmblem } from "../logo";
 import type { Locale } from "@/i18n";
+import { landingFaqs } from "./faqs";
 
 /* ---------- palette ---------- */
 const BIZ = { a: "#2563eb", a2: "#60a5fa", deep: "#1d4ed8", soft: "#eaf1ff" };
@@ -60,7 +61,6 @@ const FAM_PRICES: (number | null)[] = [7.99, 14.99, 24.99, null];
 
 type Plan = { name: string; tagline: string; cta: string; features: string[] };
 type Step = { name: string; body: string };
-type Faq = { q: string; a: string };
 type Copy = {
   heroBiz: { eyebrow: string; l1: string; l2: string; lead: string; cta: string };
   heroFam: { eyebrow: string; l1: string; l2: string; lead: string; cta: string };
@@ -72,7 +72,7 @@ type Copy = {
   orbEyebrow: string; orbA: string; orbB: string; orbBody: string; roles: string[]; engineLbl: string;
   engEyebrow: string; engA: string; engB: string; engSub: string; steps: Step[];
   prEyebrow: string; prA: string; prB: string; monthly: string; yearly: string; perMo: string; perYr: string; popular: string; custom: string; groupBiz: string; groupFam: string; bizPlans: Plan[]; famPlans: Plan[]; priceNote: string;
-  faqEyebrow: string; faqTitle: string; faqs: Faq[];
+  faqEyebrow: string; faqTitle: string;
   neverEyebrow: string; neverA: string; neverB: string; neverItems: { h: string; p: string }[];
   finalA: string; finalB: string; finalC: string; finalD: string; finalBody: string; ctaBiz: string; ctaFam: string;
   // dashboard chrome labels
@@ -95,14 +95,6 @@ const EN: Copy = {
   famPlans: [{ name: "Family", tagline: "Calm protection for one child.", cta: "Start free", features: ["1 profile", "Guardians & consent", "Safety signals"] }, { name: "Family Plus", tagline: "For the whole family, together.", cta: "Start free", features: ["Up to 5 profiles", "Advanced guardian controls", "Priority signals"] }, { name: "Family Pro", tagline: "For big or blended households.", cta: "Start free", features: ["Unlimited profiles", "All guardian controls", "Guardian roles"] }, { name: "Custom", tagline: "Schools, clubs and larger setups.", cta: "Contact us", features: ["Custom setup", "GDPR guidance", "Priority support"] }],
   priceNote: "Business prices mirror the current catalogue · yearly = 2 months free.",
   faqEyebrow: "FAQ", faqTitle: "Good questions, straight answers.",
-  faqs: [
-    { q: "Which platforms does Tamanor support?", a: "Today: Facebook Pages (comments + auto-hide), Instagram Business (comments), YouTube (read-only) and Google Business Profile (reviews). LinkedIn and TikTok are in research. Capabilities are never guessed — an unsupported action simply isn't shown." },
-    { q: "Does Tamanor delete comments?", a: "No. It hides clearly harmful comments from the public where the platform API allows it — the author and admins can still see them — and routes anything uncertain to a human. Every action is logged and reversible." },
-    { q: "For families — do you read private messages?", a: "No. Tamanor flags risky contact and harmful content as a signal to the guardian; it never hands you a child's private conversations. Consent-first and age-appropriate by design." },
-    { q: "How do you access accounts?", a: "Only through each platform's official OAuth. We never scrape, and never ask for or store passwords." },
-    { q: "Is there a free trial?", a: "Yes — start free, no card. Business plans include a trial; Family is free during the beta pilot." },
-    { q: "Is it GDPR-friendly?", a: "Data is tenant-scoped, tokens are encrypted and never logged, and disconnecting clears stored credentials. A DPA is available for Business plans." },
-  ],
   neverEyebrow: "Non-negotiable", neverA: "What Tamanor", neverB: "never", neverItems: [{ h: "Never scrapes", p: "Every connector uses a platform's official, sanctioned API. No scraping, anywhere, ever." }, { h: "Never asks for passwords", p: "Official OAuth only. We never request or store login credentials for any account." }, { h: "Never hides in silence", p: "Every automated action is audited and reversible. Sensitive cases wait for a human." }],
   finalA: "Protect what you've", finalB: "built", finalC: "Protect who you", finalD: "love", finalBody: "One account, one login. Choose the world you're protecting — start free, no card.", ctaBiz: "Start with Business", ctaFam: "Start with Family",
   dOverview: "Overview", dActionQueue: "Action queue", dToReview: "To review", dProtected: "Protected", dSignals: "Recent signals", dGuardians: "Guardians",
@@ -124,14 +116,6 @@ const SK: Copy = {
   famPlans: [{ name: "Family", tagline: "Pokojná ochrana pre jedno dieťa.", cta: "Začať zdarma", features: ["1 profil", "Opatrovníci a súhlas", "Bezpečnostné signály"] }, { name: "Family Plus", tagline: "Pre celú rodinu, spolu.", cta: "Začať zdarma", features: ["Až 5 profilov", "Pokročilé ovládanie", "Prioritné signály"] }, { name: "Family Pro", tagline: "Pre veľké alebo zmiešané domácnosti.", cta: "Začať zdarma", features: ["Neobmedzené profily", "Všetky ovládania", "Roly opatrovníkov"] }, { name: "Custom", tagline: "Školy, kluby a väčšie nastavenia.", cta: "Kontaktujte nás", features: ["Vlastné nastavenie", "Pomoc s GDPR", "Prioritná podpora"] }],
   priceNote: "Firemné ceny zodpovedajú aktuálnemu katalógu · ročne = 2 mesiace zdarma.",
   faqEyebrow: "FAQ", faqTitle: "Dobré otázky, jasné odpovede.",
-  faqs: [
-    { q: "Ktoré platformy Tamanor podporuje?", a: "Dnes: Facebook stránky (komentáre + auto-skrytie), Instagram Business (komentáre), YouTube (len na čítanie) a Google Business Profile (recenzie). LinkedIn a TikTok sú vo výskume. Schopnosti sa nikdy nehádajú — nepodporovaná akcia sa jednoducho nezobrazí." },
-    { q: "Maže Tamanor komentáre?", a: "Nie. Jasne škodlivé komentáre skryje pred verejnosťou tam, kde to API platformy dovolí — autor a admini ich stále vidia — a čokoľvek nejasné posunie človeku. Každá akcia je zaznamenaná a vratná." },
-    { q: "Pre rodiny — čítate súkromné správy?", a: "Nie. Tamanor označí rizikový kontakt a škodlivý obsah ako signál pre opatrovníka; nikdy vám nedá súkromné konverzácie dieťaťa. Súhlas na prvom mieste a primerané veku od návrhu." },
-    { q: "Ako pristupujete k účtom?", a: "Len cez oficiálny OAuth každej platformy. Nikdy nescrapujeme a nikdy nežiadame ani neukladáme heslá." },
-    { q: "Existuje skúšobná verzia zdarma?", a: "Áno — začnite zdarma, bez karty. Business plány obsahujú skúšobné obdobie; Family je zdarma počas beta pilotu." },
-    { q: "Je to v súlade s GDPR?", a: "Dáta sú viazané na tenanta, tokeny sú šifrované a nikdy sa nelogujú, a odpojenie vymaže uložené prístupy. Pre Business plány je dostupná DPA." },
-  ],
   neverEyebrow: "Neoddiskutovateľné", neverA: "Čo Tamanor", neverB: "nikdy", neverItems: [{ h: "Nikdy nescrapuje", p: "Každý konektor používa oficiálne, schválené API platformy. Žiadne scrapovanie, nikde, nikdy." }, { h: "Nikdy nežiada heslá", p: "Len oficiálny OAuth. Nikdy nežiadame ani neukladáme prihlasovacie údaje k žiadnemu účtu." }, { h: "Nikdy neskrýva v tichosti", p: "Každá automatická akcia je auditovaná a vratná. Citlivé prípady čakajú na človeka." }],
   finalA: "Ochráňte, čo ste", finalB: "vybudovali", finalC: "Ochráňte tých, ktorých", finalD: "milujete", finalBody: "Jeden účet, jedno prihlásenie. Vyberte si svet, ktorý chránite — začnite zdarma, bez karty.", ctaBiz: "Začať s Business", ctaFam: "Začať s Family",
   dOverview: "Prehľad", dActionQueue: "Fronta akcií", dToReview: "Na kontrolu", dProtected: "Chránené", dSignals: "Nedávne signály", dGuardians: "Opatrovníci",
@@ -153,14 +137,6 @@ const DE: Copy = {
   famPlans: [{ name: "Family", tagline: "Ruhiger Schutz für ein Kind.", cta: "Kostenlos starten", features: ["1 Profil", "Erziehungsberechtigte & Einwilligung", "Sicherheitssignale"] }, { name: "Family Plus", tagline: "Für die ganze Familie, zusammen.", cta: "Kostenlos starten", features: ["Bis zu 5 Profile", "Erweiterte Kontrollen", "Prioritäts-Signale"] }, { name: "Family Pro", tagline: "Für große oder Patchwork-Haushalte.", cta: "Kostenlos starten", features: ["Unbegrenzte Profile", "Alle Kontrollen", "Rollen für Erziehungsberechtigte"] }, { name: "Custom", tagline: "Schulen, Vereine und größere Setups.", cta: "Kontaktiere uns", features: ["Individuelles Setup", "DSGVO-Hilfe", "Prioritäts-Support"] }],
   priceNote: "Business-Preise entsprechen dem aktuellen Katalog · jährlich = 2 Monate gratis.",
   faqEyebrow: "FAQ", faqTitle: "Gute Fragen, klare Antworten.",
-  faqs: [
-    { q: "Welche Plattformen unterstützt Tamanor?", a: "Heute: Facebook-Seiten (Kommentare + Auto-Ausblenden), Instagram Business (Kommentare), YouTube (nur lesen) und Google Business Profile (Bewertungen). LinkedIn und TikTok sind in Forschung. Fähigkeiten werden nie geraten — eine nicht unterstützte Aktion wird einfach nicht angezeigt." },
-    { q: "Löscht Tamanor Kommentare?", a: "Nein. Eindeutig schädliche Kommentare werden vor der Öffentlichkeit ausgeblendet, wo die Plattform-API es erlaubt — Autor und Admins sehen sie weiterhin — und alles Unklare geht an einen Menschen. Jede Aktion wird protokolliert und ist umkehrbar." },
-    { q: "Für Familien — lest ihr private Nachrichten?", a: "Nein. Tamanor meldet riskanten Kontakt und schädliche Inhalte als Signal an die Erziehungsberechtigten; es gibt dir niemals die privaten Gespräche eines Kindes. Einwilligung zuerst und altersgerecht by design." },
-    { q: "Wie greift ihr auf Konten zu?", a: "Nur über das offizielle OAuth jeder Plattform. Wir scrapen nie und fragen niemals nach Passwörtern oder speichern sie." },
-    { q: "Gibt es eine kostenlose Testversion?", a: "Ja — kostenlos starten, ohne Karte. Business-Pläne enthalten eine Testphase; Family ist während des Beta-Pilots kostenlos." },
-    { q: "Ist es DSGVO-freundlich?", a: "Daten sind mandantenbezogen, Tokens sind verschlüsselt und werden nie protokolliert, und beim Trennen werden gespeicherte Zugangsdaten gelöscht. Ein AVV ist für Business-Pläne verfügbar." },
-  ],
   neverEyebrow: "Nicht verhandelbar", neverA: "Was Tamanor", neverB: "niemals", neverItems: [{ h: "Scrapet niemals", p: "Jeder Connector nutzt die offizielle, freigegebene API der Plattform. Kein Scraping, nirgends, niemals." }, { h: "Fragt nie nach Passwörtern", p: "Nur offizielles OAuth. Wir fordern oder speichern niemals Anmeldedaten für ein Konto." }, { h: "Verbirgt nie im Stillen", p: "Jede automatische Aktion wird auditiert und ist umkehrbar. Sensible Fälle warten auf einen Menschen." }],
   finalA: "Schütze, was du", finalB: "aufgebaut", finalC: "Schütze, die du", finalD: "liebst", finalBody: "Ein Konto, ein Login. Wähle die Welt, die du schützt — kostenlos starten, ohne Karte.", ctaBiz: "Mit Business starten", ctaFam: "Mit Family starten",
   dOverview: "Übersicht", dActionQueue: "Aktions-Warteschlange", dToReview: "Zu prüfen", dProtected: "Geschützt", dSignals: "Aktuelle Signale", dGuardians: "Erziehungsberechtigte",
@@ -371,7 +347,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
             <h2 style={{ margin: "12px 0 0", fontSize: "clamp(24px,3vw,34px)", fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>{t.faqTitle}</h2>
           </div>
           <div style={{ maxWidth: 820, margin: "0 auto", borderTop: `1px solid ${C.line}` }}>
-            {t.faqs.map((f, i) => (
+            {landingFaqs(locale).map((f, i) => (
               <details key={f.q} open={i === 0} style={{ borderBottom: `1px solid ${C.line}` }}>
                 <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "18px 0", fontSize: 15, fontWeight: 600 }}>
                   {f.q}<span className="tmr-sign" style={{ color: BIZ.a, fontSize: 18, transition: "transform .2s", flexShrink: 0 }}>+</span>
