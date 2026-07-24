@@ -10,6 +10,7 @@ import {
 import { systemDb } from "./index";
 import { withTenant } from "./repositories";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError } from "./child-safety-family";
+import { enforceFamilyCapacity } from "./family-billing-guard";
 
 /**
  * CS-C8 — Family Guardian Invitation & Membership Activation. A SEPARATE, FAMILY-only, content-free domain
@@ -110,6 +111,10 @@ export async function createFamilyGuardianInvitation(actor: FamilyActorContext, 
     }
     // Primary invariant already at create (don't defer a doomed invitation).
     if (input.intendedGuardianRole === GuardianRole.Primary && await activePrimaryExistsTx(db, actor.tenantId, input.protectedProfileId)) throw new FamilyValidationError("primary_conflict");
+
+    // FAMILY-BILLING S2 — enforce the pending-invitation cap before creating (flag-gated, race-safe).
+    // `now` matches the valid-pending count window (status pending AND not expired).
+    await enforceFamilyCapacity(db, actor.tenantId, "invitation", { now });
 
     try {
       const inv = await db.familyGuardianInvitation.create({
@@ -258,6 +263,10 @@ export async function acceptFamilyGuardianInvitation(token: string, userId: stri
       let membershipId: string; let membershipCreated = false;
       if (existingM) { membershipId = existingM.id; await audit(tx, inv.tenantId, CHILD_SAFETY_AUDIT_EVENTS.familyMembershipReusedFromInvitation, userId, inv.id); }
       else {
+        // FAMILY-BILLING S2 — enforce the family-member cap before creating a NEW membership (flag-gated,
+        // race-safe). Reusing an existing membership above adds no member, so it is never gated. A
+        // capacity denial throws → the whole accept transaction rolls back (the invitation stays pending).
+        await enforceFamilyCapacity(tx, inv.tenantId, "family_member", { now });
         const m = await tx.membership.create({ data: { userId, tenantId: inv.tenantId, role: bizRole as PRole } });
         membershipId = m.id; membershipCreated = true;
         await audit(tx, inv.tenantId, CHILD_SAFETY_AUDIT_EVENTS.familyMembershipCreatedFromInvitation, userId, inv.id, { familyRole: inv.intendedFamilyRole });

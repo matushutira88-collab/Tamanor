@@ -218,3 +218,22 @@ export function resolveFamilyEntitlements(
   if (accessState === "full_access" || accessState === "grace_period") return base;
   return locked;
 }
+
+// ── S2 — capacity accessors consumed by server-side enforcement (pure) ──
+
+/** The administrative-capacity resources that carry a plan cap. Critical safety is NOT here. */
+export type FamilyLimitedResource = "protected_profile" | "guardian" | "family_member" | "invitation";
+
+export const FAMILY_LIMITED_RESOURCES: readonly FamilyLimitedResource[] = [
+  "protected_profile", "guardian", "family_member", "invitation",
+];
+
+/** The cap for a Family capacity resource from resolved entitlements (null = unlimited). */
+export function familyResourceLimit(ent: FamilyEntitlements, resource: FamilyLimitedResource): number | null {
+  switch (resource) {
+    case "protected_profile": return ent.maxProtectedProfiles;
+    case "guardian": return ent.maxGuardians;
+    case "family_member": return ent.maxFamilyMembers;
+    case "invitation": return ent.maxPendingInvitations;
+  }
+}

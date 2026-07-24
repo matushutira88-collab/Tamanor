@@ -20,10 +20,18 @@ import {
 import {
   resolveFamilyEntitlements,
   familyPlanEntitlements,
+  familyResourceLimit,
+  FAMILY_LIMITED_RESOURCES,
   CRITICAL_SAFETY_ALWAYS,
   type FamilyEntitlements,
   type CriticalSafetyGuarantee,
 } from "../src/family-entitlements";
+import {
+  FamilyEntitlementError,
+  isFamilyEntitlementError,
+  isFamilyEntitlementCode,
+  FAMILY_ENTITLEMENT_CODES,
+} from "../src/family-entitlement-error";
 import type { AccessState } from "../src/billing";
 
 let pass = 0, fail = 0;
@@ -151,5 +159,44 @@ const a = JSON.stringify(resolveFamilyEntitlements("family_plus", "grace_period"
 const b = JSON.stringify(resolveFamilyEntitlements("family_plus", "grace_period"));
 check("same inputs → identical output", a === b);
 
-console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — FAMILY-BILLING S1 catalogue & entitlements: ${pass} passed, ${fail} failed`);
+// ===========================================================================
+// F. S2 — capacity accessors + typed error contract
+// ===========================================================================
+console.log("\nF. S2 capacity accessors + error contract");
+check("4 limited resources", FAMILY_LIMITED_RESOURCES.length === 4 &&
+  JSON.stringify([...FAMILY_LIMITED_RESOURCES]) === JSON.stringify(["protected_profile", "guardian", "family_member", "invitation"]));
+check("familyResourceLimit maps Free caps", (() => {
+  const f = familyPlanEntitlements("family_free");
+  return familyResourceLimit(f, "protected_profile") === 2 && familyResourceLimit(f, "guardian") === 2 &&
+    familyResourceLimit(f, "family_member") === 3 && familyResourceLimit(f, "invitation") === 2;
+})());
+check("familyResourceLimit maps Premium unlimited (null)", (() => {
+  const p = familyPlanEntitlements("family_premium");
+  return FAMILY_LIMITED_RESOURCES.every((r) => familyResourceLimit(p, r) === null);
+})());
+check("familyResourceLimit → 0 when locked (restricted)", (() => {
+  const r = resolveFamilyEntitlements("family_plus", "restricted");
+  return FAMILY_LIMITED_RESOURCES.every((x) => familyResourceLimit(r, x) === 0);
+})());
+
+check("FAMILY_ENTITLEMENT_CODES = the 4 categories", JSON.stringify([...FAMILY_ENTITLEMENT_CODES]) ===
+  JSON.stringify(["family_plan_limit_reached", "family_access_restricted", "family_feature_unavailable", "family_billing_state_invalid"]));
+check("isFamilyEntitlementCode accepts the 4, rejects junk",
+  FAMILY_ENTITLEMENT_CODES.every(isFamilyEntitlementCode) && !isFamilyEntitlementCode("nope") && !isFamilyEntitlementCode(null));
+
+const err = new FamilyEntitlementError("family_plan_limit_reached", "protected_profile", 2, 2);
+check("FamilyEntitlementError carries stable code + capability + current + max",
+  err.code === "family_plan_limit_reached" && err.capability === "protected_profile" && err.current === 2 && err.max === 2);
+check("error message is the CODE, not localized copy (no English parsing needed)", err.message === "family_plan_limit_reached");
+check("error name is stable for instanceof/guard", err.name === "FamilyEntitlementError" && isFamilyEntitlementError(err));
+check("detail() exposes ONLY safe fields (code/capability/current/max) — no leakage",
+  JSON.stringify(Object.keys(err.detail()).sort()) === JSON.stringify(["capability", "code", "current", "max"]));
+check("detail() has no Stripe / secret / child-data fields", (() => {
+  const d = JSON.stringify(err.detail());
+  return !/stripe|price_|sub_|cus_|sk_|secret|token|email|guardianLabel|childName|dob/i.test(d);
+})());
+const restrictedErr = new FamilyEntitlementError("family_access_restricted", "guardian");
+check("access-restricted error omits current/max cleanly", restrictedErr.current === undefined && restrictedErr.max === undefined);
+
+console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — FAMILY-BILLING S1/S2 catalogue, entitlements & error contract: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

@@ -125,6 +125,8 @@ export * from "./child-safety-recipient-authorization";
 export * from "./child-safety-delivery";
 export * from "./child-safety-family-onboarding";
 export * from "./family-invitation";
+// FAMILY-BILLING S2 — centralized server-side capacity enforcement (flag-gated, default off).
+export * from "./family-billing-guard";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

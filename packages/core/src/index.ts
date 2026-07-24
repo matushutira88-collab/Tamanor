@@ -35,6 +35,7 @@ export * from "./entitlements";
 // AccessState primitive from ./billing). Additive: no Business export is changed.
 export * from "./family-billing";
 export * from "./family-entitlements";
+export * from "./family-entitlement-error";
 export * from "./pricing-projection";
 export * from "./rate-limit";
 export * from "./rate-limit-store";

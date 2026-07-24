@@ -1,5 +1,6 @@
 import { ActorKind, Prisma } from "@prisma/client";
 import { withTenant } from "./repositories";
+import { enforceFamilyCapacity } from "./family-billing-guard";
 import {
   FamilyAction, authorizeFamilyAction, CHILD_SAFETY_AUDIT_EVENTS,
   validateChildSafetyInput, PROTECTED_PROFILE_CREATE_FIELDS, PROTECTED_PROFILE_UPDATE_FIELDS, GUARDIAN_RELATIONSHIP_CREATE_FIELDS,
@@ -133,6 +134,8 @@ export async function createProtectedProfile(actor: FamilyActorContext, input: {
   if (!isProtectionStatus(protectionStatus)) throw new FamilyValidationError("protectionStatus");
   if (input.language != null && !isProfileLanguage(input.language)) throw new FamilyValidationError("language");
   return withTenant(actor.tenantId, async (db) => {
+    // FAMILY-BILLING S2 — enforce the protected-profile cap before creating (flag-gated, race-safe).
+    await enforceFamilyCapacity(db, actor.tenantId, "protected_profile");
     const row = await db.protectedProfile.create({
       data: { tenantId: actor.tenantId, guardianLabel: input.guardianLabel ?? null, ageBand: input.ageBand, protectionStatus, language: input.language ?? null },
       select: PROFILE_SELECT,
@@ -242,6 +245,8 @@ export async function createGuardianRelationship(actor: FamilyActorContext, inpu
     if (input.guardianRole === GuardianRole.Primary && await activePrimaryExists(db, actor.tenantId, input.protectedProfileId)) throw new FamilyValidationError("primary_guardian_conflict");
     // Defaults enforce separation: a new relationship is NEVER auto-consented or auto safe-recipient.
     // A role change/creation NEVER derives authorityLevel — the two are independent axes.
+    // FAMILY-BILLING S2 — enforce the guardian cap before creating (flag-gated, race-safe).
+    await enforceFamilyCapacity(db, actor.tenantId, "guardian");
     try {
       const row = await db.guardianRelationship.create({
         data: {

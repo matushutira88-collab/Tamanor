@@ -1,5 +1,6 @@
 import "server-only";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError, DeliveryNotEligibleError } from "@guardora/db";
+import { isFamilyEntitlementError } from "@guardora/core";
 import { isFamilyInvitationErrorCode, isFamilyAuthorityErrorCode, isFamilyConsentErrorCode, isFamilyAssessmentErrorCode, type FamilyActionErrorCode, type FamilyInvitationErrorCode, type FamilyAuthorityErrorCode, type FamilyConsentErrorCode, type FamilyAssessmentErrorCode } from "@/app/family/family-i18n";
 
 /**
@@ -13,6 +14,9 @@ export function toFamilyActionErrorCode(e: unknown): FamilyActionErrorCode {
   if (e instanceof FamilyNotFoundError) return "not_found";
   if (e instanceof DeliveryNotEligibleError) return "authorization_not_effective";
   if (e instanceof FamilyValidationError) return "invalid_state";
+  // FAMILY-BILLING S2 — a capacity/access denial maps to the safe "invalid_state" group (a richer,
+  // localized surface using the typed FamilyEntitlementError detail comes with the S4 billing UI).
+  if (isFamilyEntitlementError(e)) return "invalid_state";
   return "retry_later";
 }
 
@@ -30,6 +34,7 @@ export function toFamilyInvitationErrorCode(e: unknown): FamilyInvitationErrorCo
   if (e instanceof FamilyForbiddenError) return "forbidden";
   if (e instanceof FamilyNotFoundError) return "not_found";
   if (e instanceof FamilyValidationError) return isFamilyInvitationErrorCode(e.field) ? e.field : "invalid_state";
+  if (isFamilyEntitlementError(e)) return "invalid_state";
   return "retry_later";
 }
 /** CS-C8 — the safe result shape an invitation destructive action returns to `useActionState`. */
