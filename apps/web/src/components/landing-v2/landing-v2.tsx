@@ -1,5 +1,4 @@
 "use client";
-/* eslint-disable @next/next/no-img-element */
 
 /**
  * Tamanor landing — served at /, /sk, /de. Self-contained body (inline styles + a few
