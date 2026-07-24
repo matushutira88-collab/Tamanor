@@ -11,7 +11,7 @@ import { logPhase, scrubMessage, type DiagSink } from "./login-trace";
 const MAX_BODY = 2048; // chars — anything larger is rejected before JSON parse.
 const TRACE_RE = /^t_[a-f0-9]{12,64}$/;
 const EVENTS = new Set(["error", "mounted"]);
-const BOUNDARIES = new Set(["global", "dashboard", "shell_mount"]);
+const BOUNDARIES = new Set(["global", "dashboard", "shell_mount", "family", "family-console"]);
 const ALLOWED_KEYS = new Set(["event", "traceId", "referenceId", "route", "boundary", "errorName", "safeMessage", "digest", "ts"]);
 
 interface ClientReport {

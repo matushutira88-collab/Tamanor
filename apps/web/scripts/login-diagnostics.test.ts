@@ -59,6 +59,8 @@ async function run() {
   // --- client-error sink: validation / rate-limit / size / cookie-clear ---------------------------
   const base = { sameOrigin: true, rateAllowed: true };
   check("happy path → 204", handleClientErrorReport({ ...base, rawBody: body({ event: "error", referenceId: "t_abc", boundary: "global", route: "/dashboard", errorName: "TypeError" }) }).status === 204);
+  check("family boundary accepted → 204", handleClientErrorReport({ ...base, rawBody: body({ event: "error", referenceId: "t_fam", boundary: "family", route: "/family" }) }).status === 204);
+  check("family-console boundary accepted → 204", handleClientErrorReport({ ...base, rawBody: body({ event: "error", referenceId: "t_fam", boundary: "family-console", route: "/family/signals" }) }).status === 204);
   check("4) invalid JSON → 400", handleClientErrorReport({ ...base, rawBody: "{not json" }).status === 400);
   check("4) schema-invalid (bad enum) → 400", handleClientErrorReport({ ...base, rawBody: body({ boundary: "hacker" }) }).status === 400);
   check("7) EXTRA/unknown fields rejected (strict) → 400", handleClientErrorReport({ ...base, rawBody: body({ event: "error", cookie: "steal=1", token: "abc" }) }).status === 400);
