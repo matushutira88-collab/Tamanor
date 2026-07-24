@@ -33,7 +33,9 @@ async function run() {
   check("public projection has starter/growth/agency + enterprise", pub.plans.length === 3 && pub.enterprise.id === "enterprise");
   check("projection names + prices come from the catalogue", pub.plans.every((c) => c.name === BILLING_PLANS[c.id].name && c.priceMonthly === BILLING_PLANS[c.id].priceMonthly));
   check("projection limits come from the entitlement catalogue", pub.plans.every((c) => c.limits.connectedAccounts === planEntitlements(c.id).maxConnectedAccounts && c.limits.brands === planEntitlements(c.id).maxBrands));
-  check("unimplemented features absent (export/multiWorkspace/agency-client = false)", pub.plans.every((c) => !c.capabilities.export && !c.capabilities.multiWorkspace && !c.capabilities.agencyClientManagement));
+  // V1.69 (B3): export is a PAID feature → ON for every paid projection card; multiWorkspace /
+  // agency-client remain not-shipped (false) for all.
+  check("not-shipped features absent; paid export present on every paid plan", pub.plans.every((c) => c.capabilities.export === true && !c.capabilities.multiWorkspace && !c.capabilities.agencyClientManagement));
   check("Starter projection does NOT advertise analytics", pub.plans.find((c) => c.id === "starter")?.capabilities.reputationAnalytics === false);
   // V1.64 — per-brand model: prices, brand counts, comment limits, and per-brand platform caps.
   check("projection prices: starter 59 / growth 189 / business(agency) 499", pub.plans.find((c) => c.id === "starter")?.priceMonthly === 59 && pub.plans.find((c) => c.id === "growth")?.priceMonthly === 189 && pub.plans.find((c) => c.id === "agency")?.priceMonthly === 499);

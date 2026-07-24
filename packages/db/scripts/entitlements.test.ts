@@ -31,8 +31,12 @@ async function run() {
   const plans = ["free_trial", "starter", "growth", "agency", "enterprise"] as const;
   check("every self-serve plan in the entitlement catalogue matches the billing catalogue plan id",
     plans.every((p) => planEntitlements(p).plan === p));
-  check("unimplemented capabilities are FALSE for every plan (not advertised)",
-    plans.every((p) => { const e = planEntitlements(p); return e.export === false && e.multiWorkspace === false && e.agencyClientManagement === false; }));
+  check("not-shipped capabilities are FALSE for every plan (multiWorkspace / agency-client)",
+    plans.every((p) => { const e = planEntitlements(p); return e.multiWorkspace === false && e.agencyClientManagement === false; }));
+  // V1.69 (B3): CSV export is a PAID feature — OFF on the free trial, ON for every paid plan.
+  check("paid export: OFF on free_trial, ON for starter/growth/agency/enterprise",
+    planEntitlements("free_trial").export === false &&
+    (["starter", "growth", "agency", "enterprise"] as const).every((p) => planEntitlements(p).export === true));
   check("Starter does NOT claim analytics/risk/incidents (not shipped for Starter)",
     !planEntitlements("starter").reputationAnalytics && !planEntitlements("starter").riskProfiles && !planEntitlements("starter").incidents);
   check("Growth ships analytics + risk + incidents + control center",
