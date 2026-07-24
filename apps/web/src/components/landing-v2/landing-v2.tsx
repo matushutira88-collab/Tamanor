@@ -19,6 +19,7 @@ import { SiteFooter } from "../site-footer";
 import { ShieldEmblem } from "../logo";
 import type { Locale } from "@/i18n";
 import { landingFaqs } from "./faqs";
+import { FAMILY_CARD_MONTHLY_PRICES } from "./family-plans";
 
 /* ---------- palette ---------- */
 const BIZ = { a: "#2563eb", a2: "#60a5fa", deep: "#1d4ed8", soft: "#eaf1ff" };
@@ -56,7 +57,10 @@ const IMG = {
 
 /* ---------- pricing (shared numbers; labels localised) ---------- */
 const BIZ_PRICES: (number | null)[] = [59, 189, 499, null];
-const FAM_PRICES: (number | null)[] = [7.99, 14.99, 24.99, null];
+// Family prices come from the single source of truth (./family-plans), which is unit-tested against
+// the backend catalogue so public prices/names and the card→plan mapping cannot drift. Order:
+// Family (family_basic) · Family Plus (family_plus) · Family Pro (family_premium) · Custom (contact).
+const FAM_PRICES: (number | null)[] = [...FAMILY_CARD_MONTHLY_PRICES];
 
 type Plan = { name: string; tagline: string; cta: string; features: string[] };
 type Step = { name: string; body: string };

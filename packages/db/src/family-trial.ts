@@ -17,7 +17,7 @@
  * Gated by `FAMILY_BILLING_ENABLED` (OFF in production → every call fails safe). Never touches Stripe,
  * subscriptions, prices, or any Family domain/safety data. Never deletes data.
  */
-import { isFamilySelfServePlan, familyBillingEnabled, type FamilyPlanId } from "@guardora/core";
+import { isFamilySelfServePlan, familyBillingEnabled, type FamilyPlanId, type FamilySelfServePlanId } from "@guardora/core";
 import { systemDb } from "./index";
 
 /** Statuses of an EXISTING paid subscription that make a fresh introductory trial invalid. */
@@ -35,7 +35,7 @@ export type StartFamilyTrialReason =
   | "subscription_active"; // a conflicting active/recoverable paid subscription exists
 
 export type StartFamilyTrialResult =
-  | { ok: true; plan: "family_plus" | "family_premium"; trialStartsAt: Date; trialEndsAt: Date }
+  | { ok: true; plan: FamilySelfServePlanId; trialStartsAt: Date; trialEndsAt: Date }
   | { ok: false; reason: StartFamilyTrialReason };
 
 /**
@@ -68,7 +68,7 @@ export async function startFamilyTrial(args: {
   const now = args.now ?? new Date();
   const days = args.durationDays && args.durationDays > 0 ? args.durationDays : DEFAULT_FAMILY_TRIAL_DAYS;
   const trialEndsAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-  const targetPlan = args.targetPlan as "family_plus" | "family_premium";
+  const targetPlan = args.targetPlan as FamilySelfServePlanId;
 
   return systemDb.$transaction(async (tx) => {
     // Serialize concurrent trial starts for THIS tenant (different tenants never block).

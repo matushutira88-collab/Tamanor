@@ -19,9 +19,9 @@
 import type { BillingInterval, AccessState, BillingStatus } from "./billing";
 import { resolveAccessState } from "./billing";
 
-export type FamilyPlanId = "family_free" | "family_plus" | "family_premium";
+export type FamilyPlanId = "family_free" | "family_basic" | "family_plus" | "family_premium";
 
-export const FAMILY_PLAN_IDS: readonly FamilyPlanId[] = ["family_free", "family_plus", "family_premium"];
+export const FAMILY_PLAN_IDS: readonly FamilyPlanId[] = ["family_free", "family_basic", "family_plus", "family_premium"];
 
 export type FamilyPlanCatalogueEntry = {
   id: FamilyPlanId;
@@ -47,6 +47,21 @@ export const FAMILY_BILLING_PLANS: Record<FamilyPlanId, FamilyPlanCatalogueEntry
     ],
     selfServeCheckout: false,
   },
+  // Public "Family" — the entry paid tier (matches the pricing page's first paid card). `name` is the
+  // customer-facing label; the internal id (family_basic) is never shown to customers.
+  family_basic: {
+    id: "family_basic",
+    name: "Family",
+    tagline: "Calm protection for one child.",
+    features: [
+      "Real-time critical safety alerts — always included, never limited",
+      "1 protected profile",
+      "Authorized guardians and consent",
+      "Safety signals and internal deliveries",
+      "12 months of safety history",
+    ],
+    selfServeCheckout: true,
+  },
   family_plus: {
     id: "family_plus",
     name: "Family Plus",
@@ -60,16 +75,18 @@ export const FAMILY_BILLING_PLANS: Record<FamilyPlanId, FamilyPlanCatalogueEntry
     ],
     selfServeCheckout: true,
   },
+  // Public "Family Pro" — the highest self-service tier (unlimited). Customer-facing name is
+  // "Family Pro"; the internal id (family_premium) is stable and never shown to customers.
   family_premium: {
     id: "family_premium",
-    name: "Family Premium",
-    tagline: "Unlimited capacity and advanced protection for the whole family.",
+    name: "Family Pro",
+    tagline: "For big or blended households.",
     features: [
       "Everything in Family Plus",
       "Unlimited protected profiles, guardians and members",
       "Unlimited safety history",
       "Full AI safety analysis and priority signal review",
-      "Priority support",
+      "Guardian roles and priority support",
     ],
     selfServeCheckout: true,
   },
@@ -80,8 +97,11 @@ export function isFamilyPlanId(v: unknown): v is FamilyPlanId {
   return typeof v === "string" && v in FAMILY_BILLING_PLANS;
 }
 
-/** Type guard: a Family plan obtainable via self-service checkout (family_plus / family_premium). */
-export function isFamilySelfServePlan(v: unknown): v is "family_plus" | "family_premium" {
+/** A Family plan obtainable via self-service Stripe Checkout (family_basic / family_plus / family_premium). */
+export type FamilySelfServePlanId = "family_basic" | "family_plus" | "family_premium";
+
+/** Type guard: a Family plan obtainable via self-service checkout. `family_free` is never purchased. */
+export function isFamilySelfServePlan(v: unknown): v is FamilySelfServePlanId {
   return isFamilyPlanId(v) && FAMILY_BILLING_PLANS[v].selfServeCheckout;
 }
 
@@ -90,22 +110,29 @@ export function isFamilySelfServePlan(v: unknown): v is "family_plus" | "family_
 //
 // Mirrors the Business `resolveStripePriceId` / `planForStripePriceId` contract but for the Family
 // catalogue, and stays SEPARATE from it so a Family price can never resolve to a Business plan (or
-// vice versa). Only the two self-serve Family plans have prices; `family_free` never does. Values are
+// vice versa). Only the self-serve Family plans have prices; `family_free` never does. Values are
 // read from the environment at call time — none are hard-coded, and a missing/blank value fails closed
 // (null), so a caller never invents a price and the build/webhook never crash on absent config.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The Family plans sold via self-service Stripe Checkout. `family_free` is never purchased. */
-export const FAMILY_SELF_SERVE_PLANS: readonly ("family_plus" | "family_premium")[] = ["family_plus", "family_premium"];
+export const FAMILY_SELF_SERVE_PLANS: readonly FamilySelfServePlanId[] = ["family_basic", "family_plus", "family_premium"];
 
 /**
- * Env-var NAMES (never values) for each self-serve Family plan's Stripe Price IDs. The operator sets
- * these in the environment; production values are added only when Family billing is activated.
+ * Env-var NAMES (never values) for each self-serve Family plan's Stripe Price IDs — the SIX-variable
+ * Family price contract. The operator sets these in the environment; production values are added only
+ * when Family billing is activated.
  */
-export const FAMILY_PRICE_ENV: Record<"family_plus" | "family_premium", { monthly: string; yearly: string }> = {
+export const FAMILY_PRICE_ENV: Record<FamilySelfServePlanId, { monthly: string; yearly: string }> = {
+  family_basic: { monthly: "STRIPE_FAMILY_BASIC_MONTHLY_PRICE_ID", yearly: "STRIPE_FAMILY_BASIC_YEARLY_PRICE_ID" },
   family_plus: { monthly: "STRIPE_FAMILY_PLUS_MONTHLY_PRICE_ID", yearly: "STRIPE_FAMILY_PLUS_YEARLY_PRICE_ID" },
   family_premium: { monthly: "STRIPE_FAMILY_PREMIUM_MONTHLY_PRICE_ID", yearly: "STRIPE_FAMILY_PREMIUM_YEARLY_PRICE_ID" },
 };
+
+/** Whether a Family plan is one of the self-serve, priced plans (narrows to FamilySelfServePlanId). */
+function isFamilyPricedPlan(plan: FamilyPlanId): plan is FamilySelfServePlanId {
+  return plan === "family_basic" || plan === "family_plus" || plan === "family_premium";
+}
 
 /**
  * Server-side Family price-ID resolution. Returns null for `family_free` (no price), an invalid
@@ -117,7 +144,7 @@ export function resolveFamilyStripePriceId(
   interval: BillingInterval,
   env: Record<string, string | undefined> = process.env,
 ): string | null {
-  if (plan !== "family_plus" && plan !== "family_premium") return null; // family_free has no price
+  if (!isFamilyPricedPlan(plan)) return null; // family_free has no price
   const entry = FAMILY_PRICE_ENV[plan];
   const key = interval === "monthly" ? entry.monthly : entry.yearly;
   const id = env[key]?.trim();
@@ -132,12 +159,54 @@ export function resolveFamilyStripePriceId(
 export function familyPlanForStripePriceId(
   priceId: string,
   env: Record<string, string | undefined> = process.env,
-): { plan: "family_plus" | "family_premium"; interval: BillingInterval } | null {
+): { plan: FamilySelfServePlanId; interval: BillingInterval } | null {
   for (const plan of FAMILY_SELF_SERVE_PLANS) {
     if (resolveFamilyStripePriceId(plan, "monthly", env) === priceId) return { plan, interval: "monthly" };
     if (resolveFamilyStripePriceId(plan, "yearly", env) === priceId) return { plan, interval: "yearly" };
   }
   return null;
+}
+
+/** Per-plan/interval availability key for the six self-serve Family prices. */
+export type FamilyStripePriceKey =
+  | "FAMILY_BASIC_MONTHLY" | "FAMILY_BASIC_YEARLY"
+  | "FAMILY_PLUS_MONTHLY" | "FAMILY_PLUS_YEARLY"
+  | "FAMILY_PREMIUM_MONTHLY" | "FAMILY_PREMIUM_YEARLY";
+export type FamilyStripePriceAvailability = Record<FamilyStripePriceKey, boolean>;
+
+const FAMILY_PRICE_KEY_MAP: { key: FamilyStripePriceKey; plan: FamilySelfServePlanId; interval: BillingInterval }[] = [
+  { key: "FAMILY_BASIC_MONTHLY", plan: "family_basic", interval: "monthly" },
+  { key: "FAMILY_BASIC_YEARLY", plan: "family_basic", interval: "yearly" },
+  { key: "FAMILY_PLUS_MONTHLY", plan: "family_plus", interval: "monthly" },
+  { key: "FAMILY_PLUS_YEARLY", plan: "family_plus", interval: "yearly" },
+  { key: "FAMILY_PREMIUM_MONTHLY", plan: "family_premium", interval: "monthly" },
+  { key: "FAMILY_PREMIUM_YEARLY", plan: "family_premium", interval: "yearly" },
+];
+
+/**
+ * Per-price configured/availability for the six Family prices. A key is `true` only when its env price
+ * is present, has the strict Stripe `price_…` shape, and is NOT shared with another Family key (a
+ * duplicated Price ID fails BOTH sharers closed — a duplicate would misroute familyPlanForStripePriceId).
+ * Returns booleans only — never a Price ID or secret — so it is safe to compute server-side and hand to
+ * the client. `duplicatePriceIds` flags the misconfiguration for readiness surfaces.
+ */
+export function familyStripePriceAvailability(
+  env: Record<string, string | undefined> = process.env,
+): { available: FamilyStripePriceAvailability; duplicatePriceIds: boolean } {
+  const idByKey = new Map<FamilyStripePriceKey, string | null>();
+  const counts = new Map<string, number>();
+  for (const e of FAMILY_PRICE_KEY_MAP) {
+    const id = resolveFamilyStripePriceId(e.plan, e.interval, env);
+    idByKey.set(e.key, id);
+    if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  const available = {} as FamilyStripePriceAvailability;
+  for (const e of FAMILY_PRICE_KEY_MAP) {
+    const id = idByKey.get(e.key) ?? null;
+    available[e.key] = !!id && /^price_[A-Za-z0-9]+$/.test(id) && (counts.get(id) ?? 0) === 1;
+  }
+  const duplicatePriceIds = [...counts.values()].some((c) => c > 1);
+  return { available, duplicatePriceIds };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

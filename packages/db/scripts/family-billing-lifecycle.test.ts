@@ -92,6 +92,15 @@ async function main() {
   check("active paid subscription → subscription_active", ((await startFamilyTrial({ tenantId: famD, targetPlan: "family_plus", enabled: true })) as { reason?: string }).reason === "subscription_active");
 
   // ===========================================================================
+  // D2. startFamilyTrial — family_basic is a valid trial target (entry paid tier)
+  // ===========================================================================
+  console.log("\nD2. startFamilyTrial family_basic");
+  const famBasicTrial = await seedTenant("family", "family_free");
+  const rb = await startFamilyTrial({ tenantId: famBasicTrial, targetPlan: "family_basic", now: NOW, enabled: true });
+  const ab = await get(famBasicTrial);
+  check("★ family_basic trial start ok → plan=family_basic, trialing, full_access, consumed set", rb.ok === true && ab?.plan === "family_basic" && ab?.billingStatus === "trialing" && ab?.accessState === "full_access" && ab?.familyTrialConsumedAt !== null);
+
+  // ===========================================================================
   // E. Workspace-aware webhook apply
   // ===========================================================================
   console.log("\nE. workspace-aware webhook apply");
@@ -110,6 +119,16 @@ async function main() {
   const e2 = await applyEvent(famCanceled, "customer.subscription.deleted");
   const gE2 = await get(famE);
   check("★ Family cancellation → tenant plan=family_free, accessState=full_access (never restricted)", e2.outcome === "processed" && gE2?.plan === "family_free" && gE2?.accessState === "full_access");
+
+  // E2b — a FAMILY_BASIC subscription on a Family tenant → tenant plan=family_basic; then cancellation
+  // falls back to family_free/full_access (entry-tier lifecycle identical to plus/premium).
+  const famBE = await seedTenant("family", "family_free");
+  const cusBE = `cus_${sfx}_BE`;
+  await ensureStripeCustomer(famBE, cusBE);
+  const eB1 = await applyEvent({ stripeCustomerId: cusBE, stripeSubscriptionId: "sub_BE", stripePriceId: "price_fam_basic_m", plan: "family_basic", billingInterval: "monthly", status: "active", currentPeriodEnd: future(20) }, "customer.subscription.created");
+  check("★ family_basic active subscription → tenant plan=family_basic / full_access", eB1.outcome === "processed" && (await get(famBE))?.plan === "family_basic");
+  const eB2 = await applyEvent({ stripeCustomerId: cusBE, stripeSubscriptionId: "sub_BE", stripePriceId: "price_fam_basic_m", plan: "family_basic", billingInterval: "monthly", status: "canceled", currentPeriodEnd: past(1), canceledAt: past(1) }, "customer.subscription.deleted");
+  check("★ family_basic cancellation → family_free / full_access", eB2.outcome === "processed" && (await get(famBE))?.plan === "family_free" && (await get(famBE))?.accessState === "full_access");
 
   // E3 — cross-workspace: a BUSINESS plan input on a FAMILY tenant → rejected (ignored), no mutation.
   const famE3 = await seedTenant("family", "family_free");

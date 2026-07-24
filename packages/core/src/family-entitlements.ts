@@ -98,6 +98,29 @@ const FAMILY_BASE: Record<FamilyPlanId, FamilyEntitlements> = {
     deletionAccess: true,
     criticalSafety: CRITICAL_SAFETY_ALWAYS,
   },
+  // Public "Family" — the entry PAID tier. Its marketed offering is a single protected child
+  // (maxProtectedProfiles = 1, matching the pricing page); the value over the free no-subscription
+  // fallback is the paid dimensions (longer history, push alerts, standard AI, reporting), NOT raw
+  // profile count. `family_free` deliberately keeps its own generous safety baseline (2 profiles) and
+  // is NOT this plan — it remains the safe no-subscription floor.
+  family_basic: {
+    plan: "family_basic",
+    maxProtectedProfiles: 1,
+    maxGuardians: 4,
+    maxFamilyMembers: 5,
+    maxPendingInvitations: 4,
+    historyRetentionDays: 365,
+    nonCriticalAlerts: "email_push",
+    aiAnalysis: "standard",
+    reporting: true,
+    export: false,
+    integrations: false,
+    prioritySupport: false,
+    canManageFamily: true,
+    billingAccess: true,
+    deletionAccess: true,
+    criticalSafety: CRITICAL_SAFETY_ALWAYS,
+  },
   family_plus: {
     plan: "family_plus",
     maxProtectedProfiles: 5,

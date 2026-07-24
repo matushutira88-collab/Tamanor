@@ -10,15 +10,17 @@
  */
 import {
   resolveFamilyStripePriceId, familyPlanForStripePriceId, isFamilySelfServePlan,
-  familyBillingEnabled, resolveFamilyBillingState,
+  familyBillingEnabled, resolveFamilyBillingState, familyStripePriceAvailability, FAMILY_SELF_SERVE_PLANS,
   resolveStripePriceId, planForStripePriceId,
 } from "../src/index";
 
 let pass = 0, fail = 0;
 const check = (l: string, c: boolean, d = "") => { console.log(`${c ? "  ✓" : "  ✗"} ${l}${c ? "" : `  — ${d}`}`); c ? pass++ : fail++; };
 
-// A self-contained env with BOTH Family and Business prices configured, to prove strict separation.
+// A self-contained env with ALL SIX Family prices + Business prices configured, to prove separation.
 const ENV: Record<string, string | undefined> = {
+  STRIPE_FAMILY_BASIC_MONTHLY_PRICE_ID: "price_fam_basic_m",
+  STRIPE_FAMILY_BASIC_YEARLY_PRICE_ID: "price_fam_basic_y",
   STRIPE_FAMILY_PLUS_MONTHLY_PRICE_ID: "price_fam_plus_m",
   STRIPE_FAMILY_PLUS_YEARLY_PRICE_ID: "price_fam_plus_y",
   STRIPE_FAMILY_PREMIUM_MONTHLY_PRICE_ID: "price_fam_prem_m",
@@ -33,6 +35,9 @@ const past = (d: number) => new Date(NOW.getTime() - d * 864e5);
 function main() {
   // A. price resolution
   console.log("\nA. Family price resolution (env-var names only)");
+  check("★ six-variable Family contract (basic+plus+premium × monthly/yearly)", FAMILY_SELF_SERVE_PLANS.length === 3 && JSON.stringify([...FAMILY_SELF_SERVE_PLANS]) === JSON.stringify(["family_basic", "family_plus", "family_premium"]));
+  check("★ family_basic monthly resolves configured id", resolveFamilyStripePriceId("family_basic", "monthly", ENV) === "price_fam_basic_m");
+  check("★ family_basic yearly resolves configured id", resolveFamilyStripePriceId("family_basic", "yearly", ENV) === "price_fam_basic_y");
   check("family_plus monthly resolves configured id", resolveFamilyStripePriceId("family_plus", "monthly", ENV) === "price_fam_plus_m");
   check("family_plus yearly resolves configured id", resolveFamilyStripePriceId("family_plus", "yearly", ENV) === "price_fam_plus_y");
   check("family_premium monthly resolves configured id", resolveFamilyStripePriceId("family_premium", "monthly", ENV) === "price_fam_prem_m");
@@ -45,11 +50,28 @@ function main() {
   console.log("\nB. reverse lookup + Business/Family separation");
   check("reverse family_plus monthly", JSON.stringify(familyPlanForStripePriceId("price_fam_plus_m", ENV)) === JSON.stringify({ plan: "family_plus", interval: "monthly" }));
   check("reverse family_premium yearly", JSON.stringify(familyPlanForStripePriceId("price_fam_prem_y", ENV)) === JSON.stringify({ plan: "family_premium", interval: "yearly" }));
+  check("★ reverse family_basic monthly", JSON.stringify(familyPlanForStripePriceId("price_fam_basic_m", ENV)) === JSON.stringify({ plan: "family_basic", interval: "monthly" }));
   check("reverse unknown price → null", familyPlanForStripePriceId("price_unknown", ENV) === null);
   check("★ a BUSINESS price never maps to a Family plan", familyPlanForStripePriceId("price_biz_starter_m", ENV) === null);
-  check("★ a FAMILY price never maps to a Business plan", planForStripePriceId("price_fam_plus_m", ENV) === null);
+  check("★ a FAMILY price never maps to a Business plan", planForStripePriceId("price_fam_basic_m", ENV) === null && planForStripePriceId("price_fam_plus_m", ENV) === null);
   check("Business mapping still works (control)", JSON.stringify(planForStripePriceId("price_biz_starter_m", ENV)) === JSON.stringify({ plan: "starter", interval: "monthly" }));
-  check("isFamilySelfServePlan: plus/premium true, free false", isFamilySelfServePlan("family_plus") && isFamilySelfServePlan("family_premium") && !isFamilySelfServePlan("family_free"));
+  check("isFamilySelfServePlan: basic/plus/premium true, free false", isFamilySelfServePlan("family_basic") && isFamilySelfServePlan("family_plus") && isFamilySelfServePlan("family_premium") && !isFamilySelfServePlan("family_free"));
+
+  // B2. availability + duplicate-price detection. Availability enforces the strict Stripe price shape
+  // (^price_[A-Za-z0-9]+$), so use realistically-shaped ids here (no underscores after the prefix).
+  console.log("\nB2. availability + duplicate detection");
+  const VALID6: Record<string, string | undefined> = {
+    STRIPE_FAMILY_BASIC_MONTHLY_PRICE_ID: "price_basicM01", STRIPE_FAMILY_BASIC_YEARLY_PRICE_ID: "price_basicY01",
+    STRIPE_FAMILY_PLUS_MONTHLY_PRICE_ID: "price_plusM01", STRIPE_FAMILY_PLUS_YEARLY_PRICE_ID: "price_plusY01",
+    STRIPE_FAMILY_PREMIUM_MONTHLY_PRICE_ID: "price_premM01", STRIPE_FAMILY_PREMIUM_YEARLY_PRICE_ID: "price_premY01",
+  };
+  const avail = familyStripePriceAvailability(VALID6);
+  check("all six Family prices available with full valid config", Object.values(avail.available).every(Boolean) && Object.keys(avail.available).length === 6 && !avail.duplicatePriceIds);
+  check("missing config → not available (fail closed)", familyStripePriceAvailability({}).available.FAMILY_BASIC_MONTHLY === false);
+  check("★ duplicate price id across keys → BOTH sharers unavailable + duplicate flag", (() => {
+    const dup = familyStripePriceAvailability({ ...VALID6, STRIPE_FAMILY_BASIC_MONTHLY_PRICE_ID: "price_plusM01" });
+    return dup.duplicatePriceIds === true && dup.available.FAMILY_BASIC_MONTHLY === false && dup.available.FAMILY_PLUS_MONTHLY === false;
+  })());
 
   // C. flag reader
   console.log("\nC. FAMILY_BILLING_ENABLED reader");
@@ -62,6 +84,8 @@ function main() {
   console.log("\nD. subscription lifecycle → effective (plan, access)");
   const r = (o: Parameters<typeof resolveFamilyBillingState>[0]) => resolveFamilyBillingState({ now: NOW, ...o });
   const eq = (x: { plan: string; accessState: string }, plan: string, access: string) => x.plan === plan && x.accessState === access;
+  check("★ family_basic active paid → family_basic / full_access", eq(r({ paidPlan: "family_basic", status: "active" }), "family_basic", "full_access"));
+  check("★ family_basic cancellation past period → family_free / full_access", eq(r({ paidPlan: "family_basic", status: "canceled", currentPeriodEnd: past(1) }), "family_free", "full_access"));
   check("active paid → paid plan / full_access", eq(r({ paidPlan: "family_plus", status: "active" }), "family_plus", "full_access"));
   check("trialing (trial in future) → paid plan / full_access", eq(r({ paidPlan: "family_premium", status: "trialing", trialEndsAt: future(5) }), "family_premium", "full_access"));
   check("★ trialing (trial expired) → family_free / full_access", eq(r({ paidPlan: "family_plus", status: "trialing", trialEndsAt: past(1) }), "family_free", "full_access"));

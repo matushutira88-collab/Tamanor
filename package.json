@@ -220,7 +220,8 @@
     "dashboard-metrics:test": "bash packages/db/scripts/run-dashboard-metrics.sh",
     "meta-finalize:test": "bash packages/db/scripts/run-meta-finalize.sh",
     "accounts-overview:test": "bash packages/db/scripts/run-accounts-overview.sh",
-    "family-toast:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/family-toast.test.ts"
+    "family-toast:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/family-toast.test.ts",
+    "family-plans-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/family-plans-ui.test.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

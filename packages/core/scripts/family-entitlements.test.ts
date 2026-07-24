@@ -56,8 +56,13 @@ const PLAN_INPUTS: (string | null | undefined)[] = [
 // A. Catalogue
 // ===========================================================================
 console.log("\nA. Family plan catalogue");
-check("exactly 3 plans", FAMILY_PLAN_IDS.length === 3 && Object.keys(FAMILY_BILLING_PLANS).length === 3);
-check("plan ids: free, plus, premium", JSON.stringify([...FAMILY_PLAN_IDS]) === JSON.stringify(["family_free", "family_plus", "family_premium"]));
+check("exactly 4 plans", FAMILY_PLAN_IDS.length === 4 && Object.keys(FAMILY_BILLING_PLANS).length === 4);
+check("plan ids: free, basic, plus, premium", JSON.stringify([...FAMILY_PLAN_IDS]) === JSON.stringify(["family_free", "family_basic", "family_plus", "family_premium"]));
+// Public (customer-facing) names must remain Family / Family Plus / Family Pro; family_free is separate.
+check("★ family_basic public name is 'Family'", FAMILY_BILLING_PLANS.family_basic.name === "Family");
+check("★ family_plus public name is 'Family Plus'", FAMILY_BILLING_PLANS.family_plus.name === "Family Plus");
+check("★ family_premium public name is 'Family Pro' (not 'Premium')", FAMILY_BILLING_PLANS.family_premium.name === "Family Pro");
+check("family_free remains a separate free fallback", FAMILY_BILLING_PLANS.family_free.name === "Family Free" && FAMILY_BILLING_PLANS.family_free.selfServeCheckout === false);
 for (const id of FAMILY_PLAN_IDS) {
   const e = FAMILY_BILLING_PLANS[id];
   check(`[${id}] entry.id matches key`, e.id === id);
@@ -66,7 +71,7 @@ for (const id of FAMILY_PLAN_IDS) {
   // Approved decision 4 — NO pricing anywhere in the catalogue.
   check(`[${id}] carries NO price fields`, !("priceMonthly" in e) && !("priceYearly" in e) && !("currency" in e) && !("env" in e) && !("price" in e));
 }
-check("Free is not self-serve; Plus/Premium are", FAMILY_BILLING_PLANS.family_free.selfServeCheckout === false && FAMILY_BILLING_PLANS.family_plus.selfServeCheckout === true && FAMILY_BILLING_PLANS.family_premium.selfServeCheckout === true);
+check("Free is not self-serve; Basic/Plus/Premium are", FAMILY_BILLING_PLANS.family_free.selfServeCheckout === false && FAMILY_BILLING_PLANS.family_basic.selfServeCheckout === true && FAMILY_BILLING_PLANS.family_plus.selfServeCheckout === true && FAMILY_BILLING_PLANS.family_premium.selfServeCheckout === true);
 check("isFamilyPlanId accepts known ids", FAMILY_PLAN_IDS.every(isFamilyPlanId));
 check("isFamilyPlanId rejects Business ids + junk", !isFamilyPlanId("starter") && !isFamilyPlanId("agency") && !isFamilyPlanId("free_trial") && !isFamilyPlanId("") && !isFamilyPlanId(null) && !isFamilyPlanId(42));
 
@@ -90,6 +95,14 @@ check("Plus adds convenience (push alerts, AI, reporting, export)",
 check("Premium is unlimited capacity (null caps)",
   prem.maxProtectedProfiles === null && prem.maxGuardians === null && prem.maxFamilyMembers === null && prem.maxPendingInvitations === null && prem.historyRetentionDays === null);
 check("Premium adds full AI + priority support", prem.aiAnalysis === "full" && prem.prioritySupport === true);
+// family_basic (public "Family") — entry paid tier: 1 marketed profile, paid history/alerts/AI, can manage.
+const basic = familyPlanEntitlements("family_basic");
+check("★ Basic (public Family) has 1 protected profile (matches the pricing page)", basic.maxProtectedProfiles === 1);
+check("★ Basic can manage + keeps billing/deletion + paid history (365d)", basic.canManageFamily === true && basic.billingAccess && basic.deletionAccess && basic.historyRetentionDays === 365);
+check("★ Basic is a paid step up from Free in service (push alerts, standard AI, reporting)",
+  basic.nonCriticalAlerts === "email_push" && basic.aiAnalysis === "standard" && basic.reporting === true);
+check("★ Plus profiles (5) exceed Basic (1) which is the entry tier", (plus.maxProtectedProfiles ?? 0) === 5 && (basic.maxProtectedProfiles ?? 0) === 1);
+check("★ Critical safety ALWAYS on across free/basic/plus/premium", [free, basic, plus, prem].every((e) => e.criticalSafety.detection && e.criticalSafety.incident && e.criticalSafety.escalation && e.criticalSafety.notification));
 check("unknown plan → fail-safe minimal (no management, no capacity)",
   (() => { const m = familyPlanEntitlements("nonsense"); return m.canManageFamily === false && m.maxProtectedProfiles === 0 && m.maxGuardians === 0; })());
 
