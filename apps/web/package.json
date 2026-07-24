@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "dotenv -e ../../.env -- next dev",
-    "build": "pnpm --filter @guardora/db generate && NODE_ENV=production next build",
+    "build": "pnpm --filter @guardora/db generate && pnpm --filter @guardora/db exec prisma migrate deploy && NODE_ENV=production next build",
     "start": "next start",
     "start:local": "dotenv -e ../../.env -- next start",
     "lint": "eslint .",
