@@ -51,12 +51,18 @@ export function FamilyShell({ nav, shell, workspaceName, userName, brand, childr
   }, [open]);
 
   const SidebarBody = ({ onNavigate }: { onNavigate?: () => void }) => (
-    // Stable width: w-[264px] + shrink-0, so the content column never reflows on
+    // Stable width: w-[248px] + shrink-0, so the content column never reflows on
     // long workspace names or nav labels (min-w-0 + truncate below do the clamping).
-    <aside className="flex h-dvh w-[264px] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-soft)]">
-      <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
-        <Logo />
-        <span className="truncate text-sm font-semibold text-[var(--color-fg)]">{brand}</span>
+    // `gu-sidebar` gives Family the SAME dark enterprise rail as the Business console
+    // (globals.css scopes the dark surfaces + brand accent to this class) — the two
+    // dashboards must read as one product.
+    <aside className="gu-sidebar flex h-dvh w-[248px] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-soft)]">
+      {/* Brand lockup — identical to Business: the Logo already carries the "Tamanor"
+          wordmark, so no separate brand label (that duplicated "Tamanor"). Links home. */}
+      <div className="flex h-16 shrink-0 items-center px-5">
+        <Link href="/family" onClick={onNavigate} aria-label={brand} className={`rounded ${FAMILY_FOCUS}`}>
+          <Logo />
+        </Link>
       </div>
 
       {/* Workspace identity — the primary "where am I" anchor, readable at a glance. */}
@@ -167,7 +173,11 @@ export function FamilyShell({ nav, shell, workspaceName, userName, brand, childr
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <span className="min-w-0 truncate text-sm font-semibold text-[var(--color-fg)]">{workspaceName}</span>
+          {/* Mobile brand lockup — the Logo, same as the Business console top bar
+              (the workspace name lives in the drawer's identity card). */}
+          <Link href="/family" aria-label={brand} className={`rounded ${FAMILY_FOCUS}`}>
+            <Logo />
+          </Link>
         </div>
 
         {/* Content measure: capped and centred, with gutters that grow with the
