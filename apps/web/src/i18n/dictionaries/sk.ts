@@ -1866,5 +1866,6 @@ export const sk: Dictionary = {
     trial_expired: { title: "Skúšobná verzia skončila", body: "Vaša skúšobná verzia skončila. Prejdite na vyšší plán pre obnovenie prístupu." },
     payment_failed: { title: "Platba zlyhala", body: "Platbu sa nepodarilo spracovať. Aktualizujte fakturáciu, aby nedošlo k prerušeniu." },
     account_reconnect_required: { title: "Vyžaduje sa opätovné pripojenie", body: "Účet je potrebné znovu pripojiť, aby synchronizácia pokračovala." },
+    child_safety_escalation: { title: "Naliehavá eskalácia ochrany dieťaťa", body: "Naliehavá situácia ochrany dieťaťa bola interne eskalovaná na okamžité preskúmanie." },
   },
 };

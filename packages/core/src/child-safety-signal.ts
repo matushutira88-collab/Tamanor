@@ -12,7 +12,16 @@
 
 export const SAFETY_SIGNAL_CONTRACT_VERSION = "safety-signal-v1";
 
-// --- Terminology (locked in CS-C0) ------------------------------------------
+/**
+ * The taxonomy version. The ENVELOPE shape (safety-signal-v1) is unchanged and stable; the
+ * category/code TAXONOMY grows additively. v2 adds the `COERCION` and `SCAM_EXPLOITATION` risk types
+ * and their signal codes (CS-C3). Every previously-serialized RiskType / SafetySignalCode string value
+ * is preserved verbatim, so older persisted signals remain valid. A detector stamps this into the
+ * envelope's `taxonomyVersion` field.
+ */
+export const SAFETY_TAXONOMY_VERSION = "child-safety-taxonomy-v2";
+
+// --- Terminology (locked in CS-C0; grows ADDITIVELY — existing values never change) --------------
 
 /** A single observed, safety-relevant event. */
 export enum SafetySignalCode {
@@ -24,6 +33,15 @@ export enum SafetySignalCode {
   MeetingProposal = "MEETING_PROPOSAL",
   Threat = "THREAT",
   SelfHarmEncouragement = "SELF_HARM_ENCOURAGEMENT",
+  // CS-C3 (taxonomy v2, additive) — coercion / coercive control.
+  CoerciveControl = "COERCIVE_CONTROL",
+  ComplianceThreat = "COMPLIANCE_THREAT",
+  // CS-C3 (taxonomy v2, additive) — scam-related exploitation of a child. Kept DISTINCT from the
+  // reputation/account-security scam models (different domain, different taxonomy).
+  FinancialScam = "FINANCIAL_SCAM",
+  CredentialRequest = "CREDENTIAL_REQUEST",
+  PaymentDemand = "PAYMENT_DEMAND",
+  TrustExploitation = "TRUST_EXPLOITATION",
 }
 export const ALL_SAFETY_SIGNAL_CODES: readonly SafetySignalCode[] = Object.values(SafetySignalCode);
 
@@ -36,6 +54,9 @@ export enum RiskType {
   Cyberbullying = "CYBERBULLYING",
   Threat = "THREAT",
   IdentityManipulation = "IDENTITY_MANIPULATION",
+  // CS-C3 (taxonomy v2, additive).
+  Coercion = "COERCION",
+  ScamExploitation = "SCAM_EXPLOITATION",
 }
 export const ALL_RISK_TYPES: readonly RiskType[] = Object.values(RiskType);
 

@@ -7,13 +7,15 @@
 
 export type NotificationType =
   | "first_sync_completed" | "sync_failed" | "risk_comment_detected" | "monitoring_disabled_by_plan"
-  | "trial_ending" | "trial_expired" | "payment_failed" | "account_reconnect_required";
+  | "trial_ending" | "trial_expired" | "payment_failed" | "account_reconnect_required"
+  // CS-C15C — internal system alert for a child-safety urgent escalation (minimized content only).
+  | "child_safety_escalation";
 
 export type NotificationSeverity = "info" | "warning" | "critical";
 
 export const NOTIFICATION_TYPES: readonly NotificationType[] = [
   "first_sync_completed", "sync_failed", "risk_comment_detected", "monitoring_disabled_by_plan",
-  "trial_ending", "trial_expired", "payment_failed", "account_reconnect_required",
+  "trial_ending", "trial_expired", "payment_failed", "account_reconnect_required", "child_safety_escalation",
 ];
 
 export const DEFAULT_NOTIFICATION_SEVERITY: Record<NotificationType, NotificationSeverity> = {
@@ -25,6 +27,7 @@ export const DEFAULT_NOTIFICATION_SEVERITY: Record<NotificationType, Notificatio
   trial_expired: "critical",
   payment_failed: "critical",
   account_reconnect_required: "warning",
+  child_safety_escalation: "critical",
 };
 
 /**

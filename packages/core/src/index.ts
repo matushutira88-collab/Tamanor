@@ -58,6 +58,11 @@ export * from "./child-safety-safety-signal";
 export * from "./child-safety-recipient-authorization";
 export * from "./child-safety-delivery";
 export * from "./child-safety-onboarding";
+// CS-C3 — deterministic detector runtime + canonical signing (shared by SDK + Privacy Gateway).
+export * from "./child-safety-detector";
+export * from "./child-safety-signing";
+// CS-C6 — deterministic policy decision (routes accepted signals through existing canonical services).
+export * from "./child-safety-orchestration";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";

@@ -2570,6 +2570,8 @@ enum NotificationType {
   trial_expired
   payment_failed
   account_reconnect_required
+  // CS-C15C — internal child-safety urgent-escalation notification (routed through the existing path).
+  child_safety_escalation
 }
 
 enum NotificationSeverity {
@@ -2665,6 +2667,7 @@ model ProtectedProfile {
   recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[] // CS-C4
   safetySignalDeliveries          SafetySignalDelivery[] // CS-C5
   familyGuardianInvitations       FamilyGuardianInvitation[] // CS-C8
+  childSafetyIncidents            ChildSafetyIncident[] // CS-C15C
 
   @@unique([id, tenantId])
   @@index([tenantId, archivedAt])
@@ -2886,6 +2889,7 @@ model SafetySignal {
   // CS-C4 back-relation.
   recipientAuthorizationDecisions SafetyRecipientAuthorizationDecision[]
   safetySignalDeliveries          SafetySignalDelivery[] // CS-C5
+  childSafetyIncidentLinks        ChildSafetyIncidentSignal[] // CS-C15C (DB `safetySignalId` unique ⇒ at most one link)
 
   // CS-C4 — composite unique so a recipient authorization decision can reference (id, tenantId).
   @@unique([id, tenantId])
@@ -3030,4 +3034,167 @@ model WorkspaceOnboardingState {
 
   @@index([tenantId, currentStep])
   @@map("workspace_onboarding_states")
+}
+
+/// CS-C6 — SDK installation credential. Authenticates a platform/SDK installation at the Privacy
+/// Gateway with a LIMITED scope; holds NO database or admin access. The secret is stored HASHED only
+/// (never plaintext). SYSTEM-scoped: looked up by tokenHash via systemDb (owner role) before any
+/// tenant context exists — REVOKED from tamanor_app in the migration (like stripe_webhook_events).
+model ChildSafetyInstallation {
+  id            String    @id @default(cuid())
+  applicationId String // public application/client id
+  tenantId      String? // optional workspace binding
+  subjectRef    String? // optional protected-profile pseudonymous binding
+  scopes        String // space-separated scopes (e.g. "child-safety:signal:submit")
+  tokenHash     String    @unique // sha256(secret) — NEVER plaintext
+  status        String    @default("active") // active|revoked
+  issuedAt      DateTime  @default(now())
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  ingestions ChildSafetySignalIngestion[]
+
+  @@index([applicationId])
+  @@index([tenantId])
+  @@map("child_safety_installations")
+}
+
+/// CS-C6 — persistent replay + idempotency record for gateway signal ingestion. Multi-instance safe
+/// (DB uniqueness, not process memory). Stores NO raw content — only opaque nonce / idempotency key /
+/// canonical payload hash / opaque ids. SYSTEM-scoped (owner role); REVOKED from tamanor_app.
+model ChildSafetySignalIngestion {
+  id             String   @id @default(cuid())
+  installationId String
+  nonce          String // anti-replay; unique per installation
+  idempotencyKey String? // optional client idempotency key (partial-unique per installation)
+  payloadHash    String // sha256 of the canonical envelope — conflict detection for a reused idempotency key
+  signalId       String? // created SafetySignal id (null when not persisted)
+  receiptId      String // public receipt id returned to the caller
+  outcome        String // orchestration outcome label
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime // replay/idempotency retention window end
+
+  installation ChildSafetyInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, nonce])
+  @@index([installationId, createdAt])
+  @@index([expiresAt])
+  @@map("child_safety_signal_ingestions")
+}
+
+/// CS-C15B — DURABLE protective-intervention state. Exactly ONE record per accepted SafetySignal (the
+/// unique key), so the intervention is safely resumable after a partial failure without repeating any
+/// side effect. Each step carries a status (pending|done|skipped|failed) + an opaque reference; the
+/// child-safety "incident" is a correlation of signals (same tenant + profile + risk family within the
+/// 30-day window) anchored by `incidentRef` — the canonical cyberbullying Incident/escalation SERVICES
+/// are NOT reused here because they are structurally bound to cyberbullying's ProtectedSubject /
+/// SecurityDetection (a CS-C0 domain boundary). Stores NO raw content, NO recipient contact, NO secret —
+/// only ids, coarse enum labels, and bounded failure metadata. SYSTEM-scoped (REVOKED from tamanor_app).
+model ChildSafetyIntervention {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  safetySignalId     String    @unique // one durable intervention per accepted signal
+  protectedProfileId String
+  decisionVersion    String    @default("cs-c15b-v1")
+  outcome            String // ChildSafetyOutcome
+  correlationKey     String // tenantId:protectedProfileId:riskFamily — deterministic incident correlation
+  reviewStatus       String    @default("pending") // pending|done|skipped
+  reviewRef          String? // the reviewed SafetySignal id (the review item is the signal itself)
+  incidentStatus     String    @default("pending")
+  incidentRef        String? // the anchor intervention id for the correlated child-safety incident
+  escalationStatus   String    @default("pending")
+  escalationRef      String?
+  deliveryStatus     String    @default("pending")
+  deliveryRef        String?
+  severity           String // current (monotonic) incident severity
+  urgency            String
+  attemptCount       Int       @default(0)
+  lastFailureClass   String?
+  nextRetryAt        DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([tenantId, safetySignalId])
+  @@index([tenantId, correlationKey, completedAt])
+  @@index([tenantId, incidentRef])
+  @@map("child_safety_interventions")
+}
+
+/// CS-C15C — the CANONICAL child-safety incident. A real domain record (NOT the ChildSafetyIntervention
+/// execution ledger): one incident correlates related signals for a protected profile. Kept SEPARATE
+/// from the cyberbullying `Incident` (which is bound to ProtectedSubject/SecurityDetection — a CS-C0
+/// boundary). Tenant-scoped via composite FKs; stores NO raw content / transcript / evidence / recipient
+/// contact / classifier explanation / free-form metadata. SYSTEM-scoped (REVOKED from tamanor_app).
+model ChildSafetyIncident {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  protectedProfileId String
+  status             String    @default("open") // ChildSafetyIncidentStatus
+  riskFamily         String // ChildSafetyRiskFamily
+  severity           String
+  urgency            String
+  openedAt           DateTime  @default(now())
+  lastSignalAt       DateTime
+  signalCount        Int       @default(0)
+  escalationState    String    @default("none") // none|escalated
+  assignedReviewerId String?
+  resolutionCode     String?
+  lastReviewedAt     DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  protectedProfile ProtectedProfile            @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  signals          ChildSafetyIncidentSignal[]
+  escalations      ChildSafetyEscalation[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, protectedProfileId, riskFamily, status, lastSignalAt])
+  @@map("child_safety_incidents")
+}
+
+/// CS-C15C — the REAL SafetySignal↔incident link. `safetySignalId` is UNIQUE, so a signal belongs to at
+/// most one child-safety incident (exactly-once). Composite FKs enforce tenant-consistent linking at the
+/// database level (cross-tenant linking is impossible). SYSTEM-scoped (REVOKED from tamanor_app).
+model ChildSafetyIncidentSignal {
+  id             String   @id @default(cuid())
+  tenantId       String
+  incidentId     String
+  safetySignalId String   @unique // a signal links to AT MOST ONE incident
+  linkedAt       DateTime @default(now())
+
+  incident     ChildSafetyIncident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  safetySignal SafetySignal        @relation(fields: [safetySignalId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([incidentId, safetySignalId])
+  @@index([tenantId, incidentId])
+  @@map("child_safety_incident_signals")
+}
+
+/// CS-C15C — the CANONICAL internal child-safety escalation. INTERNAL ONLY (no external authority /
+/// police / school / emergency reporting fields). Exactly-once per (incident, escalationType). Linked to
+/// a real ChildSafetyIncident. Stores NO raw content. SYSTEM-scoped (REVOKED from tamanor_app).
+model ChildSafetyEscalation {
+  id             String    @id @default(cuid())
+  tenantId       String
+  incidentId     String
+  escalationType String // ChildSafetyEscalationType
+  status         String    @default("triggered") // ChildSafetyEscalationStatus
+  urgency        String
+  reasonCode     String // ChildSafetyEscalationReason
+  triggeredAt    DateTime  @default(now())
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  incident ChildSafetyIncident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([incidentId, escalationType])
+  @@index([tenantId, incidentId])
+  @@map("child_safety_escalations")
 }

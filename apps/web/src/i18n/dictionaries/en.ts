@@ -1919,6 +1919,7 @@ export const en = {
     trial_expired: { title: "Trial expired", body: "Your free trial has ended. Upgrade to restore full access." },
     payment_failed: { title: "Payment failed", body: "A payment could not be processed. Update your billing to avoid interruption." },
     account_reconnect_required: { title: "Reconnect required", body: "An account needs to be reconnected to keep syncing." },
+    child_safety_escalation: { title: "Urgent child-safety escalation", body: "An urgent child-safety situation was escalated internally for immediate review." },
   },
 };
 

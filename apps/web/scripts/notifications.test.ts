@@ -15,7 +15,8 @@ const check = (label: string, cond: boolean, detail = "") => {
 };
 
 function run() {
-  check("all 8 types have a default severity", NOTIFICATION_TYPES.every((t) => !!DEFAULT_NOTIFICATION_SEVERITY[t]) && NOTIFICATION_TYPES.length === 8);
+  check("all 9 types have a default severity", NOTIFICATION_TYPES.every((t) => !!DEFAULT_NOTIFICATION_SEVERITY[t]) && NOTIFICATION_TYPES.length === 9);
+  check("CS-C15C child_safety_escalation type is critical by default", DEFAULT_NOTIFICATION_SEVERITY.child_safety_escalation === "critical");
   check("critical severities: trial_expired + payment_failed", DEFAULT_NOTIFICATION_SEVERITY.trial_expired === "critical" && DEFAULT_NOTIFICATION_SEVERITY.payment_failed === "critical");
 
   // email-critical-only

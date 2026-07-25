@@ -129,6 +129,14 @@ export * from "./family-invitation";
 export * from "./family-billing-guard";
 // FAMILY-BILLING S3 — the explicit one-time Family trial (flag-gated, atomic, concurrency-safe).
 export * from "./family-trial";
+// CS-C6 — Privacy Gateway persistence: SDK installation credentials + replay/idempotency.
+export * from "./child-safety-installation";
+export * from "./child-safety-ingestion";
+// CS-C15C — canonical child-safety incident + internal escalation domain services.
+export * from "./child-safety-incident";
+export * from "./child-safety-escalation";
+// CS-C15 — end-to-end protective intervention orchestrator (reuses canonical services).
+export * from "./child-safety-intervention";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

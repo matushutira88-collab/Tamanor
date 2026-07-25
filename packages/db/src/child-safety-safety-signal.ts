@@ -1,5 +1,6 @@
 import { ActorKind, Prisma } from "@prisma/client";
 import { withTenant } from "./repositories";
+import { systemDb } from "./index";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError } from "./child-safety-family";
 import {
   FamilyAction, authorizeFamilyAction, CHILD_SAFETY_AUDIT_EVENTS, validateChildSafetyInput,
@@ -163,4 +164,66 @@ export async function archiveSafetySignal(actor: FamilyActorContext, id: string)
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.safetySignalArchived, row.id, { reviewStatus: row.reviewStatus });
     return row;
   });
+}
+
+// --- CS-C6 gateway system ingestion -----------------------------------------
+
+/**
+ * Persist a minimized SafetySignal from the Privacy Gateway (a trusted SYSTEM/SDK path — not a human
+ * actor). Same `safety_signals` table + same validators as {@link createSafetySignal}; the only
+ * difference is there is no FamilyActorContext/membership (the caller is an authenticated installation,
+ * already scope-checked by the gateway) so it writes via systemDb with `tenantId` bound from the
+ * installation and a content-free SYSTEM audit. Reuses the canonical model — NOT a parallel one. The
+ * protected profile must exist, be un-archived, and belong to the installation's tenant.
+ */
+export async function ingestSafetySignalFromGateway(input: {
+  tenantId: string;
+  protectedProfileId: string;
+  signalType: string;
+  severity: string;
+  confidenceBand: string;
+  sourceType: string;
+  sourceReference?: string | null;
+  occurrenceBucket?: string | null;
+  detectedAt?: Date;
+}): Promise<SafetySignalVM> {
+  if (!isSafetySignalType(input.signalType)) throw new FamilyValidationError("signalType");
+  if (!isSafetySeverity(input.severity)) throw new FamilyValidationError("severity");
+  if (!isSafetyConfidenceBand(input.confidenceBand)) throw new FamilyValidationError("confidenceBand");
+  if (!isSafetySignalSourceType(input.sourceType)) throw new FamilyValidationError("sourceType");
+  if (!isValidSourceReference(input.sourceReference ?? null)) throw new FamilyValidationError("sourceReference");
+  if (!isValidOccurrenceBucket(input.occurrenceBucket ?? null)) throw new FamilyValidationError("occurrenceBucket");
+
+  const profile = await systemDb.protectedProfile.findFirst({
+    where: { id: input.protectedProfileId, tenantId: input.tenantId },
+    select: { id: true, archivedAt: true },
+  });
+  if (!profile) throw new FamilyNotFoundError("protected_profile");
+  if (profile.archivedAt) throw new FamilyValidationError("protectedProfileId");
+
+  const row = await systemDb.safetySignal.create({
+    data: {
+      tenantId: input.tenantId,
+      protectedProfileId: input.protectedProfileId,
+      signalType: input.signalType,
+      severity: input.severity,
+      confidenceBand: input.confidenceBand,
+      sourceType: input.sourceType,
+      sourceReference: input.sourceReference ?? null,
+      occurrenceBucket: input.occurrenceBucket ?? null,
+      detectedAt: input.detectedAt ?? null,
+    },
+    select: SIGNAL_SELECT,
+  });
+  await systemDb.auditLog.create({
+    data: {
+      tenantId: input.tenantId,
+      event: CHILD_SAFETY_AUDIT_EVENTS.safetySignalCreated,
+      actorKind: ActorKind.system,
+      targetType: "safety_signal",
+      targetId: row.id,
+      metadata: { signalType: row.signalType, severity: row.severity, confidenceBand: row.confidenceBand, sourceType: row.sourceType } as never,
+    },
+  });
+  return row;
 }

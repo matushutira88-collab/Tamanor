@@ -1866,5 +1866,6 @@ export const de: Dictionary = {
     trial_expired: { title: "Testphase abgelaufen", body: "Ihre Testphase ist abgelaufen. Upgraden Sie, um den vollen Zugriff wiederherzustellen." },
     payment_failed: { title: "Zahlung fehlgeschlagen", body: "Eine Zahlung konnte nicht verarbeitet werden. Aktualisieren Sie Ihre Abrechnung, um Unterbrechungen zu vermeiden." },
     account_reconnect_required: { title: "Erneute Verbindung erforderlich", body: "Ein Konto muss neu verbunden werden, damit die Synchronisierung fortgesetzt wird." },
+    child_safety_escalation: { title: "Dringende Eskalation zum Kinderschutz", body: "Eine dringende Kinderschutzsituation wurde intern zur sofortigen Prüfung eskaliert." },
   },
 };
