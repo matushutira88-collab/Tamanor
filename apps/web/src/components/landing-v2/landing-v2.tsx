@@ -44,6 +44,23 @@ const KF = `
 @media (max-width: 860px) { .tmr-l2 .tmr-cards { grid-template-columns: 1fr 1fr !important; } }
 @media (max-width: 560px) { .tmr-l2 .tmr-cards { grid-template-columns: 1fr !important; } }
 @media (prefers-reduced-motion: reduce) { .tmr-l2 [class*="tmr-anim"] { animation: none !important; } }
+/* V1.68 — mobile hardening: keep the product mock, orbit, toast and toggles inside a phone viewport. */
+@media (max-width: 600px) {
+  .tmr-l2 .tmr-toggle button { padding: 8px 13px !important; font-size: 11px !important; letter-spacing: 0.02em !important; }
+  .tmr-l2 .tmr-dash { grid-template-columns: 1fr !important; }
+  .tmr-l2 .tmr-dside { display: none !important; }
+  .tmr-l2 .tmr-dstat { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .tmr-l2 .tmr-dstat b { font-size: 18px !important; }
+  .tmr-l2 .tmr-dstat > div { padding: 10px !important; }
+  .tmr-l2 .tmr-toast { top: 8px !important; right: 8px !important; left: auto !important; max-width: 200px !important; }
+  .tmr-l2 .tmr-orbit { width: min(360px, 100%) !important; }
+  .tmr-l2 .tmr-role { font-size: 10px !important; max-width: 82px !important; margin-left: auto !important; margin-right: auto !important; line-height: 1.25 !important; }
+}
+@media (max-width: 380px) {
+  .tmr-l2 .tmr-dstat b { font-size: 16px !important; }
+  .tmr-l2 .tmr-dstat > div { padding: 8px !important; }
+  .tmr-l2 .tmr-orbit { width: min(300px, 100%) !important; }
+}
 `;
 
 /* ---------- portraits (real /humans/*) ---------- */
@@ -193,7 +210,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
 
         <div style={{ position: "relative", zIndex: 1, maxWidth: 1240, margin: "0 auto", padding: "0 26px" }}>
           {/* product toggle */}
-          <div role="tablist" aria-label="Product" style={{ display: "inline-flex", gap: 4, padding: 5, borderRadius: 999, background: "#fff", border: `1px solid ${C.line2}`, boxShadow: "0 2px 10px rgba(15,23,42,.05)" }}>
+          <div role="tablist" aria-label="Product" className="tmr-toggle" style={{ display: "inline-flex", gap: 4, padding: 5, borderRadius: 999, background: "#fff", border: `1px solid ${C.line2}`, boxShadow: "0 2px 10px rgba(15,23,42,.05)" }}>
             {(["business", "family"] as const).map((m) => {
               const on = mode === m;
               const mc = m === "business" ? BIZ : FAM;
@@ -279,7 +296,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
             <h2 style={{ margin: "12px 0 0", fontSize: "clamp(28px,3.8vw,42px)", fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>{t.orbA} <span style={{ fontStyle: "italic", background: `linear-gradient(90deg, ${BIZ.a}, ${FAM.a})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{t.orbB}</span>{locale === "en" ? " who matters." : ""}</h2>
             <p style={{ margin: "16px auto 0", color: C.dim, fontSize: 16 }}>{t.orbBody}</p>
           </div>
-          <div style={{ position: "relative", width: "min(470px,100%)", margin: "0 auto", aspectRatio: "1 / 1" }}>
+          <div className="tmr-orbit" style={{ position: "relative", width: "min(470px,100%)", margin: "0 auto", aspectRatio: "1 / 1" }}>
             {["3%", "21%", "39%"].map((inset, i) => (
               <span key={inset} style={{ position: "absolute", inset, borderRadius: "50%", border: `1px ${i === 1 ? "dashed" : "solid"} ${C.line}` }} />
             ))}
@@ -290,7 +307,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
             {orbitPos.map((pos, i) => (
               <div key={i} style={{ position: "absolute", top: pos.top, left: pos.left, transform: "translate(-50%,-50%)", textAlign: "center" }}>
                 <span style={{ display: "block", height: 60, width: 60, borderRadius: "50%", overflow: "hidden", border: "3px solid #fff", boxShadow: "0 10px 24px rgba(15,23,42,.16)", animation: "tmr-bob 6s ease-in-out infinite" }} className="tmr-anim-bob"><Face src={roleImgs[i] ?? IMG.owner} size={60} /></span>
-                <em style={{ display: "block", marginTop: 6, fontSize: 11, fontStyle: "normal", fontWeight: 600, color: C.dim }}>{t.roles[i] ?? ""}</em>
+                <em className="tmr-role" style={{ display: "block", marginTop: 6, fontSize: 11, fontStyle: "normal", fontWeight: 600, color: C.dim }}>{t.roles[i] ?? ""}</em>
               </div>
             ))}
           </div>
@@ -423,7 +440,7 @@ function Showcase({ id, reverse, acc, bg, eyebrow, a, b, body, list, cta, toastT
   );
   const win = (
     <div style={{ position: "relative" }}>
-      <div style={{ position: "absolute", zIndex: 6, top: 40, ...(reverse ? { left: -18 } : { right: -18 }), background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: "11px 13px", boxShadow: "0 18px 40px rgba(15,23,42,.16)", display: "flex", gap: 10, alignItems: "center", maxWidth: 240 }}>
+      <div className="tmr-toast" style={{ position: "absolute", zIndex: 6, top: 40, ...(reverse ? { left: -18 } : { right: -18 }), background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: "11px 13px", boxShadow: "0 18px 40px rgba(15,23,42,.16)", display: "flex", gap: 10, alignItems: "center", maxWidth: 240 }}>
         <span style={{ height: 30, width: 30, borderRadius: 9, flexShrink: 0, display: "grid", placeItems: "center", color: "#fff", background: acc.a }}>{toastIcon}</span>
         <div><div style={{ fontSize: 12, fontWeight: 700 }}>{toastT}</div><div style={{ fontSize: 10.5, color: C.faint }}>{toastM}</div></div>
       </div>
@@ -452,8 +469,8 @@ function DashWindow({ mode, acc, t, big }: { mode: "business" | "family"; acc: t
         {[0, 1, 2].map((i) => <span key={i} style={{ height: 10, width: 10, borderRadius: "50%", background: "#e2e8f0" }} />)}
         <span style={{ marginLeft: 10, flex: 1, height: 22, borderRadius: 7, background: "#eef2f8", display: "flex", alignItems: "center", padding: "0 10px", fontFamily: mono, fontSize: 10, color: C.faint }}>🔒 {url}</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "170px 1fr" }}>
-        <div style={{ background: side, color: "#cdd7e6", padding: "14px 11px", display: "flex", flexDirection: "column", gap: 3, minHeight: big ? 400 : 340 }}>
+      <div className="tmr-dash" style={{ display: "grid", gridTemplateColumns: "170px 1fr" }}>
+        <div className="tmr-dside" style={{ background: side, color: "#cdd7e6", padding: "14px 11px", display: "flex", flexDirection: "column", gap: 3, minHeight: big ? 400 : 340 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 13, color: "#fff", padding: "4px 8px 10px" }}>◈ Tamanor</div>
           {nav.map((n, i) => (
             <span key={n + i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", borderRadius: 8, fontSize: 12, fontWeight: 500, color: i === 0 ? "#fff" : "#93a2ba", background: i === 0 ? `color-mix(in srgb, ${acc.a} 22%, transparent)` : "transparent" }}>
@@ -467,7 +484,7 @@ function DashWindow({ mode, acc, t, big }: { mode: "business" | "family"; acc: t
             <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{mode === "business" ? t.dOverview : t.dOverview}</h4>
             <span style={{ height: 28, width: 28, borderRadius: "50%", overflow: "hidden" }}><Face src={IMG.marketing} size={28} /></span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+          <div className="tmr-dstat" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
             {(mode === "business"
               ? [{ p: "Protection score", v: "92", c: acc.a }, { p: "Threats hidden", v: "12,847", c: C.ink }, { p: t.dToReview, v: "3", c: C.amber }]
               : [{ p: t.dProtected, v: "2", c: acc.deep }, { p: "Signals", v: "2", c: C.ink }, { p: t.dGuardians, v: "3", c: acc.deep }]
