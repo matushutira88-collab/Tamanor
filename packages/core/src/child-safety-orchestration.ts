@@ -185,17 +185,25 @@ export function decideIntervention(f: InterventionFacts): InterventionDecision {
 // CS-C15C — canonical child-safety INCIDENT + ESCALATION domain vocabulary (pure).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Canonical child-safety incident lifecycle. Terminal states are never reused for a new signal. */
+/**
+ * Canonical child-safety incident lifecycle. Terminal states are never reused for a new signal.
+ * `Waiting`, `Dismissed`, and `Reopened` are Reviewer-Workspace (V1) review states — they are only
+ * ever reached through an explicit authorized reviewer action, so the automatic CS-C15 correlation /
+ * intervention behavior is unchanged (a machine-created incident is only ever `open`).
+ */
 export enum ChildSafetyIncidentStatus {
   Open = "open",
   UnderReview = "under_review",
   ActionRequired = "action_required",
   Monitoring = "monitoring",
+  Waiting = "waiting",
   Resolved = "resolved",
+  Dismissed = "dismissed",
+  Reopened = "reopened",
   Closed = "closed",
 }
 export const CHILD_SAFETY_TERMINAL_INCIDENT_STATUSES: readonly ChildSafetyIncidentStatus[] = [
-  ChildSafetyIncidentStatus.Resolved, ChildSafetyIncidentStatus.Closed,
+  ChildSafetyIncidentStatus.Resolved, ChildSafetyIncidentStatus.Dismissed, ChildSafetyIncidentStatus.Closed,
 ];
 export function isTerminalChildSafetyIncidentStatus(s: string): boolean {
   return (CHILD_SAFETY_TERMINAL_INCIDENT_STATUSES as readonly string[]).includes(s);

@@ -64,6 +64,16 @@ export enum Permission {
   CyberbullyingComplianceRedact = "cyberbullying:compliance_redact",
   CyberbullyingComplianceApprove = "cyberbullying:compliance_approve",
   CyberbullyingComplianceExportAuthorize = "cyberbullying:compliance_export_authorize",
+  // Child Safety Reviewer Workspace (V1) — operational review of canonical child-safety incidents.
+  // Owner / Administrator / Safety Reviewer (Role.reviewer) ONLY. Never public / guardian / SDK /
+  // gateway. `view` reads incidents + timeline + dashboard; `manage` assigns, notes, and transitions
+  // review status. Both are additive read/operational capabilities — they grant NO platform mutation
+  // and NO access to raw content (a SafetySignal is content-free by construction).
+  ChildSafetyReviewView = "child_safety:review_view",
+  ChildSafetyReviewManage = "child_safety:review_manage",
+  // Child Safety Evidence Management (V1) — upload/verify/seal/export evidence on canonical incidents.
+  // Same audience (Owner / Administrator / Safety Reviewer). Reads reuse review_view; this gates writes.
+  ChildSafetyEvidenceManage = "child_safety:evidence_manage",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -112,6 +122,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.CyberbullyingComplianceRedact,
     Permission.CyberbullyingComplianceApprove,
     Permission.CyberbullyingComplianceExportAuthorize,
+    // Child-safety review — Admin is a full reviewer.
+    Permission.ChildSafetyReviewView,
+    Permission.ChildSafetyReviewManage,
+    Permission.ChildSafetyEvidenceManage,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -146,6 +160,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.CyberbullyingReview,
     // C12 — Reviewer may author redaction drafts (but NOT approve them).
     Permission.CyberbullyingComplianceRedact,
+    // Child-safety review — the Safety Reviewer role is a full reviewer.
+    Permission.ChildSafetyReviewView,
+    Permission.ChildSafetyReviewManage,
+    Permission.ChildSafetyEvidenceManage,
   ],
   [Role.Viewer]: [
     Permission.BrandView,

@@ -3151,9 +3151,14 @@ model ChildSafetyIncident {
   protectedProfile ProtectedProfile            @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: Cascade)
   signals          ChildSafetyIncidentSignal[]
   escalations      ChildSafetyEscalation[]
+  reviewerNotes    ChildSafetyReviewerNote[]
+  reviewEvents     ChildSafetyReviewEvent[]
+  evidence         ChildSafetyEvidence[]
 
   @@unique([id, tenantId])
   @@index([tenantId, protectedProfileId, riskFamily, status, lastSignalAt])
+  @@index([tenantId, status, escalationState, updatedAt])
+  @@index([tenantId, assignedReviewerId, status])
   @@map("child_safety_incidents")
 }
 
@@ -3197,4 +3202,106 @@ model ChildSafetyEscalation {
   @@unique([incidentId, escalationType])
   @@index([tenantId, incidentId])
   @@map("child_safety_escalations")
+}
+
+/// Reviewer Workspace V1 — an APPEND-ONLY internal reviewer note on a canonical child-safety incident.
+/// The body is CONFIDENTIAL internal-only text (plain/markdown); it is NEVER written to logs, audit,
+/// or the timeline (only a content-free "note_added" marker is). Editing and deletion are prohibited
+/// (no update/delete paths). SYSTEM table (owner-role systemDb only) — like the incident domain, ALL
+/// privileges are REVOKED from tamanor_app. Cross-tenant is impossible via the composite (id, tenantId) FK.
+model ChildSafetyReviewerNote {
+  id           String   @id @default(cuid())
+  tenantId     String
+  incidentId   String
+  authorUserId String // opaque user reference (no FK); the note's author
+  body         String // CONFIDENTIAL — never logged / audited / put on the timeline
+  createdAt    DateTime @default(now())
+
+  incident ChildSafetyIncident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, createdAt])
+  @@map("child_safety_reviewer_notes")
+}
+
+/// Reviewer Workspace V1 — an APPEND-ONLY reviewer-activity event (assignment / status change /
+/// note-added marker / reopen). This is the deterministic reviewer half of the incident timeline;
+/// the automatic half is derived from the canonical records (incident/signals/escalations/notifications)
+/// + the shared audit log. Content-free: opaque ids + bounded status/reason strings only. Immutable
+/// (no update/delete). SYSTEM table — ALL privileges REVOKED from tamanor_app; composite (id, tenantId) FK.
+model ChildSafetyReviewEvent {
+  id           String   @id @default(cuid())
+  tenantId     String
+  incidentId   String
+  eventType    String // ChildSafetyReviewEventType: assigned|unassigned|note_added|status_changed|reopened
+  actorUserId  String // the reviewer who performed the action (opaque reference)
+  fromValue    String? // previous status / previous assignee (bounded, content-free)
+  toValue      String? // new status / new assignee / note id (bounded, content-free)
+  createdAt    DateTime @default(now())
+
+  incident ChildSafetyIncident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, createdAt])
+  @@map("child_safety_review_events")
+}
+
+/// Evidence Management V1 — a canonical, IMMUTABLE evidence record attached to a ChildSafetyIncident.
+/// Separate from the cyberbullying evidence model (CS-C0 boundary) but reuses the domain-agnostic secure
+/// storage + sha256 integrity primitives. Exactly one of {storageKey, externalUrl, bodyText} is populated
+/// per `evidenceType`. `contentHash` is immutable (sha256 of the bytes / url / reviewer text). There is NO
+/// update or delete path (append-only domain; edits/deletes are prohibited). SYSTEM table — ALL privileges
+/// REVOKED from tamanor_app; composite (id, tenantId) FK makes cross-tenant impossible. `bodyText` is a
+/// reviewer/system-authored internal description — never raw child message content.
+model ChildSafetyEvidence {
+  id              String    @id @default(cuid())
+  tenantId        String
+  incidentId      String
+  evidenceType    String // ChildSafetyEvidenceType: uploaded_file|screenshot|external_url|manual|system
+  sourceType      String // ChildSafetyEvidenceSource: reviewer_upload|system|external
+  label           String? // short reviewer label (bounded; no raw content)
+  storageKey      String? // opaque secure-storage key (NEVER exposed to a client) — file/screenshot only
+  externalUrl     String? // external_url only
+  bodyText        String? // manual/system textual evidence (internal; never a child message transcript)
+  mimeType        String?
+  sizeBytes       Int?
+  contentHash     String // immutable sha256 of the canonical content (bytes / url / text)
+  hashAlgorithm   String    @default("sha256")
+  integrityStatus String    @default("unverified") // unverified | verified | failed
+  chainPosition   Int // 1-based position within the incident's evidence chain (deterministic ordering)
+  uploaderUserId  String? // opaque actor reference (null for system-generated)
+  sealed          Boolean   @default(false)
+  sealedAt        DateTime?
+  capturedAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  incident      ChildSafetyIncident              @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  custodyEvents ChildSafetyEvidenceCustodyEvent[]
+
+  @@unique([id, tenantId])
+  @@unique([incidentId, chainPosition])
+  @@index([tenantId, incidentId, chainPosition])
+  @@index([tenantId, evidenceType])
+  @@map("child_safety_evidence")
+}
+
+/// Evidence Management V1 — the APPEND-ONLY forensic chain-of-custody for a child-safety evidence item.
+/// Immutable (no update/delete). Content-free: opaque ids + bounded event/reason strings only. SYSTEM
+/// table — ALL privileges REVOKED from tamanor_app; composite (id, tenantId) FK to the evidence record.
+model ChildSafetyEvidenceCustodyEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  evidenceId  String
+  eventType   String // ChildSafetyEvidenceCustodyEventType: created|verified|reviewed|referenced|exported|sealed
+  actorUserId String?
+  actorRole   String?
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  evidence ChildSafetyEvidence @relation(fields: [evidenceId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, evidenceId, createdAt])
+  @@map("child_safety_evidence_custody_events")
 }

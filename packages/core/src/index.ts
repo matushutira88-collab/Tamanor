@@ -63,6 +63,9 @@ export * from "./child-safety-detector";
 export * from "./child-safety-signing";
 // CS-C6 — deterministic policy decision (routes accepted signals through existing canonical services).
 export * from "./child-safety-orchestration";
+// Reviewer Workspace V1 — operational review vocabulary/policy over the canonical incident domain.
+export * from "./child-safety-review";
+export * from "./child-safety-evidence";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";

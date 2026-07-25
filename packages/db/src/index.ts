@@ -137,6 +137,11 @@ export * from "./child-safety-incident";
 export * from "./child-safety-escalation";
 // CS-C15 — end-to-end protective intervention orchestrator (reuses canonical services).
 export * from "./child-safety-intervention";
+// Reviewer Workspace V1 — operational review service over the canonical incident domain.
+export * from "./child-safety-reviewer";
+// Evidence Management V1 — canonical evidence + chain-of-custody + deterministic export.
+export * from "./deterministic-zip";
+export * from "./child-safety-evidence";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";
