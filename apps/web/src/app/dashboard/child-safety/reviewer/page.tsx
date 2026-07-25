@@ -6,9 +6,10 @@ import {
   canViewChildSafetyReview, parseIncidentSort, ChildSafetyIncidentListFilter,
 } from "@guardora/core";
 import {
-  listChildSafetyIncidents, getChildSafetyReviewerDashboard,
+  listChildSafetyIncidents, getChildSafetyReviewerDashboard, getProtectionPlanDashboard,
   type IncidentListInput, type ReviewerActor,
 } from "@guardora/db";
+import { canViewChildSafetyProtectionPlan } from "@guardora/core";
 import { REVIEWER_COPY } from "./reviewer-i18n";
 import { FilterBar } from "./filter-bar";
 import { Unauthorized } from "./unauthorized";
@@ -44,6 +45,7 @@ export default async function ReviewerConsolePage({ searchParams }: { searchPara
     getChildSafetyReviewerDashboard(actor),
     listChildSafetyIncidents(actor, input),
   ]);
+  const planDash = canViewChildSafetyProtectionPlan(session.role) ? await getProtectionPlanDashboard(actor).catch(() => null) : null;
   const totalPages = Math.max(1, Math.ceil(list.total / list.pageSize));
 
   const pageHref = (n: number) => { const q = new URLSearchParams(); Object.entries(sp).forEach(([k, v]) => { if (v && k !== "page") q.set(k, v); }); q.set("page", String(n)); return `/dashboard/child-safety/reviewer?${q.toString()}`; };
@@ -63,6 +65,17 @@ export default async function ReviewerConsolePage({ searchParams }: { searchPara
         <StatCard label={t.cards.signals24h} value={String(dash.signalsLast24h)} tone="neutral" />
         <StatCard label={t.cards.deliveries} value={String(dash.guardianDeliveriesTotal)} tone="ok" hint={`${dash.guardianDeliveriesLast24h} · 24h`} />
       </section>
+
+      {/* Protection-plan metrics (view-gated; narrow) */}
+      {planDash ? (
+        <section aria-label={t.pp.tab} className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <StatCard label={t.pp.dashNoPlan} value={String(planDash.incidentsWithoutActivePlan)} tone={planDash.incidentsWithoutActivePlan ? "warn" : "neutral"} />
+          <StatCard label={t.pp.dashActive} value={String(planDash.activePlans)} tone="brand" />
+          <StatCard label={t.pp.dashOverdue} value={String(planDash.overdueActions)} tone={planDash.overdueActions ? "danger" : "neutral"} />
+          <StatCard label={t.pp.dashBlocked} value={String(planDash.blockedActions)} tone={planDash.blockedActions ? "warn" : "neutral"} />
+          <StatCard label={t.pp.dashCompletedToday} value={String(planDash.plansCompletedToday)} tone="ok" />
+        </section>
+      ) : null}
 
       <Card className="p-4">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">{t.cards.topFamilies}</p>

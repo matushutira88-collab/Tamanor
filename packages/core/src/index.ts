@@ -66,6 +66,7 @@ export * from "./child-safety-orchestration";
 // Reviewer Workspace V1 — operational review vocabulary/policy over the canonical incident domain.
 export * from "./child-safety-review";
 export * from "./child-safety-evidence";
+export * from "./child-safety-protection-plan";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";

@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { requireVerifiedSession } from "@/server/auth";
 import { getLocale } from "@/i18n/locale-server";
 import { Card, Badge } from "@/components/dashboard/ui";
-import { canViewChildSafetyReview, canManageChildSafetyReview, canManageChildSafetyEvidence } from "@guardora/core";
-import { getChildSafetyIncidentDetail, listChildSafetyEvidence, ChildSafetyReviewNotFoundError, type ReviewerActor } from "@guardora/db";
+import { canViewChildSafetyReview, canManageChildSafetyReview, canManageChildSafetyEvidence, canViewChildSafetyProtectionPlan, canManageChildSafetyProtectionPlan } from "@guardora/core";
+import { getChildSafetyIncidentDetail, listChildSafetyEvidence, getProtectionPlanForIncident, generateProtectionRecommendation, getProtectionPlanTimeline, ChildSafetyReviewNotFoundError, type ReviewerActor } from "@guardora/db";
 import { REVIEWER_COPY } from "../reviewer-i18n";
 import { Unauthorized } from "../unauthorized";
 import { severityTone, urgencyTone, statusTone, escalationTone, availableReviewActions, isTerminalReviewTarget, fmtDateTime, shortId } from "../reviewer-view";
@@ -12,6 +12,7 @@ import { ReviewActions } from "./review-actions";
 import { NotesPanel } from "./notes-panel";
 import { TimelineView } from "./timeline-view";
 import { EvidencePanel } from "./evidence-panel";
+import { ProtectionPlanPanel, type PlanData } from "./protection-plan-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,15 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
   const inc = detail.incident;
   const evidence = await listChildSafetyEvidence(actor, incidentId).catch(() => []);
   const canManageEvidence = canManageChildSafetyEvidence(session.role);
+
+  // Protection plan (view-gated): the current non-terminal plan + timeline, or the recommendation preview.
+  let planData: PlanData | null = null;
+  if (canViewChildSafetyProtectionPlan(session.role)) {
+    const p = await getProtectionPlanForIncident(actor, incidentId).catch(() => null);
+    if (p) planData = { plan: p.plan, actions: p.actions, progress: p.progress, timeline: await getProtectionPlanTimeline(actor, p.plan.id).catch(() => []) };
+    else planData = { plan: null, recommendation: await generateProtectionRecommendation(actor, incidentId).catch(() => undefined) };
+  }
+  const canManagePlan = canManageChildSafetyProtectionPlan(session.role);
   const actions = availableReviewActions(inc.status, inc.assignedReviewerId);
 
   const actionsUi = {
@@ -147,6 +157,13 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
       <Section title={`🗂️ ${t.evidence.tab}`}>
         <EvidencePanel incidentId={inc.id} items={evidence} canManage={canManageEvidence} t={t} />
       </Section>
+
+      {/* Protection plan tab — internal protective-action coordination */}
+      {planData ? (
+        <Section title={`🧭 ${t.pp.tab}`}>
+          <ProtectionPlanPanel incidentId={inc.id} data={planData} canManage={canManagePlan} t={t} />
+        </Section>
+      ) : null}
     </div>
   );
 }

@@ -74,6 +74,11 @@ export enum Permission {
   // Child Safety Evidence Management (V1) — upload/verify/seal/export evidence on canonical incidents.
   // Same audience (Owner / Administrator / Safety Reviewer). Reads reuse review_view; this gates writes.
   ChildSafetyEvidenceManage = "child_safety:evidence_manage",
+  // Child Safety Protection Plans (V1) — internal protective-action coordination on canonical incidents.
+  // Same audience (Owner / Administrator / Safety Reviewer). `view` reads plan/actions/timeline; `manage`
+  // creates/activates/completes plans and manages actions. Internal-only; no autonomous external effect.
+  ChildSafetyProtectionPlanView = "child_safety:protection_plan_view",
+  ChildSafetyProtectionPlanManage = "child_safety:protection_plan_manage",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -126,6 +131,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ChildSafetyReviewView,
     Permission.ChildSafetyReviewManage,
     Permission.ChildSafetyEvidenceManage,
+    Permission.ChildSafetyProtectionPlanView,
+    Permission.ChildSafetyProtectionPlanManage,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -164,6 +171,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ChildSafetyReviewView,
     Permission.ChildSafetyReviewManage,
     Permission.ChildSafetyEvidenceManage,
+    Permission.ChildSafetyProtectionPlanView,
+    Permission.ChildSafetyProtectionPlanManage,
   ],
   [Role.Viewer]: [
     Permission.BrandView,

@@ -142,6 +142,8 @@ export * from "./child-safety-reviewer";
 // Evidence Management V1 — canonical evidence + chain-of-custody + deterministic export.
 export * from "./deterministic-zip";
 export * from "./child-safety-evidence";
+// Protection Plans V1 — internal protective-action coordination over canonical incidents.
+export * from "./child-safety-protection-plan";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

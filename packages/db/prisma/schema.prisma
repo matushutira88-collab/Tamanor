@@ -3154,6 +3154,7 @@ model ChildSafetyIncident {
   reviewerNotes    ChildSafetyReviewerNote[]
   reviewEvents     ChildSafetyReviewEvent[]
   evidence         ChildSafetyEvidence[]
+  protectionPlans  ChildSafetyProtectionPlan[]
 
   @@unique([id, tenantId])
   @@index([tenantId, protectedProfileId, riskFamily, status, lastSignalAt])
@@ -3304,4 +3305,87 @@ model ChildSafetyEvidenceCustodyEvent {
   @@unique([id, tenantId])
   @@index([tenantId, evidenceId, createdAt])
   @@map("child_safety_evidence_custody_events")
+}
+
+/// Protection Plans V1 — a canonical, INTERNAL protective-action plan for a ChildSafetyIncident. At most
+/// ONE non-terminal plan (draft/active/reopened) per incident — enforced by a partial unique index (see
+/// the migration) + a service advisory lock. `revision` is an optimistic-concurrency marker. SYSTEM table
+/// (owner-role systemDb only) — ALL privileges REVOKED from tamanor_app; composite (id, tenantId) FK makes
+/// cross-tenant impossible. Content-free except the plan's coarse status/priority/closeReason code.
+model ChildSafetyProtectionPlan {
+  id          String    @id @default(cuid())
+  tenantId    String
+  incidentId  String
+  status      String    @default("draft") // ChildSafetyProtectionPlanStatus
+  priority    String    @default("normal") // ChildSafetyProtectionPriority
+  createdBy   String
+  activatedAt DateTime?
+  completedAt DateTime?
+  closedReason String? // bounded code (e.g. resolved | superseded | not_required) — never free text
+  revision    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  incident ChildSafetyIncident            @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  actions  ChildSafetyProtectionAction[]
+  events   ChildSafetyProtectionActionEvent[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, incidentId, status])
+  @@map("child_safety_protection_plans")
+}
+
+/// Protection Plans V1 — one concrete protective action within a plan. `completionNote` and `blockReason`
+/// are INTERNAL PROTECTED free text: stored ONLY here, never copied into events, audit, or notifications.
+/// `sequence` is unique per plan (deterministic ordering; allocated under an advisory lock). SYSTEM table
+/// (REVOKED from tamanor_app); composite (id, tenantId) FK.
+model ChildSafetyProtectionAction {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  planId             String
+  actionType         String // ChildSafetyProtectionActionType (bounded catalog)
+  title              String // bounded label (default from catalog or a reviewer-authored custom label)
+  description        String? // bounded instruction (internal; never raw child content)
+  priority           String    @default("normal")
+  status             String    @default("pending") // ChildSafetyProtectionActionStatus
+  assignedReviewerId String?
+  dueAt              DateTime?
+  completedAt        DateTime?
+  completedBy        String?
+  completionNote     String? // INTERNAL PROTECTED free text — never leaves this record
+  blockReason        String? // INTERNAL PROTECTED free text — never leaves this record
+  sequence           Int
+  createdBy          String
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  plan ChildSafetyProtectionPlan @relation(fields: [planId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([planId, sequence])
+  @@index([tenantId, planId, status])
+  @@index([tenantId, assignedReviewerId, status])
+  @@index([tenantId, dueAt])
+  @@map("child_safety_protection_actions")
+}
+
+/// Protection Plans V1 — the APPEND-ONLY plan/action event log (deterministic timeline source). Immutable,
+/// content-free: opaque ids + bounded event/status/priority codes only (NEVER a completion note / block
+/// reason / free text). SYSTEM table (REVOKED from tamanor_app); composite (id, tenantId) FK to the plan.
+model ChildSafetyProtectionActionEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  planId      String
+  actionId    String? // null for plan-level events
+  eventType   String // ChildSafetyProtectionEventType
+  actorUserId String?
+  fromValue   String? // bounded previous code (status/priority/assignee) — content-free
+  toValue     String? // bounded new code — content-free
+  createdAt   DateTime @default(now())
+
+  plan ChildSafetyProtectionPlan @relation(fields: [planId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, planId, createdAt])
+  @@map("child_safety_protection_action_events")
 }

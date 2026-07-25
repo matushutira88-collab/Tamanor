@@ -9,6 +9,8 @@
 import {
   ChildSafetyIncidentStatus, ChildSafetyReviewStatus, isTerminalChildSafetyIncidentStatus,
   canTransitionChildSafetyReviewStatus, ChildSafetyIncidentSort,
+  ChildSafetyProtectionPlanStatus, ChildSafetyProtectionActionStatus,
+  canTransitionPlanStatus, canTransitionActionStatus,
 } from "@guardora/core";
 
 export type Tone = "neutral" | "brand" | "ok" | "warn" | "danger";
@@ -167,4 +169,46 @@ export function fmtDateTime(iso: string | null | undefined): string {
   const d = new Date(t);
   const p = (n: number, w = 2) => String(n).padStart(w, "0");
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+
+// ── Protection Plans view-model ───────────────────────────────────────────────
+export function planStatusTone(status: string): Tone {
+  switch (status) {
+    case "active": return "brand";
+    case "completed": return "ok";
+    case "reopened": return "warn";
+    case "cancelled": return "neutral";
+    default: return "neutral"; // draft
+  }
+}
+export function actionStatusTone(status: string): Tone {
+  switch (status) {
+    case "in_progress": return "brand";
+    case "blocked": return "danger";
+    case "completed": return "ok";
+    case "reopened": return "warn";
+    default: return "neutral"; // pending / skipped
+  }
+}
+export function priorityTone(priority: string): Tone {
+  switch (priority) {
+    case "urgent": return "danger";
+    case "high": return "warn";
+    default: return "neutral"; // normal / low
+  }
+}
+
+/** Plan status targets a manager may move the plan INTO (mirrors the server state-machine). */
+export function availablePlanTargets(status: string): ChildSafetyProtectionPlanStatus[] {
+  return (Object.values(ChildSafetyProtectionPlanStatus) as ChildSafetyProtectionPlanStatus[]).filter((to) => canTransitionPlanStatus(status, to));
+}
+/** Action status targets a manager may move an action INTO (mirrors the server state-machine). */
+export function availableActionTargets(status: string): ChildSafetyProtectionActionStatus[] {
+  return (Object.values(ChildSafetyProtectionActionStatus) as ChildSafetyProtectionActionStatus[]).filter((to) => canTransitionActionStatus(status, to));
+}
+
+/** Resolve a catalog title key (pp.action.<type>.title) to localized text; a custom reviewer title passes through. */
+export function resolveActionTitle(title: string, actionType: string, labels: Record<string, { title: string }>): string {
+  if (title.startsWith("pp.action.")) return labels[actionType]?.title ?? title;
+  return title;
 }
