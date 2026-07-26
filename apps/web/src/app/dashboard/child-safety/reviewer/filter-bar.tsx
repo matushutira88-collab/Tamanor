@@ -4,7 +4,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import type { ReviewerCopy } from "./reviewer-i18n";
 import { INCIDENT_SORTS, SEVERITY_OPTIONS, URGENCY_OPTIONS } from "./reviewer-view";
-import { ChildSafetyIncidentStatus } from "@guardora/core";
+import { ChildSafetyIncidentStatus } from "@guardora/core/child-safety-orchestration";
 
 /**
  * Reviewer Console — the incident-list filter/sort/search bar. A CLIENT control that only rewrites the

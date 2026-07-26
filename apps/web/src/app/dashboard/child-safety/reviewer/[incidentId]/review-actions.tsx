@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
-import type { ChildSafetyReviewStatus } from "@guardora/core";
+import type { ChildSafetyReviewStatus } from "@guardora/core/child-safety-review";
 import { isReviewActionErrorCode } from "../reviewer-i18n";
 import { assignAction, assignToMeAction, unassignAction, statusAction, type ReviewActionState } from "./actions";
 

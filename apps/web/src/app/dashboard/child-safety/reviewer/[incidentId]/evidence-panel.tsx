@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import type { ReviewerCopy } from "../reviewer-i18n";
 import { integrityTone, formatBytes, fmtDateTime, shortId } from "../reviewer-view";
-import { ChildSafetyEvidenceType } from "@guardora/core";
+import { ChildSafetyEvidenceType } from "@guardora/core/child-safety-evidence";
 import { uploadEvidenceAction, verifyEvidenceAction, sealEvidenceAction, type EvidenceActionState } from "./evidence-actions";
 
 export interface EvidenceItem {

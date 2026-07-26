@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import type { ReviewerCopy } from "../reviewer-i18n";
 import { isReviewActionErrorCode } from "../reviewer-i18n";
 import { planStatusTone, actionStatusTone, priorityTone, availablePlanTargets, availableActionTargets, resolveActionTitle, fmtDateTime, shortId } from "../reviewer-view";
-import { ChildSafetyProtectionPlanStatus, ChildSafetyProtectionActionStatus, ACTIVE_PLAN_STATUSES } from "@guardora/core";
+import { ChildSafetyProtectionPlanStatus, ChildSafetyProtectionActionStatus, ACTIVE_PLAN_STATUSES } from "@guardora/core/child-safety-protection-plan";
 import {
   createPlanAction, activatePlanAction, completePlanAction, cancelPlanAction, reopenPlanAction, addActionAction, actionOpAction,
   type PlanActionState,

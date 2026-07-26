@@ -6,12 +6,12 @@
  * review actions state-machine mirror, and human duration formatting. The UI components consume these; the
  * backend remains the single source of truth for data + ordering (this file never re-sorts a timeline).
  */
-import {
-  ChildSafetyIncidentStatus, ChildSafetyReviewStatus, isTerminalChildSafetyIncidentStatus,
-  canTransitionChildSafetyReviewStatus, ChildSafetyIncidentSort,
-  ChildSafetyProtectionPlanStatus, ChildSafetyProtectionActionStatus,
-  canTransitionPlanStatus, canTransitionActionStatus,
-} from "@guardora/core";
+// Import from the specific BROWSER-SAFE core subpaths (not the "@guardora/core" barrel), so this shared
+// client module never drags the barrel's server-only crypto modules (hibp / rate-limit-store /
+// child-safety-signing → node:crypto) into the client bundle.
+import { ChildSafetyIncidentStatus, isTerminalChildSafetyIncidentStatus } from "@guardora/core/child-safety-orchestration";
+import { ChildSafetyReviewStatus, canTransitionChildSafetyReviewStatus, ChildSafetyIncidentSort } from "@guardora/core/child-safety-review";
+import { ChildSafetyProtectionPlanStatus, ChildSafetyProtectionActionStatus, canTransitionPlanStatus, canTransitionActionStatus } from "@guardora/core/child-safety-protection-plan";
 
 export type Tone = "neutral" | "brand" | "ok" | "warn" | "danger";
 

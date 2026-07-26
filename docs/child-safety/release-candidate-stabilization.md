@@ -29,38 +29,31 @@ migration was edited; no GRANT change; `tamanor_app` stays least-privilege.
 `rls-null-branch-fix` **11/11**: same-tenant read/write works, cross-tenant denied, NULL-context fail-closed,
 owner/system path still sees all — for both `notifications` and `invites`.
 
-## 2. Resolved build issue (client bundle)
+## 2. Resolved build issue (client bundle) — RESOLVED; production build exits 0
 
-**Root cause.** `@guardora/core` is a `transpilePackages` entry; its barrel re-exports `hibp.ts`, which
-statically imports `node:crypto` (server-only SHA-1). When a Child Safety **client** component imports a
-value from the core barrel (e.g. `ChildSafetyIncidentStatus` in `filter-bar.tsx`), webpack drags
-`node:crypto` into the **browser** graph → `UnhandledSchemeError` (build fails to compile).
+Two distinct issues were involved. Both are now fixed and the **full production build passes (exit 0,
+107/107 pages)** with the project's real command `NODE_ENV=production next build`.
 
-**Correction.** `apps/web/next.config.mjs` webpack config, **client build only**: strip the `node:` scheme
-(`NormalModuleReplacementPlugin`) and resolve those server-only builtins (`crypto`/`stream`/`util`/`buffer`)
-to empty modules. They are never executed client-side. This does **not** disable type checking, linting,
-route generation, or prerendering, and leaves the server build unchanged (Node loads the real modules at
-runtime). After this fix the app **compiles successfully and type-checks**.
+**Issue A — server-only `node:crypto` in the client bundle (real; fixed source-level).** `@guardora/core`
+is a `transpilePackages` entry whose barrel re-exports SERVER-ONLY modules that import `node:crypto`
+(`hibp` SHA-1, `rate-limit-store`, `child-safety-signing`). When a Child Safety **client** component
+imported a value from the `@guardora/core` barrel, webpack dragged `node:crypto` into the **browser** graph
+→ `UnhandledSchemeError`. **Fix (source-level boundary):** the Child Safety client components now import the
+specific **browser-safe subpaths** (`@guardora/core/child-safety-orchestration|child-safety-review|
+child-safety-evidence|child-safety-protection-plan`) instead of the barrel, so the barrel's server-only
+crypto modules never enter the client graph. The earlier stop-gap webpack fallback in
+`apps/web/next.config.mjs` was **removed** — no empty-module aliasing masks the client/server boundary
+anymore. Server components / server actions still use the barrel (correct — they run on Node).
 
-**Remaining build blocker (framework defect — NOT an app defect).** After compilation + type-check pass, the
-production build still fails during static prerender of the **synthetic pages-router `/404` and `/_error`**
-with `Error: <Html> should not be imported outside of pages/_document`. This was investigated exhaustively
-(≈8 diagnostic builds):
-
-- No workspace source or reachable dependency imports `next/document`/`next/head`/`Html`/`Head`/`Document`
-  (comprehensive grep across `apps/web/src` and all `packages/*/src`).
-- The failing chunk (`.next/server/chunks/7735.js`, `function x`) is **100% Next.js internal** `_document`
-  code (`useHtmlContext`, `docComponentsRendered.Html`); `.next/server/pages/_document.js` is Next's
-  376-byte default (no custom document).
-- Not caused by `global-error.tsx`, `opengraph-image.tsx`, `[slug]` `notFound()`, duplicate React (single
-  19.2.7), or the Google font (network reachable; compile succeeds).
-- Next patch bump `15.5.20 → 15.5.22` does **not** fix it (reverted to keep the change set narrow).
-
-**Determination:** a pre-existing **Next.js 15.5.x framework regression** in the synthetic error-page static
-export. The only available framework fix is a **major** version bump to Next 16.x, which is out of scope for
-a stabilization sprint (it would require re-validating the entire application, not just Child Safety) and is
-deliberately **not** applied here. It is documented as an environment/framework blocker, not attributed to
-Child Safety code. See §21 of the sprint report.
+**Issue B — the `<Html>` prerender error was NOT a framework bug; it was a build-invocation artifact.** The
+earlier "framework blocker" was reproduced only because the build was invoked through
+`dotenv -e .env.local -e .env`, and `.env` sets `NODE_ENV=development`. Running `next build` with
+`NODE_ENV=development` produces a broken hybrid build whose synthetic pages-router `/404`/`/500`/`/_error`
+static export fails with `Error: <Html> should not be imported outside of pages/_document`. **Proof:**
+`NODE_ENV=development next build` → fails (`<Html>`); `NODE_ENV=production next build` (the project's actual
+build script) → **exit 0, 107/107 pages**. There is no framework regression and no Next 16.x upgrade is
+required. The correct build command is the one in `apps/web/package.json`
+(`… && NODE_ENV=production next build`), which never loads `.env`.
 
 ## 3. End-to-end flow
 
@@ -169,14 +162,12 @@ intervention 12, recovery 18, reviewer 68, reviewer-ui 47, evidence 41, evidence
 protection-plan-ui 32, consent 32, guardian-authority 140, delivery 65, recipient-authorization 46.
 Platform: notifications 13, cyberbullying 36, cyberbullying-notifications-sla 48, security-access PASS,
 rls-isolation/runtime/web/worker PASS, **rls-security 37/37**. Gates: **typecheck exit 0**, **lint exit 0**.
-Full production build: compiles + type-checks; **blocked** at synthetic `/404`/`/_error` prerender by the
-Next.js framework defect (§2).
+**Full production build (`NODE_ENV=production next build`): exit 0 — `✓ Compiled successfully`,
+`✓ Generating static pages (107/107)`, finalized.** (A build invoked with `NODE_ENV=development`, e.g. via
+`dotenv -e .env`, fails at the synthetic error-page prerender — use the project's production build command.)
 
 ## 14. Known limitations / future production requirements
 
-- **Build:** the Next.js synthetic-error-page prerender defect must be resolved by a framework version
-  decision (Next 16.x upgrade + full-app re-validation) before a production build succeeds. This is outside
-  a narrow Child Safety stabilization change.
 - Retention/lawful-deletion policy, antivirus scanning of evidence, and export-custody idempotency on client
   retry remain documented V1 limitations (see evidence/protection-plan docs).
 - Local performance measurements are indicative only; production latency depends on real infrastructure.

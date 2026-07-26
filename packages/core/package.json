@@ -20,7 +20,11 @@
     "./child-safety-safety-signal": "./src/child-safety-safety-signal.ts",
     "./child-safety-recipient-authorization": "./src/child-safety-recipient-authorization.ts",
     "./child-safety-delivery": "./src/child-safety-delivery.ts",
-    "./child-safety-onboarding": "./src/child-safety-onboarding.ts"
+    "./child-safety-onboarding": "./src/child-safety-onboarding.ts",
+    "./child-safety-orchestration": "./src/child-safety-orchestration.ts",
+    "./child-safety-review": "./src/child-safety-review.ts",
+    "./child-safety-evidence": "./src/child-safety-evidence.ts",
+    "./child-safety-protection-plan": "./src/child-safety-protection-plan.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
