@@ -20,7 +20,10 @@ const BEFORE = new Date(DAY_START.getTime() - 3_600_000); // 23:00 yesterday UTC
 async function run() {
   const sfx = Date.now().toString(36);
   const mk = async (tag: string) => {
-    const t = await systemDb.tenant.create({ data: { name: `Ao${tag}`, slug: `ao-${tag}-${sfx}`, plan: "growth" } });
+    // Active trial window → effective access `full_access`, so the growth-plan entitlement limits apply.
+    // Without it, the V1.68 read-time gate resolves a `no_subscription`/no-trial tenant to `restricted`
+    // and entitlements collapse to the locked (zero) tier regardless of plan.
+    const t = await systemDb.tenant.create({ data: { name: `Ao${tag}`, slug: `ao-${tag}-${sfx}`, plan: "growth", trialEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) } });
     const b = await systemDb.brand.create({ data: { tenantId: t.id, name: `AoB${tag}` } });
     return { t, b };
   };
@@ -72,16 +75,24 @@ async function run() {
     check("real failed attempt (health error + attempt) → sync_error", rfailed.connectionStatus === "sync_error" && rfailed.hasSyncError === true);
 
     console.log("Capacity");
-    check("capacity: used=1 (FB monitored), limit=3, remaining=2", ov.capacity.used === 1 && ov.capacity.limit === 3 && ov.capacity.remaining === 2, JSON.stringify(ov.capacity));
+    // capacity.limit is the plan's maxConnectedAccounts. V1.64 per-brand model: growth = maxBrands 3 × 4
+    // platform slots = 12 (the authoritative value in core entitlements). used = monitored-account count.
+    const LIMIT = 12;
+    check(`capacity: used=1 (FB monitored), limit=${LIMIT}, remaining=${LIMIT - 1}`, ov.capacity.used === 1 && ov.capacity.limit === LIMIT && ov.capacity.remaining === LIMIT - 1, JSON.stringify(ov.capacity));
     check("IG (off) can be enabled (slots remain)", rig.monitoringCanBeEnabled === true);
 
     console.log("Full-limit behaviour");
-    await setAccountMonitoring(A.t.id, ig.id, true);
-    const cfb = await mkAcc(A, "cfb", "facebook_page"); // a 3rd account → fills the limit (FB+IG+cfb=3)
-    await setAccountMonitoring(A.t.id, cfb.id, true);
+    // Fill the tenant's monitored-account capacity to exactly the plan cap (fb is already monitored = 1),
+    // then assert the full-limit UX gating. Monitoring toggles are not per-platform capped, so plain
+    // fillers suffice to reach `used === limit`.
+    await setAccountMonitoring(A.t.id, ig.id, true); // used = 2
+    for (let i = 0; i < LIMIT - 2; i++) { // + (LIMIT-2) fillers → used = LIMIT
+      const f = await mkAcc(A, `fill${i}`, "facebook_page");
+      await setAccountMonitoring(A.t.id, f.id, true);
+    }
     const ov2 = await getDashboardAccountsOverview(A.t.id, now);
-    const off = ov2.rows.find((r) => !r.monitoringEnabled);
-    check("at full limit, an OFF account cannot be enabled", ov2.capacity.remaining === 0 && (!off || off.monitoringCanBeEnabled === false));
+    const off = ov2.rows.find((r) => !r.monitoringEnabled); // `never` / `failed` remain off
+    check("at full limit, an OFF account cannot be enabled", ov2.capacity.used === LIMIT && ov2.capacity.remaining === 0 && (!off || off.monitoringCanBeEnabled === false), JSON.stringify(ov2.capacity));
     check("an already-ON account can still be turned off at full limit", ov2.rows.filter((r) => r.monitoringEnabled).every((r) => r.monitoringCanBeEnabled === true));
 
     console.log("Account kind + sync state (truthful UX naming — single source of truth)");

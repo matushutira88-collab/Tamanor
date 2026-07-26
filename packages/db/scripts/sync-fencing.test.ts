@@ -8,7 +8,7 @@
  *
  * Run: pnpm sync-fencing:test   (spins up a throwaway Postgres, applies all migrations)
  */
-import { systemDb, withTenant, acquireSyncLease, heartbeatSyncLease, releaseSyncLease } from "@guardora/db";
+import { systemDb, withTenant, acquireSyncLease, heartbeatSyncLease, releaseSyncLease, getTenantOperationGate } from "@guardora/db";
 import { runReadOnlySync, writeAccountIfLeaseHeld } from "../../sync/src/index";
 
 let failures = 0;
@@ -23,7 +23,17 @@ async function expireLease(connectedAccountId: string) {
 
 async function run() {
   const sfx = Date.now().toString(36);
-  const t = await systemDb.tenant.create({ data: { name: "Fx", slug: `fx-${sfx}` } });
+  const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+  // Tenants created directly here (Group F also) are torn down in `finally`, whichever groups ran.
+  const extraTenantIds: string[] = [];
+  // The fencing / run-lifecycle groups exercise the NORMAL sync path, so this tenant must be
+  // OPERATIONAL. Since V1.68 the operation gate (getTenantOperationGate) RECOMPUTES effective access
+  // at read time from the billing fields — the persisted `full_access` schema default is no longer
+  // trusted on its own — so a bare `no_subscription` tenant with no trial window resolves to
+  // `restricted` and every runReadOnlySync is correctly skipped (`sync.restricted_skipped`). Give it an
+  // active trial window (what a freshly-onboarded tenant has) so the gate allows operations. The
+  // billing_restricted gate itself — that a restricted tenant is skipped — is asserted in Group F.
+  const t = await systemDb.tenant.create({ data: { name: "Fx", slug: `fx-${sfx}`, trialEndsAt: new Date(Date.now() + YEAR_MS) } });
   const br = await systemDb.brand.create({ data: { tenantId: t.id, name: "FxB" } });
   const mkAcc = (tag: string) => systemDb.connectedAccount.create({
     data: { tenantId: t.id, brandId: br.id, platform: "facebook_page", status: "mock_connected", mode: "placeholder", externalId: `FX_${tag}_${sfx}`, pageId: `FX_${tag}_${sfx}`, health: "healthy" },
@@ -136,19 +146,58 @@ async function run() {
     // E48/E49) the interrupted run did NOT overwrite the newer/earlier success aggregate on the account.
     const afterInterrupted = await systemDb.connectedAccount.findUnique({ where: { id: e.id }, select: { lastSuccessfulSyncAt: true } });
     check("E48/E49) interrupted run leaves the account success aggregate untouched", afterInterrupted?.lastSuccessfulSyncAt?.getTime() === successMarker);
+
+    // ---------------------------------------------------------------------------
+    // Group F — billing-access gate (a restricted tenant is SKIPPED; an active tenant syncs).
+    // The crux of this regression: runReadOnlySync funnels every ingestion trigger through the SAME
+    // central operation gate, and that gate must NOT be weakened. A never-subscribed tenant with no
+    // trial window is `billing_restricted` → the sync produces ZERO side effects (no SyncRun, no cursor,
+    // no success marker). An operational (active-trial) tenant syncs normally. Each case builds its OWN
+    // tenant with an explicit billing state, so the two are independent and neither leaks into the other.
+    console.log("Group F — billing-access gate (restricted skipped, active syncs)");
+
+    const mkCtx = async (tag: string, trialEndsAt: Date | null) => {
+      const tn = await systemDb.tenant.create({ data: { name: `Fx${tag}`, slug: `fx${tag.toLowerCase()}-${sfx}`, billingStatus: "no_subscription", trialEndsAt } });
+      extraTenantIds.push(tn.id);
+      const brd = await systemDb.brand.create({ data: { tenantId: tn.id, name: `Fx${tag}B` } });
+      const acc = await systemDb.connectedAccount.create({ data: { tenantId: tn.id, brandId: brd.id, platform: "facebook_page", status: "mock_connected", mode: "placeholder", externalId: `FX${tag}_${sfx}`, pageId: `FX${tag}_${sfx}`, health: "healthy" } });
+      return { tn, acc };
+    };
+
+    // F1) RESTRICTED — never subscribed, no active trial window → effective access `restricted`.
+    const restrictedCtx = await mkCtx("R", null);
+    const gateR = await getTenantOperationGate(restrictedCtx.tn.id);
+    check("F60) restricted tenant → gate denies with reason billing_restricted", gateR.allowed === false && gateR.reason === "billing_restricted", `${gateR.allowed}/${gateR.reason}`);
+    const rSyncR = await runReadOnlySync({ accountId: restrictedCtx.acc.id, tenantId: restrictedCtx.tn.id }, "manual");
+    check("F61) restricted tenant → sync does NOT succeed", rSyncR.ok === false && rSyncR.verdict !== "success", `${rSyncR.ok}/${rSyncR.verdict}`);
+    const runsR = await withTenant(restrictedCtx.tn.id, (db) => db.syncRun.count({ where: { connectedAccountId: restrictedCtx.acc.id } }));
+    check("F62) restricted tenant → NO SyncRun row created (no side effects)", runsR === 0, `${runsR} rows`);
+    const acctR = await systemDb.connectedAccount.findUnique({ where: { id: restrictedCtx.acc.id }, select: { lastSuccessfulSyncAt: true, lastCursor: true } });
+    check("F63) restricted tenant → no success marker / cursor written", !acctR?.lastSuccessfulSyncAt && !acctR?.lastCursor);
+
+    // F2) ACTIVE control — an operational tenant (active trial window) syncs normally through the SAME path.
+    const activeCtx = await mkCtx("A", new Date(Date.now() + YEAR_MS));
+    const gateA = await getTenantOperationGate(activeCtx.tn.id);
+    check("F64) active (trial) tenant → gate allows (no restriction)", gateA.allowed === true && gateA.reason === null, `${gateA.allowed}/${gateA.reason}`);
+    const rSyncA = await runReadOnlySync({ accountId: activeCtx.acc.id, tenantId: activeCtx.tn.id }, "manual");
+    check("F65) active tenant → sync succeeds", rSyncA.ok === true && rSyncA.verdict === "success", `${rSyncA.ok}/${rSyncA.verdict}`);
+    const acctA = await systemDb.connectedAccount.findUnique({ where: { id: activeCtx.acc.id }, select: { lastSuccessfulSyncAt: true } });
+    check("F66) active tenant → success marker written", !!acctA?.lastSuccessfulSyncAt);
   } finally {
-    await systemDb.syncLease.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.auditLog.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.actionQueueItem.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.autoProtectDecision.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.providerCall.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.reputationItem.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.contentItem.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.incident.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.syncRun.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.connectedAccount.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.brand.deleteMany({ where: { tenantId: t.id } });
-    await systemDb.tenant.deleteMany({ where: { id: t.id } });
+    for (const tid of [t.id, ...extraTenantIds]) {
+      await systemDb.syncLease.deleteMany({ where: { tenantId: tid } });
+      await systemDb.auditLog.deleteMany({ where: { tenantId: tid } });
+      await systemDb.actionQueueItem.deleteMany({ where: { tenantId: tid } });
+      await systemDb.autoProtectDecision.deleteMany({ where: { tenantId: tid } });
+      await systemDb.providerCall.deleteMany({ where: { tenantId: tid } });
+      await systemDb.reputationItem.deleteMany({ where: { tenantId: tid } });
+      await systemDb.contentItem.deleteMany({ where: { tenantId: tid } });
+      await systemDb.incident.deleteMany({ where: { tenantId: tid } });
+      await systemDb.syncRun.deleteMany({ where: { tenantId: tid } });
+      await systemDb.connectedAccount.deleteMany({ where: { tenantId: tid } });
+      await systemDb.brand.deleteMany({ where: { tenantId: tid } });
+      await systemDb.tenant.deleteMany({ where: { id: tid } });
+    }
   }
 
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — sync lease heartbeat, fencing & interrupted lifecycle (V1.58.7)`);

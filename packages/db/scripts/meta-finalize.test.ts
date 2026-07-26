@@ -21,7 +21,9 @@ const mkPage = (tag: string, sfx: string, withIg: boolean) => ({
 
 async function run() {
   const sfx = Date.now().toString(36);
-  const t = await systemDb.tenant.create({ data: { name: "Mf", slug: `mf-${sfx}`, plan: "growth" } }); // limit 3 → FB+IG=2 fits
+  // Active trial window → `full_access`, so the growth-plan per-brand connect limits apply (V1.68 read-time
+  // gate would otherwise resolve this no-subscription/no-trial tenant to `restricted` → zero limits).
+  const t = await systemDb.tenant.create({ data: { name: "Mf", slug: `mf-${sfx}`, plan: "growth", trialEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) } }); // growth: 3 brands × (1 FB + 1 IG) per brand
   const b = await systemDb.brand.create({ data: { tenantId: t.id, name: "MfB" } });
   const link = (page: never, connectIg: boolean) => linkMetaAssets({
     tenantId: t.id, brandId: b.id, page, connectIg, scopes: [], grantedPermissions: [],
@@ -37,13 +39,25 @@ async function run() {
     check("both connected-but-NOT-monitored (connect ≠ monitor)", fb?.monitoringEnabled === false && ig?.monitoringEnabled === false);
     check("IG links to its parent FB Page but is a separate account", ig?.parentAccountId === l1.pageAccountId && ig?.platform === "instagram_business");
 
-    console.log("Connect imposes NO bundle limit");
-    // Connect several more pages — connect must never throw an entitlement/bundle limit.
+    console.log("Connect ≠ monitor: connect is not bundle/monitored-limited (per-brand structural cap applies)");
+    // V1.64 — a brand holds at most 1 active FB + 1 active IG; connecting MORE pages uses MORE brands
+    // (growth allows 3). Connect never touches the tenant-total MONITORED limit (enforced only when
+    // monitoring is activated), so connecting a full page+IG on each additional brand must not throw.
+    const b2 = await systemDb.brand.create({ data: { tenantId: t.id, name: "MfB2" } });
+    const b3 = await systemDb.brand.create({ data: { tenantId: t.id, name: "MfB3" } });
+    const linkTo = (brandId: string, page: never, connectIg: boolean) => linkMetaAssets({
+      tenantId: t.id, brandId, page, connectIg, scopes: [], grantedPermissions: [],
+      encryptedToken: encryptToken("fake-token"), tokenType: null, tokenExpiresAt: null,
+    });
     let connectThrew = false;
-    try { for (const tag of ["b", "c", "d", "e"]) await link(mkPage(tag, sfx, false), false); } catch { connectThrew = true; }
+    try { await linkTo(b2.id, mkPage("b", sfx, true), true); await linkTo(b3.id, mkPage("c", sfx, true), true); } catch { connectThrew = true; }
     const connectedCount = await withTenant(t.id, (db) => db.connectedAccount.count({ where: { tenantId: t.id } }));
-    check("connecting many pages never hits a bundle limit", !connectThrew && connectedCount >= 6);
+    check("connecting page+IG across brands is not bundle/monitored-limited", !connectThrew && connectedCount >= 6, `threw=${connectThrew} count=${connectedCount}`);
     check("all newly-connected accounts are unmonitored", (await withTenant(t.id, (db) => countMonitoredAccounts(db, t.id))) === 0);
+    // The STRUCTURAL per-brand cap IS enforced at connect: a 2nd DIFFERENT active FB on the SAME brand rejects.
+    let perBrandEnforced = false;
+    try { await linkTo(b.id, mkPage("dup", sfx, false), false); } catch (e) { perBrandEnforced = /brand_platform_limit_reached/.test(String(e)); }
+    check("per-brand cap enforced (2nd FB on same brand → brand_platform_limit_reached)", perBrandEnforced);
 
     console.log("Reconnect = no duplicate, monitoring preserved");
     // Enable monitoring on the FB + IG (FB=1, IG=1 → 2 monitored).

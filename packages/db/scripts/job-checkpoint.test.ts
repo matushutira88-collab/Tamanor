@@ -17,7 +17,11 @@ function check(label: string, cond: boolean, detail = "") {
 
 async function run() {
   const sfx = Date.now().toString(36);
-  const t = await systemDb.tenant.create({ data: { name: "Jb", slug: `jb-${sfx}` } });
+  // Operational tenant: since V1.68 the sync operation gate recomputes effective access at read time
+  // from the billing fields, so a bare `no_subscription` tenant with no trial window is `restricted`
+  // and every runReadOnlySync is skipped (`sync.restricted_skipped`). Give it an active trial window
+  // (what a freshly-onboarded tenant has) so the budgeted sync job actually ingests.
+  const t = await systemDb.tenant.create({ data: { name: "Jb", slug: `jb-${sfx}`, trialEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) } });
   const br = await systemDb.brand.create({ data: { tenantId: t.id, name: "JbB" } });
   const mkAcc = (tag: string) => systemDb.connectedAccount.create({
     data: { tenantId: t.id, brandId: br.id, platform: "facebook_page", status: "mock_connected", mode: "placeholder", externalId: `JB_${tag}_${sfx}`, pageId: `JB_${tag}_${sfx}`, health: "healthy" },
