@@ -328,14 +328,18 @@ export async function setChildSafetyReviewStatus(actor: ReviewerActor, incidentI
   const resolved = resolvedIncidentStatusFor(to);
   const now = new Date();
   const terminal = isTerminalChildSafetyIncidentStatus(resolved);
-  await systemDb.childSafetyIncident.update({
-    where: { id: incidentId },
+  // Guarded conditional update — only ONE transition from the observed prior status can win, so a stale
+  // concurrent transition (whose expected from-status no longer matches) fails closed instead of
+  // overwriting a newer status. Mirrors the protection-plan/action transition guard.
+  const res = await systemDb.childSafetyIncident.updateMany({
+    where: { id: incidentId, tenantId: actor.tenantId, status: inc.status },
     data: {
       status: resolved, lastReviewedAt: now,
       closedAt: terminal ? now : null, // reopening a finished incident clears closedAt
       resolutionCode: to === ChildSafetyReviewStatus.Resolved ? "resolved" : to === ChildSafetyReviewStatus.Dismissed ? "dismissed" : null,
     },
   });
+  if (res.count !== 1) throw new ReviewInputError(`invalid_transition:${inc.status}->${to}`);
   await systemDb.childSafetyReviewEvent.create({ data: { tenantId: actor.tenantId, incidentId, eventType: isReopen ? ChildSafetyReviewEventType.Reopened : ChildSafetyReviewEventType.StatusChanged, actorUserId: actor.userId, fromValue: inc.status, toValue: resolved } });
   await audit(actor.tenantId, actor.userId, CHILD_SAFETY_REVIEW_AUDIT_EVENTS.statusChanged, incidentId, { from: inc.status, to: resolved });
   return { status: resolved };

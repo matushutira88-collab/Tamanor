@@ -60,6 +60,8 @@
     "child-safety-reviewer-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/child-safety-reviewer-ui.test.ts",
     "child-safety-evidence:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-evidence.test.ts",
     "child-safety-protection-plan:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-protection-plan.test.ts",
+    "child-safety-e2e:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-e2e.test.ts",
+    "rls-null-branch-fix:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/rls-null-branch-fix.test.ts",
     "child-safety-evidence-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/child-safety-evidence-ui.test.ts",
     "child-safety-protection-plan-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/child-safety-protection-plan-ui.test.ts",
     "detection-engine:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/detection-engine.test.ts",

@@ -18,9 +18,32 @@ const nextConfig = {
   // @guardora/db package, so `serverExternalPackages` alone doesn't externalize it.
   // Keep it OUT of the webpack bundle on the server (required at runtime by Node); it is
   // never in the client graph (password hashing is server-only).
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, webpack }) => {
     if (isServer) {
       config.externals = [...(config.externals ?? []), { "@node-rs/argon2": "commonjs @node-rs/argon2" }];
+    } else {
+      // RC stabilization — the transpiled @guardora/core barrel re-exports several SERVER-ONLY modules
+      // that import `node:crypto` (hibp SHA-1, rate-limit-store, child-safety-signing). When a CLIENT
+      // component imports a value from the core barrel, webpack drags those `node:*` builtins into the
+      // browser graph and fails with `UnhandledSchemeError`. They are never executed client-side. A
+      // source-level fix (barrel purge + per-module subpaths) was evaluated but would require redesigning
+      // the export map across multiple server-only modules + all their consumers — out of scope here.
+      // Instead, neutralize server-only node builtins for the CLIENT build ONLY: strip the `node:` scheme,
+      // then resolve the builtin to an empty module. This disables NO type checking, linting, route
+      // generation, or prerendering; the server build is unchanged (Node loads the real modules at runtime).
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+          resource.request = resource.request.replace(/^node:/, "");
+        }),
+      );
+      config.resolve = config.resolve || {};
+      config.resolve.fallback = {
+        ...(config.resolve.fallback ?? {}),
+        crypto: false,
+        stream: false,
+        util: false,
+        buffer: false,
+      };
     }
     return config;
   },
