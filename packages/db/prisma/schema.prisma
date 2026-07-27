@@ -3396,3 +3396,111 @@ model ChildSafetyProtectionActionEvent {
   @@index([tenantId, planId, createdAt])
   @@map("child_safety_protection_action_events")
 }
+
+/// Policy Engine V1 — a named, tenant-scoped Child Safety decision policy (one row per policyKey/purpose).
+/// Holds NO decision logic itself; logic lives in immutable VERSIONS. SYSTEM table (ALL privileges REVOKED
+/// from tamanor_app); composite (id, tenantId) FK from versions makes cross-tenant linking impossible.
+model ChildSafetyPolicy {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  policyKey             String // stable, tenant-unique key (bounded slug)
+  purpose               String // ChildSafetyPolicyPurpose (bounded enum)
+  displayName           String
+  description           String?
+  createdByMembershipId String
+  createdAt             DateTime  @default(now())
+  retiredAt             DateTime?
+
+  versions ChildSafetyPolicyVersion[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, policyKey])
+  @@index([tenantId, purpose])
+  @@map("child_safety_policies")
+}
+
+/// Policy Engine V1 — an IMMUTABLE-after-activation policy version. The `definitionJson` is a STRICT,
+/// validated, JSON-compatible rule structure over an allow-listed field/operator/effect vocabulary — it is
+/// DATA, never executable code. `definitionHash` is a server-computed sha256 of the canonicalized
+/// definition. Only ONE version per policy may be ACTIVE (partial unique index in the migration). SYSTEM
+/// table (REVOKED from tamanor_app); composite (id, tenantId) FK.
+model ChildSafetyPolicyVersion {
+  id                      String    @id @default(cuid())
+  tenantId                String
+  policyId                String
+  versionNumber           Int
+  status                  String    @default("DRAFT") // ChildSafetyPolicyStatus
+  schemaVersion           Int
+  engineVersion           String
+  definitionJson          Json
+  definitionHash          String
+  createdByMembershipId   String
+  createdAt               DateTime  @default(now())
+  submittedByMembershipId String?
+  submittedAt             DateTime?
+  activatedByMembershipId String?
+  activatedAt             DateTime?
+  rejectedByMembershipId  String?
+  rejectedAt              DateTime?
+  rejectionReasonCode     String?
+  supersedesVersionId     String?
+  updatedAt               DateTime  @updatedAt
+
+  policy    ChildSafetyPolicy                     @relation(fields: [policyId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  approvals ChildSafetyPolicyActivationApproval[]
+
+  @@unique([id, tenantId])
+  @@unique([policyId, versionNumber])
+  @@index([tenantId, policyId, status])
+  @@index([tenantId, status])
+  @@map("child_safety_policy_versions")
+}
+
+/// Policy Engine V1 — the APPEND-ONLY activation/approval ledger (two-person control audit). Immutable;
+/// no update/delete path. SYSTEM table (REVOKED from tamanor_app); composite (id, tenantId) FK.
+model ChildSafetyPolicyActivationApproval {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  policyVersionId       String
+  decision              String // approved | rejected
+  reasonCode            String?
+  decidedByMembershipId String
+  decidedAt             DateTime @default(now())
+  createdAt             DateTime @default(now())
+
+  version ChildSafetyPolicyVersion @relation(fields: [policyVersionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, policyVersionId, createdAt])
+  @@map("child_safety_policy_activation_approvals")
+}
+
+/// Policy Engine V1 — the APPEND-ONLY decision audit. Records ONLY bounded, content-free data: the policy
+/// + version, purpose, a coarse context type/id, an input FINGERPRINT (sha256; never the raw facts),
+/// bounded decision + explanation codes, engine version, and evaluation time. NO raw message / evidence /
+/// note / guardian content is ever stored. Immutable (no update/delete). SYSTEM table (REVOKED from
+/// tamanor_app). No FK to versions (audit rows outlive nothing — versions are never deleted — and must
+/// remain even if a policy row is later removed); tenant scoping is enforced explicitly in the service.
+model ChildSafetyPolicyDecisionRecord {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  policyId              String
+  policyVersionId       String
+  policyPurpose         String
+  evaluationContextType String // e.g. signal | incident (bounded)
+  evaluationContextId   String?
+  inputFingerprint      String // sha256 of the canonical input (never the raw facts)
+  decisionCode          String // bounded summary code
+  decisionJson          Json // bounded merged decision (codes/flags only)
+  explanationJson       Json // bounded explanation-code array
+  engineVersion         String
+  correlationId         String?
+  evaluatedAt           DateTime
+  createdAt             DateTime @default(now())
+
+  @@unique([id, tenantId])
+  @@index([tenantId, policyId, evaluatedAt])
+  @@index([tenantId, policyPurpose, evaluatedAt])
+  @@index([tenantId, evaluationContextType, evaluationContextId])
+  @@map("child_safety_policy_decisions")
+}

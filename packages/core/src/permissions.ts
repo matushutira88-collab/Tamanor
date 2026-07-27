@@ -86,6 +86,18 @@ export enum Permission {
   // Reviewer role (granted to Admin below + Owner via OWNER_ALL). Content-free; server-authoritative.
   ChildSafetyAnalyticsView = "child_safety:analytics_view",
   ChildSafetyAnalyticsExport = "child_safety:analytics_export",
+  // Child Safety Policy Engine (V1) — centralized, versioned, immutable-after-activation, tenant-scoped
+  // decision policy over canonical facts. `view`/`decision_view` read; `manage` creates/edits drafts;
+  // `submit` moves a draft to approval; `approve`/`reject` are the independent-approver gate; `activate`
+  // publishes an approved version (two-person control: the submitter cannot be the sole activator);
+  // `simulate` runs side-effect-free evaluation. Policy is DATA (never executable). Server-authoritative.
+  ChildSafetyPolicyView = "child_safety:policy_view",
+  ChildSafetyPolicyManage = "child_safety:policy_manage",
+  ChildSafetyPolicySubmit = "child_safety:policy_submit",
+  ChildSafetyPolicyApprove = "child_safety:policy_approve",
+  ChildSafetyPolicyActivate = "child_safety:policy_activate",
+  ChildSafetyPolicySimulate = "child_safety:policy_simulate",
+  ChildSafetyPolicyDecisionView = "child_safety:policy_decision_view",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -143,6 +155,14 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     // Analytics — Admin may view AND export aggregated metrics.
     Permission.ChildSafetyAnalyticsView,
     Permission.ChildSafetyAnalyticsExport,
+    // Policy Engine — Admin holds the full policy governance set (incl. approve + activate).
+    Permission.ChildSafetyPolicyView,
+    Permission.ChildSafetyPolicyManage,
+    Permission.ChildSafetyPolicySubmit,
+    Permission.ChildSafetyPolicyApprove,
+    Permission.ChildSafetyPolicyActivate,
+    Permission.ChildSafetyPolicySimulate,
+    Permission.ChildSafetyPolicyDecisionView,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -186,6 +206,11 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     // Analytics — the Safety Reviewer may VIEW the aggregated dashboard, but NOT export (export is
     // Owner/Admin only; deliberately omitted here).
     Permission.ChildSafetyAnalyticsView,
+    // Policy Engine — the Safety Reviewer may VIEW, SIMULATE, and read decisions, but NOT manage, submit,
+    // approve, or activate (governance is Owner/Admin; two-person control is enforced separately).
+    Permission.ChildSafetyPolicyView,
+    Permission.ChildSafetyPolicySimulate,
+    Permission.ChildSafetyPolicyDecisionView,
   ],
   [Role.Viewer]: [
     Permission.BrandView,

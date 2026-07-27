@@ -24,7 +24,8 @@
     "./child-safety-orchestration": "./src/child-safety-orchestration.ts",
     "./child-safety-review": "./src/child-safety-review.ts",
     "./child-safety-evidence": "./src/child-safety-evidence.ts",
-    "./child-safety-protection-plan": "./src/child-safety-protection-plan.ts"
+    "./child-safety-protection-plan": "./src/child-safety-protection-plan.ts",
+    "./child-safety-policy": "./src/child-safety-policy.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

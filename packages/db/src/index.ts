@@ -146,6 +146,8 @@ export * from "./child-safety-evidence";
 export * from "./child-safety-protection-plan";
 // Analytics & Trends V1 — read-only operational analytics over the canonical child-safety domain.
 export * from "./child-safety-analytics";
+// Policy Engine V1 — versioned, immutable-after-activation, fail-closed decision policy service.
+export * from "./child-safety-policy";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";
