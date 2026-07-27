@@ -38,13 +38,17 @@ revoking a role takes effect immediately and no one can gain access by controlli
    ```
    TAMANOR_BOOTSTRAP_PLATFORM_OWNER_EMAIL=info@tamanor.com
    ```
-3. Run the explicit, operator-invoked, idempotent command (never runs at startup or via any HTTP route):
-   ```
-   pnpm platform:bootstrap-owner
-   ```
-   It normalizes the email, requires **exactly one** matching user, assigns `owner`, and **audits** the
-   assignment. It fails safely if the env is unset (`no_env`), no user matches (`no_user`), or **multiple**
-   users match (`ambiguous_users` — no silent elevation).
+3. Run the explicit, operator-invoked, idempotent bootstrap (never runs at startup or via any HTTP route):
+   - **Local (dev DB only):** `pnpm platform:bootstrap-owner` (uses `.env.local` + localhost — does **not**
+     touch production).
+   - **Production (the live site):** the `production`-gated **`platform-owner-bootstrap` GitHub Actions
+     workflow** (`gh workflow run platform-owner-bootstrap.yml -f environment=production -f
+     owner_email=info@tamanor.com -f confirmation=BOOTSTRAP_PLATFORM_OWNER --ref main`). See the
+     [operations runbook](./operations-runbook.md) §1b (incl. the migration prerequisite).
+
+   Either path normalizes the email, requires **exactly one** matching **existing** user, assigns `owner`,
+   and **audits** the assignment. It fails safely if the env is unset (`no_env`), no user matches
+   (`no_user`), or **multiple** users match (`ambiguous_users` — no silent elevation). It never creates a user.
 4. After bootstrap, further administrators are added only by an existing **owner** through `/admin/administrators`.
 
 Do not place real secrets or production credentials in the repository.

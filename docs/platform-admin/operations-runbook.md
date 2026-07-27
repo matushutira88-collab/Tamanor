@@ -5,12 +5,51 @@ never place production secrets or credentials in the repository.
 
 ## 1. Grant the first platform owner (`info@tamanor.com`)
 
-1. Ensure the user has **signed up / signed in** (they must exist in the normal identity system).
-2. Set the env var (local/server config only): `TAMANOR_BOOTSTRAP_PLATFORM_OWNER_EMAIL=info@tamanor.com`.
-3. Run: `pnpm platform:bootstrap-owner` (idempotent; audited; fails safely on no-user/ambiguous).
-4. Confirm: sign in as that user and open `/admin`.
+> **Local vs production.** `pnpm platform:bootstrap-owner` uses `.env.local` + the **local** PostgreSQL
+> (port 5433) — it changes ONLY the local database and returns `no_user` when that email doesn't exist
+> locally. It **does not touch production**. To fix the live site, use the production workflow below.
 
-Alternatively, the low-level operational CLI `pnpm platform-role:set --email <e> --role <owner|admin|analyst|support|none> --confirm` can assign/remove any platform role directly (DB-access only; never an HTTP route).
+### 1a. Local (development only)
+
+1. Ensure the user has **signed up / signed in** (they must exist in the local identity system).
+2. Set `TAMANOR_BOOTSTRAP_PLATFORM_OWNER_EMAIL=info@tamanor.com` (local/server config only).
+3. Run `pnpm platform:bootstrap-owner` (idempotent; audited; fails safely on no-user/ambiguous).
+
+### 1b. Production (the live site — the real fix)
+
+Production DB changes go through **manual, `production`-environment-gated GitHub Actions** (never a shell
+into the DB, never secrets in the repo). Two prerequisites, in order:
+
+**Prerequisite — the production schema must be current.** The deployed code reads
+`User.platformAccessRevokedAt` (added by migration `20260824090000_platform_admin_privacy_analytics`). If the
+production database is behind, `resolvePlatformRole` fails closed and **every** user is denied at `/admin`. The
+`platform-owner-bootstrap` workflow refuses (exit 2) with a clear message until this migration is applied.
+Apply pending accepted migrations with the existing **`production-database-migrate`** workflow (it is armed to
+one specific `expected_migration` at a time and requires the migration to be the sole pending one — set
+`EXPECTED_PRODUCTION_MIGRATION` in `packages/db/scripts/family-activation.ts` to each pending migration in
+order, per the established process).
+
+**Assign the owner.** Run the audited, production-gated bootstrap:
+
+- GitHub → Actions → **platform-owner-bootstrap** → Run workflow, or:
+  ```
+  gh workflow run platform-owner-bootstrap.yml -f environment=production \
+    -f owner_email=info@tamanor.com -f confirmation=BOOTSTRAP_PLATFORM_OWNER --ref main
+  ```
+- It runs behind the `production` GitHub Environment (approve the deployment when prompted), reads
+  `secrets.PRODUCTION_DATABASE_URL` (never printed), asserts the target is real production, verifies the schema
+  is migrated, then calls the idempotent, audited `bootstrapPlatformOwnerFromEnv` (requires an **existing**
+  user — **never creates one**). It prints a bounded confirmation: `platformRole=owner`,
+  `platformAccessRevokedAt=null`, `activeOwners≥1`, `auditWritten=true`.
+- The email is used ONLY for this one-time/idempotent assignment — **never** as an ongoing authorization
+  condition (authorization stays entirely on `User.platformRole`, re-checked fresh server-side).
+
+**After success**, `info@tamanor.com` must **sign out and sign back in** (the fresh server-side role re-check
+picks up owner) and open `https://tamanor.com/admin`.
+
+The low-level `pnpm platform-role:set --email <e> --role <owner|admin|analyst|support|none> --confirm` remains
+a DB-access-only operational CLI (never an HTTP route), but the production owner fix should use the gated
+workflow above.
 
 ## 2. Add / change / remove other administrators
 

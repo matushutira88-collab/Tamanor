@@ -1,0 +1,74 @@
+name: platform-owner-bootstrap
+
+# MANUAL, audited production platform-owner bootstrap. Idempotently assigns the CONFIGURED email as
+# PLATFORM_OWNER via the unit-tested bootstrapPlatformOwnerFromEnv — it requires an EXISTING user, never
+# creates one, and never adds an email-based authorization path (the email is used ONLY for this one-time/
+# idempotent role assignment; ongoing authorization stays on User.platformRole). Gated behind the GitHub
+# `production` Environment (protection rules + required reviewers) and explicit arming inputs. Never triggers
+# on push/PR. DATABASE_URL is read ONLY from secrets.PRODUCTION_DATABASE_URL and is never printed. This is NOT
+# a public HTTP endpoint and creates no persistent backdoor.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (only 'production' is accepted)"
+        required: true
+        type: choice
+        options:
+          - production
+      owner_email:
+        description: "Email of the EXISTING production user to make PLATFORM_OWNER"
+        required: true
+        default: "info@tamanor.com"
+        type: string
+      confirmation:
+        description: "Type BOOTSTRAP_PLATFORM_OWNER to arm"
+        required: true
+        type: string
+
+# Never allow two owner-bootstrap runs at once.
+concurrency:
+  group: platform-owner-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    # GitHub Environment `production` — configure required reviewers + protection rules so this job pauses
+    # for manual approval before any step runs.
+    environment: production
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      PRODUCTION_DATABASE_HOST_FINGERPRINT: ${{ secrets.PRODUCTION_DATABASE_HOST_FINGERPRINT }}
+      TAMANOR_BOOTSTRAP_PLATFORM_OWNER_EMAIL: ${{ inputs.owner_email }}
+      BOOTSTRAP_ENVIRONMENT: ${{ inputs.environment }}
+      BOOTSTRAP_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Refuse any non-main ref
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Refusing: this workflow may only run on main (got ${GITHUB_REF})."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @guardora/db exec prisma generate
+
+      - name: Assign + verify platform owner (fail-closed; never prints the URL)
+        run: pnpm --filter @guardora/db exec tsx scripts/platform-owner-bootstrap.cli.ts
