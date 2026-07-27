@@ -226,7 +226,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
             <div>
               <p style={{ ...eyebrow, transition: "color .4s" }}>{h.eyebrow}</p>
               <h1 style={{ margin: "22px 0 0", fontSize: "clamp(38px,5.6vw,64px)", lineHeight: 1.0, fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>
-                {h.l1}<br /><span style={{ background: `linear-gradient(92deg, ${acc.deep}, ${acc.a2})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{h.l2}</span>
+                {h.l1}<br /><span style={{ color: acc.deep }}>{h.l2}</span>
               </h1>
               <p style={{ margin: "24px 0 0", maxWidth: "46ch", fontSize: 16.5, lineHeight: 1.72, color: C.dim }}>{h.lead}</p>
               <div style={{ marginTop: 28, display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -293,7 +293,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
         <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 26px" }}>
           <div style={{ maxWidth: "56ch", margin: "0 auto 46px" }}>
             <p style={{ ...eyebrow, color: C.faint, display: "inline-flex", alignItems: "center", gap: 11 }}>{t.orbEyebrow}</p>
-            <h2 style={{ margin: "12px 0 0", fontSize: "clamp(28px,3.8vw,42px)", fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>{t.orbA} <span style={{ fontStyle: "italic", background: `linear-gradient(90deg, ${BIZ.a}, ${FAM.a})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{t.orbB}</span>{locale === "en" ? " who matters." : ""}</h2>
+            <h2 style={{ margin: "12px 0 0", fontSize: "clamp(28px,3.8vw,42px)", fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>{t.orbA} <span style={{ fontStyle: "italic", color: BIZ.deep }}>{t.orbB}</span>{locale === "en" ? " who matters." : ""}</h2>
             <p style={{ margin: "16px auto 0", color: C.dim, fontSize: 16 }}>{t.orbBody}</p>
           </div>
           <div className="tmr-orbit" style={{ position: "relative", width: "min(470px,100%)", margin: "0 auto", aspectRatio: "1 / 1" }}>
@@ -320,7 +320,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 24, flexWrap: "wrap", marginBottom: 34 }}>
             <div>
               <p style={{ ...eyebrow, color: C.faint }}>{t.engEyebrow}</p>
-              <h2 style={{ margin: "12px 0 0", fontSize: "clamp(26px,3.4vw,38px)", fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>{t.engA} <span style={{ fontStyle: "italic", background: `linear-gradient(90deg, ${BIZ.a}, ${FAM.a})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{t.engB}</span></h2>
+              <h2 style={{ margin: "12px 0 0", fontSize: "clamp(26px,3.4vw,38px)", fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>{t.engA} <span style={{ fontStyle: "italic", color: BIZ.deep }}>{t.engB}</span></h2>
             </div>
             <p style={{ maxWidth: "38ch", color: C.dim, fontSize: 14, lineHeight: 1.7 }}>{t.engSub}</p>
           </div>
@@ -342,7 +342,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 22 }}>
             <div>
               <p style={{ ...eyebrow, color: C.faint }}>{t.prEyebrow}</p>
-              <h2 style={{ margin: "12px 0 0", fontSize: "clamp(26px,3.6vw,40px)", fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>{t.prA} <span style={{ fontStyle: "italic", background: `linear-gradient(90deg, ${BIZ.a}, ${FAM.a})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{t.prB}</span></h2>
+              <h2 style={{ margin: "12px 0 0", fontSize: "clamp(26px,3.6vw,40px)", fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>{t.prA} <span style={{ fontStyle: "italic", color: BIZ.deep }}>{t.prB}</span></h2>
             </div>
             <div style={{ display: "inline-flex", border: `1px solid ${C.line2}`, borderRadius: 999, padding: 4, background: "#fff" }}>
               {[{ y: false, l: t.monthly }, { y: true, l: t.yearly }].map((o) => (
@@ -406,7 +406,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
             ))}
           </div>
           <h2 style={{ margin: "0 auto", maxWidth: "20ch", fontSize: "clamp(30px,4.6vw,52px)", lineHeight: 1.03, fontWeight: 800, letterSpacing: "-0.035em", fontFamily: disp }}>
-            {t.finalA} <span style={{ fontStyle: "italic", background: `linear-gradient(90deg, ${BIZ.a2}, ${BIZ.a})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{t.finalB}</span>.<br />{t.finalC} <span style={{ fontStyle: "italic", background: `linear-gradient(90deg, ${FAM.a2}, ${FAM.a})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{t.finalD}</span>.
+            {t.finalA} <span style={{ fontStyle: "italic", color: BIZ.a2 }}>{t.finalB}</span>.<br />{t.finalC} <span style={{ fontStyle: "italic", color: FAM.a2 }}>{t.finalD}</span>.
           </h2>
           <p style={{ margin: "20px auto 0", maxWidth: "46ch", color: C.dim, fontSize: 16 }}>{t.finalBody}</p>
           <div style={{ marginTop: 32, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
