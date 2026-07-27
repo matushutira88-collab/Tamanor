@@ -148,6 +148,8 @@ export * from "./child-safety-protection-plan";
 export * from "./child-safety-analytics";
 // Policy Engine V1 — versioned, immutable-after-activation, fail-closed decision policy service.
 export * from "./child-safety-policy";
+// Integration Signal Protocol V1 — partner registry + Ed25519-authenticated signal gateway.
+export * from "./child-safety-integration";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

@@ -71,6 +71,8 @@ export * from "./child-safety-protection-plan";
 export * from "./child-safety-analytics";
 // Policy Engine V1 — deterministic, versioned, bounded decision engine over canonical facts (data, not code).
 export * from "./child-safety-policy";
+// Integration Signal Protocol V1 — partner→canonical protocol vocabulary, strict validation, canonicalization.
+export * from "./child-safety-integration";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";

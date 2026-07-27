@@ -2668,6 +2668,7 @@ model ProtectedProfile {
   safetySignalDeliveries          SafetySignalDelivery[] // CS-C5
   familyGuardianInvitations       FamilyGuardianInvitation[] // CS-C8
   childSafetyIncidents            ChildSafetyIncident[] // CS-C15C
+  childSafetyIntegrationSubjects  ChildSafetyIntegrationSubject[] // Integration V1 — authorized subject links
 
   @@unique([id, tenantId])
   @@index([tenantId, archivedAt])
@@ -3503,4 +3504,152 @@ model ChildSafetyPolicyDecisionRecord {
   @@index([tenantId, policyPurpose, evaluatedAt])
   @@index([tenantId, evaluationContextType, evaluationContextId])
   @@map("child_safety_policy_decisions")
+}
+
+/// Integration Signal Protocol V1 — an authorized partner platform. Holds NO credentials/keys (keys live on
+/// installations). SYSTEM table (ALL privileges REVOKED from tamanor_app); composite (id, tenantId) FKs.
+model ChildSafetyIntegrationPartner {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  partnerKey            String // tenant-unique slug
+  displayName           String
+  status                String    @default("active") // active | suspended | retired
+  createdByMembershipId String
+  createdAt             DateTime  @default(now())
+  suspendedAt           DateTime?
+  retiredAt             DateTime?
+
+  applications  ChildSafetyIntegrationApplication[]
+  installations ChildSafetyIntegrationInstallation[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, partnerKey])
+  @@index([tenantId, status])
+  @@map("child_safety_integration_partners")
+}
+
+/// Integration V1 — a partner application (environment + protocol range + bounded capability allow-list).
+model ChildSafetyIntegrationApplication {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  partnerId           String
+  applicationKey      String
+  displayName         String
+  environment         String   @default("sandbox") // sandbox | production
+  status              String   @default("active") // active | suspended
+  protocolMinVersion  String   @default("1.0")
+  protocolMaxVersion  String   @default("1.0")
+  allowedCapabilities String // comma-joined allow-listed capability codes (never free JSON)
+  createdAt           DateTime @default(now())
+
+  partner       ChildSafetyIntegrationPartner        @relation(fields: [partnerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  installations ChildSafetyIntegrationInstallation[]
+
+  @@unique([id, tenantId])
+  @@unique([partnerId, applicationKey])
+  @@index([tenantId, status])
+  @@map("child_safety_integration_applications")
+}
+
+/// Integration V1 — a per-deployment installation identity (the signing identity; keys attach here).
+model ChildSafetyIntegrationInstallation {
+  id              String    @id @default(cuid())
+  tenantId        String
+  partnerId       String
+  applicationId   String
+  installationKey String
+  status          String    @default("active") // active | suspended | revoked
+  createdAt       DateTime  @default(now())
+  lastSeenAt      DateTime?
+  revokedAt       DateTime?
+
+  partner     ChildSafetyIntegrationPartner       @relation(fields: [partnerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  application ChildSafetyIntegrationApplication   @relation(fields: [applicationId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  keys        ChildSafetyIntegrationKey[]
+  receipts    ChildSafetySignalReceipt[]
+  subjects    ChildSafetyIntegrationSubject[]
+
+  @@unique([id, tenantId])
+  @@unique([applicationId, installationKey])
+  @@index([tenantId, status])
+  @@map("child_safety_integration_installations")
+}
+
+/// Integration V1 — a PUBLIC verification key for an installation (Ed25519). Tamanor stores ONLY public
+/// keys — a partner's private key is NEVER uploaded/stored/logged. Rotation is overlapping-window safe.
+model ChildSafetyIntegrationKey {
+  id             String    @id @default(cuid())
+  tenantId       String
+  installationId String
+  keyVersion     Int
+  algorithm      String    @default("ed25519")
+  publicKey      String // base64 SPKI DER — PUBLIC key only
+  fingerprint    String // sha256 of the public key (bounded, non-secret)
+  status         String    @default("active") // active | rotating | revoked | suspended
+  validFrom      DateTime  @default(now())
+  validUntil     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  installation ChildSafetyIntegrationInstallation @relation(fields: [installationId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([installationId, keyVersion])
+  @@index([tenantId, installationId, status])
+  @@map("child_safety_integration_keys")
+}
+
+/// Integration V1 — an authorized link from an opaque partner-scoped pseudonymous subject to a Tamanor
+/// ProtectedProfile. Established out-of-band by an authorized user (never by the partner), so a partner
+/// signal can be mapped to a canonical SafetySignal WITHOUT the partner ever learning the profile identity.
+model ChildSafetyIntegrationSubject {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  installationId        String
+  pseudonymousSubjectId String // opaque, partner-scoped
+  protectedProfileId    String
+  createdByMembershipId String
+  createdAt             DateTime @default(now())
+
+  installation     ChildSafetyIntegrationInstallation @relation(fields: [installationId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  protectedProfile ProtectedProfile                   @relation(fields: [protectedProfileId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([installationId, pseudonymousSubjectId])
+  @@index([tenantId, installationId])
+  @@map("child_safety_integration_subjects")
+}
+
+/// Integration V1 — the APPEND-ONLY, CONTENT-FREE receipt/audit of a gateway signal submission. Stores NO
+/// raw request body, signature value, private key, or message content — only bounded references, hashes,
+/// the result code, and canonical/policy links. Unique (installation, idempotencyKey) + (installation,
+/// nonceHash) are the concurrency/replay correctness boundary. SYSTEM table (REVOKED from tamanor_app).
+model ChildSafetySignalReceipt {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  partnerId          String
+  applicationId      String
+  installationId     String
+  externalEventId    String
+  idempotencyKey     String
+  nonceHash          String
+  requestFingerprint String
+  protocolVersion    String
+  keyVersion         Int?
+  resultCode         String // IntegrationErrorCode
+  failureCategory    String?
+  canonicalSignalId  String?
+  policyDecisionId   String?
+  receivedAt         DateTime  @default(now())
+  processedAt        DateTime?
+  expiresAt          DateTime
+
+  installation ChildSafetyIntegrationInstallation @relation(fields: [installationId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([installationId, idempotencyKey])
+  @@unique([installationId, nonceHash])
+  @@index([tenantId, installationId, receivedAt])
+  @@index([tenantId, resultCode, receivedAt])
+  @@map("child_safety_signal_receipts")
 }

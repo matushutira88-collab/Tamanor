@@ -98,6 +98,16 @@ export enum Permission {
   ChildSafetyPolicyActivate = "child_safety:policy_activate",
   ChildSafetyPolicySimulate = "child_safety:policy_simulate",
   ChildSafetyPolicyDecisionView = "child_safety:policy_decision_view",
+  // Child Safety Integration Signal Protocol + Partner SDK (V1) — authorized partner platforms send minimal,
+  // content-free structured safety signals. These USER-session capabilities gate the internal registry/
+  // sandbox/receipts UI; the partner gateway itself authenticates by per-installation Ed25519 signature
+  // (NOT a user session). `keys_manage` (public-key registration/rotation/revocation) is the most sensitive
+  // and is Owner/Admin only. Tamanor never receives raw content, credentials, tokens, or private keys.
+  ChildSafetyIntegrationView = "child_safety:integration_view",
+  ChildSafetyIntegrationManage = "child_safety:integration_manage",
+  ChildSafetyIntegrationKeysManage = "child_safety:integration_keys_manage",
+  ChildSafetyIntegrationReceiptsView = "child_safety:integration_receipts_view",
+  ChildSafetyIntegrationSandboxUse = "child_safety:integration_sandbox_use",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -163,6 +173,12 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ChildSafetyPolicyActivate,
     Permission.ChildSafetyPolicySimulate,
     Permission.ChildSafetyPolicyDecisionView,
+    // Integration — Admin holds the full integration governance set (incl. key management).
+    Permission.ChildSafetyIntegrationView,
+    Permission.ChildSafetyIntegrationManage,
+    Permission.ChildSafetyIntegrationKeysManage,
+    Permission.ChildSafetyIntegrationReceiptsView,
+    Permission.ChildSafetyIntegrationSandboxUse,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -211,6 +227,11 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ChildSafetyPolicyView,
     Permission.ChildSafetyPolicySimulate,
     Permission.ChildSafetyPolicyDecisionView,
+    // Integration — the Safety Reviewer may VIEW the registry, view receipts, and use the local sandbox,
+    // but NOT manage partners/applications/installations or keys (governance is Owner/Admin).
+    Permission.ChildSafetyIntegrationView,
+    Permission.ChildSafetyIntegrationReceiptsView,
+    Permission.ChildSafetyIntegrationSandboxUse,
   ],
   [Role.Viewer]: [
     Permission.BrandView,
