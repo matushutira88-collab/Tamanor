@@ -3,7 +3,7 @@ import { requireVerifiedSession } from "@/server/auth";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, StatCard, Badge, EmptyState } from "@/components/dashboard/ui";
 import {
-  canViewChildSafetyReview, parseIncidentSort, ChildSafetyIncidentListFilter,
+  canViewChildSafetyReview, canViewChildSafetyAnalytics, parseIncidentSort, ChildSafetyIncidentListFilter,
 } from "@guardora/core";
 import {
   listChildSafetyIncidents, getChildSafetyReviewerDashboard, getProtectionPlanDashboard,
@@ -52,7 +52,12 @@ export default async function ReviewerConsolePage({ searchParams }: { searchPara
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="🛡️" title={t.title} description={t.subtitle} />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PageHeader eyebrow="🛡️" title={t.title} description={t.subtitle} />
+        {canViewChildSafetyAnalytics(session.role) ? (
+          <Link href="/dashboard/child-safety/reviewer/analytics" className="rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-medium">📊 {t.analyticsLink}</Link>
+        ) : null}
+      </div>
 
       {/* Dashboard cards */}
       <section aria-label={t.title} className="grid grid-cols-2 gap-3 md:grid-cols-4">

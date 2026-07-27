@@ -79,6 +79,13 @@ export enum Permission {
   // creates/activates/completes plans and manages actions. Internal-only; no autonomous external effect.
   ChildSafetyProtectionPlanView = "child_safety:protection_plan_view",
   ChildSafetyProtectionPlanManage = "child_safety:protection_plan_manage",
+  // Child Safety Analytics & Trends (V1) — INTERNAL OPERATIONAL analytics over the SAME canonical data
+  // (no new analytical truth, no child profiling/scoring/ranking, no reviewer leaderboard). `view` opens
+  // the aggregated, privacy-suppressed dashboard (Owner / Administrator / Safety Reviewer). `export` (CSV
+  // of aggregated metrics ONLY) is ELEVATED to Owner / Administrator — deliberately withheld from the
+  // Reviewer role (granted to Admin below + Owner via OWNER_ALL). Content-free; server-authoritative.
+  ChildSafetyAnalyticsView = "child_safety:analytics_view",
+  ChildSafetyAnalyticsExport = "child_safety:analytics_export",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -133,6 +140,9 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ChildSafetyEvidenceManage,
     Permission.ChildSafetyProtectionPlanView,
     Permission.ChildSafetyProtectionPlanManage,
+    // Analytics — Admin may view AND export aggregated metrics.
+    Permission.ChildSafetyAnalyticsView,
+    Permission.ChildSafetyAnalyticsExport,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -173,6 +183,9 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ChildSafetyEvidenceManage,
     Permission.ChildSafetyProtectionPlanView,
     Permission.ChildSafetyProtectionPlanManage,
+    // Analytics — the Safety Reviewer may VIEW the aggregated dashboard, but NOT export (export is
+    // Owner/Admin only; deliberately omitted here).
+    Permission.ChildSafetyAnalyticsView,
   ],
   [Role.Viewer]: [
     Permission.BrandView,

@@ -3160,6 +3160,9 @@ model ChildSafetyIncident {
   @@index([tenantId, protectedProfileId, riskFamily, status, lastSignalAt])
   @@index([tenantId, status, escalationState, updatedAt])
   @@index([tenantId, assignedReviewerId, status])
+  // Analytics & Trends V1 — bounded-range time-series + overview aggregation (created / resolved-at).
+  @@index([tenantId, createdAt])
+  @@index([tenantId, closedAt])
   @@map("child_safety_incidents")
 }
 
@@ -3202,6 +3205,8 @@ model ChildSafetyEscalation {
 
   @@unique([incidentId, escalationType])
   @@index([tenantId, incidentId])
+  // Analytics & Trends V1 — bounded-range escalation time-series + overview aggregation.
+  @@index([tenantId, triggeredAt])
   @@map("child_safety_escalations")
 }
 
@@ -3332,6 +3337,8 @@ model ChildSafetyProtectionPlan {
 
   @@unique([id, tenantId])
   @@index([tenantId, incidentId, status])
+  // Analytics & Trends V1 — bounded-range protection-plan time-series + overview aggregation.
+  @@index([tenantId, createdAt])
   @@map("child_safety_protection_plans")
 }
 

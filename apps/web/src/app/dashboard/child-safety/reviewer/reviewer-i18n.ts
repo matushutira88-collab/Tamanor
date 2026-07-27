@@ -16,7 +16,7 @@ export function isReviewActionErrorCode(v: string): v is ReviewActionErrorCode {
 }
 
 export interface ReviewerCopy {
-  title: string; subtitle: string;
+  title: string; subtitle: string; analyticsLink: string;
   unauthorized: { badge: string; title: string; body: string; cta: string };
   loading: string; errorTitle: string; errorBody: string; retry: string;
   cards: { open: string; escalated: string; critical: string; resolvedToday: string; avgResponse: string; avgResolution: string; signals24h: string; deliveries: string; topFamilies: string; none: string };
@@ -76,7 +76,7 @@ const targetDe = { under_review: "Als in Prüfung markieren", waiting: "Als wart
 
 export const REVIEWER_COPY: Record<Locale, ReviewerCopy> = {
   en: {
-    title: "Child Safety Reviewer Console", subtitle: "Investigate and act on canonical child-safety incidents.",
+    title: "Child Safety Reviewer Console", subtitle: "Investigate and act on canonical child-safety incidents.", analyticsLink: "Analytics",
     unauthorized: { badge: "403 · Access denied", title: "Reviewer access required", body: "This console is limited to workspace owners, administrators, and safety reviewers.", cta: "Back to dashboard" },
     loading: "Loading…", errorTitle: "Something went wrong", errorBody: "The reviewer console couldn't load. Please try again.", retry: "Try again",
     cards: { open: "Open incidents", escalated: "Escalated", critical: "Critical", resolvedToday: "Resolved today", avgResponse: "Avg response", avgResolution: "Avg resolution", signals24h: "Signals (24h)", deliveries: "Guardian deliveries", topFamilies: "Top risk families", none: "None" },
@@ -114,7 +114,7 @@ export const REVIEWER_COPY: Record<Locale, ReviewerCopy> = {
   },
   },
   sk: {
-    title: "Konzola recenzenta ochrany detí", subtitle: "Prešetrujte a konajte pri kanonických incidentoch ochrany detí.",
+    title: "Konzola recenzenta ochrany detí", subtitle: "Prešetrujte a konajte pri kanonických incidentoch ochrany detí.", analyticsLink: "Analytika",
     unauthorized: { badge: "403 · Prístup zamietnutý", title: "Vyžaduje sa prístup recenzenta", body: "Táto konzola je len pre vlastníkov, administrátorov a bezpečnostných recenzentov.", cta: "Späť na dashboard" },
     loading: "Načítava sa…", errorTitle: "Niečo sa pokazilo", errorBody: "Konzolu recenzenta sa nepodarilo načítať. Skúste to znova.", retry: "Skúsiť znova",
     cards: { open: "Otvorené incidenty", escalated: "Eskalované", critical: "Kritické", resolvedToday: "Dnes vyriešené", avgResponse: "Priem. reakcia", avgResolution: "Priem. vyriešenie", signals24h: "Signály (24h)", deliveries: "Doručenia opatrovníkom", topFamilies: "Najčastejšie rodiny rizík", none: "Žiadne" },
@@ -152,7 +152,7 @@ export const REVIEWER_COPY: Record<Locale, ReviewerCopy> = {
   },
   },
   de: {
-    title: "Kinderschutz-Prüferkonsole", subtitle: "Kanonische Kinderschutz-Vorfälle untersuchen und bearbeiten.",
+    title: "Kinderschutz-Prüferkonsole", subtitle: "Kanonische Kinderschutz-Vorfälle untersuchen und bearbeiten.", analyticsLink: "Analysen",
     unauthorized: { badge: "403 · Zugriff verweigert", title: "Prüferzugriff erforderlich", body: "Diese Konsole ist auf Workspace-Eigentümer, Administratoren und Sicherheitsprüfer beschränkt.", cta: "Zurück zum Dashboard" },
     loading: "Wird geladen…", errorTitle: "Etwas ist schiefgelaufen", errorBody: "Die Prüferkonsole konnte nicht geladen werden. Bitte erneut versuchen.", retry: "Erneut versuchen",
     cards: { open: "Offene Vorfälle", escalated: "Eskaliert", critical: "Kritisch", resolvedToday: "Heute gelöst", avgResponse: "Ø Reaktion", avgResolution: "Ø Lösung", signals24h: "Signale (24h)", deliveries: "Zustellungen", topFamilies: "Top-Risikofamilien", none: "Keine" },

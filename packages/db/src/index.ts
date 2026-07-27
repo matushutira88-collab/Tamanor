@@ -144,6 +144,8 @@ export * from "./deterministic-zip";
 export * from "./child-safety-evidence";
 // Protection Plans V1 — internal protective-action coordination over canonical incidents.
 export * from "./child-safety-protection-plan";
+// Analytics & Trends V1 — read-only operational analytics over the canonical child-safety domain.
+export * from "./child-safety-analytics";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

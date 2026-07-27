@@ -67,6 +67,8 @@ export * from "./child-safety-orchestration";
 export * from "./child-safety-review";
 export * from "./child-safety-evidence";
 export * from "./child-safety-protection-plan";
+// Analytics & Trends V1 — internal operational analytics vocabulary/policy (suppression, buckets, CSV).
+export * from "./child-safety-analytics";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";
