@@ -30,7 +30,10 @@ export default async function IntegrationsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader eyebrow="🔌" title={t.title} description={t.subtitle} />
-        <Link href="/dashboard/child-safety/reviewer" className="rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-medium">{t.backToConsole}</Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/dashboard/child-safety/integrations/pilots" className="rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-medium">🚦 Partner Pilots</Link>
+          <Link href="/dashboard/child-safety/reviewer" className="rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-medium">{t.backToConsole}</Link>
+        </div>
       </div>
 
       <div className="rounded-xl border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-4 py-2 text-xs font-semibold text-[var(--color-warn)]">🧪 {t.sandboxBanner}</div>

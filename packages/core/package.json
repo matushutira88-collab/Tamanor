@@ -26,7 +26,8 @@
     "./child-safety-evidence": "./src/child-safety-evidence.ts",
     "./child-safety-protection-plan": "./src/child-safety-protection-plan.ts",
     "./child-safety-policy": "./src/child-safety-policy.ts",
-    "./child-safety-integration": "./src/child-safety-integration.ts"
+    "./child-safety-integration": "./src/child-safety-integration.ts",
+    "./child-safety-partner-pilot": "./src/child-safety-partner-pilot.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -243,17 +243,17 @@ model User {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
-  memberships             Membership[]
-  oauthAccounts           OAuthAccount[]
-  emailVerificationTokens EmailVerificationToken[]
-  passwordResetTokens     PasswordResetToken[]
-  proposed                ModerationDecision[]     @relation("DecisionProposer")
-  reviewed                ModerationDecision[]     @relation("DecisionReviewer")
-  auditLogs               AuditLog[]
-  sessions                UserSession[]
+  memberships                       Membership[]
+  oauthAccounts                     OAuthAccount[]
+  emailVerificationTokens           EmailVerificationToken[]
+  passwordResetTokens               PasswordResetToken[]
+  proposed                          ModerationDecision[]       @relation("DecisionProposer")
+  reviewed                          ModerationDecision[]       @relation("DecisionReviewer")
+  auditLogs                         AuditLog[]
+  sessions                          UserSession[]
   // V1.42 — inbox assignment + note authorship (both SetNull on user delete).
-  assignedInboxItems      ReputationItem[]         @relation("InboxAssignee")
-  inboxNotes              InboxNote[]              @relation("InboxNoteAuthor")
+  assignedInboxItems                ReputationItem[]           @relation("InboxAssignee")
+  inboxNotes                        InboxNote[]                @relation("InboxNoteAuthor")
   // CS-C8 — Family guardian invitations this user accepted (SetNull on user delete).
   familyGuardianInvitationsAccepted FamilyGuardianInvitation[]
 
@@ -608,7 +608,7 @@ model Membership {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // CS-C1 — a guardian membership may hold family guardian relationships (Family workspaces only).
-  guardianRelationships GuardianRelationship[]
+  guardianRelationships         GuardianRelationship[]
   // CS-C8 — invitations this membership has sent (Family workspaces only).
   familyGuardianInvitationsSent FamilyGuardianInvitation[]
 
@@ -3237,14 +3237,14 @@ model ChildSafetyReviewerNote {
 /// + the shared audit log. Content-free: opaque ids + bounded status/reason strings only. Immutable
 /// (no update/delete). SYSTEM table — ALL privileges REVOKED from tamanor_app; composite (id, tenantId) FK.
 model ChildSafetyReviewEvent {
-  id           String   @id @default(cuid())
-  tenantId     String
-  incidentId   String
-  eventType    String // ChildSafetyReviewEventType: assigned|unassigned|note_added|status_changed|reopened
-  actorUserId  String // the reviewer who performed the action (opaque reference)
-  fromValue    String? // previous status / previous assignee (bounded, content-free)
-  toValue      String? // new status / new assignee / note id (bounded, content-free)
-  createdAt    DateTime @default(now())
+  id          String   @id @default(cuid())
+  tenantId    String
+  incidentId  String
+  eventType   String // ChildSafetyReviewEventType: assigned|unassigned|note_added|status_changed|reopened
+  actorUserId String // the reviewer who performed the action (opaque reference)
+  fromValue   String? // previous status / previous assignee (bounded, content-free)
+  toValue     String? // new status / new assignee / note id (bounded, content-free)
+  createdAt   DateTime @default(now())
 
   incident ChildSafetyIncident @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
@@ -3283,7 +3283,7 @@ model ChildSafetyEvidence {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  incident      ChildSafetyIncident              @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  incident      ChildSafetyIncident               @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
   custodyEvents ChildSafetyEvidenceCustodyEvent[]
 
   @@unique([id, tenantId])
@@ -3319,20 +3319,20 @@ model ChildSafetyEvidenceCustodyEvent {
 /// (owner-role systemDb only) — ALL privileges REVOKED from tamanor_app; composite (id, tenantId) FK makes
 /// cross-tenant impossible. Content-free except the plan's coarse status/priority/closeReason code.
 model ChildSafetyProtectionPlan {
-  id          String    @id @default(cuid())
-  tenantId    String
-  incidentId  String
-  status      String    @default("draft") // ChildSafetyProtectionPlanStatus
-  priority    String    @default("normal") // ChildSafetyProtectionPriority
-  createdBy   String
-  activatedAt DateTime?
-  completedAt DateTime?
+  id           String    @id @default(cuid())
+  tenantId     String
+  incidentId   String
+  status       String    @default("draft") // ChildSafetyProtectionPlanStatus
+  priority     String    @default("normal") // ChildSafetyProtectionPriority
+  createdBy    String
+  activatedAt  DateTime?
+  completedAt  DateTime?
   closedReason String? // bounded code (e.g. resolved | superseded | not_required) — never free text
-  revision    Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  revision     Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  incident ChildSafetyIncident            @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  incident ChildSafetyIncident                @relation(fields: [incidentId, tenantId], references: [id, tenantId], onDelete: Cascade)
   actions  ChildSafetyProtectionAction[]
   events   ChildSafetyProtectionActionEvent[]
 
@@ -3521,6 +3521,8 @@ model ChildSafetyIntegrationPartner {
 
   applications  ChildSafetyIntegrationApplication[]
   installations ChildSafetyIntegrationInstallation[]
+  pilots        ChildSafetyPartnerPilot[]
+  contacts      ChildSafetyPartnerContact[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, partnerKey])
@@ -3544,6 +3546,7 @@ model ChildSafetyIntegrationApplication {
 
   partner       ChildSafetyIntegrationPartner        @relation(fields: [partnerId, tenantId], references: [id, tenantId], onDelete: Cascade)
   installations ChildSafetyIntegrationInstallation[]
+  pilots        ChildSafetyPartnerPilot[]
 
   @@unique([id, tenantId])
   @@unique([partnerId, applicationKey])
@@ -3563,8 +3566,8 @@ model ChildSafetyIntegrationInstallation {
   lastSeenAt      DateTime?
   revokedAt       DateTime?
 
-  partner     ChildSafetyIntegrationPartner       @relation(fields: [partnerId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  application ChildSafetyIntegrationApplication   @relation(fields: [applicationId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  partner     ChildSafetyIntegrationPartner     @relation(fields: [partnerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  application ChildSafetyIntegrationApplication @relation(fields: [applicationId, tenantId], references: [id, tenantId], onDelete: Cascade)
   keys        ChildSafetyIntegrationKey[]
   receipts    ChildSafetySignalReceipt[]
   subjects    ChildSafetyIntegrationSubject[]
@@ -3652,4 +3655,200 @@ model ChildSafetySignalReceipt {
   @@index([tenantId, installationId, receivedAt])
   @@index([tenantId, resultCode, receivedAt])
   @@map("child_safety_signal_receipts")
+}
+
+/// Partner Pilot Operations V1 — the controlled, auditable partner-onboarding + pilot lifecycle for a partner
+/// application. Deterministic server-side state machine (no client-selected status; optimistic concurrency via
+/// `version`). Holds ONLY bounded operational metadata + server-approved scope BANDS — NO raw content, NO
+/// credentials, NO private keys, NO child identity, NO guardian data, NO arbitrary payload JSON. Scope lists
+/// are bounded comma-joined codes. SYSTEM table (ALL privileges REVOKED from tamanor_app); composite (id,
+/// tenantId) FKs. At most one non-terminal pilot per application is enforced in the service layer.
+model ChildSafetyPartnerPilot {
+  id            String @id @default(cuid())
+  tenantId      String
+  partnerId     String
+  applicationId String
+  environment   String @default("sandbox") // sandbox | production
+  status        String @default("DRAFT") // PilotStatus
+  version       Int    @default(1) // optimistic concurrency
+
+  requestedCapabilities             String  @default("") // comma-joined capability codes
+  approvedCapabilities              String  @default("")
+  expectedMonthlySignalVolumeBand   String? // PilotVolumeBand (requested)
+  expectedPeakRequestsPerMinuteBand String? // PilotRateBand (requested)
+  monthlyVolumeBand                 String? // approved band (config)
+  peakRateBand                      String? // approved band (config)
+  intendedRegions                   String  @default("") // comma-joined region codes (requested)
+  intendedAgeBands                  String  @default("") // comma-joined age bands (requested)
+  intendedRiskCategories            String  @default("") // comma-joined partner risk types (requested)
+  approvedRegions                   String  @default("") // approved scope (gateway-enforced where relevant)
+  approvedAgeBands                  String  @default("")
+  approvedRiskCategories            String  @default("")
+  allowedInstallationIds            String  @default("") // comma-joined; empty = all installations of the application
+
+  privacyAssessmentStatus    String    @default("NOT_STARTED") // PilotAssessmentStatus
+  securityAssessmentStatus   String    @default("NOT_STARTED")
+  legalAuthorizationStatus   String    @default("NOT_STARTED")
+  operationalReadinessStatus String    @default("NOT_STARTED")
+  readinessState             String    @default("NOT_EVALUATED") // ReadinessState
+  readinessBlocking          String    @default("") // comma-joined blocking codes (last evaluation)
+  readinessEvaluatedAt       DateTime?
+
+  pilotStartDate  DateTime?
+  pilotReviewDate DateTime?
+  pilotEndDate    DateTime?
+
+  requestedAt           DateTime  @default(now())
+  requestedByUserId     String
+  reviewedAt            DateTime?
+  reviewedByUserId      String?
+  approvedAt            DateTime?
+  approvedByUserId      String?
+  activatedAt           DateTime?
+  activatedByUserId     String?
+  suspendedAt           DateTime?
+  suspendedByUserId     String?
+  terminatedAt          DateTime?
+  terminatedByUserId    String?
+  suspensionReasonCode  String?
+  terminationReasonCode String?
+  reviewNotesSummary    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  partner     ChildSafetyIntegrationPartner        @relation(fields: [partnerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  application ChildSafetyIntegrationApplication    @relation(fields: [applicationId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  checks      ChildSafetyPartnerPilotCheck[]
+  events      ChildSafetyPartnerPilotEvent[]
+  testRuns    ChildSafetyPartnerTestRun[]
+  alerts      ChildSafetyPartnerOperationalAlert[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, applicationId, status])
+  @@index([tenantId, partnerId, status])
+  @@map("child_safety_partner_pilots")
+}
+
+/// Pilot readiness check — one row per (pilot, checkType). Bounded internal comment only (never raw content).
+model ChildSafetyPartnerPilotCheck {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  pilotId               String
+  checkType             String // PilotCheckType
+  status                String    @default("NOT_STARTED") // PilotCheckStatus
+  checkedAt             DateTime?
+  checkedByUserId       String?
+  evidenceReferenceType String?
+  evidenceReferenceId   String?
+  waiverReasonCode      String?
+  boundedComment        String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  pilot ChildSafetyPartnerPilot @relation(fields: [pilotId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([pilotId, checkType])
+  @@index([tenantId, pilotId])
+  @@map("child_safety_partner_pilot_checks")
+}
+
+/// Pilot operational history — APPEND-ONLY. Bounded operational metadata only (event type, actor, from/to
+/// status, reason code, short summary). No raw body, message, private key, credential, full IP, or child id.
+model ChildSafetyPartnerPilotEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  pilotId     String
+  eventType   String // PilotEventType
+  actorUserId String?
+  fromStatus  String?
+  toStatus    String?
+  reasonCode  String?
+  summary     String? // bounded operational summary
+  createdAt   DateTime @default(now())
+
+  pilot ChildSafetyPartnerPilot @relation(fields: [pilotId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, pilotId, createdAt])
+  @@map("child_safety_partner_pilot_events")
+}
+
+/// Partner operational contact — BUSINESS contacts only (bounded). No child/guardian contacts, no personal
+/// notes, no credentials, no platform tokens. Partner-scoped; visible only to authorized operational roles.
+model ChildSafetyPartnerContact {
+  id               String   @id @default(cuid())
+  tenantId         String
+  partnerId        String
+  role             String // PilotContactRole
+  displayName      String
+  businessEmail    String
+  organizationUnit String?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  partner ChildSafetyIntegrationPartner @relation(fields: [partnerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@unique([partnerId, role, businessEmail])
+  @@index([tenantId, partnerId, role])
+  @@map("child_safety_partner_contacts")
+}
+
+/// Pilot compatibility test run — stored, CONTENT-FREE verification. Stores only the test type, result, a
+/// stable result code, bounded references, and a synthetic event reference. NEVER a private key, raw body,
+/// full signature, child data, real partner message, or arbitrary headers.
+model ChildSafetyPartnerTestRun {
+  id                      String    @id @default(cuid())
+  tenantId                String
+  pilotId                 String
+  installationId          String
+  testType                String // PilotTestType
+  result                  String // PilotTestResult
+  resultCode              String // stable IntegrationErrorCode / result code
+  keyVersion              Int?
+  protocolVersion         String?
+  syntheticEventReference String?
+  diagnosticCategory      String?
+  startedAt               DateTime  @default(now())
+  completedAt             DateTime?
+  createdAt               DateTime  @default(now())
+
+  pilot ChildSafetyPartnerPilot @relation(fields: [pilotId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, pilotId, testType])
+  @@map("child_safety_partner_test_runs")
+}
+
+/// Pilot operational alert — CONTENT-FREE, bounded counters + timestamps only. No raw body, arbitrary payload,
+/// private key, full signature, or child identity. Deduplicated per (pilot, alertType) while open. Critical
+/// open alerts block readiness. Resolution requires authorization + is audited.
+model ChildSafetyPartnerOperationalAlert {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  pilotId              String
+  installationRef      String? // bounded installation reference (no cross-tenant FK; loose operational ref)
+  alertType            String // PilotAlertType
+  severity             String // PilotAlertSeverity
+  status               String    @default("open") // open | resolved
+  count                Int       @default(1)
+  firstSeenAt          DateTime  @default(now())
+  lastSeenAt           DateTime  @default(now())
+  resolvedAt           DateTime?
+  resolvedByUserId     String?
+  resolutionReasonCode String?
+  boundedSummary       String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  pilot ChildSafetyPartnerPilot @relation(fields: [pilotId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, pilotId, status])
+  @@index([tenantId, severity, status])
+  @@map("child_safety_partner_operational_alerts")
 }

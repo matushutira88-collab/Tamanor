@@ -108,6 +108,19 @@ export enum Permission {
   ChildSafetyIntegrationKeysManage = "child_safety:integration_keys_manage",
   ChildSafetyIntegrationReceiptsView = "child_safety:integration_receipts_view",
   ChildSafetyIntegrationSandboxUse = "child_safety:integration_sandbox_use",
+  // Child Safety Partner Pilot & Integration Operations (V1) — the GOVERNANCE layer that turns the signal
+  // protocol into a controlled, auditable partner-onboarding + pilot lifecycle. `view` reads pilots/scope/
+  // readiness/alerts (aggregated for Analyst — sensitive notes/contacts are review-gated in the service);
+  // `manage` edits draft/scope/config + contacts; `review` updates readiness checks + assessments (Safety
+  // Reviewer); `activate` performs the pilot-activation transition (Owner/Admin only — two-eyes with review);
+  // `suspend` is the fail-closed emergency stop (also granted to the Safety Reviewer); `audit_view` reads the
+  // immutable operational history. All are content-free operational capabilities — no raw data, no key access.
+  ChildSafetyIntegrationPilotView = "child_safety:integration_pilot_view",
+  ChildSafetyIntegrationPilotManage = "child_safety:integration_pilot_manage",
+  ChildSafetyIntegrationPilotReview = "child_safety:integration_pilot_review",
+  ChildSafetyIntegrationPilotActivate = "child_safety:integration_pilot_activate",
+  ChildSafetyIntegrationPilotSuspend = "child_safety:integration_pilot_suspend",
+  ChildSafetyIntegrationPilotAuditView = "child_safety:integration_pilot_audit_view",
   // Members
   MemberManage = "member:manage",
   // V1.45C1 — irreversible workspace/tenant deletion. OWNER-EXCLUSIVE: granted only via OWNER_ALL
@@ -179,6 +192,13 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ChildSafetyIntegrationKeysManage,
     Permission.ChildSafetyIntegrationReceiptsView,
     Permission.ChildSafetyIntegrationSandboxUse,
+    // Partner Pilot Operations — Admin holds the full pilot governance set (incl. activate + suspend).
+    Permission.ChildSafetyIntegrationPilotView,
+    Permission.ChildSafetyIntegrationPilotManage,
+    Permission.ChildSafetyIntegrationPilotReview,
+    Permission.ChildSafetyIntegrationPilotActivate,
+    Permission.ChildSafetyIntegrationPilotSuspend,
+    Permission.ChildSafetyIntegrationPilotAuditView,
     Permission.MemberManage,
   ],
   [Role.Analyst]: [
@@ -193,6 +213,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ReportView,
     Permission.SecurityView,
     Permission.IncidentView,
+    // Partner Pilot Operations — Analyst gets AGGREGATED read-only pilot status only. The service withholds
+    // sensitive fields (operational contacts, review notes, bounded comments) from a view-only role, so an
+    // Analyst can see lifecycle/scope/readiness/alert severity but never notes or contacts, and never mutates.
+    Permission.ChildSafetyIntegrationPilotView,
   ],
   [Role.Reviewer]: [
     Permission.BrandView,
@@ -232,6 +256,14 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ChildSafetyIntegrationView,
     Permission.ChildSafetyIntegrationReceiptsView,
     Permission.ChildSafetyIntegrationSandboxUse,
+    // Partner Pilot Operations — the Safety Reviewer may VIEW pilots, REVIEW readiness checks/assessments,
+    // read the operational history (audit_view), and trigger the fail-closed emergency SUSPEND. They may NOT
+    // manage scope/contacts or ACTIVATE a pilot (activation stays Owner/Admin — a two-eyes control on top of
+    // the reviewer's own readiness sign-off).
+    Permission.ChildSafetyIntegrationPilotView,
+    Permission.ChildSafetyIntegrationPilotReview,
+    Permission.ChildSafetyIntegrationPilotAuditView,
+    Permission.ChildSafetyIntegrationPilotSuspend,
   ],
   [Role.Viewer]: [
     Permission.BrandView,

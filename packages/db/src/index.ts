@@ -150,6 +150,7 @@ export * from "./child-safety-analytics";
 export * from "./child-safety-policy";
 // Integration Signal Protocol V1 — partner registry + Ed25519-authenticated signal gateway.
 export * from "./child-safety-integration";
+export * from "./child-safety-partner-pilot";
 export * from "./inbox-repo";
 export * from "./usage-repo";
 export * from "./global-usage-repo";

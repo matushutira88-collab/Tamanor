@@ -300,6 +300,17 @@ export async function processIntegrationSignal(input: GatewayInput, now: Date = 
     // 12. capability
     if (!inst.application.allowedCapabilities.split(",").includes("signal.submit")) return R("CAPABILITY_DENIED");
 
+    // 12.5 PILOT ENFORCEMENT (production installations only). A production signal requires an ACTIVE
+    // authorized pilot in scope; every unauthorized pilot state fails closed via the existing
+    // INTEGRATION_SUSPENDED result (non-enumerating — never reveals whether a pilot exists). Sandbox
+    // installations are unaffected. Lazy-imported to keep this module's dependency surface minimal; any
+    // error propagates to the outer fail-closed catch.
+    if (inst.application.environment === "production") {
+      const { enforceProductionPilotForSignal } = await import("./child-safety-partner-pilot");
+      const pilotBlock = await enforceProductionPilotForSignal(tenantId, inst.id, inst.applicationId, env.signal?.signalType ?? "", env.subject?.ageBand ?? null, now);
+      if (pilotBlock) return R(pilotBlock, pilotBlock === "RATE_LIMITED" ? { retryAfterSeconds: 60 } : {});
+    }
+
     // 13-15. map → canonical → policy → persist (atomic)
     const canonicalType = mapPartnerRiskToCanonical(env.signal.signalType);
     const subject = await systemDb.childSafetyIntegrationSubject.findFirst({ where: { installationId: inst.id, pseudonymousSubjectId: env.subject.pseudonymousSubjectId }, select: { protectedProfileId: true } });
