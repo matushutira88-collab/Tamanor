@@ -45,6 +45,12 @@ enum PlatformRole {
   none
   staff
   admin
+  // Platform Admin & Privacy Analytics V1 — the operator tiers. `owner` ⊇ `admin` and is the ONLY role
+  // that may add/remove/change other platform administrators (last-active-owner is protected). `analyst`
+  // is analytics-read-only (aggregated; audit actor identity redacted). `support` is system-health only.
+  owner
+  analyst
+  support
 }
 
 // V1.66 — PER-USER onboarding lifecycle, stored on Membership (a user may belong to several tenants
@@ -224,24 +230,31 @@ enum DecisionStatus {
 // --- Identity & tenancy ------------------------------------------------------
 
 model User {
-  id                String       @id @default(cuid())
-  email             String       @unique
-  name              String?
+  id                      String       @id @default(cuid())
+  email                   String       @unique
+  name                    String?
   // V1.50A — self-service credential auth. Argon2id PHC string (never plaintext).
   // Nullable: dev-seed/E2E/future-OAuth users may have no local password.
-  passwordHash      String?
+  passwordHash            String?
   // V1.50C — email verification + password lifecycle.
   //   emailVerifiedAt: null until the email is verified (email/password) or set at creation
   //     for an OAuth provider-verified email. Gates verification-required product access.
   //   passwordChangedAt: set on every password reset; a session created before this is stale
   //     (defense-in-depth backstop in session hydrate, on top of explicit session revocation).
-  emailVerifiedAt   DateTime?
-  passwordChangedAt DateTime?
-  locale            String       @default("en")
+  emailVerifiedAt         DateTime?
+  passwordChangedAt       DateTime?
+  locale                  String       @default("en")
   // V1.45A — global platform-admin role (default least-privilege; independent of tenant Role).
-  platformRole      PlatformRole @default(none)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  platformRole            PlatformRole @default(none)
+  // Platform Admin & Privacy Analytics V1 — admin-lifecycle metadata (all nullable/additive). Access is
+  // REVOKED (resolves to `none` regardless of platformRole) while platformAccessRevokedAt is set, so
+  // deactivation preserves the stored role for a later reactivation. platformLastAccessAt is coarse
+  // (privileged-area access marker only — never a raw IP / session token / timeline).
+  platformAccessRevokedAt DateTime?
+  platformRoleUpdatedAt   DateTime?
+  platformLastAccessAt    DateTime?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 
   memberships                       Membership[]
   oauthAccounts                     OAuthAccount[]
@@ -3851,4 +3864,130 @@ model ChildSafetyPartnerOperationalAlert {
   @@index([tenantId, pilotId, status])
   @@index([tenantId, severity, status])
   @@map("child_safety_partner_operational_alerts")
+}
+
+// ===========================================================================
+// Platform Admin & Privacy Analytics V1 — SYSTEM tables (platform-level, NOT tenant-scoped, accessed only
+// via the owner-role systemDb; like `leads`, ALL privileges are REVOKED from the RLS app role tamanor_app).
+// The analytics tables store ONLY anonymous, low-cardinality, bounded signals — NO raw IP, precise geo, raw
+// query string, raw referrer URL, long-term raw user-agent, form/message content, email/name/phone, cookies/
+// tokens, device fingerprints, advertising ids, arbitrary payload JSON, or any Child Safety / tenant-private
+// data. Identifiers are server-derived non-reversible keyed hashes (rotating). Audit is append-only.
+// ===========================================================================
+
+/// Append-only platform-admin audit. Bounded operational metadata only — never a raw IP, visitor/session
+/// hash, page-view timeline, customer content, Child Safety data, form content, token, or arbitrary payload.
+model PlatformAdminAuditEvent {
+  id             String    @id @default(cuid())
+  actorUserId    String?
+  action         String // PlatformAuditAction
+  targetUserId   String?
+  platformRole   String?
+  resultCode     String    @default("ok")
+  reportType     String?
+  dateRangeStart DateTime?
+  dateRangeEnd   DateTime?
+  summary        String? // bounded, content-free
+  createdAt      DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("platform_admin_audit_events")
+}
+
+/// Raw privacy-safe first-party website analytics event (short retention — see the retention job). Contains
+/// ONLY the bounded, allow-listed fields below. sessionIdHash / visitorIdHash are server-derived, keyed,
+/// non-reversible, rotating pseudonyms — never exposed in any admin API/UI.
+model WebsiteAnalyticsEvent {
+  id                     String   @id @default(cuid())
+  occurredAt             DateTime
+  receivedAt             DateTime @default(now())
+  eventType              String // AnalyticsEventType
+  normalizedPath         String   @default("/")
+  referrerCategory       String   @default("UNKNOWN")
+  campaignSource         String?
+  campaignMedium         String?
+  campaignName           String?
+  deviceCategory         String   @default("UNKNOWN")
+  browserFamily          String   @default("Unknown")
+  operatingSystemFamily  String   @default("Unknown")
+  countryCode            String   @default("UNKNOWN")
+  language               String   @default("und")
+  sessionIdHash          String
+  visitorIdHash          String
+  authenticatedUserState String   @default("UNKNOWN")
+  tenantState            String   @default("UNKNOWN")
+  conversionContext      String   @default("NONE")
+  botClassification      String   @default("UNKNOWN")
+  pageLoadCategory       String   @default("UNKNOWN")
+  createdAt              DateTime @default(now())
+
+  @@index([occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([normalizedPath, occurredAt])
+  @@index([sessionIdHash])
+  @@index([botClassification, occurredAt])
+  @@map("website_analytics_events")
+}
+
+/// Daily aggregate over one full dimension tuple (longer retention). No raw identifiers. Upsert-idempotent
+/// on the dimension tuple; recomputation is deterministic.
+model WebsiteAnalyticsDailyAggregate {
+  id                        String   @id @default(cuid())
+  date                      DateTime // UTC day (midnight)
+  normalizedPath            String
+  eventType                 String
+  referrerCategory          String
+  campaignSource            String   @default("")
+  deviceCategory            String
+  browserFamily             String
+  operatingSystemFamily     String
+  countryCode               String
+  language                  String
+  authenticatedUserState    String
+  botClassification         String
+  pageViews                 Int      @default(0)
+  sessions                  Int      @default(0)
+  approximateUniqueVisitors Int      @default(0)
+  conversions               Int      @default(0)
+  bounces                   Int      @default(0)
+  engagedSessions           Int      @default(0)
+  errorPageViews            Int      @default(0)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@unique([date, normalizedPath, eventType, referrerCategory, campaignSource, deviceCategory, browserFamily, operatingSystemFamily, countryCode, language, authenticatedUserState, botClassification], name: "analytics_daily_dim")
+  @@index([date])
+  @@index([eventType, date])
+  @@index([normalizedPath, date])
+  @@map("website_analytics_daily_aggregates")
+}
+
+/// Idempotency guard so a server-recorded conversion is counted at most once (retry-safe). Content-free.
+model WebsiteAnalyticsConversionIdempotency {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique
+  eventType      String
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("website_analytics_conversion_idempotency")
+}
+
+/// Auditable retention/aggregation run record (bounded counters + window only). Content-free.
+model WebsiteAnalyticsRetentionRun {
+  id                 String    @id @default(cuid())
+  runType            String // "retention" | "aggregation"
+  status             String    @default("completed")
+  rawEventsDeleted   Int       @default(0)
+  aggregatesUpserted Int       @default(0)
+  windowStart        DateTime?
+  windowEnd          DateTime?
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@index([runType, createdAt])
+  @@map("website_analytics_retention_runs")
 }

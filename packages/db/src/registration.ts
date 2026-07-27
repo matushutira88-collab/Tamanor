@@ -152,7 +152,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
   const email = normalizeEmail(input.email);
   const workspaceName = input.workspaceName.trim() || "Workspace";
   const brandName = (input.company ?? "").trim() || workspaceName || "My Brand";
-  return provisionAccount({
+  const result = await provisionAccount({
     email,
     passwordHash: input.passwordHash,
     locale: input.locale ?? "en",
@@ -160,6 +160,17 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
     workspaceName,
     brandName,
   });
+  // Server-side conversion (content-free, idempotent by userId). Fire-and-forget — an analytics failure must
+  // NEVER affect account provisioning (recordConversion never throws; we also do not await it here).
+  void recordRegistrationConversion(result.userId);
+  return result;
+}
+
+/** Non-blocking, idempotent registration conversion — no email/name/form content, just the bounded event. */
+function recordRegistrationConversion(userId: string): void {
+  import("./website-analytics").then(({ recordConversion, analyticsIdempotencyKey }) => {
+    void recordConversion("REGISTRATION_COMPLETED", analyticsIdempotencyKey("registration", userId), { authenticatedUserState: "AUTHENTICATED", tenantState: "HAS_TENANT", path: "/register" });
+  }).catch(() => { /* analytics is best-effort */ });
 }
 
 // ---- CS-C6: FAMILY workspace registration ----------------------------------

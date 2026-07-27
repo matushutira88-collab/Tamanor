@@ -24,13 +24,24 @@ export { PlatformRole };
 // staff denied; tenant roles grant NO global identity-delete authority.
 // V1.45C3 — `leads:erase` is the DESTRUCTIVE lead-erasure capability, distinct from ordinary `leads:write`
 // editing. Admin-only: platform staff keep read/write but must NOT be able to irreversibly erase leads.
-export type PlatformCapability = "leads:read" | "leads:write" | "tenant:delete" | "user:delete" | "leads:erase";
+export type PlatformCapability =
+  | "leads:read" | "leads:write" | "tenant:delete" | "user:delete" | "leads:erase"
+  // Platform Admin & Privacy Analytics V1 — admin-area + analytics capabilities. `admin_users.manage`
+  // (add/remove/change platform administrators) is OWNER-ONLY; `analytics.export` is a SEPARATE gate from
+  // `analytics.view`; audit actor identity is redacted for `analyst` in the read service.
+  | "admin.access" | "analytics.view" | "analytics.export" | "admin_users.view" | "admin_users.manage" | "audit.view" | "system_health.view";
 
-/** Capability policy. `admin` ⊇ `staff`, EXCEPT tenant:delete and user:delete are admin-only. */
+/**
+ * Capability policy. `owner` ⊇ `admin` ⊇ `staff` for existing lead/tenant/user caps; the new admin-area caps
+ * layer on top. Only `owner` may manage platform administrators. Adding an enum value defaults to deny.
+ */
 export function platformRoleSatisfies(role: PlatformRole | null | undefined, cap: PlatformCapability): boolean {
   switch (role) {
-    case PlatformRole.admin: return true;                       // full platform access (incl. tenant:delete, user:delete, leads:erase)
-    case PlatformRole.staff: return cap === "leads:read" || cap === "leads:write"; // NOT tenant:delete / user:delete / leads:erase
+    case PlatformRole.owner: return true;                       // full platform access incl. admin_users.manage
+    case PlatformRole.admin: return cap !== "admin_users.manage"; // everything EXCEPT owner-only admin management
+    case PlatformRole.analyst: return cap === "admin.access" || cap === "analytics.view" || cap === "audit.view"; // read-only analytics + (redacted) audit
+    case PlatformRole.support: return cap === "admin.access" || cap === "system_health.view"; // limited system-health only
+    case PlatformRole.staff: return cap === "leads:read" || cap === "leads:write"; // legacy leads only — NO admin area
     default: return false;                                      // none / null / unknown → denied
   }
 }
@@ -39,8 +50,10 @@ export function platformRoleSatisfies(role: PlatformRole | null | undefined, cap
 export async function resolvePlatformRole(userId: string | null | undefined): Promise<PlatformRole> {
   if (!userId) return PlatformRole.none;
   try {
-    const u = await prisma.user.findUnique({ where: { id: userId }, select: { platformRole: true } });
-    return u?.platformRole ?? PlatformRole.none; // user gone / no row → no access
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { platformRole: true, platformAccessRevokedAt: true } });
+    if (!u) return PlatformRole.none; // user gone → no access
+    if (u.platformAccessRevokedAt) return PlatformRole.none; // deactivated → no access (role preserved for reactivation)
+    return u.platformRole ?? PlatformRole.none;
   } catch (e) {
     // Fail CLOSED (deny) on a DB error, but keep it DIAGNOSTICALLY visible — it must not be silently
     // indistinguishable from a legitimate `none`. Safe payload only: error name/code, never the

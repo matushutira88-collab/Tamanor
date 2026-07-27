@@ -252,7 +252,16 @@
     "meta-finalize:test": "bash packages/db/scripts/run-meta-finalize.sh",
     "accounts-overview:test": "bash packages/db/scripts/run-accounts-overview.sh",
     "family-toast:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/family-toast.test.ts",
-    "family-plans-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/family-plans-ui.test.ts"
+    "family-plans-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/family-plans-ui.test.ts",
+    "privacy-analytics-domain:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/privacy-analytics-domain.test.ts",
+    "privacy-analytics-aggregation:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/privacy-analytics-aggregation.test.ts",
+    "platform-admin-domain:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/platform-admin-domain.test.ts",
+    "privacy-analytics-ingestion:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/web exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/privacy-analytics-ingestion.test.ts",
+    "platform-admin-api:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/web exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/platform-admin-api.test.ts",
+    "platform-admin-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/platform-admin-ui.test.ts",
+    "privacy-analytics-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/privacy-analytics-ui.test.ts",
+    "analytics:maintenance": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/analytics-maintenance.cli.ts",
+    "platform:bootstrap-owner": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/platform-bootstrap-owner.cli.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

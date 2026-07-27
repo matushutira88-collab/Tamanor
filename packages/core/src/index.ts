@@ -74,6 +74,7 @@ export * from "./child-safety-policy";
 // Integration Signal Protocol V1 — partner→canonical protocol vocabulary, strict validation, canonicalization.
 export * from "./child-safety-integration";
 export * from "./child-safety-partner-pilot";
+export * from "./platform-analytics";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";
