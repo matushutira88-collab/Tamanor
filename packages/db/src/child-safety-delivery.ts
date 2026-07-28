@@ -2,6 +2,10 @@ import { ActorKind, Prisma } from "@prisma/client";
 import { withTenant } from "./repositories";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError } from "./child-safety-family";
 import { getEffectiveRecipientAuthorization } from "./child-safety-recipient-authorization";
+// PHASE 3A — the delivery→available transition atomically enqueues ONE bounded Family notification outbox event
+// (NOT a notification row, NOT a send). This imports only the enqueue side (no recipient-authorization kernel),
+// so there is no import cycle and this file still calls neither createFamilyNotification nor any delivery channel.
+import { enqueueFamilyNotificationOutboxEventTx } from "./internal/family-notification-outbox";
 import {
   FamilyAction, authorizeFamilyAction, familyRoleForMembershipRole, FamilyRole, CHILD_SAFETY_AUDIT_EVENTS,
   validateChildSafetyInput,
@@ -20,9 +24,11 @@ import {
  * currently-EFFECTIVE CS-C4 recipient authorization decision (re-checked via getEffectiveRecipient-
  * Authorization); CS-C5 never re-derives the authorization chain.
  *
- * NO DELIVERY (rule P): never writes to notifications/cyberbullying_notifications, never creates an
- * incident/case/queue job/cron, never sends email/SMS/push/webhook, never calls a platform API, never
- * shows raw content, never mutates any CS-1..C4 record. Only `safety_signal_deliveries` + audit log.
+ * NO DELIVERY (rule P): never writes a notification ROW, never sends email/SMS/push/webhook, never calls a
+ * platform API, never shows raw content, never mutates any CS-1..C4 record. It writes only
+ * `safety_signal_deliveries` + audit log, PLUS — from Phase 3A — one bounded, content-free
+ * `family_notification_outbox_events` row on the delivery→available transition (enqueue in the SAME tx; the
+ * actual notification rows are created asynchronously by the trusted outbox processor, never here).
  */
 
 type Tx = Prisma.TransactionClient;
@@ -178,7 +184,7 @@ export function listSafetySignalDeliveries(actor: FamilyActorContext, opts: Deli
 
 // --- transitions (explicit; validated; no side effects) ---------------------
 
-async function transition(actor: FamilyActorContext, id: string, action: FamilyAction, to: SafetyDeliveryStatus, event: string, mutate: (actorMid: string) => Prisma.SafetySignalDeliveryUpdateInput, recipientOnly: boolean): Promise<SafetySignalDeliveryVM> {
+async function transition(actor: FamilyActorContext, id: string, action: FamilyAction, to: SafetyDeliveryStatus, event: string, mutate: (actorMid: string) => Prisma.SafetySignalDeliveryUpdateInput, recipientOnly: boolean, afterUpdate?: (db: Tx, row: SafetySignalDeliveryVM) => Promise<void>): Promise<SafetySignalDeliveryVM> {
   assertFamily(actor, action);
   const actorMid = await actorMembershipId(actor);
   if (actorMid === null) throw new FamilyForbiddenError("role_forbidden");
@@ -190,12 +196,37 @@ async function transition(actor: FamilyActorContext, id: string, action: FamilyA
     if (!isValidSafetyDeliveryTransition(existing.deliveryStatus, to)) throw new FamilyValidationError("invalid_status_transition");
     const row = await db.safetySignalDelivery.update({ where: { id }, data: { deliveryStatus: to, ...mutate(actorMid) }, select: DELIVERY_SELECT });
     await audit(db, actor, event, row.id, { deliveryStatus: row.deliveryStatus, deliveryChannel: row.deliveryChannel });
+    // In-transaction side effect (e.g. the Phase 3A outbox enqueue). Runs in the SAME tx: if it throws, the whole
+    // transition rolls back — a delivery is never left in the new state without its durable outbox event.
+    if (afterUpdate) await afterUpdate(db, row);
     return row;
   });
 }
 
-export function makeSafetySignalDeliveryAvailable(actor: FamilyActorContext, id: string): Promise<SafetySignalDeliveryVM> {
-  return transition(actor, id, FamilyAction.SafetyDeliveryMakeAvailable, SafetyDeliveryStatus.Available, CHILD_SAFETY_AUDIT_EVENTS.deliveryAvailable, () => ({ availableAt: new Date() }), false);
+/**
+ * PHASE 3A trigger point. The canonical delivery→available transition and the durable `family_delivery_available`
+ * outbox enqueue commit as ONE atomic transaction. The notification ROWS are created later by the trusted outbox
+ * processor (current-authorization re-evaluation), NOT synchronously here — this keeps the cross-role / owner-table
+ * transaction boundaries intact while still guaranteeing the event is durably recorded iff the delivery is available.
+ * `eventVersion` is derived from the persisted, write-once `availableAt` (the invalid-transition guard means an
+ * already-available delivery cannot re-transition, so it is stable across retries; the outbox unique index is the
+ * final dedupe authority regardless).
+ */
+export function makeSafetySignalDeliveryAvailable(actor: FamilyActorContext, id: string, now: Date = new Date()): Promise<SafetySignalDeliveryVM> {
+  return transition(
+    actor, id, FamilyAction.SafetyDeliveryMakeAvailable, SafetyDeliveryStatus.Available, CHILD_SAFETY_AUDIT_EVENTS.deliveryAvailable,
+    () => ({ availableAt: now }), false,
+    async (db, row) => {
+      const availableAt = row.availableAt ?? now;
+      await enqueueFamilyNotificationOutboxEventTx(db, {
+        tenantId: actor.tenantId,
+        notificationType: "family_delivery_available",
+        source: { deliveryId: row.id },
+        eventVersion: String(availableAt.getTime()),
+        occurredAt: availableAt,
+      });
+    },
+  );
 }
 export function acknowledgeSafetySignalDelivery(actor: FamilyActorContext, id: string): Promise<SafetySignalDeliveryVM> {
   return transition(actor, id, FamilyAction.SafetyDeliveryAcknowledge, SafetyDeliveryStatus.Acknowledged, CHILD_SAFETY_AUDIT_EVENTS.deliveryAcknowledged, (mid) => ({ acknowledgedAt: new Date(), acknowledgedByMembershipId: mid }), true);

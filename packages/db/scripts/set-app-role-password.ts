@@ -100,6 +100,8 @@ async function main() {
     "guardian_authority_records", "consent_records", "safe_recipient_assessments",
     "safety_recipient_authorization_decisions", "safety_signal_deliveries",
     "family_guardian_invitations", "workspace_onboarding_states",
+    // Phase 3A durable outbox — app role enqueues/updates but NEVER deletes (events are retained for audit).
+    "family_notification_outbox_events",
   ];
   const safe = (t: string) => t.replace(/[^a-z_]/gi, "");
   for (const t of CS_REVOKE_ALL) {

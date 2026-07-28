@@ -78,6 +78,13 @@ each trigger:
   canonical write.
 Phase 3 must not silently swallow failures; record the class per trigger.
 
+> **Update — Phase 3A (delivered).** The durable outbox foundation and the first live trigger
+> (`family_delivery_available`) are implemented. The *refined* rollback rule: the outbox EVENT (not the final
+> notification row) is inserted in the canonical delivery transaction — one atomic commit — and a trusted
+> processor creates the notification rows asynchronously with current-authorization re-evaluation and safe
+> retries. This keeps the cross-role/owner-table boundaries intact while preserving the delivery guarantee. See
+> [`family-notifications-phase-3.md`](./family-notifications-phase-3.md). The other 12 triggers remain unwired.
+
 ## Phase 2b-A — internal recipient-authorization kernel (signals + delivery) — IMPLEMENTED & DB-verified
 `packages/db/src/internal/family-notification-authorization.ts` — an **internal** module (NOT barrel-exported;
 no production/domain module imports it; proven by source invariants). Supports ONLY three catalogue types; every

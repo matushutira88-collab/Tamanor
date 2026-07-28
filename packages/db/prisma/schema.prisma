@@ -2636,6 +2636,50 @@ model Notification {
   @@map("notifications")
 }
 
+// FAMILY NOTIFICATIONS PHASE 3A — durable delivery outbox. A canonical domain transition (currently ONLY the
+// delivery→available transition) enqueues one bounded event in the SAME transaction; a separate trusted
+// processor later resolves recipients (current-authorization) and writes the per-recipient Notification rows.
+// Strict explicit-column schema: NO arbitrary JSON, NO recipient ids, NO child-safety content — only bounded
+// operational routing fields. Tenant-scoped + RLS (enable/force/policy in the migration); the app role has
+// SELECT/INSERT/UPDATE only (never DELETE/TRUNCATE). Rows are NEVER physically deleted by normal processing.
+enum FamilyNotificationOutboxStatus {
+  pending
+  processing
+  completed
+  dead_letter
+}
+
+model FamilyNotificationOutboxEvent {
+  id               String                          @id @default(cuid())
+  tenantId         String
+  notificationType NotificationType
+  // Bounded routing only — the canonical source kind + its id (e.g. "safety_signal_delivery" + deliveryId).
+  sourceType       String
+  sourceId         String
+  // A stable, persisted state-transition marker (NOT a processor clock / retry timestamp / random value).
+  eventVersion     String
+  // Deterministic identity: hash of (tenant, type, sourceType, sourceId, eventVersion). The unique index is
+  // the FINAL dedupe authority (insertion uses skip-duplicates / ON CONFLICT DO NOTHING — never check-then-insert).
+  dedupeKey        String
+  occurredAt       DateTime
+  status           FamilyNotificationOutboxStatus  @default(pending)
+  attemptCount     Int                             @default(0)
+  nextAttemptAt    DateTime
+  lockedAt         DateTime?
+  lockExpiresAt    DateTime?
+  completedAt      DateTime?
+  // Bounded enum/catalogue codes only — NEVER raw exception/Prisma/SQL text or embedded ids.
+  lastErrorCode    String?
+  safeReasonCode   String?
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
+
+  @@unique([tenantId, dedupeKey])
+  @@index([status, nextAttemptAt, createdAt, id])
+  @@index([tenantId, notificationType, sourceId])
+  @@map("family_notification_outbox_events")
+}
+
 // V1.71 (Release B / B4) — tenant-scoped team invites. RLS-enforced (enable + FORCE + policy + grant in
 // the migration). The token is stored ONLY as a sha256 hash (plaintext lives solely in the emailed link).
 // A partial unique index (migration) forbids two PENDING invites for the same (tenant, email). Expired /

@@ -41,11 +41,13 @@ function main() {
   check("★ /family/notifications route does NOT exist yet", !existsSync(join(REPO, "apps/web/src/app/family/notifications")));
   check("★ no e2e/UI/server-action wiring added for Family notifications this phase", !existsSync(join(REPO, "apps/web/src/app/family/notifications/actions.ts")));
 
-  console.log("\n6. no live child-safety trigger integration yet");
+  console.log("\n6. child-safety modules never CREATE notifications directly (they only enqueue; the processor creates)");
   const csDir = join(REPO, "packages/db/src");
   const csFiles = readdirSync(csDir).filter((f) => /^child-safety-|^family-invitation/.test(f) && f.endsWith(".ts"));
-  const wired = csFiles.filter((f) => /createFamilyNotification/.test(read(`packages/db/src/${f}`)));
-  check("★ NO child-safety / invitation module calls createFamilyNotification yet (triggers are Phase 3)", wired.length === 0, `wired: ${wired.join(",")}`);
+  // Phase 3A wires the delivery→available ENQUEUE, but a child-safety module must never CALL a create-notification
+  // entry point itself — the trusted processor does that. Match actual calls (with a paren), not comment mentions.
+  const wired = csFiles.filter((f) => /createFamilyNotification\w*\(/.test(read(`packages/db/src/${f}`)));
+  check("★ NO child-safety / invitation module CALLS a create-notification entry point (only the processor does)", wired.length === 0, `wired: ${wired.join(",")}`);
 
   console.log("\n7. no push / email / SMS / webhook implementation");
   check("★ Family notification repo contains no push/SMS/webhook/email delivery", !/sendEmail|sendSms|webhook|fcm|apns|pushNotification|twilio/i.test(repoSrc));
@@ -87,6 +89,47 @@ function main() {
   const missing = [...migRevokeAll].filter((t) => !provRevokeAll.has(t));
   check("★ every migration REVOKE-ALL child_safety_* table is re-asserted by the provisioning script", missing.length === 0, `missing: ${missing.join(",")}`);
   check("★ provisioning re-asserts DELETE,TRUNCATE revokes on the soft-delete safety tables", /REVOKE DELETE, TRUNCATE/.test(prov) && /safety_signal_deliveries/.test(prov) && /safety_recipient_authorization_decisions/.test(prov));
+
+  console.log("\n11. Phase 3A durable outbox — trigger + processor boundary invariants");
+  const enqueueSrc = read("packages/db/src/internal/family-notification-outbox.ts");
+  const procSrc = read("packages/db/src/internal/family-notification-outbox-processor.ts");
+  const deliverySrc = read("packages/db/src/child-safety-delivery.ts");
+  const schema = read("packages/db/prisma/schema.prisma");
+  const outboxMig = read("packages/db/prisma/migrations/20260826090000_family_notification_outbox/migration.sql");
+  const provDelete = new Set([...prov.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]));
+
+  // Only the canonical delivery transition wires the enqueue; no other src module imports it.
+  const enqueueRe = /from\s+["'][^"']*internal\/family-notification-outbox["']/;
+  const srcFiles = readdirSync(join(REPO, "packages/db/src")).filter((f) => f.endsWith(".ts")).map((f) => `packages/db/src/${f}`);
+  const enqueueImporters = srcFiles.filter((p) => enqueueRe.test(read(p)));
+  check("★ ONLY child-safety-delivery imports the outbox enqueue (single wired trigger)", enqueueImporters.length === 1 && /child-safety-delivery\.ts$/.test(enqueueImporters[0]!), enqueueImporters.join(","));
+  check("★ the enqueue lives INSIDE makeSafetySignalDeliveryAvailable (the canonical transition owns it)", /makeSafetySignalDeliveryAvailable[^]*enqueueFamilyNotificationOutboxEventTx/.test(deliverySrc));
+  check("★ only family_delivery_available is enqueueable (fail-closed on any other type)", /notificationType: "family_delivery_available"/.test(enqueueSrc) && /!== "family_delivery_available"/.test(enqueueSrc));
+  check("★ no OTHER Family trigger was wired (no other type enqueued anywhere in src)", !srcFiles.some((p) => !/child-safety-delivery|internal\/family-notification-outbox/.test(p) && /enqueueFamilyNotificationOutboxEventTx/.test(read(p))));
+
+  // Route / UI code never enqueues, and the outbox stays off the browser boundary.
+  const familyAppDir = join(REPO, "apps/web/src/app/family");
+  const appFamilyFiles = existsSync(familyAppDir) ? readdirSync(familyAppDir).filter((f) => f.endsWith(".ts") || f.endsWith(".tsx")).map((f) => `apps/web/src/app/family/${f}`) : [];
+  check("★ no route/UI/family module enqueues or imports the outbox", !appFamilyFiles.some((p) => /family-notification-outbox|enqueueFamilyNotificationOutboxEventTx/.test(read(p))));
+  check("★ outbox enqueue + processor are NOT barrel-exported", !/family-notification-outbox/.test(dbIndex.replace(/\/\/.*/g, "")));
+
+  // Strict event shape: explicit columns only, NO recipient ids, NO arbitrary JSON payload.
+  // Forbid a recipient IDENTITY field (recipientId / recipientUserId / recipientMembershipId). The count-only
+  // reason code "no_recipients" is fine — it is a classification, never a recipient id.
+  check("★ outbox input/schema carries NO recipient identity field", !/recipient[A-Za-z]*Id/i.test(stripComments(enqueueSrc)) && !/recipient[A-Za-z]*Id/i.test(schema.replace(/\/\/.*/g, "").match(/model FamilyNotificationOutboxEvent[^]*?@@map\("family_notification_outbox_events"\)/)?.[0] ?? ""));
+  check("★ outbox model has NO Json/payload column (explicit bounded columns only)", /model FamilyNotificationOutboxEvent[^]*?@@map\("family_notification_outbox_events"\)/.test(schema) && !/model FamilyNotificationOutboxEvent[^]*?Json[^]*?@@map\("family_notification_outbox_events"\)/.test(schema));
+
+  // Processor: goes ONLY through the public safe entry point; stores ONLY bounded codes; never hard-deletes.
+  check("★ processor creates via createAuthorizedFamilyNotification only (never the internal resolver/primitive)", /createAuthorizedFamilyNotification/.test(procSrc) && !/resolveFamilyNotificationRecipientsTx|createFamilyNotificationTx/.test(procSrc));
+  check("★ processor stores ONLY bounded error/reason codes (no raw exception/Prisma/SQL text)", /OUTBOX_ERROR_CODE\./.test(procSrc) && !/\.message/.test(procSrc) && !/error\.stack|err\.stack|e\.stack/.test(procSrc));
+  check("★ no hard-delete of outbox events anywhere (enqueue + processor)", !/familyNotificationOutboxEvent\.delete(Many)?\(/.test(enqueueSrc) && !/familyNotificationOutboxEvent\.delete(Many)?\(/.test(procSrc));
+  check("★ migration grants app role NO DELETE + REVOKEs DELETE/TRUNCATE on the outbox", /GRANT SELECT, INSERT, UPDATE ON "family_notification_outbox_events" TO tamanor_app/.test(outboxMig) && /REVOKE DELETE, TRUNCATE ON "family_notification_outbox_events" FROM tamanor_app/.test(outboxMig) && !/GRANT[^;]*DELETE[^;]*family_notification_outbox_events/.test(outboxMig));
+  check("★ provisioning re-asserts the outbox no-DELETE hardening", provDelete.has("family_notification_outbox_events"));
+
+  // No scheduler / no delivery channels / no bell added by Phase 3A.
+  check("★ NO production scheduler/cron added (no setInterval/cron/schedule in the outbox code)", !/setInterval|node-cron|cron\(|schedule\(|CronJob/i.test(enqueueSrc + procSrc));
+  check("★ NO push/email/SMS/webhook in the outbox code", !/sendEmail|sendSms|webhook|fcm|apns|pushNotification|twilio/i.test(enqueueSrc + procSrc));
+  check("★ RLS enabled+forced with a tenant policy in the outbox migration", /ENABLE ROW LEVEL SECURITY/.test(outboxMig) && /FORCE ROW LEVEL SECURITY/.test(outboxMig) && /CREATE POLICY tenant_isolation/.test(outboxMig));
 }
 
 function readMigrationsFor(re: RegExp): string[] {
