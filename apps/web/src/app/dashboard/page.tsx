@@ -8,6 +8,7 @@ import { AccountCard } from "@/components/dashboard/account-card";
 import { ProtectionScore } from "@/components/dashboard/protection-score";
 import { AreaTrend } from "@/components/dashboard/trend-chart";
 import { OnboardingPanel } from "@/components/dashboard/onboarding-panel";
+import { PlatformAdminEntry } from "@/components/dashboard/platform-admin-entry";
 import { loadOnboarding } from "./onboarding-actions";
 import { getDictionary } from "@/i18n";
 import { PLATFORM_META, Platform, RiskLevel } from "@guardora/core";
@@ -22,6 +23,9 @@ import {
   getDashboardKpiDeltas,
   getRiskByCategory,
   getWatchedAccountsView,
+  resolvePlatformRole,
+  canViewPlatformAdminEntry,
+  platformDashboardMetrics,
 } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -46,6 +50,7 @@ const COPY = {
     activity: "Recent activity", noActivity: "No recent activity yet.", viewActivity: "View all activity",
     protection: "Protection level", improve: "How to improve protection", ok: "OK", partial: "Partial", offL: "Off",
     chk: { metaPermissionsHealthy: "Platform permissions", syncHealthy: "Synchronization", rulesActive: "Protection rules", dangerousLinksHandled: "Dangerous links", fraudProtection: "Fraud protection", reviewWorkflow: "Review workflow", actionConfigured: "Action configured" },
+    padmin: { title: "Platform Administration", desc: "Manage the entire Tamanor platform — administrators, privacy analytics, security incidents and the audit trail.", cta: "Open admin console", mTenants: "Active tenants", mUsers: "Active users", mIncidents: "Unresolved incidents", mAudit: "Recent audit events" },
   },
   sk: {
     eyebrow: "Prehľad", greeting: "Vitajte späť", subtitle: "Tu je prehľad ochrany vašej reputácie dnes.",
@@ -59,6 +64,7 @@ const COPY = {
     activity: "Aktuálna aktivita", noActivity: "Zatiaľ žiadna aktivita.", viewActivity: "Zobraziť všetku aktivitu",
     protection: "Úroveň ochrany", improve: "Ako zvýšiť úroveň ochrany", ok: "V poriadku", partial: "Čiastočne", offL: "Vypnuté",
     chk: { metaPermissionsHealthy: "Oprávnenia platforiem", syncHealthy: "Synchronizácia", rulesActive: "Pravidlá ochrany", dangerousLinksHandled: "Nebezpečné odkazy", fraudProtection: "Ochrana pred podvodmi", reviewWorkflow: "Proces kontroly", actionConfigured: "Nastavená akcia" },
+    padmin: { title: "Správa platformy", desc: "Spravujte celú platformu Tamanor — administrátorov, súkromnú analytiku, bezpečnostné incidenty a záznam auditu.", cta: "Otvoriť admin konzolu", mTenants: "Aktívne tenanty", mUsers: "Aktívni používatelia", mIncidents: "Nevyriešené incidenty", mAudit: "Nedávne audit udalosti" },
   },
   de: {
     eyebrow: "Übersicht", greeting: "Willkommen zurück", subtitle: "Das passiert heute mit Ihrer Markenreputation.",
@@ -72,6 +78,7 @@ const COPY = {
     activity: "Letzte Aktivität", noActivity: "Noch keine Aktivität.", viewActivity: "Alle Aktivitäten",
     protection: "Schutzniveau", improve: "Schutz verbessern", ok: "In Ordnung", partial: "Teilweise", offL: "Aus",
     chk: { metaPermissionsHealthy: "Plattform-Berechtigungen", syncHealthy: "Synchronisierung", rulesActive: "Schutzregeln", dangerousLinksHandled: "Gefährliche Links", fraudProtection: "Betrugsschutz", reviewWorkflow: "Prüfprozess", actionConfigured: "Aktion konfiguriert" },
+    padmin: { title: "Plattform-Administration", desc: "Verwalten Sie die gesamte Tamanor-Plattform — Administratoren, Datenschutz-Analytics, Sicherheitsvorfälle und das Audit-Protokoll.", cta: "Admin-Konsole öffnen", mTenants: "Aktive Mandanten", mUsers: "Aktive Nutzer", mIncidents: "Ungelöste Vorfälle", mAudit: "Letzte Audit-Ereignisse" },
   },
 } as const;
 
@@ -142,6 +149,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const firstName = session.userName.split(" ")[0] ?? session.userName;
 
+  // Platform-owner entry — resolved FRESH from persisted platformRole (never the session, never the tenant
+  // membership role, never the email). resolvePlatformRole already collapses a revoked owner to a non-owner
+  // value, so `canViewPlatformAdminEntry` is true ONLY for an active platform owner. For everyone else the
+  // section below is never constructed and is therefore absent from the HTML. This is independent of the
+  // /admin route guard, which enforces its own server-side capability check.
+  const platformRole = await resolvePlatformRole(session.userId);
+  const isPlatformOwner = canViewPlatformAdminEntry(platformRole);
+  const platformMetrics = isPlatformOwner ? await platformDashboardMetrics(session.userId).catch(() => null) : null;
+  const platformEntry = isPlatformOwner ? (
+    <PlatformAdminEntry
+      copy={{ title: c.padmin.title, description: c.padmin.desc, cta: c.padmin.cta, mTenants: c.padmin.mTenants, mUsers: c.padmin.mUsers, mIncidents: c.padmin.mIncidents, mAudit: c.padmin.mAudit }}
+      metrics={platformMetrics}
+    />
+  ) : null;
+
   // Empty workspace (no accounts, no comments) → onboarding.
   if (watched.length === 0 && kpi.analyzedComments === 0) {
     return (
@@ -159,6 +181,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <OnboardingPanel state={onboarding} dict={dict} />
         <EmptyState title={t.ui.emptyDashboardTitle} body={t.ui.emptyDashboardBody} hint={t.ui.emptyDashboardHint}
           action={<Link href="/dashboard/accounts"><PrimaryButton type="button">{c.connect}</PrimaryButton></Link>} />
+        {platformEntry}
       </>
     );
   }
@@ -300,6 +323,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </Card>
         </div>
       ) : null}
+
+      {/* Platform-owner entry — owner-only, resolved fresh from platformRole; absent from HTML for everyone else. */}
+      {platformEntry}
     </>
   );
 }

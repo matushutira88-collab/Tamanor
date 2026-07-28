@@ -46,6 +46,18 @@ export function platformRoleSatisfies(role: PlatformRole | null | undefined, cap
   }
 }
 
+/**
+ * Dashboard platform-admin ENTRY visibility — owner-only by policy. The tenant-dashboard entry card renders
+ * ONLY for a platform `owner`. Because `resolvePlatformRole` already collapses a revoked/deactivated owner (and
+ * every non-owner role) to a NON-owner value, feeding its result here yields `false` for a revoked owner, a
+ * platform `admin`, and any tenant role. This is INDEPENDENT of the /admin route guard (which enforces
+ * per-capability `admin.access` server-side): hiding the card never grants, and showing it never gates, actual
+ * admin access. Never derived from an email.
+ */
+export function canViewPlatformAdminEntry(role: PlatformRole | null | undefined): boolean {
+  return role === PlatformRole.owner;
+}
+
 /** Fresh, trusted resolution of the platform role from persisted state. Fail-closed. */
 export async function resolvePlatformRole(userId: string | null | undefined): Promise<PlatformRole> {
   if (!userId) return PlatformRole.none;

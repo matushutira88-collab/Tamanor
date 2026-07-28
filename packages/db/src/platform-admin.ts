@@ -5,7 +5,7 @@
  * management is OWNER-ONLY, the last active owner is protected, self-mutation is blocked, and every action is
  * audited into the append-only `platform_admin_audit_events` (bounded, content-free metadata only).
  */
-import { PlatformRole, Prisma } from "@prisma/client";
+import { PlatformRole, Prisma, TenantDeletionState } from "@prisma/client";
 import { prisma, systemDb } from "./index";
 import { resolvePlatformRole, requirePlatformCapability, PlatformForbiddenError } from "./platform-repo";
 
@@ -66,6 +66,36 @@ const isAssignableRole = (r: string): r is PlatformRole => (ASSIGNABLE_PLATFORM_
 /** Count active PLATFORM_OWNERs (role owner AND not deactivated) — the last-owner-protection basis. */
 export async function countActivePlatformOwners(): Promise<number> {
   return prisma.user.count({ where: { platformRole: PlatformRole.owner, platformAccessRevokedAt: null } });
+}
+
+// ── Dashboard entry metrics ─────────────────────────────────────────────────────
+export interface PlatformDashboardMetrics {
+  activeTenants: number;              // tenants not in the deleting lifecycle
+  activeUsers: number;                // distinct users with a currently-valid (non-expired, non-revoked) session
+  unresolvedSecurityIncidents: number; // incidents whose status is not resolved/dismissed/archived
+  recentAuditEvents: number;          // platform-admin audit events in the last 7 days
+}
+
+/**
+ * Safe, bounded, PII-free cross-tenant metrics for the owner dashboard entry card. Authorization is enforced
+ * FRESH here (`admin.access`, fail-closed) — never trusting the caller — so a forged call from a non-privileged
+ * user throws. Returns only COUNTS (no tenant/user identities, no incident content). Read via the owner
+ * `systemDb` client; RLS on the app role is unaffected.
+ */
+export async function platformDashboardMetrics(actorUserId: string): Promise<PlatformDashboardMetrics> {
+  await requirePlatformCapability(actorUserId, "admin.access");
+  const now = new Date();
+  const since = new Date(now.getTime() - 7 * 86_400_000);
+  const [activeTenants, activeUsers, unresolvedSecurityIncidents, recentAuditEvents] = await Promise.all([
+    systemDb.tenant.count({ where: { deletionState: TenantDeletionState.active } }),
+    systemDb.userSession.findMany({
+      where: { revokedAt: null, expiresAt: { gt: now } },
+      select: { userId: true }, distinct: ["userId"],
+    }).then((rows) => rows.length),
+    systemDb.incident.count({ where: { status: { notIn: ["resolved", "dismissed", "archived"] } } }),
+    systemDb.platformAdminAuditEvent.count({ where: { createdAt: { gte: since } } }),
+  ]);
+  return { activeTenants, activeUsers, unresolvedSecurityIncidents, recentAuditEvents };
 }
 
 /**
