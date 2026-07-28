@@ -2585,6 +2585,21 @@ enum NotificationType {
   account_reconnect_required
   // CS-C15C — internal child-safety urgent-escalation notification (routed through the existing path).
   child_safety_escalation
+  // FAMILY NOTIFICATIONS V1 — bounded Family notification catalogue (must match core FAMILY_NOTIFICATION_TYPES
+  // exactly). Additive; each per-recipient (Notification.userId is always non-null for these).
+  family_signal_available
+  family_urgent_signal
+  family_incident_created
+  family_incident_escalated
+  family_delivery_available
+  family_delivery_acknowledged
+  family_delivery_declined
+  family_guardian_invitation_accepted
+  family_guardian_invitation_expiring
+  family_authority_changed
+  family_consent_expiring
+  family_recipient_authorization_changed
+  family_protection_plan_updated
 }
 
 enum NotificationSeverity {
@@ -2605,6 +2620,9 @@ model Notification {
   dedupeKey   String
   createdAt   DateTime             @default(now())
   readAt      DateTime?
+  // FAMILY NOTIFICATIONS V1 — soft dismiss (hide from the recipient's list; NEVER a delete). Independent of
+  // readAt. Nullable + additive: existing Business rows stay valid, no backfill. Business never sets it.
+  dismissedAt DateTime?
   emailSentAt DateTime?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2612,6 +2630,9 @@ model Notification {
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, userId, readAt, createdAt])
   @@index([tenantId, createdAt])
+  // FAMILY NOTIFICATIONS V1 — supports the Family center query (per recipient, non-dismissed, unread/all,
+  // newest-first with a stable id tie-break). Business queries keep using the index above.
+  @@index([tenantId, userId, dismissedAt, readAt, createdAt, id])
   @@map("notifications")
 }
 
