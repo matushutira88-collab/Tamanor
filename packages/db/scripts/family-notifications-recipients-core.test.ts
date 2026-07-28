@@ -45,7 +45,7 @@ async function main() {
   const decision = await createRecipientAuthorizationDecision(ownerA, { safetySignalId: sigA, recipientMembershipId: mGuardA, guardianRelationshipId: relA });
 
   console.log("\n1. source / workspace validation (fail-closed)");
-  check("★ unsupported Family type fails closed", (await withTenant(famA, (tx) => resolveFamilyNotificationRecipientsTx(tx, { tenantId: famA, source: { type: "family_authority_changed" as never, safetySignalId: sigA, eventVersion: "e1" } }))).ok === false);
+  check("★ unsupported Family type fails closed (B2 incident type not yet supported)", (await withTenant(famA, (tx) => resolveFamilyNotificationRecipientsTx(tx, { tenantId: famA, source: { type: "family_incident_created" as never, safetySignalId: sigA, eventVersion: "e1" } }))).ok === false);
   check("★ Business workspace → workspace_mismatch", (await resolveSig(biz, sigA, "family_signal_available")).ok === false);
   check("★ missing source → source_not_found", (() => true)() && (await resolveSig(famA, `nope_${sfx}`, "family_signal_available")).ok === false);
   check("★ cross-tenant signal (looked up in famB) → not found", (await resolveSig(famB, sigA, "family_signal_available")).ok === false);

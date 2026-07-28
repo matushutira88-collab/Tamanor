@@ -68,7 +68,7 @@ function main() {
   check("★ kernel has NO 'all members' or tenant-wide recipient path", !/allMembers|everyMember|allTenantMembers|tenantWide/i.test(kernel));
   check("★ kernel has NO email-based recipient lookup", !/where:\s*\{[^}]*email/i.test(kernel) && !/byEmail|matchEmail/i.test(kernel));
   check("★ kernel composes canonical evaluators (getEffectiveRecipientAuthorization / evaluateSafetySignalDeliveryEligibility)", /getEffectiveRecipientAuthorization/.test(kernel) && /evaluateSafetySignalDeliveryEligibility/.test(kernel));
-  check("★ kernel supports ONLY the 3 Phase 2b-A types (others fail closed)", /unsupported_type/.test(kernel) && !/family_incident_created|family_guardian_invitation|family_authority_changed|family_protection_plan/.test(kernel));
+  check("★ kernel supports the 10 A+B1 types but NOT the 3 B2 types (incident/protection-plan fail closed)", /unsupported_type/.test(kernel) && /family_delivery_acknowledged/.test(kernel) && /family_authority_changed/.test(kernel) && !/family_incident_created/.test(kernel) && !/family_incident_escalated/.test(kernel) && !/family_protection_plan_updated/.test(kernel));
   check("★ no live trigger wired (no child-safety module imports the kernel)", csFiles.every((f) => !/internal\/family-notification-authorization/.test(read(`packages/db/src/${f}`))));
 
   console.log("\n10. provisioning alignment — set-app-role-password CS revokes stay in sync with migrations");
