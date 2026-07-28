@@ -1,0 +1,89 @@
+name: production-prisma-migrate
+
+# MANUAL, audited, GENERIC production migration path. Applies ACCEPTED Prisma migrations via
+# `prisma migrate deploy` ONLY. Distinct from the family-specific `production-database-migrate` workflow (which
+# is pinned to one reconcile migration with family-count preservation). Gated behind the GitHub `Production`
+# Environment (protection rules + required reviewers) and three explicit arming inputs. Never triggers on
+# push/PR. DATABASE_URL is read ONLY from secrets.PRODUCTION_DATABASE_URL and is never printed.
+#
+# Prohibited by construction (this workflow runs NONE of them): prisma migrate dev / db push / migrate reset /
+# ad-hoc SQL. Only a read-only preflight, then `prisma migrate deploy`, then a read-only verify.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (only 'production' is accepted)"
+        required: true
+        type: choice
+        options:
+          - production
+      expected_last_migration:
+        description: "The NEWEST accepted migration in the repo (e.g. 20260824090000_platform_admin_privacy_analytics)"
+        required: true
+        type: string
+      confirmation:
+        description: "Type APPLY_ACCEPTED_PRODUCTION_MIGRATIONS to arm"
+        required: true
+        type: string
+
+# Never allow two production migrations to run at once.
+concurrency:
+  group: production-prisma-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    # GitHub Environment name MUST match the dashboard EXACTLY ("Production"), which is what scopes
+    # secrets.PRODUCTION_DATABASE_URL to this job. Configure required reviewers on it so the job pauses.
+    environment: Production
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      PRODUCTION_DATABASE_HOST_FINGERPRINT: ${{ secrets.PRODUCTION_DATABASE_HOST_FINGERPRINT }}
+      MIGRATE_ENVIRONMENT: ${{ inputs.environment }}
+      EXPECTED_LAST_MIGRATION: ${{ inputs.expected_last_migration }}
+      MIGRATE_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Refuse any non-main ref
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Refusing: this workflow may only run on main (got ${GITHUB_REF})."
+            exit 1
+          fi
+
+      - name: Assert the PRODUCTION_DATABASE_URL secret is mapped (fail-closed; NEVER prints it)
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "✗ DATABASE_URL is EMPTY — the 'Production' Environment secret PRODUCTION_DATABASE_URL is not"
+            echo "  mapped/set for this job. Set a valid value in the GitHub Environment named 'Production'."
+            exit 1
+          fi
+          echo "✓ PRODUCTION_DATABASE_URL secret is present and mapped (value hidden — never printed)."
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @guardora/db exec prisma generate
+
+      - name: Preflight — read-only migration status + validation (fail-closed; never prints the URL)
+        run: pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-preflight.cli.ts
+
+      - name: Apply accepted migrations (prisma migrate deploy ONLY)
+        run: pnpm --filter @guardora/db exec prisma migrate deploy
+
+      - name: Verify — database up to date + platform-admin migration applied
+        run: pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-verify.cli.ts
