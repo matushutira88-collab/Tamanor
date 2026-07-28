@@ -264,7 +264,9 @@
     "platform:bootstrap-owner": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/platform-bootstrap-owner.cli.ts",
     "platform-owner-bootstrap-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/platform-owner-bootstrap-workflow.test.ts",
     "production-prisma-migrate:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate.test.ts",
-    "production-prisma-migrate-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-workflow.test.ts"
+    "production-prisma-migrate-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-workflow.test.ts",
+    "production-prisma-migrate-recover:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-recover.test.ts",
+    "production-prisma-migrate-recover-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-recover-workflow.test.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

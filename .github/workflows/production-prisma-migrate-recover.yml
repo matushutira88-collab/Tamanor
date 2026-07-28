@@ -1,0 +1,95 @@
+name: production-prisma-migrate-recover
+
+# MANUAL, audited, SINGLE-PURPOSE recovery for a FAILED production Prisma migration. It marks the failed attempt
+# ROLLED BACK via `prisma migrate resolve --rolled-back` so the standalone production-prisma-migrate workflow can
+# re-run it. This workflow runs NONE of: deploy, dev, reset, db-push, applied-marking, or ad-hoc SQL — only a
+# read-only preflight, the rolled-back resolve, and a read-only verify. Gated behind the GitHub `Production`
+# Environment (protection rules + required reviewers) plus four explicit arming inputs. Never triggers on push/PR.
+# DATABASE_URL is read ONLY from secrets.PRODUCTION_DATABASE_URL and is never printed. Safe ONLY for idempotent /
+# transactional migrations whose SQL can be re-run to the correct end state.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (only 'production' is accepted)"
+        required: true
+        type: choice
+        options:
+          - production
+      failed_migration:
+        description: "Exact name of the failed migration to recover (e.g. 20260720090000_v1_58_5_rls_security_hardening)"
+        required: true
+        type: string
+      resolution:
+        description: "Only 'rolled-back' is supported — the migration is re-run on the next production-prisma-migrate. Applied-marking is intentionally unavailable."
+        required: true
+        type: choice
+        options:
+          - rolled-back
+      confirmation:
+        description: "Type APPLY_ACCEPTED_PRODUCTION_MIGRATIONS to arm"
+        required: true
+        type: string
+
+# Share the production-prisma-migrate group so a recovery and a migration can never run at the same time.
+concurrency:
+  group: production-prisma-migrate
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    # GitHub Environment name MUST match the dashboard EXACTLY ("Production"), which is what scopes
+    # secrets.PRODUCTION_DATABASE_URL to this job. Configure required reviewers on it so the job pauses.
+    environment: Production
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      PRODUCTION_DATABASE_HOST_FINGERPRINT: ${{ secrets.PRODUCTION_DATABASE_HOST_FINGERPRINT }}
+      MIGRATE_ENVIRONMENT: ${{ inputs.environment }}
+      RECOVER_TARGET: ${{ inputs.failed_migration }}
+      RECOVER_RESOLUTION: ${{ inputs.resolution }}
+      MIGRATE_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Refuse any non-main ref
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Refusing: this workflow may only run on main (got ${GITHUB_REF})."
+            exit 1
+          fi
+
+      - name: Assert the PRODUCTION_DATABASE_URL secret is mapped (fail-closed; NEVER prints it)
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "✗ DATABASE_URL is EMPTY — the 'Production' Environment secret PRODUCTION_DATABASE_URL is not"
+            echo "  mapped/set for this job. Set a valid value in the GitHub Environment named 'Production'."
+            exit 1
+          fi
+          echo "✓ PRODUCTION_DATABASE_URL secret is present and mapped (value hidden — never printed)."
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @guardora/db exec prisma generate
+
+      - name: Preflight — confirm the target is a FAILED migration (read-only; never prints the URL)
+        run: pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-recover-preflight.cli.ts
+
+      - name: Roll back the failed migration (prisma migrate resolve --rolled-back ONLY)
+        run: pnpm --filter @guardora/db exec prisma migrate resolve --rolled-back "${RECOVER_TARGET}"
+
+      - name: Verify — target is no longer failed and now pending (read-only)
+        run: pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-recover-verify.cli.ts

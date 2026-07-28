@@ -50,10 +50,15 @@ export function evaluateMigrationBacklog(input: { repoMigrations: string[]; pend
   return { ok: errors.length === 0, errors, pending };
 }
 
-/** Migrations recorded in `_prisma_migrations` that failed or are in-progress (finished_at NULL) or rolled back. */
+/**
+ * Migrations in a BLOCKING failed state — a row that STARTED but never finished and was not rolled back
+ * (`finished_at IS NULL AND rolled_back_at IS NULL`). `prisma migrate deploy` refuses to proceed past exactly
+ * these. A migration explicitly marked rolled back (`rolled_back_at` set) is deliberately EXCLUDED: deploy
+ * re-applies rolled-back migrations, so a recovered-and-reapplied migration must not look failed forever.
+ */
 export async function failedMigrationNames(): Promise<string[]> {
   const rows = await systemDb.$queryRawUnsafe<{ migration_name: string }[]>(
-    `SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL ORDER BY migration_name`,
+    `SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NULL AND rolled_back_at IS NULL ORDER BY migration_name`,
   );
   return rows.map((r) => r.migration_name);
 }
