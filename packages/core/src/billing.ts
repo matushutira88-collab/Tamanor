@@ -402,6 +402,140 @@ export function trialDaysRemaining(trialEndsAt: Date | null | undefined, now: Da
   return ms <= 0 ? 0 : Math.ceil(ms / (24 * 60 * 60 * 1000));
 }
 
+// ---- BUSINESS billing PRESENTATION (canonical, read-time authority) ----------
+// ONE deterministic authority for "which Business plan + billing state is EFFECTIVELY in force", derived
+// from the TRUSTED persisted subscription — never the (possibly stale) Tenant.plan, never a browser value.
+// Consumed by the Billing UI, the Usage UI, AND business entitlement resolution, so display and enforcement
+// can never disagree. Family billing has its own resolvers and never flows through here.
+
+export type BusinessBillingSource = "internal" | "subscription" | "trial" | "tenant" | "none";
+
+export interface BusinessBillingSubscriptionInput {
+  plan: string | null;
+  status: string | null;
+  billingInterval: string | null;
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
+}
+export interface BusinessBillingInput {
+  /** The persisted Tenant.plan — used ONLY as a last-resort display hint, never to override a live subscription. */
+  tenantPlan: string | null;
+  billingStatus: string | null;
+  persistedAccessState?: AccessState | string | null;
+  internalAccess?: boolean;
+  trialEndsAt: Date | null;
+  subscription: BusinessBillingSubscriptionInput | null;
+  now?: Date;
+}
+export interface BusinessBillingPresentation {
+  effectivePlanId: BillingPlanId;
+  effectivePlanName: string;
+  effectiveAccessState: AccessState;
+  lifecycle: TenantLifecycleState;
+  subscriptionStatus: BillingStatus | string;
+  billingInterval: BillingInterval | null;
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
+  trialEndsAt: Date | null;
+  trialDaysRemaining: number | null;
+  /** A paid plan is currently in force (active / trialing-with-sub / cancel-at-period-end still paid through). */
+  isPaid: boolean;
+  /** An active free-trial window with no effective paid subscription. */
+  isTrial: boolean;
+  isInternalUnlimited: boolean;
+  /** The tenant holds a subscription that blocks a fresh checkout on effectivePlanId → its card shows "current". */
+  holdsCurrentSubscription: boolean;
+  source: BusinessBillingSource;
+}
+
+/** Narrow a raw plan string to a BUSINESS PAID plan (starter/growth/agency); everything else → null (fail-closed). */
+export function normalizeBusinessPaidPlan(plan: unknown): "starter" | "growth" | "agency" | null {
+  if (typeof plan !== "string") return null;
+  const p = plan.trim().toLowerCase();
+  return p === "starter" || p === "growth" || p === "agency" ? p : null;
+}
+
+/**
+ * The canonical Business billing presentation. Precedence (deterministic, fail-closed):
+ *   1. internalAccess          → internal tenant shown consistently as unlimited/internal (not a paid tier).
+ *   2. valid active paid sub    → the subscription's TRUSTED mapped plan (active / cancel-at-period-end still
+ *                                 paid through), NEVER the possibly-stale Tenant.plan.
+ *   3. past_due / suspended     → the subscription's plan, truthfully (payment problem; still their plan).
+ *   4. active trial             → free_trial (only when there is NO effective paid subscription).
+ *   5. canceled (period over)   → the former plan, shown canceled (not paid; re-purchasable).
+ *   6. otherwise                → free_trial, fail-closed (trial-expired / unknown / mismatched: never invents
+ *                                 a paid plan; a browser value can never reach here).
+ */
+export function resolveBusinessBillingPresentation(input: BusinessBillingInput): BusinessBillingPresentation {
+  const now = input.now ?? new Date();
+  const sub = input.subscription;
+  const subscriptionStatus = sub?.status ?? input.billingStatus ?? "no_subscription";
+  const li: EffectiveAccessInput = {
+    status: subscriptionStatus,
+    trialEndsAt: input.trialEndsAt,
+    currentPeriodEnd: sub?.currentPeriodEnd ?? null,
+    cancelAtPeriodEnd: sub?.cancelAtPeriodEnd,
+    persistedAccessState: input.persistedAccessState ?? null,
+    internalAccess: input.internalAccess,
+    now,
+  };
+  const lifecycle = resolveTenantLifecycle(li);
+  const effectiveAccessState = resolveEffectiveAccessState(li);
+  const billingInterval = isBillingInterval(sub?.billingInterval) ? sub!.billingInterval as BillingInterval : null;
+  const currentPeriodEnd = sub?.currentPeriodEnd ?? null;
+  const cancelAtPeriodEnd = sub?.cancelAtPeriodEnd ?? false;
+  const trialDays = trialDaysRemaining(input.trialEndsAt, now);
+  const subPaid = normalizeBusinessPaidPlan(sub?.plan);
+  const tenantPaid = normalizeBusinessPaidPlan(input.tenantPlan);
+  // A LIVE subscription exists when there is a subscription row whose status is a real Stripe state (not our
+  // own "no_subscription" sentinel). Only a live subscription overrides Tenant.plan; with no live subscription
+  // we keep Tenant.plan as the tier (identical to prior enforcement — never a downgrade).
+  const hasLiveSub = !!sub && subscriptionStatus !== "no_subscription";
+
+  const build = (
+    planId: BillingPlanId,
+    extra: { isPaid: boolean; isTrial: boolean; isInternalUnlimited: boolean; holdsCurrentSubscription: boolean; source: BusinessBillingSource },
+  ): BusinessBillingPresentation => ({
+    effectivePlanId: planId,
+    effectivePlanName: BILLING_PLANS[planId].name,
+    effectiveAccessState, lifecycle, subscriptionStatus, billingInterval,
+    currentPeriodEnd, cancelAtPeriodEnd, trialEndsAt: input.trialEndsAt, trialDaysRemaining: trialDays,
+    ...extra,
+  });
+
+  if (input.internalAccess) {
+    return build(subPaid ?? tenantPaid ?? "agency", { isPaid: false, isTrial: false, isInternalUnlimited: true, holdsCurrentSubscription: false, source: "internal" });
+  }
+  if (lifecycle === "active_paid" && subPaid) {
+    return build(subPaid, { isPaid: true, isTrial: false, isInternalUnlimited: false, holdsCurrentSubscription: true, source: "subscription" });
+  }
+  if ((lifecycle === "past_due" || lifecycle === "suspended") && subPaid) {
+    return build(subPaid, { isPaid: false, isTrial: false, isInternalUnlimited: false, holdsCurrentSubscription: true, source: "subscription" });
+  }
+  if (lifecycle === "active_trial") {
+    return build("free_trial", { isPaid: false, isTrial: true, isInternalUnlimited: false, holdsCurrentSubscription: false, source: "trial" });
+  }
+  if (lifecycle === "canceled" && subPaid) {
+    return build(subPaid, { isPaid: false, isTrial: false, isInternalUnlimited: false, holdsCurrentSubscription: false, source: "subscription" });
+  }
+  // Fail-closed fallthrough. A LIVE subscription we could not map to a known paid plan (unknown / Family /
+  // workspace-mismatched) never invents a plan and never falls back to Tenant.plan → free_trial. With NO live
+  // subscription, Tenant.plan governs the tier (trial / legacy), exactly as prior enforcement did.
+  if (hasLiveSub) {
+    return build("free_trial", { isPaid: false, isTrial: false, isInternalUnlimited: false, holdsCurrentSubscription: false, source: "none" });
+  }
+  return build(tenantPaid ?? "free_trial", { isPaid: false, isTrial: false, isInternalUnlimited: false, holdsCurrentSubscription: false, source: tenantPaid ? "tenant" : "none" });
+}
+
+/**
+ * The SINGLE effective-plan authority for a Business tenant — the plan tier that display AND enforcement
+ * both use, so they can never disagree. A stale Tenant.plan never overrides a valid active subscription;
+ * unknown/inconsistent input fails closed to free_trial (never a fabricated paid tier).
+ */
+export function resolveEffectiveBusinessPlan(input: BusinessBillingInput): BillingPlanId {
+  return resolveBusinessBillingPresentation(input).effectivePlanId;
+}
+
 // ---- V1.58.4: Stripe webhook event ordering (out-of-order protection) --------
 /**
  * Ordering position of a Stripe billing event: its `created` time plus whether it is TERMINAL

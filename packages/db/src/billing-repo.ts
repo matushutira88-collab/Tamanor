@@ -4,8 +4,9 @@ import {
   resolveEffectiveAccessState, resolveEntitlements, accessAllowsOperations, evaluateCheckoutGuard,
   resolveTenantLifecycle, trialDaysRemaining, notificationDedupeKey, dayBucket,
   isFamilyPlanId, resolveFamilyBillingState, familyBillingEnabled,
+  resolveBusinessBillingPresentation, resolveEffectiveBusinessPlan,
   type AccessState, type BillingStatus, type PlanEntitlements, type CheckoutGuardReason,
-  type TenantLifecycleState, type FamilyPlanId,
+  type TenantLifecycleState, type FamilyPlanId, type BusinessBillingPresentation,
 } from "@guardora/core";
 import { systemDb } from "./index";
 import { createNotification } from "./notification-repo";
@@ -32,6 +33,13 @@ export type TenantBilling = {
   trialDaysRemaining: number | null;
   trialStartsAt: Date | null;
   trialEndsAt: Date | null;
+  /** Operator-set internal-access flag (unlimited/internal tenant). */
+  internalAccess: boolean;
+  /**
+   * BUSINESS BILLING TRUTH — the ONE canonical, server-derived presentation the Billing + Usage UIs render.
+   * Derived from the TRUSTED subscription (never a stale Tenant.plan). Family surfaces never read this.
+   */
+  presentation: BusinessBillingPresentation;
   subscription: {
     plan: string;
     status: string;
@@ -70,12 +78,30 @@ export async function getTenantBilling(tenantId: string, now: Date = new Date())
     internalAccess: t.internalAccess,
     now,
   };
+  // BUSINESS BILLING TRUTH — the canonical presentation, derived from the TRUSTED subscription (never a
+  // stale Tenant.plan). Consumed identically by the Billing + Usage UIs so display can never disagree.
+  const presentation = resolveBusinessBillingPresentation({
+    tenantPlan: t.plan,
+    billingStatus: t.billingStatus,
+    persistedAccessState: t.accessState,
+    internalAccess: t.internalAccess,
+    trialEndsAt: t.trialEndsAt,
+    subscription: t.subscription
+      ? {
+          plan: t.subscription.plan, status: t.subscription.status, billingInterval: t.subscription.billingInterval,
+          currentPeriodEnd: t.subscription.currentPeriodEnd, cancelAtPeriodEnd: t.subscription.cancelAtPeriodEnd,
+        }
+      : null,
+    now,
+  });
   return {
     tenantId: t.id, plan: t.plan, billingStatus: t.billingStatus, accessState: t.accessState,
     effectiveAccessState: resolveEffectiveAccessState(lifecycleInput),
     lifecycle: resolveTenantLifecycle(lifecycleInput),
     trialDaysRemaining: trialDaysRemaining(t.trialEndsAt, now),
     trialStartsAt: t.trialStartsAt, trialEndsAt: t.trialEndsAt,
+    internalAccess: t.internalAccess,
+    presentation,
     subscription: t.subscription
       ? {
           plan: t.subscription.plan, status: t.subscription.status, billingInterval: t.subscription.billingInterval,
@@ -96,8 +122,8 @@ export async function getTenantEntitlements(tenantId: string, now: Date = new Da
   const t = await systemDb.tenant.findUnique({
     where: { id: tenantId },
     select: {
-      plan: true, accessState: true, deletionState: true, billingStatus: true, trialEndsAt: true, internalAccess: true,
-      subscription: { select: { currentPeriodEnd: true, cancelAtPeriodEnd: true } },
+      plan: true, accessState: true, deletionState: true, billingStatus: true, trialEndsAt: true, internalAccess: true, workspaceKind: true,
+      subscription: { select: { plan: true, status: true, billingInterval: true, currentPeriodEnd: true, cancelAtPeriodEnd: true } },
     },
   });
   if (!t) return resolveEntitlements(null, null);
@@ -113,7 +139,25 @@ export async function getTenantEntitlements(tenantId: string, now: Date = new Da
     internalAccess: t.internalAccess,
     now,
   });
-  return resolveEntitlements(t.plan, effective, { deletingTenant: t.deletionState !== "active", internalAccess: t.internalAccess });
+  // BUSINESS BILLING TRUTH — the enforced plan TIER is the SAME effective plan the Billing/Usage UIs display,
+  // so display and enforcement can never disagree: a valid active subscription's plan wins over a stale
+  // Tenant.plan (fail-closed to free_trial on unknown). Access-state precedence (restricted/suspended/deleting)
+  // still governs operations exactly as before. FAMILY tenants are untouched — they keep Tenant.plan (their
+  // entitlements come from resolveFamilyEntitlements, never this path).
+  const plan = t.workspaceKind === "family"
+    ? t.plan
+    : resolveEffectiveBusinessPlan({
+        tenantPlan: t.plan,
+        billingStatus: t.billingStatus,
+        persistedAccessState: t.accessState,
+        internalAccess: t.internalAccess,
+        trialEndsAt: t.trialEndsAt,
+        subscription: t.subscription
+          ? { plan: t.subscription.plan, status: t.subscription.status, billingInterval: t.subscription.billingInterval, currentPeriodEnd: t.subscription.currentPeriodEnd, cancelAtPeriodEnd: t.subscription.cancelAtPeriodEnd }
+          : null,
+        now,
+      });
+  return resolveEntitlements(plan, effective, { deletingTenant: t.deletionState !== "active", internalAccess: t.internalAccess });
 }
 
 /** Whether NEW operations (sync, moderation execution, provider actions) may run for this tenant. */

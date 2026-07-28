@@ -55,7 +55,7 @@ const COMPARE_ROWS: { key: keyof Copy["compareRows"]; cells: [Cell, Cell, Cell, 
 
 type Copy = {
   title: string; sub: string;
-  currentPlan: string; status: string; interval: string;
+  currentPlan: string; status: string; interval: string; internalUnlimited: string;
   monthly: string; yearly: string; yearlyHint: string;
   upgradeTo: (name: string) => string; current: string; contactSales: string; managePortal: string;
   cancelsAt: (d: string) => string; perMonth: string; perYear: string;
@@ -87,7 +87,7 @@ const C: Record<Locale, Copy> = {
     title: "Billing & plan", sub: "Manage your subscription, plan and invoices.",
     currentPlan: "Current plan", status: "Status", interval: "Billing",
     monthly: "Monthly", yearly: "Yearly", yearlyHint: "2 months free",
-    upgradeTo: (n) => `Upgrade to ${n}`, current: "Current plan", contactSales: "Contact sales", managePortal: "Manage billing & invoices",
+    upgradeTo: (n) => `Upgrade to ${n}`, current: "Current plan", internalUnlimited: "Internal · unlimited access", contactSales: "Contact sales", managePortal: "Manage billing & invoices",
     cancelsAt: (d) => `Cancels on ${d}`, perMonth: "/mo", perYear: "/yr",
     custom: "Custom", ownerOnlyShort: "Owner only", mostPopular: "Most popular",
     checkoutUnavailable: "Checkout temporarily unavailable", contactSupport: "Contact support",
@@ -132,7 +132,7 @@ const C: Record<Locale, Copy> = {
     title: "Fakturácia a plán", sub: "Spravujte predplatné, plán a faktúry.",
     currentPlan: "Aktuálny plán", status: "Stav", interval: "Fakturácia",
     monthly: "Mesačne", yearly: "Ročne", yearlyHint: "2 mesiace zdarma",
-    upgradeTo: (n) => `Prejsť na ${n}`, current: "Aktuálny plán", contactSales: "Kontaktovať obchod", managePortal: "Spravovať fakturáciu a faktúry",
+    upgradeTo: (n) => `Prejsť na ${n}`, current: "Aktuálny plán", internalUnlimited: "Interný · neobmedzený prístup", contactSales: "Kontaktovať obchod", managePortal: "Spravovať fakturáciu a faktúry",
     cancelsAt: (d) => `Ruší sa ${d}`, perMonth: "/mes", perYear: "/rok",
     custom: "Na mieru", ownerOnlyShort: "Len vlastník", mostPopular: "Najobľúbenejšie",
     checkoutUnavailable: "Platba dočasne nedostupná", contactSupport: "Kontaktovať podporu",
@@ -177,7 +177,7 @@ const C: Record<Locale, Copy> = {
     title: "Abrechnung & Tarif", sub: "Verwalten Sie Abo, Tarif und Rechnungen.",
     currentPlan: "Aktueller Tarif", status: "Status", interval: "Abrechnung",
     monthly: "Monatlich", yearly: "Jährlich", yearlyHint: "2 Monate gratis",
-    upgradeTo: (n) => `Wechseln zu ${n}`, current: "Aktueller Tarif", contactSales: "Vertrieb kontaktieren", managePortal: "Abrechnung & Rechnungen verwalten",
+    upgradeTo: (n) => `Wechseln zu ${n}`, current: "Aktueller Tarif", internalUnlimited: "Intern · unbegrenzter Zugriff", contactSales: "Vertrieb kontaktieren", managePortal: "Abrechnung & Rechnungen verwalten",
     cancelsAt: (d) => `Kündigt am ${d}`, perMonth: "/Mon", perYear: "/Jahr",
     custom: "Individuell", ownerOnlyShort: "Nur Inhaber", mostPopular: "Am beliebtesten",
     checkoutUnavailable: "Checkout vorübergehend nicht verfügbar", contactSupport: "Support kontaktieren",
@@ -253,13 +253,34 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const isOwner = can(session.role, Permission.BillingManage);
 
   const b = await getTenantBilling(session.tenantId);
-  const accessState = b?.accessState ?? "full_access";
-  const billingStatus = b?.billingStatus ?? "no_subscription";
-  const currentPlanId = b?.plan ?? "free_trial";
+  // BUSINESS BILLING TRUTH — every plan/state fact below comes from the ONE canonical, server-derived
+  // presentation (built from the trusted subscription, never a stale Tenant.plan). No field is guessed here.
+  const pres = b?.presentation ?? null;
+  const accessState = pres?.effectiveAccessState ?? "full_access";
+  const currentPlanId = pres?.effectivePlanId ?? "free_trial";      // the EFFECTIVE plan (subscription wins)
+  const subscriptionStatus = pres?.subscriptionStatus ?? "no_subscription";
+  const billingInterval = pres?.billingInterval ?? null;
+  const periodEnd = pres?.currentPeriodEnd ?? null;
+  const cancelAtPeriodEnd = pres?.cancelAtPeriodEnd ?? false;
+  const isInternalUnlimited = pres?.isInternalUnlimited ?? false;
+  const holdsCurrentSubscription = pres?.holdsCurrentSubscription ?? false;
   const trialStartsAt = b?.trialStartsAt ?? null;
   const trialEndsAt = b?.trialEndsAt ?? null;
-  const trialDaysLeft = trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / DAY)) : 0;
+  const trialDaysLeft = pres?.trialDaysRemaining ?? (trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / DAY)) : 0);
   const sub = b?.subscription ?? null;
+
+  // TEMPORARY, PII-FREE diagnostic — bounded plan/state LABELS + booleans only (never email/tenant/user id,
+  // Stripe customer/subscription/price/invoice id, session, or secrets). Confirms display truth in production.
+  console.log(JSON.stringify({
+    evt: "BUSINESS_BILLING_PRESENTATION_RESOLVED",
+    tenantPlan: b?.plan ?? null,
+    subscriptionPlan: sub?.plan ?? null,
+    effectivePlan: currentPlanId,
+    lifecycle: pres?.lifecycle ?? "none",
+    effectiveAccessState: accessState,
+    source: pres?.source ?? "none",
+    hasSubscription: !!sub,
+  }));
 
   // Presentational trial progress (fill = remaining share of the trial window). No business logic.
   const trialTotalDays = trialStartsAt && trialEndsAt
@@ -275,7 +296,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const priceAvailability = stripePriceAvailability(process.env, { requireLive: process.env.NODE_ENV === "production" });
 
   const priceFor = (planId: keyof typeof BILLING_PLANS) => (interval === "yearly" ? BILLING_PLANS[planId].priceYearly : BILLING_PLANS[planId].priceMonthly);
-  const isTrialActive = billingStatus === "no_subscription" && !!trialEndsAt && trialDaysLeft > 0 && accessState !== "restricted";
+  // Trial section shows ONLY for a genuine active trial with no effective paid subscription (canonical).
+  const isTrialActive = pres?.isTrial ?? false;
   // V1.65 — trial-window entitlements shown in the isolated trial section (the SAME central catalogue the
   // server enforces). Rendered only inside the trial section; presentation only.
   const trialEnt = planEntitlements(currentPlanId);
@@ -306,7 +328,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           <p className="text-sm font-semibold text-[var(--color-danger)]">{c.restricted.title}</p>
           <p className="mt-1 text-sm text-[var(--color-muted)]">{c.restricted.body}</p>
         </section>
-      ) : billingStatus === "past_due" ? (
+      ) : pres?.lifecycle === "past_due" ? (
         <section className="mt-6 rounded-2xl border border-[var(--color-warn)] bg-[var(--color-warn-soft)] p-5">
           <p className="text-sm font-semibold text-[var(--color-warn)]">{c.pastDue.title}</p>
           <p className="mt-1 text-sm text-[var(--color-muted)]">{c.pastDue.body}</p>
@@ -345,14 +367,17 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
       <section className="mt-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5" aria-label={c.summary.title}>
         <h2 className="text-sm font-semibold">{c.summary.title}</h2>
         <dl className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          <Info label={c.currentPlan}>{BILLING_PLANS[currentPlanId as keyof typeof BILLING_PLANS]?.name ?? currentPlanId}</Info>
-          <Info label={c.status}>{c.statusLabels[billingStatus] ?? billingStatus}</Info>
-          <Info label={c.summary.billingCycle}>{sub?.billingInterval ? (sub.billingInterval === "yearly" ? c.yearly : c.monthly) : "—"}</Info>
-          <Info label={billingStatus === "no_subscription" ? c.summary.trialRemaining : c.summary.nextBilling}>
-            {billingStatus === "no_subscription"
-              ? (trialDaysLeft > 0 ? c.trial.remaining(trialDaysLeft) : "—")
-              : fmtDate(sub?.currentPeriodEnd ?? null, locale)}
-            {sub?.cancelAtPeriodEnd && sub.currentPeriodEnd ? <span className="mt-0.5 block text-xs font-normal text-[var(--color-warn)]">{c.cancelsAt(fmtDate(sub.currentPeriodEnd, locale))}</span> : null}
+          <Info label={c.currentPlan}>
+            <span data-testid="billing-current-plan" data-plan={currentPlanId}>{pres?.effectivePlanName ?? BILLING_PLANS[currentPlanId as keyof typeof BILLING_PLANS]?.name ?? currentPlanId}</span>
+            {isInternalUnlimited ? <span className="mt-0.5 block text-xs font-normal text-[var(--color-brand)]">· {c.internalUnlimited}</span> : null}
+          </Info>
+          <Info label={c.status}><span data-testid="billing-status" data-status={subscriptionStatus}>{c.statusLabels[subscriptionStatus] ?? subscriptionStatus}</span></Info>
+          <Info label={c.summary.billingCycle}><span data-testid="billing-cycle" data-interval={billingInterval ?? "none"}>{billingInterval ? (billingInterval === "yearly" ? c.yearly : c.monthly) : "—"}</span></Info>
+          <Info label={holdsCurrentSubscription || periodEnd ? c.summary.nextBilling : c.summary.trialRemaining}>
+            {periodEnd
+              ? fmtDate(periodEnd, locale)
+              : (trialDaysLeft > 0 ? c.trial.remaining(trialDaysLeft) : "—")}
+            {cancelAtPeriodEnd && periodEnd ? <span className="mt-0.5 block text-xs font-normal text-[var(--color-warn)]">{c.cancelsAt(fmtDate(periodEnd, locale))}</span> : null}
           </Info>
           <Info label={c.summary.invoiceStatus}>{invoiceLabel ?? <span className="font-normal text-[var(--color-muted)]">—</span>}</Info>
           <Info label={c.summary.workspaceId}><span className="font-mono text-xs">{session.tenantId}</span></Info>
@@ -380,7 +405,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           const highlighted = planId === "growth";
           const isEnterprise = planId === "enterprise";
           const price = priceFor(planId);
-          const isCurrent = currentPlanId === planId && (billingStatus === "active" || billingStatus === "trialing");
+          // ONLY the genuinely effective plan is "current": the tenant holds a subscription that blocks a fresh
+          // checkout on it (active / cancel-at-period-end / past_due / suspended), or it's the internal tenant.
+          // A same-plan checkout CTA is therefore never shown for the plan already in force.
+          const isCurrent = planId === currentPlanId && (holdsCurrentSubscription || isInternalUnlimited);
           // Per-plan/interval availability (never the global billing.configured): this exact plan's
           // Price is validly configured AND the safe checkout chain (secret+webhook+portal) is ready.
           const priceKey = isEnterprise ? null : stripePriceKeyFor(planId, interval);
@@ -388,6 +416,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           return (
             <article
               key={planId}
+              data-testid={`billing-plan-${planId}`}
+              data-current={isCurrent ? "true" : "false"}
               className={`relative flex flex-col rounded-2xl p-5 shadow-sm transition duration-200 motion-reduce:transition-none hover:-translate-y-0.5 hover:shadow-lg motion-reduce:hover:translate-y-0 ${highlighted ? "border-2 border-[var(--color-brand)] bg-[var(--color-surface)] ring-1 ring-[var(--color-brand)]/20 lg:-my-1" : "border border-[var(--color-border)] bg-[var(--color-surface)]"}`}
             >
               {highlighted ? (

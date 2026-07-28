@@ -66,6 +66,8 @@ export default defineConfig({
     { name: "auth-desktop", testMatch: /(authed|inbox|usage|danger-zone|account-danger-zone)(\.scale)?\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STORAGE } },
     // Platform owner-entry render proof (desktop only) — promotes/restores the fixture role within the spec.
     { name: "auth-desktop-platform", testMatch: /platform-admin-entry\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STORAGE } },
+    // Business billing-truth proof (desktop only) — stages/restores a business billing fixture within the spec.
+    { name: "auth-desktop-billing", testMatch: /business-billing-truth\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STORAGE } },
     { name: "auth-mobile", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { ...mobile(390, 844), storageState: STORAGE } },
     { name: "auth-mobile-small", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { ...mobile(375, 812), storageState: STORAGE } },
     { name: "auth-tablet", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { browserName: "chromium", viewport: { width: 768, height: 1024 }, hasTouch: true, storageState: STORAGE } },

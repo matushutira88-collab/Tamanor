@@ -199,8 +199,11 @@ function Meter({ label, used, limit, percent, testid, suffix }: { label: string;
 export default async function UsagePage() {
   const session = await requireSession();
   const tenant = await withTenant(session.tenantId, (db) => db.tenant.findUnique({ where: { id: session.tenantId }, select: { plan: true, internalAccess: true } }));
-  const plan = tenant?.plan ?? "free";
   const internalAccess = tenant?.internalAccess ?? false;
+  // BUSINESS BILLING TRUTH — the Usage page shows the SAME canonical effective plan the Billing page shows and
+  // that server-side enforcement (getTenantEntitlements) uses, so the displayed plan/limits can never disagree.
+  const billing = await getTenantBilling(session.tenantId);
+  const plan = billing?.presentation.effectivePlanId ?? tenant?.plan ?? "free";
   // V1.73 — internal admin tenant displays as unlimited (matching enforcement).
   const summary = await getUsageSummary(session.tenantId, plan, new Date(), internalAccess);
   const fuse = getPaidAiFuseConfig();
@@ -213,7 +216,6 @@ export default async function UsagePage() {
   // server enforces at create time. getTenantEntitlements reflects unlimited for an internal admin tenant.
   const resources = await getTenantResourceUsage(session.tenantId);
   const planLimits = await getTenantEntitlements(session.tenantId);
-  const billing = await getTenantBilling(session.tenantId);
   // V1.68 (Release A / A6) — first-sync-pending + monitoring-disabled-by-plan visibility. Both are
   // counted from the SAME account model the sync/enforcement paths use (non-disconnected accounts).
   const accountStates = await withTenant(session.tenantId, async (db) => {
@@ -226,7 +228,10 @@ export default async function UsagePage() {
   const pct = (used: number, limit: number | null) => (limit === null || limit <= 0 ? (used > 0 ? 100 : 0) : Math.round((used / limit) * 100));
   const isOver = (used: number, limit: number | null) => limit !== null && used > limit;
   const overLimit = isOver(resources.connections, planLimits.maxConnectedAccounts) || isOver(resources.brands, planLimits.maxBrands);
-  const paymentIssue = billing?.accessState === "restricted" || billing?.billingStatus === "past_due" || billing?.billingStatus === "unpaid";
+  // Canonical: a payment problem = the effective access is restricted, or the effective lifecycle is past_due /
+  // suspended — derived from the SAME presentation the Billing page uses (never a stale tenant field).
+  const pres = billing?.presentation ?? null;
+  const paymentIssue = !!pres && (pres.effectiveAccessState === "restricted" || pres.lifecycle === "past_due" || pres.lifecycle === "suspended");
 
   return (
     <>
@@ -298,19 +303,19 @@ export default async function UsagePage() {
         <Card className="p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">{c.planBillingTitle}</h3>
-            <span data-testid="usage-lifecycle" data-lifecycle={billing.lifecycle}>
-              <Badge tone={billing.lifecycle === "active_paid" || billing.lifecycle === "active_trial" ? "ok" : billing.lifecycle === "past_due" ? "warn" : "danger"}>{c.lifecycleLabel[billing.lifecycle]}</Badge>
+            <span data-testid="usage-lifecycle" data-lifecycle={pres!.lifecycle}>
+              <Badge tone={pres!.lifecycle === "active_paid" || pres!.lifecycle === "active_trial" ? "ok" : pres!.lifecycle === "past_due" ? "warn" : "danger"}>{c.lifecycleLabel[pres!.lifecycle]}</Badge>
             </span>
           </div>
           <div className="flex flex-col gap-2 text-xs">
-            <div className="flex items-center gap-2"><span className="font-medium capitalize">{summary.plan} {c.planWord}</span></div>
-            {billing.lifecycle === "active_trial" && billing.trialDaysRemaining !== null ? (
-              <p data-testid="usage-trial-days">⏳ {billing.trialDaysRemaining === 0 ? c.trialEndsToday : c.trialDaysLeft(billing.trialDaysRemaining)}</p>
+            <div className="flex items-center gap-2"><span className="font-medium capitalize" data-testid="usage-effective-plan">{summary.plan} {c.planWord}</span></div>
+            {pres!.lifecycle === "active_trial" && pres!.trialDaysRemaining !== null ? (
+              <p data-testid="usage-trial-days">⏳ {pres!.trialDaysRemaining === 0 ? c.trialEndsToday : c.trialDaysLeft(pres!.trialDaysRemaining)}</p>
             ) : null}
-            {billing.subscription?.currentPeriodEnd ? (
+            {pres!.currentPeriodEnd ? (
               <p data-testid="usage-next-payment">
-                <span className="text-[var(--color-muted)]">{billing.subscription.cancelAtPeriodEnd ? c.cancelsOn : c.nextPayment}:</span>{" "}
-                <span className="font-medium tabular-nums">{fmtDate(billing.subscription.currentPeriodEnd)}</span>
+                <span className="text-[var(--color-muted)]">{pres!.cancelAtPeriodEnd ? c.cancelsOn : c.nextPayment}:</span>{" "}
+                <span className="font-medium tabular-nums">{fmtDate(pres!.currentPeriodEnd)}</span>
               </p>
             ) : null}
           </div>
