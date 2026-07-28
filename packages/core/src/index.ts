@@ -17,6 +17,7 @@ export * from "./connection-state";
 export * from "./sync-state";
 export * from "./csv";
 export * from "./notifications";
+export * from "./family-notifications";
 export * from "./team";
 export * from "./reputation";
 export * from "./observability";
