@@ -53,6 +53,42 @@ function main() {
   console.log("\n8. Business notification files untouched (only additive shared reuse)");
   const bizRepo = read("packages/db/src/notification-repo.ts");
   check("★ generic notification-repo has no Family-specific logic injected", !/family_signal_available|resolveFamilyNotificationRecipients|FAMILY_NOTIFICATION/.test(bizRepo));
+
+  console.log("\n9. Phase 2b-A internal authorization kernel — boundary invariants");
+  const kernel = read("packages/db/src/internal/family-notification-authorization.ts");
+  const dbIndex = read("packages/db/src/index.ts");
+  check("★ internal kernel is NOT exported from the @guardora/db barrel", !/internal\/family-notification-authorization/.test(dbIndex));
+  // No PRODUCTION file (outside the kernel + its tests) imports the internal kernel path.
+  const allTs = [...readdirSync(join(REPO, "packages/db/src")).filter((f) => f.endsWith(".ts")).map((f) => `packages/db/src/${f}`),
+    ...readdirSync(join(REPO, "apps/web/src/app/family")).filter((f) => f.endsWith(".ts") || f.endsWith(".tsx")).map((f) => `apps/web/src/app/family/${f}`)];
+  const importers = allTs.filter((p) => { try { return /from\s+["'][^"']*internal\/family-notification-authorization/.test(read(p)); } catch { return false; } });
+  check("★ no production/domain module imports the internal kernel", importers.length === 0, importers.join(","));
+  check("★ low-level persistence primitive is marked @internal", /@internal[^]*createFamilyNotificationTx/.test(repoSrc));
+  check("★ high-level authorized service resolves recipients via resolveFamilyNotificationRecipientsTx", /createAuthorizedFamilyNotificationTx[^]*resolveFamilyNotificationRecipientsTx/.test(kernel));
+  check("★ kernel has NO 'all members' or tenant-wide recipient path", !/allMembers|everyMember|allTenantMembers|tenantWide/i.test(kernel));
+  check("★ kernel has NO email-based recipient lookup", !/where:\s*\{[^}]*email/i.test(kernel) && !/byEmail|matchEmail/i.test(kernel));
+  check("★ kernel composes canonical evaluators (getEffectiveRecipientAuthorization / evaluateSafetySignalDeliveryEligibility)", /getEffectiveRecipientAuthorization/.test(kernel) && /evaluateSafetySignalDeliveryEligibility/.test(kernel));
+  check("★ kernel supports ONLY the 3 Phase 2b-A types (others fail closed)", /unsupported_type/.test(kernel) && !/family_incident_created|family_guardian_invitation|family_authority_changed|family_protection_plan/.test(kernel));
+  check("★ no live trigger wired (no child-safety module imports the kernel)", csFiles.every((f) => !/internal\/family-notification-authorization/.test(read(`packages/db/src/${f}`))));
+
+  console.log("\n10. provisioning alignment — set-app-role-password CS revokes stay in sync with migrations");
+  const prov = read("packages/db/scripts/set-app-role-password.ts");
+  const provRevokeAll = new Set([...prov.matchAll(/"(child_safety_[a-z_]+)"/g)].map((m) => m[1]));
+  const migRevokeAll = new Set([...readMigrationsFor(/REVOKE ALL PRIVILEGES ON TABLE "(child_safety_[a-z_]+)" FROM tamanor_app/g)]);
+  const missing = [...migRevokeAll].filter((t) => !provRevokeAll.has(t));
+  check("★ every migration REVOKE-ALL child_safety_* table is re-asserted by the provisioning script", missing.length === 0, `missing: ${missing.join(",")}`);
+  check("★ provisioning re-asserts DELETE,TRUNCATE revokes on the soft-delete safety tables", /REVOKE DELETE, TRUNCATE/.test(prov) && /safety_signal_deliveries/.test(prov) && /safety_recipient_authorization_decisions/.test(prov));
+}
+
+function readMigrationsFor(re: RegExp): string[] {
+  const dir = join(REPO, "packages/db/prisma/migrations");
+  const out: string[] = [];
+  for (const d of readdirSync(dir)) {
+    const p = join(dir, d, "migration.sql");
+    if (!existsSync(p)) continue;
+    for (const m of readFileSync(p, "utf8").matchAll(re)) out.push(m[1]!);
+  }
+  return out;
 }
 
 main();

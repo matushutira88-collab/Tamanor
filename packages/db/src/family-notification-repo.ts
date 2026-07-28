@@ -24,18 +24,20 @@ const FAMILY_TYPES_PN = FAMILY_NOTIFICATION_TYPES as unknown as PNotifType[];
 const DISMISSIBLE_FAMILY_TYPES_PN = FAMILY_NOTIFICATION_TYPES.filter(familyNotificationDismissible) as unknown as PNotifType[];
 
 // ── Strict privacy validator (defence-in-depth, beyond the soft generic sanitizer) ──────────────
-const FORBIDDEN_KEY = /message|content|transcript|\btext\b|body|comment|attachment|screenshot|file|child|guardian|name|email|token|dob|date.?of.?birth|age|birth|location|note|reason.?text|reviewer|authority.?note|consent.?note|evidence|narrative|platform.?subject|stripe|customer|invoice|price|secret|password/i;
+// The STRICT ALLOW-LIST is the authority: only the exact 8 Family keys pass, so every forbidden or
+// forbidden-RESEMBLING key (message/content/childName/guardianEmail/token/note/evidence/stripe…/anything else)
+// is rejected simply because it is not one of the 8. A substring blacklist would be both redundant AND unsafe
+// (e.g. "file" inside the legitimate "profileId"), so the whitelist stands alone.
 const ALLOWED_KEYS: ReadonlySet<string> = new Set(FAMILY_NOTIFICATION_METADATA_KEYS);
 
 /**
  * Fail-closed: the persisted metadata may contain ONLY the exact Family allow-list keys, all scalar. Any key
- * outside the list, any forbidden-resembling key, and any nested object/array is REJECTED (throws). This is the
- * last line of defence — a Family notification can never carry a message, name, email, token, note or raw content.
+ * outside the list and any nested object/array is REJECTED (throws). This is the last line of defence — a Family
+ * notification can never carry a message, name, email, token, note or raw content.
  */
 export function assertFamilyNotificationMetadata(meta: Record<string, unknown>): void {
   for (const [k, v] of Object.entries(meta)) {
     if (!ALLOWED_KEYS.has(k)) throw new Error(`family_notif_metadata:key_not_allowed:${k.slice(0, 40)}`);
-    if (FORBIDDEN_KEY.test(k)) throw new Error(`family_notif_metadata:forbidden_key:${k.slice(0, 40)}`);
     if (v !== null && (typeof v === "object" || Array.isArray(v))) throw new Error(`family_notif_metadata:non_scalar:${k.slice(0, 40)}`);
   }
 }
@@ -59,6 +61,11 @@ export interface CreateFamilyNotificationInput {
 export interface CreateFamilyNotificationResult { created: number; recipients: number }
 
 /**
+ * @internal — LOW-LEVEL persistence primitive. It trusts the caller's already-RESOLVED recipient IDs and does
+ * NOT authorize them. Live domain triggers (Phase 3) MUST call the high-level authorized service
+ * (`createAuthorizedFamilyNotificationTx` in src/internal/family-notification-authorization.ts), which resolves
+ * recipients through the canonical authorization kernel FIRST. Direct use is limited to that kernel + tests.
+ *
  * Create one Family notification per RESOLVED recipient, inside the caller's transaction `tx` (so it is atomic
  * with the triggering domain event and a rollback leaves NO orphan). Idempotency is transaction-safe via
  * `createMany({ skipDuplicates: true })` — a retry of the same (recipient, event, version) inserts nothing and
