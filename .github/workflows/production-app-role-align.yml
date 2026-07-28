@@ -1,0 +1,93 @@
+name: production-app-role-align
+
+# MANUAL, audited, SINGLE-PURPOSE fix for a runtime Prisma P1000. It aligns the Postgres tamanor_app role
+# password to the password embedded in the production APP_DATABASE_URL (executed as the OWNER), then VERIFIES a
+# real tamanor_app connection: current_user, SELECT 1, and RLS runtime health. This workflow runs NONE of:
+# migrations, db-push, migrate-resolve, migrate-reset, bootstrap, or ad-hoc SQL beyond the single ALTER ROLE
+# (safely %I/%L escaped; the password is passed as a bind parameter, never shell-interpolated). Gated behind the
+# GitHub `Production` Environment (protection rules + required reviewers) plus three arming inputs. Never triggers
+# on push/PR. DATABASE_URL and APP_DATABASE_URL are read ONLY from Production Environment secrets and never printed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (only 'production' is accepted)"
+        required: true
+        type: choice
+        options:
+          - production
+      target_role:
+        description: "The DB role to align (only 'tamanor_app' is accepted)"
+        required: true
+        type: choice
+        options:
+          - tamanor_app
+      confirmation:
+        description: "Type ALIGN_PRODUCTION_APP_ROLE to arm"
+        required: true
+        type: string
+
+# Share the production-prisma-migrate group so an align never runs alongside a migration or recovery.
+concurrency:
+  group: production-prisma-migrate
+  cancel-in-progress: false
+
+jobs:
+  align:
+    runs-on: ubuntu-latest
+    # GitHub Environment name MUST match the dashboard EXACTLY ("Production"), which is what scopes the
+    # PRODUCTION_DATABASE_URL + APP_DATABASE_URL Environment secrets to this job. Configure required reviewers.
+    environment: Production
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      APP_DATABASE_URL: ${{ secrets.APP_DATABASE_URL }}
+      PRODUCTION_DATABASE_HOST_FINGERPRINT: ${{ secrets.PRODUCTION_DATABASE_HOST_FINGERPRINT }}
+      MIGRATE_ENVIRONMENT: ${{ inputs.environment }}
+      ALIGN_TARGET_ROLE: ${{ inputs.target_role }}
+      ALIGN_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Refuse any non-main ref
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Refusing: this workflow may only run on main (got ${GITHUB_REF})."
+            exit 1
+          fi
+
+      - name: Assert BOTH production DB secrets are mapped (fail-closed; NEVER prints them)
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "✗ DATABASE_URL is EMPTY — the 'Production' Environment secret PRODUCTION_DATABASE_URL is not"
+            echo "  mapped/set for this job. Set a valid value in the GitHub Environment named 'Production'."
+            exit 1
+          fi
+          if [ -z "${APP_DATABASE_URL}" ]; then
+            echo "✗ APP_DATABASE_URL is EMPTY — add it as a 'Production' Environment secret (SAME value as the"
+            echo "  Vercel Production APP_DATABASE_URL). It is the source of the tamanor_app password."
+            exit 1
+          fi
+          echo "✓ Both PRODUCTION_DATABASE_URL and APP_DATABASE_URL secrets are present (values hidden — never printed)."
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @guardora/db exec prisma generate
+
+      - name: Preflight — validate owner + tamanor_app targets (read-only; never prints URL/password)
+        run: pnpm --filter @guardora/db exec tsx scripts/production-app-role-align-preflight.cli.ts
+
+      - name: Align tamanor_app password + verify a real tamanor_app connection
+        run: pnpm --filter @guardora/db exec tsx scripts/production-app-role-align.cli.ts

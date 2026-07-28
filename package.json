@@ -266,7 +266,9 @@
     "production-prisma-migrate:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate.test.ts",
     "production-prisma-migrate-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-workflow.test.ts",
     "production-prisma-migrate-recover:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-recover.test.ts",
-    "production-prisma-migrate-recover-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-recover-workflow.test.ts"
+    "production-prisma-migrate-recover-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/production-prisma-migrate-recover-workflow.test.ts",
+    "production-app-role-align:test": "pnpm --filter @guardora/db exec tsx scripts/production-app-role-align.test.ts",
+    "production-app-role-align-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/production-app-role-align-workflow.test.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
