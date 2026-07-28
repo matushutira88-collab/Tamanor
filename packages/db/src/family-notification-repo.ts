@@ -142,27 +142,49 @@ function toView(row: Prisma.NotificationGetPayload<{ select: typeof LIST_SELECT 
   return { ...base, entityType, safeRoute, profileId, unavailable };
 }
 
-export interface ListFamilyNotificationsOpts { limit?: number; before?: Date; unreadOnly?: boolean }
+export interface ListFamilyNotificationsOpts { limit?: number; before?: Date; beforeId?: string; unreadOnly?: boolean }
 
 /**
  * The signed-in Family recipient's notifications — newest-first with a stable id tie-break, EXCLUDING dismissed
  * rows, filtered to the 13 Family types + this recipient in the active tenant. Business + tenant-wide (userId
- * null) notifications can never appear here. Keyset paginated by (createdAt, id). Returns a safe projection.
+ * null) notifications can never appear here. Keyset paginated by (createdAt, id): passing BOTH `before` +
+ * `beforeId` (the last row of the prior page) walks `createdAt < before OR (createdAt = before AND id < beforeId)`
+ * so rows sharing a createdAt are never skipped or duplicated. Returns a safe projection.
  */
 export function listFamilyNotifications(actor: FamilyActorContext, opts: ListFamilyNotificationsOpts = {}): Promise<FamilyNotificationView[]> {
   const take = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+  const keyset = opts.before
+    ? opts.beforeId
+      ? { OR: [{ createdAt: { lt: opts.before } }, { createdAt: opts.before, id: { lt: opts.beforeId } }] }
+      : { createdAt: { lt: opts.before } }
+    : {};
   return withTenant(actor.tenantId, async (db) => {
     const rows = await db.notification.findMany({
       where: {
         tenantId: actor.tenantId, userId: actor.userId, type: { in: FAMILY_TYPES_PN }, dismissedAt: null,
         ...(opts.unreadOnly ? { readAt: null } : {}),
-        ...(opts.before ? { createdAt: { lt: opts.before } } : {}),
+        ...keyset,
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take, select: LIST_SELECT,
     });
     return rows.map(toView);
   });
+}
+
+/**
+ * Narrow OWN-recipient load for the safe-open handler: returns ONLY the notification TYPE for a non-dismissed
+ * Family notification owned by this recipient in the active tenant (the server derives the CTA route from the
+ * catalogue — never from client input or metadata). A missing / other-user / other-tenant / non-Family /
+ * dismissed / unknown-type id fails closed WITHOUT revealing existence. No ids/content are returned.
+ */
+export async function loadFamilyNotificationTypeForOpen(actor: FamilyActorContext, notificationId: string): Promise<{ ok: true; type: FamilyNotificationType } | { ok: false }> {
+  const row = await withTenant(actor.tenantId, (db) => db.notification.findFirst({
+    where: { id: notificationId, tenantId: actor.tenantId, userId: actor.userId, type: { in: FAMILY_TYPES_PN }, dismissedAt: null },
+    select: { type: true },
+  }));
+  if (!row || !isFamilyNotificationType(row.type)) return { ok: false };
+  return { ok: true, type: row.type as FamilyNotificationType };
 }
 
 /** Unread Family notifications for the signed-in recipient (active tenant, Family types, not read, not dismissed). */

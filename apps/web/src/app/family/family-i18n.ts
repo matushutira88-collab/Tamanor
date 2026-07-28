@@ -7,7 +7,7 @@ import type { Locale } from "@/i18n";
  */
 export interface FamilyDict {
   brand: string; workspaceType: string; family: string; business: string;
-  nav: { overview: string; profiles: string; guardians: string; invitations: string; authorizations: string; signals: string; deliveries: string; settings: string };
+  nav: { overview: string; profiles: string; guardians: string; invitations: string; authorizations: string; signals: string; deliveries: string; notifications: string; settings: string };
   chooser: { title: string; subtitle: string; familyTitle: string; familyText: string; familyCta: string; businessTitle: string; businessText: string; businessCta: string; familyBullets: string[]; businessBullets: string[] };
   onboarding: {
     title: string; stepOf: (a: number, b: number) => string; next: string; back: string; finish: string;
@@ -205,7 +205,7 @@ export function isFamilyAssessmentErrorCode(v: unknown): v is FamilyAssessmentEr
 
 const en: FamilyDict = {
   brand: "Tamanor Family", workspaceType: "Workspace type", family: "Family", business: "Business",
-  nav: { overview: "Overview", profiles: "Protected profiles", guardians: "Authorized people", invitations: "Invitations", authorizations: "Authorizations", signals: "Safety signals", deliveries: "Internal deliveries", settings: "Settings" },
+  nav: { overview: "Overview", profiles: "Protected profiles", guardians: "Authorized people", invitations: "Invitations", authorizations: "Authorizations", signals: "Safety signals", deliveries: "Internal deliveries", notifications: "Notifications", settings: "Settings" },
   chooser: { title: "How would you like to use Tamanor?", subtitle: "Choose the mode that fits you. This decides your product and cannot be changed later.", familyTitle: "Tamanor Family", familyText: "Helps a family safely manage protected profiles, authorized people and safety information.", familyCta: "Continue as a family", businessTitle: "Tamanor Business", businessText: "Protects business accounts, comments and online reputation from spam, scams and harmful content.", businessCta: "Continue as a business", familyBullets: ["Protected profiles for family members", "Authorized recipient management", "Safety signals", "A private family space"], businessBullets: ["Manage business accounts", "Analyze risky comments", "Brand protection", "Team and agency options by plan"] },
   onboarding: {
     title: "Set up Tamanor Family", stepOf: (a, b) => `Step ${a} of ${b}`, next: "Continue", back: "Back", finish: "Finish setup",
@@ -456,7 +456,7 @@ const en: FamilyDict = {
 
 const sk: FamilyDict = {
   ...en, brand: "Tamanor Rodina", workspaceType: "Typ pracovného priestoru", family: "Rodina", business: "Firma",
-  nav: { overview: "Prehľad", profiles: "Chránené profily", guardians: "Oprávnené osoby", invitations: "Pozvánky", authorizations: "Autorizácie", signals: "Bezpečnostné signály", deliveries: "Interné doručenia", settings: "Nastavenia" },
+  nav: { overview: "Prehľad", profiles: "Chránené profily", guardians: "Oprávnené osoby", invitations: "Pozvánky", authorizations: "Autorizácie", signals: "Bezpečnostné signály", deliveries: "Interné doručenia", notifications: "Notifikácie", settings: "Nastavenia" },
   chooser: { title: "Ako chcete používať Tamanor?", subtitle: "Vyberte režim, ktorý vám vyhovuje. Určuje váš produkt a neskôr sa nedá zmeniť.", familyTitle: "Tamanor Rodina", familyText: "Pomáha rodine bezpečne spravovať ochranné profily, oprávnené osoby a bezpečnostné upozornenia.", familyCta: "Pokračovať ako rodina", businessTitle: "Tamanor Firma", businessText: "Chráni firemné účty, komentáre a online reputáciu pred spamom, podvodmi a škodlivým obsahom.", businessCta: "Pokračovať ako firma", familyBullets: ["ochranné profily členov rodiny", "správa oprávnených príjemcov", "bezpečnostné signály", "súkromné rodinné prostredie"], businessBullets: ["správa firemných účtov", "analýza rizikových komentárov", "ochrana značky", "tímové a agentúrne možnosti podľa plánu"] },
   onboarding: {
     title: "Nastavenie Tamanor Rodina", stepOf: (a, b) => `Krok ${a} z ${b}`, next: "Pokračovať", back: "Späť", finish: "Dokončiť nastavenie",
@@ -707,7 +707,7 @@ const sk: FamilyDict = {
 
 const de: FamilyDict = {
   ...en, brand: "Tamanor Familie", workspaceType: "Arbeitsbereichstyp", family: "Familie", business: "Business",
-  nav: { overview: "Übersicht", profiles: "Geschützte Profile", guardians: "Berechtigte Personen", invitations: "Einladungen", authorizations: "Autorisierungen", signals: "Sicherheitssignale", deliveries: "Interne Zustellungen", settings: "Einstellungen" },
+  nav: { overview: "Übersicht", profiles: "Geschützte Profile", guardians: "Berechtigte Personen", invitations: "Einladungen", authorizations: "Autorisierungen", signals: "Sicherheitssignale", deliveries: "Interne Zustellungen", notifications: "Benachrichtigungen", settings: "Einstellungen" },
   chooser: { title: "Wie möchten Sie Tamanor nutzen?", subtitle: "Wählen Sie den passenden Modus. Er bestimmt Ihr Produkt und kann später nicht geändert werden.", familyTitle: "Tamanor Familie", familyText: "Hilft einer Familie, geschützte Profile, berechtigte Personen und Sicherheitsinformationen sicher zu verwalten.", familyCta: "Als Familie fortfahren", businessTitle: "Tamanor Business", businessText: "Schützt Geschäftskonten, Kommentare und die Online-Reputation vor Spam, Betrug und schädlichen Inhalten.", businessCta: "Als Unternehmen fortfahren", familyBullets: ["Geschützte Profile für Familienmitglieder", "Verwaltung berechtigter Empfänger", "Sicherheitssignale", "Ein privater Familienraum"], businessBullets: ["Geschäftskonten verwalten", "Riskante Kommentare analysieren", "Markenschutz", "Team- und Agenturoptionen je nach Plan"] },
   onboarding: {
     title: "Tamanor Familie einrichten", stepOf: (a, b) => `Schritt ${a} von ${b}`, next: "Weiter", back: "Zurück", finish: "Einrichtung abschließen",

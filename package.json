@@ -163,6 +163,8 @@
     "family-notifications-expiry:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/family-notifications-expiry.test.ts",
     "family-notifications-scheduler:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/family-notifications-scheduler.test.ts",
     "family-notifications-scheduler:run": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/family-notifications-scheduler-run.cli.ts",
+    "family-notification-center:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/family-notification-center.test.ts",
+    "family-notification-center-ui:test": "pnpm --filter @guardora/web exec tsx scripts/family-notification-center-ui.test.ts",
     "family-notifications-i18n:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/family-notifications-i18n.test.ts",
     "stripe-smoke-verify": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/stripe-smoke-verify.ts",
     "entitlements:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/entitlements.test.ts",

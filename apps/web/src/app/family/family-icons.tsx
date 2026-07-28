@@ -26,6 +26,7 @@ export type FamilyIcon =
   | "authorizations"
   | "signals"
   | "deliveries"
+  | "notifications"
   | "settings"
   | "shield"
   | "check"
@@ -82,6 +83,13 @@ export function FamilyIconGlyph({ icon }: { icon: FamilyIcon }) {
         <svg {...S}>
           <path d="M4 8.5 12 4.5l8 4v7L12 19.5l-8-4z" />
           <path d="M4 8.5 12 12.5l8-4M12 12.5v7" />
+        </svg>
+      );
+    case "notifications":
+      return (
+        <svg {...S}>
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
         </svg>
       );
     case "settings":

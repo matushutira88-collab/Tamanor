@@ -15,6 +15,7 @@ export interface FamilyNotifDict {
     markRead: string; markAllRead: string; dismiss: string;
     empty: string; emptyUnread: string; unavailable: string;
     loading: string; error: string;
+    open: string; loadMore: string; viewAll: string; routeUnavailable: string; openFailed: string;
     markedRead: string; markedAllRead: string; dismissed: string;
   };
   bell: { label: (unread: string) => string; none: string; open: string };
@@ -31,6 +32,7 @@ const en: FamilyNotifDict = {
     unavailable: "This item is no longer available.",
     loading: "Loading notifications…", error: "Notifications could not be loaded. Please try again.",
     markedRead: "Marked as read.", markedAllRead: "All notifications marked as read.", dismissed: "Notification dismissed.",
+    open: "Open", loadMore: "Load more", viewAll: "View all", routeUnavailable: "This destination is not available.", openFailed: "This item could not be opened.",
   },
   bell: { label: (u) => `Notifications, ${u} unread`, none: "Notifications, none unread", open: "Open notifications" },
   severity: { info: "Info", attention: "Attention", urgent: "Urgent" },
@@ -60,6 +62,7 @@ const sk: FamilyNotifDict = {
     unavailable: "Táto položka už nie je dostupná.",
     loading: "Načítavajú sa notifikácie…", error: "Notifikácie sa nepodarilo načítať. Skúste to znova.",
     markedRead: "Označené ako prečítané.", markedAllRead: "Všetky notifikácie sú označené ako prečítané.", dismissed: "Notifikácia bola zavretá.",
+    open: "Otvoriť", loadMore: "Načítať ďalšie", viewAll: "Zobraziť všetky", routeUnavailable: "Toto miesto nie je dostupné.", openFailed: "Túto položku sa nepodarilo otvoriť.",
   },
   bell: { label: (u) => `Notifikácie, ${u} neprečítaných`, none: "Notifikácie, žiadne neprečítané", open: "Otvoriť notifikácie" },
   severity: { info: "Informácia", attention: "Pozornosť", urgent: "Naliehavé" },
@@ -89,6 +92,7 @@ const de: FamilyNotifDict = {
     unavailable: "Dieses Element ist nicht mehr verfügbar.",
     loading: "Benachrichtigungen werden geladen…", error: "Benachrichtigungen konnten nicht geladen werden. Bitte erneut versuchen.",
     markedRead: "Als gelesen markiert.", markedAllRead: "Alle Benachrichtigungen als gelesen markiert.", dismissed: "Benachrichtigung ausgeblendet.",
+    open: "Öffnen", loadMore: "Mehr laden", viewAll: "Alle anzeigen", routeUnavailable: "Dieses Ziel ist nicht verfügbar.", openFailed: "Dieses Element konnte nicht geöffnet werden.",
   },
   bell: { label: (u) => `Benachrichtigungen, ${u} ungelesen`, none: "Benachrichtigungen, keine ungelesen", open: "Benachrichtigungen öffnen" },
   severity: { info: "Info", attention: "Achtung", urgent: "Dringend" },

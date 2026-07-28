@@ -209,6 +209,31 @@ function main() {
   check("★ NO production scheduler/cron added (no setInterval/cron/schedule in the outbox code)", !/setInterval|node-cron|cron\(|schedule\(|CronJob/i.test(enqueueSrc + procSrc));
   check("★ NO push/email/SMS/webhook in the outbox code", !/sendEmail|sendSms|webhook|fcm|apns|pushNotification|twilio/i.test(enqueueSrc + procSrc));
   check("★ RLS enabled+forced with a tenant policy in the outbox migration", /ENABLE ROW LEVEL SECURITY/.test(outboxMig) && /FORCE ROW LEVEL SECURITY/.test(outboxMig) && /CREATE POLICY tenant_isolation/.test(outboxMig));
+
+  console.log("\n13. Phase 4A — Family Notification Center V1 (web boundary invariants)");
+  const NOTIF = "apps/web/src/app/family/(console)/notifications";
+  const centerRoute = read(`${NOTIF}/page.tsx`);
+  const centerActions = read(`${NOTIF}/actions.ts`);
+  const centerClient = read(`${NOTIF}/notification-center.tsx`);
+  const bellComp = read("apps/web/src/app/family/family-notification-bell.tsx");
+  const centerLayout = read("apps/web/src/app/family/(console)/layout.tsx");
+  const vmSrc = read("apps/web/src/app/family/family-notification-view.ts");
+  const webUi = [centerRoute, centerActions, centerClient, bellComp, centerLayout, vmSrc, read("apps/web/src/app/family/family-notification-cursor.ts")].join("\n");
+  // No second table / repo / resolver: the center reuses the shared Notification model + verified Family services.
+  check("★ NO second notification table (only the shared Notification model / verified services)", !/model .*Notification.*Center|new_notification|@@map\("family_notifications"\)/.test(schema) && /listFamilyNotifications/.test(centerRoute));
+  check("★ page uses listFamilyNotifications; bell uses familyUnreadNotificationCount", /listFamilyNotifications\(actor/.test(centerRoute) && /familyUnreadNotificationCount\(actor\)/.test(centerLayout));
+  check("★ actions use ONLY the verified Family services (mark/mark-all/dismiss/open-load)", /markFamilyNotificationRead\(actor/.test(centerActions) && /markAllFamilyNotificationsRead\(actor/.test(centerActions) && /dismissFamilyNotification\(actor/.test(centerActions) && /loadFamilyNotificationTypeForOpen\(actor/.test(centerActions));
+  check("★ web NEVER mutates the Notification table directly", !/\.notification\.(update|create|delete|updateMany|deleteMany)/.test(webUi));
+  check("★ NO systemDb / internal resolver / outbox / scheduler / expiry imported into the Family UI", !/systemDb|resolveFamilyNotificationRecipientsTx|internal\/family-notification-(outbox|scheduler|expiry)/.test(webUi));
+  check("★ NO raw metadata serialization or arbitrary metadata href in the UI", !/\.metadata\b|JSON\.stringify\([^)]*metadata/.test(webUi));
+  check("★ dismissibility is SERVER-enforced (client only reads the catalogue-derived flag)", /DISMISSIBLE_FAMILY_TYPES_PN/.test(repoSrc) && /familyNotificationDismissible/.test(vmSrc));
+  check("★ CTA is an allow-list of implemented Family list routes (no incident/plan detail route)", /IMPLEMENTED_FAMILY_CTA_ROUTES/.test(vmSrc) && !/\/family\/(incidents|protection-plans|plans)/.test(webUi));
+  check("★ NO preferences / email / push / SMS / webhook / messenger / connected-account in the center", !/notification-preferences|sendEmail|pushNotification|sendSms|webhook|twilio|connectedAccount/i.test(webUi));
+  check("★ NO WebSocket / SSE / polling in the center or bell", !/WebSocket|EventSource|setInterval|navigator\.serviceWorker/i.test(stripComments(webUi)));
+  check("★ NO hard delete anywhere in the center (soft dismiss only)", !/\.delete\(|deleteMany/.test(webUi));
+  check("★ safe loading + error boundaries (error boundary renders no raw error)", existsSync(join(REPO, `${NOTIF}/loading.tsx`)) && existsSync(join(REPO, `${NOTIF}/error.tsx`)) && !/error\.message|\.stack/.test(read(`${NOTIF}/error.tsx`)));
+  check("★ bell is Family-scoped (mounted only in the Family console layout; no Business import)", /FamilyNotificationBell/.test(read("apps/web/src/app/family/family-shell.tsx")) && !/dashboard\//.test(bellComp));
+  check("★ route reads ONLY view+cursor (no tenantId/userId/source id from the URL)", /normalizeFamilyNotificationView\(sp\.view\)/.test(centerRoute) && /decodeFamilyNotificationCursor\(sp\.cursor\)/.test(centerRoute) && !/sp\.(tenantId|userId|incidentId|signalId|profileId)/.test(centerRoute));
 }
 
 function readMigrationsFor(re: RegExp): string[] {

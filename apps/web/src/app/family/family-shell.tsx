@@ -8,6 +8,7 @@ import { signOut } from "@/server/session-actions";
 import { FamilyIconGlyph, type FamilyIcon } from "./family-icons";
 import { FAMILY_FOCUS } from "./family-ui";
 import type { FamilyDict } from "./family-i18n";
+import { FamilyNotificationBell, type FamilyBellProps } from "./family-notification-bell";
 
 interface NavItem { href: string; label: string; icon: FamilyIcon }
 
@@ -16,7 +17,7 @@ interface NavItem { href: string; label: string; icon: FamilyIcon }
  * layout has already enforced the FAMILY guard, so this component neither reads nor
  * decides anything about permissions — it renders the nav the layout handed it.
  */
-export function FamilyShell({ nav, shell, workspaceName, userName, brand, children }: { nav: FamilyDict["nav"]; shell: FamilyDict["shell"]; workspaceName: string; userName: string; brand: string; children: React.ReactNode }) {
+export function FamilyShell({ nav, shell, workspaceName, userName, brand, bell, children }: { nav: FamilyDict["nav"]; shell: FamilyDict["shell"]; workspaceName: string; userName: string; brand: string; bell: FamilyBellProps; children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -30,6 +31,7 @@ export function FamilyShell({ nav, shell, workspaceName, userName, brand, childr
     { href: "/family/authorizations", label: nav.authorizations, icon: "authorizations" },
     { href: "/family/signals", label: nav.signals, icon: "signals" },
     { href: "/family/deliveries", label: nav.deliveries, icon: "deliveries" },
+    { href: "/family/notifications", label: nav.notifications, icon: "notifications" },
     { href: "/family/settings", label: nav.settings, icon: "settings" },
   ];
   const isActive = (href: string) => (href === "/family" ? pathname === "/family" : pathname.startsWith(href));
@@ -112,6 +114,7 @@ export function FamilyShell({ nav, shell, workspaceName, userName, brand, childr
             <p className="truncate text-sm font-medium text-[var(--color-fg)]" title={userName}>{userName}</p>
             <p className="truncate text-xs text-[var(--color-muted)]">{shell.signedInAs}</p>
           </div>
+          <FamilyNotificationBell bell={bell} />
           <form action={signOut}>
             <button
               type="submit"
@@ -178,6 +181,8 @@ export function FamilyShell({ nav, shell, workspaceName, userName, brand, childr
           <Link href="/family" aria-label={brand} className={`rounded ${FAMILY_FOCUS}`}>
             <Logo />
           </Link>
+          {/* Reachable notification bell on mobile (the sidebar bell is hidden with the drawer). */}
+          <div className="ml-auto"><FamilyNotificationBell bell={bell} /></div>
         </div>
 
         {/* Content measure: capped and centred, with gutters that grow with the
