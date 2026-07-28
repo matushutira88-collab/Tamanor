@@ -335,10 +335,102 @@ identity. The outbox has no content/JSON/recipient columns; logs and health are 
   **No new migration**; clean-DB replay re-verified (RLS forced, app-role no-DELETE, incident/escalation/plan
   grants 0, delivery CHECKs present, 13 enum values).
 
-## Remaining trigger work (NOT in Phase 3A/3B1/3B2)
+## Phase 3B3 — protection-plan update trigger (delivered)
 
-The remaining **three** triggers are unwired: `family_guardian_invitation_expiring`, `family_consent_expiring`,
-`family_protection_plan_updated` (the two expiry triggers need a scheduler; the protection-plan trigger is
-deferred). Also unimplemented: expiry scheduling / cron, notification preferences, `/family/notifications`, the
-shell bell and UI actions, Family-facing incident/plan routes, and any email/push/SMS/webhook/messenger channel.
-Their recipient RESOLUTION already exists (Phase 2b); later phases will enqueue them onto this same outbox.
+Phase 3B3 wires the final non-expiry trigger, `family_protection_plan_updated`, taking the outbox to **eleven**
+supported types. The remaining **two** (`family_guardian_invitation_expiring`, `family_consent_expiring`) belong to
+Phase 3C (deterministic expiry evaluation + a production scheduler). All Phase 3A/3B1/3B2 invariants are preserved.
+
+### Canonical protection-plan writers audited
+
+- `createDraftProtectionPlan` → creates a **draft** plan only (never active) → **never enqueues** (creation is
+  never Family-disclosable).
+- `activateProtectionPlan` (draft/reopened → **active**), `reopenProtectionPlan` (completed/cancelled →
+  **reopened**), `completeProtectionPlan` (→ completed), `cancelProtectionPlan` (→ cancelled) — all go through the
+  single canonical `transitionPlan` (owner `systemDb.$transaction`), which bumps the plan `revision` (optimistic
+  concurrency).
+- Action writers (`addProtectionAction`, assign/unassign/due-date/priority, `transitionAction` = start/block/
+  complete/skip/reopen) mutate **actions**, do **not** bump `plan.revision`, and are internal reviewer workflow →
+  **never enqueue**.
+
+The trigger is wired into `transitionPlan` (the sole canonical plan-status writer) — no Prisma middleware, no
+audit listener, no route/UI.
+
+### Family-disclosable plan-state allow-list
+
+`FAMILY_DISCLOSABLE_PLAN_STATES = { active, reopened }` (exact Phase 2b allow-list — an explicit set, **never**
+`status !== "deleted"`). draft / completed / cancelled / any reviewer-only state are NOT disclosable. A source
+invariant asserts the enqueue-module allow-list matches the resolver/visibility allow-list byte-for-byte.
+
+### Material plan-update definition
+
+`isMaterialFamilyProtectionPlanUpdate(before, after)` = `before.status !== after.status &&
+FAMILY_DISCLOSABLE_PLAN_STATES.has(after.status)` — a canonical status transition that **lands in** a
+Family-disclosable state (draft→active, reopened→active, completed/cancelled→reopened). Leaving a disclosable
+state (active/reopened → completed/cancelled) is NOT material (there is no "plan closed" catalogue type); draft
+creation and internal action/reviewer changes are NOT material. Never a bare `updatedAt` inequality. Every
+material transition bumps `revision`, giving the stable per-transition eventVersion.
+
+### Plan creation / activation policy
+
+Plans are always created as **draft** (no direct-active creation path exists), so creation never enqueues; the
+**first** notification is on activation. One atomic `transitionPlan` operation → exactly **one** event (never one
+per field mutation).
+
+### eventVersion sources
+
+`active:<revision>` (draft/reopened → active) and `reopened:<revision>` (completed/cancelled → reopened), where
+`<revision>` is the just-incremented canonical `revision` (monotonic, write-once per transition). A retry of the
+same transition reuses the same revision → same eventVersion; a new material revision → a new eventVersion.
+
+### Owner transaction strategy
+
+The plan table is owner-only (**0 `tamanor_app` grants**). The trigger enqueues via
+`enqueueFamilyNotificationOutboxEventOwnerTx` inside `transitionPlan`'s existing `systemDb.$transaction` (the SAME
+supplied owner tx, explicit `tenantId`) — no nested/separate transaction escape. Enqueue failure rolls the whole
+plan transition back (status + revision unchanged).
+
+### Processor routing & current authorization
+
+`buildAuthorizationSource` routes `(family_protection_plan_updated, child_safety_protection_plan)` →
+`{ type, protectionPlanId, eventVersion }`; any other combination → permanent `malformed_event` → dead-letter. At
+processing time the resolver re-runs plan → `loadFamilyDisclosablePlan` → linked incident →
+`evaluateFamilyIncidentVisibility` → current authorization for ≥1 linked signal: revoked-before-processing →
+nothing; newly-authorized → may receive; manager/owner/reviewer role alone → nothing; another profile's
+authorization → nothing; a plan that became non-disclosable before processing → completes with zero notifications.
+
+### Readiness decision (no readiness for plans)
+
+`family_protection_plan_updated` is **not** one of the four critical readiness types. Audit: plan activation is a
+deliberate later workflow step on an existing incident; there is no proven canonical ordering that commits an
+active plan *before* its linked-signal authorization such that completing `no_recipients` would reliably lose an
+intended notification. Default applied: **zero authorized recipients → completed `no_recipients`**; non-disclosable
+→ terminal (soft-empty → `no_recipients`); missing plan → `source_gone`; contradictory linkage → the resolver's
+existing bounded classification. The Phase 3B2 `authorization_pending` window is NOT applied to plans.
+
+### Privacy
+
+The trigger passes only `tenantId`, the type, the canonical `protectionPlanId`, a stable eventVersion, and
+`occurredAt` — never plan title/narrative, action text/status, evidence, reviewer notes, policy facts, or
+incident/signal ids. The outbox has no content/JSON/recipient columns; notification metadata carries no plan/
+incident id; logs/health are aggregate + bounded-code only.
+
+### Tests & clean-DB
+
+- `family-notifications-outbox-protection-plan:test` — 36 DB assertions (type/source boundary, materiality:
+  draft/action/complete/cancel non-events + activate/reopen/re-activate events + stable revision eventVersion,
+  atomic activate/reopen + forced-rollback + no-escape, current authorization incl. revoked / non-disclosable /
+  other-profile, source integrity incl. cross-tenant / missing-plan / 0 grants, privacy, crash recovery).
+- `family-notifications-source:test` — extended to 63 (eleven wired types; two expiry types unwired; plan owned by
+  `transitionPlan`; draft-creation non-enqueue; allow-list match; plan not a readiness type).
+- Full gate green (delivery 65, recipient-auth 46, reviewer 68, protection-plan 50, incident-domain 36, all Family
+  suites, Business 13). **No new migration**; clean-DB replay re-verified (RLS forced, app-role no-DELETE,
+  plan/incident/escalation grants 0, delivery CHECKs present, 13 enum values).
+
+## Remaining trigger work — Phase 3C (NOT in Phase 3A/3B1/3B2/3B3)
+
+The final **two** triggers are unwired: `family_guardian_invitation_expiring` and `family_consent_expiring` —
+both require deterministic expiry evaluation and a production scheduler (Phase 3C). Also unimplemented: the expiry
+evaluator runner, scheduling / cron, notification preferences, `/family/notifications`, the shell bell and UI
+actions, Family-facing incident/plan routes, and any email/push/SMS/webhook/messenger channel. Their recipient
+RESOLUTION already exists (Phase 2b); Phase 3C will enqueue them onto this same outbox.

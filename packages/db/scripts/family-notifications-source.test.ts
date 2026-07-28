@@ -90,9 +90,10 @@ function main() {
   check("★ every migration REVOKE-ALL child_safety_* table is re-asserted by the provisioning script", missing.length === 0, `missing: ${missing.join(",")}`);
   check("★ provisioning re-asserts DELETE,TRUNCATE revokes on the soft-delete safety tables", /REVOKE DELETE, TRUNCATE/.test(prov) && /safety_signal_deliveries/.test(prov) && /safety_recipient_authorization_decisions/.test(prov));
 
-  console.log("\n11. Phase 3B2 durable outbox — TEN wired triggers + processor boundary invariants");
+  console.log("\n11. Phase 3B3 durable outbox — ELEVEN wired triggers + processor boundary invariants");
   const enqueueSrc = read("packages/db/src/internal/family-notification-outbox.ts");
   const procSrc = read("packages/db/src/internal/family-notification-outbox-processor.ts");
+  const visibilitySrc = read("packages/db/src/internal/family-incident-visibility.ts");
   const deliverySrc = read("packages/db/src/child-safety-delivery.ts");
   const consentSrc = read("packages/db/src/child-safety-consent.ts");
   const recipAuthSrc = read("packages/db/src/child-safety-recipient-authorization.ts");
@@ -100,6 +101,7 @@ function main() {
   const signalSrc = read("packages/db/src/child-safety-safety-signal.ts");
   const incidentSrc = read("packages/db/src/child-safety-incident.ts");
   const escalationSrc = read("packages/db/src/child-safety-escalation.ts");
+  const planSrc = read("packages/db/src/child-safety-protection-plan.ts");
   const schema = read("packages/db/prisma/schema.prisma");
   const outboxMig = read("packages/db/prisma/migrations/20260826090000_family_notification_outbox/migration.sql");
   const provDelete = new Set([...prov.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]));
@@ -108,7 +110,7 @@ function main() {
   const enqueueRe = /from\s+["'][^"']*internal\/family-notification-outbox["']/;
   const srcFiles = readdirSync(join(REPO, "packages/db/src")).filter((f) => f.endsWith(".ts")).map((f) => `packages/db/src/${f}`);
   const enqueueImporters = srcFiles.filter((p) => enqueueRe.test(read(p))).map((p) => p.split("/").pop()!).sort();
-  const authorizedImporters = ["child-safety-consent.ts", "child-safety-delivery.ts", "child-safety-escalation.ts", "child-safety-incident.ts", "child-safety-recipient-authorization.ts", "child-safety-safety-signal.ts", "family-invitation.ts"];
+  const authorizedImporters = ["child-safety-consent.ts", "child-safety-delivery.ts", "child-safety-escalation.ts", "child-safety-incident.ts", "child-safety-protection-plan.ts", "child-safety-recipient-authorization.ts", "child-safety-safety-signal.ts", "family-invitation.ts"];
   check("★ EXACTLY the authorized canonical domain services wire the enqueue", JSON.stringify(enqueueImporters) === JSON.stringify(authorizedImporters), enqueueImporters.join(","));
   // Each trigger is owned by its canonical transition/service.
   check("★ delivery available/ack/decline enqueues live in the delivery transitions", /makeSafetySignalDeliveryAvailable[^]*enqueueFamilyNotificationOutboxEventTx/.test(deliverySrc) && /family_delivery_acknowledged/.test(deliverySrc) && /family_delivery_declined/.test(deliverySrc));
@@ -125,11 +127,22 @@ function main() {
   check("★ signal is mutually exclusive by severity (available XOR urgent, one enqueue)", /urgent \? "family_urgent_signal" : "family_signal_available"/.test(signalSrc) && (signalSrc.match(/enqueueFamilyNotificationOutboxEventTx\(db,/g) ?? []).length === 1);
   check("★ incident-created enqueue lives in correlateAndLinkSignal, gated on createdIncident", /correlateAndLinkSignal/.test(incidentSrc) && /if \(createdIncident\)[^]*family_incident_created/.test(incidentSrc));
   check("★ incident-escalated enqueue lives in createOrReuseEscalation, gated on the NEW escalation", /family_incident_escalated/.test(escalationSrc) && /systemDb\.\$transaction[^]*enqueueFamilyNotificationOutboxEventOwnerTx/.test(escalationSrc));
-  // Exactly TEN enqueueable types; the THREE deferred types are NOT in the enqueue map.
-  const wiredTypes = ["family_delivery_available", "family_delivery_acknowledged", "family_delivery_declined", "family_guardian_invitation_accepted", "family_authority_changed", "family_recipient_authorization_changed", "family_signal_available", "family_urgent_signal", "family_incident_created", "family_incident_escalated"];
-  const deferredTypes = ["family_guardian_invitation_expiring", "family_consent_expiring", "family_protection_plan_updated"];
+  // Phase 3B3: the plan trigger is owned ONLY by the transitionPlan canonical status writer, gated on an explicit
+  // Family-disclosable materiality helper (never a bare updatedAt); draft-creation does NOT enqueue; and the
+  // enqueue-module allow-list matches the resolver/visibility allow-list exactly.
+  check("★ plan-update enqueue lives in transitionPlan, gated by isMaterialFamilyProtectionPlanUpdate", /transitionPlan/.test(planSrc) && /if \(isMaterialFamilyProtectionPlanUpdate\([^]*?family_protection_plan_updated/.test(planSrc));
+  // The SINGLE plan enqueue sits after the transitionPlan declaration (which is defined after
+  // createDraftProtectionPlan) → owned by the status transition, never by draft creation.
+  check("★ draft-creation (createDraftProtectionPlan) does NOT enqueue", (() => { const cd = planSrc.indexOf("export async function createDraftProtectionPlan"); const tp = planSrc.indexOf("async function transitionPlan"); const enq = planSrc.indexOf("enqueueFamilyNotificationOutboxEventOwnerTx(tx,"); const one = (planSrc.match(/enqueueFamilyNotificationOutboxEventOwnerTx\(tx,/g) ?? []).length === 1; return cd > -1 && cd < tp && tp < enq && one; })());
+  check("★ plan materiality helper uses the explicit allow-list, never a bare updatedAt", /FAMILY_DISCLOSABLE_PLAN_STATES\.has\(after\.status\)/.test(enqueueSrc) && !/isMaterialFamilyProtectionPlanUpdate[^}]*updatedAt/.test(enqueueSrc));
+  check("★ enqueue-module plan allow-list matches the resolver/visibility allow-list exactly", (enqueueSrc.match(/FAMILY_DISCLOSABLE_PLAN_STATES[^=]*=\s*new Set\((\[[^\]]*\])\)/)?.[1] ?? "x") === (visibilitySrc.match(/FAMILY_DISCLOSABLE_PLAN_STATES\s*=\s*new Set\((\[[^\]]*\])\)/)?.[1] ?? "y"));
+  check("★ plan trigger passes NO plan actions/notes/content to the enqueue (only protectionPlanId)", (() => { const call = planSrc.match(/enqueueFamilyNotificationOutboxEventOwnerTx\(tx, \{[^]*?\}\)/)?.[0] ?? ""; return /protectionPlanId/.test(call) && !/action|note|title|content|reason(?!Code)|evidence|priority/i.test(call); })());
+  check("★ plan updates are NOT a critical readiness type", /CRITICAL_OUTBOX_TYPES[^]*?=\s*new Set\(\[([^\]]*)\]\)/.test(enqueueSrc) && !new RegExp(`CRITICAL_OUTBOX_TYPES[^]*?=\\s*new Set\\(\\[([^\\]]*family_protection_plan_updated[^\\]]*)\\]`).test(enqueueSrc));
+  // Exactly ELEVEN enqueueable types; the TWO deferred (expiry) types are NOT in the enqueue map.
+  const wiredTypes = ["family_delivery_available", "family_delivery_acknowledged", "family_delivery_declined", "family_guardian_invitation_accepted", "family_authority_changed", "family_recipient_authorization_changed", "family_signal_available", "family_urgent_signal", "family_incident_created", "family_incident_escalated", "family_protection_plan_updated"];
+  const deferredTypes = ["family_guardian_invitation_expiring", "family_consent_expiring"];
   const typeMapBlock = enqueueSrc.match(/OUTBOX_TYPE_SOURCE = \{[^]*?\} as const/)?.[0] ?? "";
-  check("★ exactly ten enqueueable types; the three deferred types are NOT wired", deferredTypes.every((t) => !typeMapBlock.includes(t)) && wiredTypes.every((t) => typeMapBlock.includes(t)));
+  check("★ exactly eleven enqueueable types; the two deferred (expiry) types are NOT wired", deferredTypes.every((t) => !typeMapBlock.includes(t)) && wiredTypes.every((t) => typeMapBlock.includes(t)) && (typeMapBlock.match(/sourceType:/g) ?? []).length === 11);
   check("★ no deferred type is enqueued anywhere in src", !srcFiles.some((p) => /enqueueFamilyNotificationOutboxEvent(Owner)?Tx|enqueueAuthorityChangedIfMaterialTx/.test(read(p)) && deferredTypes.some((t) => new RegExp(`notificationType:\\s*"${t}"`).test(read(p)))));
   // Owner-only incident boundary: the incident/escalation triggers use the SAME supplied owner tx (no escape to a
   // fresh systemDb transaction inside the enqueue), and no reviewer/manager/owner-role shortcut grants visibility.

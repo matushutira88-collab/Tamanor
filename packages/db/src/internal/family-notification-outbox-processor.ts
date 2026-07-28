@@ -99,6 +99,8 @@ function buildAuthorizationSource(ev: ClaimedRow): FamilyNotificationAuthorizati
     case "family_incident_created":
     case "family_incident_escalated":
       return { type: t, incidentId: ev.sourceId, ...common };
+    case "family_protection_plan_updated":
+      return { type: t, protectionPlanId: ev.sourceId, ...common };
     default:
       return null;
   }

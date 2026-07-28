@@ -24,6 +24,12 @@ import {
   type PlanRecommendation, type PlanProgress,
 } from "@guardora/core";
 import { systemDb } from "./index";
+// PHASE 3B3 — a plan-status transition that lands the plan IN a Family-disclosable state (active / reopened)
+// atomically enqueues one bounded family_protection_plan_updated event in the SAME owner transaction (explicit
+// tenantId, no plan actions/notes/evidence). Materiality is an explicit before/after allow-list check (never a
+// bare updatedAt); every such transition also bumps the canonical `revision` (the stable eventVersion marker).
+// The processor later resolves recipients via the Phase 2b plan → incident → linked-signal visibility authority.
+import { enqueueFamilyNotificationOutboxEventOwnerTx, isMaterialFamilyProtectionPlanUpdate } from "./internal/family-notification-outbox";
 
 export interface ProtectionActor { tenantId: string; userId: string; role: Role; }
 export class ChildSafetyProtectionForbiddenError extends Error { constructor(public readonly reason: string) { super("child_safety_protection_forbidden"); } }
@@ -245,6 +251,19 @@ async function transitionPlan(actor: ProtectionActor, planId: string, to: ChildS
     // Guarded on both the from-status AND the revision (optimistic concurrency) so no lost update.
     const res = await tx.childSafetyProtectionPlan.updateMany({ where: { id: planId, tenantId: actor.tenantId, status: plan.status, revision: plan.revision }, data: { ...mutate(plan), status: to, revision: { increment: 1 } } as never });
     if (res.count !== 1) throw new ProtectionInputError("concurrent_modification");
+    // Atomic with the transition: enqueue ONLY when it lands in a Family-disclosable state (activate / reopen).
+    // ONE event per atomic operation. eventVersion = the just-incremented revision (stable per transition; a
+    // retry of the same transition reuses it, a new material revision produces a new one). Enqueue failure rolls
+    // the whole transition back. occurredAt is not part of identity (dedupe is by revision).
+    if (isMaterialFamilyProtectionPlanUpdate({ status: plan.status }, { status: to })) {
+      await enqueueFamilyNotificationOutboxEventOwnerTx(tx, {
+        tenantId: actor.tenantId,
+        notificationType: "family_protection_plan_updated",
+        source: { protectionPlanId: planId },
+        eventVersion: `${to}:${plan.revision + 1}`,
+        occurredAt: new Date(),
+      });
+    }
   });
   await emit(actor.tenantId, planId, null, event, actor.userId, plan.status, to);
   await audit(actor.tenantId, actor.userId, auditEvent, planId, { from: plan.status, to });

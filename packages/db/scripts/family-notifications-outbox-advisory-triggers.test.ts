@@ -74,8 +74,8 @@ async function main() {
   const types = Object.keys(OUTBOX_TYPE_SOURCE);
   // Phase 3B1 wired these six; Phase 3B2 adds four more (asserted in the critical suite). Here: these six remain.
   check("★ (1) the six advisory types are supported", ["family_delivery_available", "family_delivery_acknowledged", "family_delivery_declined", "family_guardian_invitation_accepted", "family_authority_changed", "family_recipient_authorization_changed"].every((t) => types.includes(t)));
-  const forbidden = ["family_guardian_invitation_expiring", "family_consent_expiring", "family_protection_plan_updated"];
-  check("★ (2) the seven remaining types are NOT enqueueable", forbidden.every((t) => !(t in OUTBOX_TYPE_SOURCE)));
+  const forbidden = ["family_guardian_invitation_expiring", "family_consent_expiring"];
+  check("★ (2) the two remaining (expiry) types are NOT enqueueable", forbidden.every((t) => !(t in OUTBOX_TYPE_SOURCE)));
   check("★ (3) every supported type maps to exactly one sourceType", types.every((t) => typeof (OUTBOX_TYPE_SOURCE as Record<string, { sourceType: string }>)[t].sourceType === "string"));
   let unsupThrew = false;
   try { await withTenant(A, (tx) => enqueueFamilyNotificationOutboxEventTx(tx, { tenantId: A, notificationType: "family_consent_expiring" as never, source: { deliveryId: "x" } as never, eventVersion: "e1", occurredAt: new Date() })); } catch { unsupThrew = true; }
@@ -292,7 +292,7 @@ async function main() {
   const { readFileSync, readdirSync } = await import("node:fs");
   const srcDir = new URL("../src/", import.meta.url).pathname;
   const importers = readdirSync(srcDir).filter((f) => f.endsWith(".ts")).filter((f) => /from ["'][^"']*internal\/family-notification-outbox["']/.test(readFileSync(srcDir + f, "utf8"))).sort();
-  check("★ (70) exactly the authorized canonical domain services wire the enqueue", JSON.stringify(importers) === JSON.stringify(["child-safety-consent.ts", "child-safety-delivery.ts", "child-safety-escalation.ts", "child-safety-incident.ts", "child-safety-recipient-authorization.ts", "child-safety-safety-signal.ts", "family-invitation.ts"]), importers.join(","));
+  check("★ (70) exactly the authorized canonical domain services wire the enqueue", JSON.stringify(importers) === JSON.stringify(["child-safety-consent.ts", "child-safety-delivery.ts", "child-safety-escalation.ts", "child-safety-incident.ts", "child-safety-protection-plan.ts", "child-safety-recipient-authorization.ts", "child-safety-safety-signal.ts", "family-invitation.ts"]), importers.join(","));
   // no recipient columns stored anywhere in the outbox.
   const cols = (await systemDb.$queryRawUnsafe<Array<{ column_name: string }>>(`SELECT column_name FROM information_schema.columns WHERE table_name='family_notification_outbox_events'`)).map((c) => c.column_name);
   check("★ (5)(6) outbox has no recipient/JSON/content columns", !cols.some((c) => /recipient|user|member|email|note|scope|payload|json|content/i.test(c)));

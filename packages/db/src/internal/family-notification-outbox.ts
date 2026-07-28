@@ -80,6 +80,7 @@ export const OUTBOX_SOURCE_TYPE = {
   recipient_authorization_decision: "recipient_authorization_decision",
   safety_signal: "safety_signal",
   child_safety_incident: "child_safety_incident",
+  child_safety_protection_plan: "child_safety_protection_plan",
 } as const;
 
 /**
@@ -100,6 +101,8 @@ export const OUTBOX_TYPE_SOURCE = {
   family_urgent_signal: { sourceType: OUTBOX_SOURCE_TYPE.safety_signal, idKey: "safetySignalId" },
   family_incident_created: { sourceType: OUTBOX_SOURCE_TYPE.child_safety_incident, idKey: "incidentId" },
   family_incident_escalated: { sourceType: OUTBOX_SOURCE_TYPE.child_safety_incident, idKey: "incidentId" },
+  // Phase 3B3 — protection-plan update trigger (owner-only plan source; advisory, NOT a readiness type).
+  family_protection_plan_updated: { sourceType: OUTBOX_SOURCE_TYPE.child_safety_protection_plan, idKey: "protectionPlanId" },
 } as const;
 export type EnqueueableOutboxType = keyof typeof OUTBOX_TYPE_SOURCE;
 export const SUPPORTED_OUTBOX_TYPES: readonly string[] = Object.keys(OUTBOX_TYPE_SOURCE);
@@ -124,6 +127,26 @@ export function isMaterialUrgentSignalTransition(beforeSeverity: string, afterSe
   return !URGENT_SIGNAL_SEVERITIES.has(beforeSeverity) && URGENT_SIGNAL_SEVERITIES.has(afterSeverity);
 }
 
+/**
+ * Family-disclosable protection-plan states (explicit allow-list; MUST match FAMILY_DISCLOSABLE_PLAN_STATES in
+ * internal/family-incident-visibility.ts — a source invariant enforces the match). NOT a `status !== "deleted"`
+ * negative test. draft / completed / cancelled / any reviewer-only state are NOT disclosable. Kept here (rather
+ * than imported) so this enqueue module has no dependency on the resolver/visibility (which would form an import
+ * cycle: visibility → recipient-authorization → enqueue).
+ */
+export const FAMILY_DISCLOSABLE_PLAN_STATES: ReadonlySet<string> = new Set(["active", "reopened"]);
+
+/**
+ * Explicit materiality for a Family-facing protection-plan update (never a bare updatedAt inequality): true only
+ * when a canonical plan-status transition lands the plan IN a Family-disclosable state (draft→active,
+ * reopened→active, completed/cancelled→reopened). Leaving a disclosable state (active/reopened → completed/
+ * cancelled) is NOT material (no "plan closed" catalogue type); creating a draft is not material. Every such
+ * transition also bumps the canonical `revision`, giving the stable per-transition eventVersion marker.
+ */
+export function isMaterialFamilyProtectionPlanUpdate(before: { status: string }, after: { status: string }): boolean {
+  return before.status !== after.status && FAMILY_DISCLOSABLE_PLAN_STATES.has(after.status);
+}
+
 /** Enqueue input — the TEN supported types (compile-time closed union; the caller supplies only bounded ids). */
 export type EnqueueableFamilyOutboxInput =
   | { tenantId: string; notificationType: "family_delivery_available" | "family_delivery_acknowledged" | "family_delivery_declined"; source: { deliveryId: string }; eventVersion: string; occurredAt: Date }
@@ -131,7 +154,8 @@ export type EnqueueableFamilyOutboxInput =
   | { tenantId: string; notificationType: "family_authority_changed"; source: { guardianAuthorityRecordId: string }; eventVersion: string; occurredAt: Date }
   | { tenantId: string; notificationType: "family_recipient_authorization_changed"; source: { authorizationDecisionId: string }; eventVersion: string; occurredAt: Date }
   | { tenantId: string; notificationType: "family_signal_available" | "family_urgent_signal"; source: { safetySignalId: string }; eventVersion: string; occurredAt: Date }
-  | { tenantId: string; notificationType: "family_incident_created" | "family_incident_escalated"; source: { incidentId: string }; eventVersion: string; occurredAt: Date };
+  | { tenantId: string; notificationType: "family_incident_created" | "family_incident_escalated"; source: { incidentId: string }; eventVersion: string; occurredAt: Date }
+  | { tenantId: string; notificationType: "family_protection_plan_updated"; source: { protectionPlanId: string }; eventVersion: string; occurredAt: Date };
 
 export interface EnqueueOutboxResult {
   enqueued: boolean;
