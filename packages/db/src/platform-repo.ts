@@ -115,6 +115,46 @@ export async function resolvePlatformRole(userId: string | null | undefined): Pr
   return (await resolvePlatformRoleDetailed(userId)).role;
 }
 
+// ── Owner-entry diagnostics (PII-free, bounded) ─────────────────────────────────
+export const PLATFORM_ADMIN_ENTRY_EVENT = "PLATFORM_ADMIN_ENTRY_EVALUATED";
+
+export interface PlatformAdminEntryDiagnostic {
+  evt: typeof PLATFORM_ADMIN_ENTRY_EVENT;
+  deployment: string;
+  route: string;
+  hasPlatformRole: boolean;
+  normalizedRole: PlatformRole; // effective role used for the render decision (after the revoked collapse)
+  assignedRole: PlatformRole;   // persisted role before the revoked collapse
+  accessRevoked: boolean;
+  found: boolean;
+  errored: boolean;
+  canViewEntry: boolean;
+}
+
+/**
+ * Build the PLATFORM_ADMIN_ENTRY_EVALUATED diagnostic payload. EVERY field is a definite boolean/label/string
+ * (never `undefined`), so `JSON.stringify` can never drop a key — the emitted log always carries the full set.
+ * Values come ONLY from the resolution used for the render decision plus the deployment/route/canViewEntry
+ * context; the shape makes it impossible to include email, userId, session token, DB URL, or any credential.
+ */
+export function buildPlatformAdminEntryDiagnostic(
+  resolution: PlatformRoleResolution,
+  ctx: { deployment: string; route: string; canViewEntry: boolean },
+): PlatformAdminEntryDiagnostic {
+  return {
+    evt: PLATFORM_ADMIN_ENTRY_EVENT,
+    deployment: ctx.deployment || "unknown",
+    route: ctx.route,
+    hasPlatformRole: resolution.found && resolution.assignedRole !== PlatformRole.none,
+    normalizedRole: resolution.role,
+    assignedRole: resolution.assignedRole,
+    accessRevoked: resolution.accessRevoked,
+    found: resolution.found,
+    errored: resolution.errored,
+    canViewEntry: ctx.canViewEntry,
+  };
+}
+
 /** Thrown when a caller lacks the required platform capability. Carries NO lead data. */
 export class PlatformForbiddenError extends Error {
   readonly code = "platform_forbidden";

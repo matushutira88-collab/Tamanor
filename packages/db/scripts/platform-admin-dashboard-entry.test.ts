@@ -11,7 +11,7 @@
  */
 import {
   systemDb, PlatformRole, resolvePlatformRole, resolvePlatformRoleDetailed, normalizePlatformRole, platformRoleSatisfies,
-  canViewPlatformAdminEntry, platformDashboardMetrics,
+  canViewPlatformAdminEntry, buildPlatformAdminEntryDiagnostic, PLATFORM_ADMIN_ENTRY_EVENT, platformDashboardMetrics,
 } from "@guardora/db";
 import { WorkspaceKind } from "@guardora/core";
 
@@ -86,6 +86,28 @@ async function main() {
   check("★ revoked owner: assignedRole owner BUT accessRevoked true → effective none", revokedDetail.assignedRole === PlatformRole.owner && revokedDetail.accessRevoked === true && revokedDetail.role === PlatformRole.none);
   const missingDetail = await resolvePlatformRoleDetailed(`ghost_${sfx}`);
   check("★ missing user: not found → none (no error)", missingDetail.found === false && missingDetail.errored === false && missingDetail.role === PlatformRole.none);
+
+  console.log("\n7. PLATFORM_ADMIN_ENTRY_EVALUATED diagnostic carries ALL required PII-free fields");
+  const REQUIRED = ["deployment", "route", "hasPlatformRole", "normalizedRole", "assignedRole", "accessRevoked", "found", "errored", "canViewEntry"];
+  const FORBIDDEN = ["email", "userId", "userid", "sessionToken", "token", "password", "databaseUrl", "url", "connectionString"];
+  // Build from the SAME resolution the render uses, for both an owner and a revoked owner, and round-trip through
+  // JSON (the exact serialization the log emits) to prove no field is dropped and no PII field appears.
+  for (const [tag, detail, canView] of [["owner", rtDetail, true], ["revoked-owner", revokedDetail, false]] as const) {
+    const payload = buildPlatformAdminEntryDiagnostic(detail, { deployment: "abc123", route: "/dashboard", canViewEntry: canView });
+    const serialized = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+    const missing = REQUIRED.filter((k) => !(k in serialized));
+    const leaked = FORBIDDEN.filter((k) => k in serialized);
+    check(`★ [${tag}] all 9 required fields survive JSON.stringify`, missing.length === 0, `missing: ${missing.join(",")}`);
+    check(`★ [${tag}] event marker present`, serialized.evt === PLATFORM_ADMIN_ENTRY_EVENT);
+    check(`★ [${tag}] NO PII/credential fields present`, leaked.length === 0, `leaked: ${leaked.join(",")}`);
+    check(`★ [${tag}] booleans are real booleans (never undefined-dropped)`, typeof serialized.hasPlatformRole === "boolean" && typeof serialized.accessRevoked === "boolean" && typeof serialized.found === "boolean" && typeof serialized.errored === "boolean" && typeof serialized.canViewEntry === "boolean");
+    check(`★ [${tag}] canViewEntry matches the render decision`, serialized.canViewEntry === canView);
+  }
+  // Cause-distinguishing content: owner vs revoked owner must be tellable apart from the payload alone.
+  const ownerP = buildPlatformAdminEntryDiagnostic(rtDetail, { deployment: "d", route: "/dashboard", canViewEntry: true });
+  const revokedP = buildPlatformAdminEntryDiagnostic(revokedDetail, { deployment: "d", route: "/dashboard", canViewEntry: false });
+  check("★ revoked owner is distinguishable: assignedRole owner + accessRevoked true + canViewEntry false", revokedP.assignedRole === PlatformRole.owner && revokedP.accessRevoked === true && revokedP.canViewEntry === false);
+  check("★ active owner is distinguishable: normalizedRole owner + accessRevoked false + canViewEntry true", ownerP.normalizedRole === PlatformRole.owner && ownerP.accessRevoked === false && ownerP.canViewEntry === true);
 }
 
 main()

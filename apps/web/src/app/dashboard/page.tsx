@@ -25,6 +25,7 @@ import {
   getWatchedAccountsView,
   resolvePlatformRoleDetailed,
   canViewPlatformAdminEntry,
+  buildPlatformAdminEntryDiagnostic,
   platformDashboardMetrics,
 } from "@guardora/db";
 import { getRealModeFilter } from "@/server/data-mode";
@@ -156,19 +157,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // /admin route guard, which enforces its own server-side capability check.
   const platformResolution = await resolvePlatformRoleDetailed(session.userId);
   const isPlatformOwner = canViewPlatformAdminEntry(platformResolution.role);
-  // TEMPORARY, PII-FREE production diagnostic for the owner-entry visibility. Emits ONLY bounded, non-sensitive
-  // facts (role LABELS + booleans) — never the email, session token, user id, or any DB payload. Lets us pin
-  // the exact reason the card is hidden in prod (wrong assigned role vs. revoked access vs. user row not found
-  // vs. a swallowed read error) without guessing. Remove once the incident is closed.
-  console.log(JSON.stringify({
-    evt: "PLATFORM_ADMIN_ENTRY_EVALUATED",
+  // TEMPORARY, PII-FREE production diagnostic. Built from the SAME resolution + decision used to render the card,
+  // so every field is definite (JSON.stringify can never drop one). Emits ONLY role labels + booleans — never
+  // the email, user id, session token, or any DB/credential payload. Lets us pin the exact reason the card is
+  // hidden (wrong assigned role vs revoked access vs user row not found vs read error). Remove once resolved.
+  console.log(JSON.stringify(buildPlatformAdminEntryDiagnostic(platformResolution, {
     deployment: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.VERCEL_DEPLOYMENT_ID ?? "unknown",
     route: "/dashboard",
-    hasPlatformRole: platformResolution.found && platformResolution.assignedRole !== "none",
-    normalizedRole: platformResolution.assignedRole,
-    accessRevoked: platformResolution.accessRevoked,
     canViewEntry: isPlatformOwner,
-  }));
+  })));
   const platformMetrics = isPlatformOwner ? await platformDashboardMetrics(session.userId).catch(() => null) : null;
   const platformEntry = isPlatformOwner ? (
     <PlatformAdminEntry
