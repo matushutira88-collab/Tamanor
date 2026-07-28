@@ -116,7 +116,7 @@ async function main() {
   check("★ (13b) stored source is a delivery id, never a recipient id", rowVals?.sourceType === "safety_signal_delivery" && rowVals?.sourceId === d1.id && rowVals?.sourceId !== uG1 && rowVals?.sourceId !== mG1);
   // (15) unsupported type cannot be enqueued.  (16) cross-tenant source rejected by RLS.
   let unsupThrew = false;
-  try { await withTenant(A, (tx) => enqueueFamilyNotificationOutboxEventTx(tx, { tenantId: A, notificationType: "family_consent_expiring" as never, source: { deliveryId: d1.id }, eventVersion: "x1", occurredAt: new Date() })); } catch { unsupThrew = true; }
+  try { await withTenant(A, (tx) => enqueueFamilyNotificationOutboxEventTx(tx, { tenantId: A, notificationType: "family_totally_unknown_type" as never, source: { deliveryId: d1.id }, eventVersion: "x1", occurredAt: new Date() })); } catch { unsupThrew = true; }
   check("★ (15) unsupported Family type cannot be enqueued this phase", unsupThrew);
   let xTenantThrew = false;
   try { await withTenant(A, (tx) => enqueueFamilyNotificationOutboxEventTx(tx, { tenantId: B, notificationType: "family_delivery_available", source: { deliveryId: d1.id }, eventVersion: "x2", occurredAt: new Date() })); } catch { xTenantThrew = true; }
@@ -192,11 +192,11 @@ async function main() {
   // (28) completed event not claimed again.
   const c28 = await processFamilyNotificationOutboxBatch({ batchSize: 50, now: new Date() });
   check("★ (28) a completed event is not claimed again", (await systemDb.familyNotificationOutboxEvent.findFirst({ where: { tenantId: A, sourceId: dupProc.id } }))?.status === "completed" && c28.claimed === 0);
-  // (29) malformed/unsupported event → dead_letter.
-  await systemDb.familyNotificationOutboxEvent.create({ data: { tenantId: A, notificationType: "family_consent_expiring" as never, sourceType: "safety_signal_delivery", sourceId: `bad_${sfx}`, eventVersion: "b1", dedupeKey: `${sfx}_bad1`, occurredAt: new Date(), nextAttemptAt: new Date(Date.now() - 1000), updatedAt: new Date() } });
+  // (29) malformed event (a wired type paired with the WRONG sourceType) → dead_letter with a bounded code.
+  await systemDb.familyNotificationOutboxEvent.create({ data: { tenantId: A, notificationType: "family_delivery_available" as never, sourceType: "child_safety_incident", sourceId: `bad_${sfx}`, eventVersion: "b1", dedupeKey: `${sfx}_bad1`, occurredAt: new Date(), nextAttemptAt: new Date(Date.now() - 1000), updatedAt: new Date() } });
   await processFamilyNotificationOutboxBatch({ batchSize: 5, now: new Date() });
   const bad = await systemDb.familyNotificationOutboxEvent.findFirst({ where: { tenantId: A, sourceId: `bad_${sfx}` } });
-  check("★ (29) malformed/unsupported event → dead_letter with bounded code", bad?.status === "dead_letter" && bad?.lastErrorCode === "unsupported_type");
+  check("★ (29) malformed event (type↔sourceType mismatch) → dead_letter with bounded code", bad?.status === "dead_letter" && bad?.lastErrorCode === "malformed_event");
   // (30) source no longer available → bounded terminal outcome (source_gone).
   const gone = await availableDelivery(dec2);
   await systemDb.safetySignalDelivery.delete({ where: { id: gone.id } });

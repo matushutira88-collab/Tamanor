@@ -74,11 +74,11 @@ async function main() {
   const types = Object.keys(OUTBOX_TYPE_SOURCE);
   // Phase 3B1 wired these six; Phase 3B2 adds four more (asserted in the critical suite). Here: these six remain.
   check("★ (1) the six advisory types are supported", ["family_delivery_available", "family_delivery_acknowledged", "family_delivery_declined", "family_guardian_invitation_accepted", "family_authority_changed", "family_recipient_authorization_changed"].every((t) => types.includes(t)));
-  const forbidden = ["family_guardian_invitation_expiring", "family_consent_expiring"];
-  check("★ (2) the two remaining (expiry) types are NOT enqueueable", forbidden.every((t) => !(t in OUTBOX_TYPE_SOURCE)));
+  const forbidden = ["family_totally_unknown_type"];
+  check("★ (2) an unknown type is NOT enqueueable", forbidden.every((t) => !(t in OUTBOX_TYPE_SOURCE)));
   check("★ (3) every supported type maps to exactly one sourceType", types.every((t) => typeof (OUTBOX_TYPE_SOURCE as Record<string, { sourceType: string }>)[t].sourceType === "string"));
   let unsupThrew = false;
-  try { await withTenant(A, (tx) => enqueueFamilyNotificationOutboxEventTx(tx, { tenantId: A, notificationType: "family_consent_expiring" as never, source: { deliveryId: "x" } as never, eventVersion: "e1", occurredAt: new Date() })); } catch { unsupThrew = true; }
+  try { await withTenant(A, (tx) => enqueueFamilyNotificationOutboxEventTx(tx, { tenantId: A, notificationType: "family_totally_unknown_type" as never, source: { deliveryId: "x" } as never, eventVersion: "e1", occurredAt: new Date() })); } catch { unsupThrew = true; }
   check("★ (2b) a forbidden type fails closed at enqueue", unsupThrew);
   // (4) malformed notificationType/sourceType combo dead-letters.
   await systemDb.familyNotificationOutboxEvent.create({ data: { tenantId: A, notificationType: "family_authority_changed" as never, sourceType: "safety_signal_delivery", sourceId: `mm_${sfx}`, eventVersion: "m1", dedupeKey: `${sfx}_mm1`, occurredAt: new Date(), nextAttemptAt: new Date(Date.now() - 1000), updatedAt: new Date() } });

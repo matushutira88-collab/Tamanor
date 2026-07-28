@@ -106,6 +106,10 @@ export * from "./family-notification-repo";
 // (resolveFamilyNotificationRecipientsTx) and the incident-visibility authority (evaluateFamilyIncidentVisibilityTx)
 // stay INTERNAL (their files are not barrel-exported). No production caller invokes this yet (Phase 3).
 export { createAuthorizedFamilyNotificationTx, createAuthorizedFamilyNotification, type FamilyNotificationAuthorizationSource, type AuthorizedFamilyNotificationCreationResult } from "./internal/family-notification-authorization";
+// Phase 3C — the high-level scheduler runner + health are the ONLY server-only entry points exposed to the
+// authenticated cron route and the local command; the evaluators, lease primitives, outbox processor, enqueue,
+// and resolver all stay internal (non-barrel-exported).
+export { runFamilyNotificationScheduler, getFamilyNotificationSchedulerHealth, type RunSchedulerResult, type FamilyNotificationSchedulerHealth } from "./internal/family-notification-scheduler";
 export * from "./notification-email";
 export * from "./team-repo";
 export * from "./tenant-db";

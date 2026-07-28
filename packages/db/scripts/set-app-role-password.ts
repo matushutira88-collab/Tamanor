@@ -94,6 +94,8 @@ async function main() {
     "child_safety_integration_keys", "child_safety_integration_subjects",
     "child_safety_partner_pilots", "child_safety_partner_pilot_checks", "child_safety_partner_pilot_events",
     "child_safety_partner_contacts", "child_safety_partner_operational_alerts", "child_safety_partner_test_runs",
+    // Phase 3C — the global scheduler lease is owner-only (the cron runner executes as the owner).
+    "scheduler_leases",
   ];
   const CS_REVOKE_DELETE = [
     "protected_profiles", "guardian_relationships", "safety_signals",

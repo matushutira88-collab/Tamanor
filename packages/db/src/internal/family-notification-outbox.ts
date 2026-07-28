@@ -81,6 +81,7 @@ export const OUTBOX_SOURCE_TYPE = {
   safety_signal: "safety_signal",
   child_safety_incident: "child_safety_incident",
   child_safety_protection_plan: "child_safety_protection_plan",
+  consent_record: "consent_record",
 } as const;
 
 /**
@@ -103,6 +104,9 @@ export const OUTBOX_TYPE_SOURCE = {
   family_incident_escalated: { sourceType: OUTBOX_SOURCE_TYPE.child_safety_incident, idKey: "incidentId" },
   // Phase 3B3 — protection-plan update trigger (owner-only plan source; advisory, NOT a readiness type).
   family_protection_plan_updated: { sourceType: OUTBOX_SOURCE_TYPE.child_safety_protection_plan, idKey: "protectionPlanId" },
+  // Phase 3C — deterministic expiry warnings (evaluator-enqueued; advisory, NOT readiness types).
+  family_guardian_invitation_expiring: { sourceType: OUTBOX_SOURCE_TYPE.family_guardian_invitation, idKey: "invitationId" },
+  family_consent_expiring: { sourceType: OUTBOX_SOURCE_TYPE.consent_record, idKey: "consentRecordId" },
 } as const;
 export type EnqueueableOutboxType = keyof typeof OUTBOX_TYPE_SOURCE;
 export const SUPPORTED_OUTBOX_TYPES: readonly string[] = Object.keys(OUTBOX_TYPE_SOURCE);
@@ -147,6 +151,31 @@ export function isMaterialFamilyProtectionPlanUpdate(before: { status: string },
   return before.status !== after.status && FAMILY_DISCLOSABLE_PLAN_STATES.has(after.status);
 }
 
+// ── Phase 3C — deterministic expiry warning windows + policy-versioned eventVersion ──────────────
+/** Guardian invitation: exactly one warning in the final 24 hours before `expiresAt`. */
+export const INVITATION_WARNING_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Consent: exactly one warning in the final 14 days before `validUntil`. */
+export const CONSENT_WARNING_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+const INVITATION_EXPIRING_PREFIX = "invitation-expiring:v1:";
+const CONSENT_EXPIRING_PREFIX = "consent-expiring:v1:";
+
+/** Policy-versioned, deterministic eventVersion from the canonical expiry instant. Same source + same expiry →
+ *  same version; an extended/renewed expiry → a new version. NO scheduler/worker clock, attempt, or random. */
+export function invitationExpiringEventVersion(expiresAtMs: number): string { return `${INVITATION_EXPIRING_PREFIX}${expiresAtMs}`; }
+export function consentExpiringEventVersion(expiresAtMs: number): string { return `${CONSENT_EXPIRING_PREFIX}${expiresAtMs}`; }
+
+/** Parse the encoded expiry epoch-ms from a `<prefix>:v1:<ms>` eventVersion (null if malformed / wrong prefix). */
+function parseExpiringEventVersion(prefix: string, eventVersion: string): number | null {
+  if (!eventVersion.startsWith(prefix)) return null;
+  const rest = eventVersion.slice(prefix.length);
+  if (!/^\d{1,15}$/.test(rest)) return null;
+  const n = Number(rest);
+  return Number.isSafeInteger(n) ? n : null;
+}
+export const parseInvitationExpiringEventVersion = (ev: string): number | null => parseExpiringEventVersion(INVITATION_EXPIRING_PREFIX, ev);
+export const parseConsentExpiringEventVersion = (ev: string): number | null => parseExpiringEventVersion(CONSENT_EXPIRING_PREFIX, ev);
+
 /** Enqueue input — the TEN supported types (compile-time closed union; the caller supplies only bounded ids). */
 export type EnqueueableFamilyOutboxInput =
   | { tenantId: string; notificationType: "family_delivery_available" | "family_delivery_acknowledged" | "family_delivery_declined"; source: { deliveryId: string }; eventVersion: string; occurredAt: Date }
@@ -155,7 +184,9 @@ export type EnqueueableFamilyOutboxInput =
   | { tenantId: string; notificationType: "family_recipient_authorization_changed"; source: { authorizationDecisionId: string }; eventVersion: string; occurredAt: Date }
   | { tenantId: string; notificationType: "family_signal_available" | "family_urgent_signal"; source: { safetySignalId: string }; eventVersion: string; occurredAt: Date }
   | { tenantId: string; notificationType: "family_incident_created" | "family_incident_escalated"; source: { incidentId: string }; eventVersion: string; occurredAt: Date }
-  | { tenantId: string; notificationType: "family_protection_plan_updated"; source: { protectionPlanId: string }; eventVersion: string; occurredAt: Date };
+  | { tenantId: string; notificationType: "family_protection_plan_updated"; source: { protectionPlanId: string }; eventVersion: string; occurredAt: Date }
+  | { tenantId: string; notificationType: "family_guardian_invitation_expiring"; source: { invitationId: string }; eventVersion: string; occurredAt: Date }
+  | { tenantId: string; notificationType: "family_consent_expiring"; source: { consentRecordId: string }; eventVersion: string; occurredAt: Date };
 
 export interface EnqueueOutboxResult {
   enqueued: boolean;

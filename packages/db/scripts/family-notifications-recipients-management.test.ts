@@ -8,6 +8,7 @@
  */
 import { systemDb, withTenant, createRecipientAuthorizationDecision, createSafetySignalDelivery, makeSafetySignalDeliveryAvailable, acknowledgeSafetySignalDelivery, declineSafetySignalDelivery } from "@guardora/db";
 import { resolveFamilyNotificationRecipientsTx, createAuthorizedFamilyNotificationTx, type FamilyNotificationAuthorizationSource } from "../src/internal/family-notification-authorization";
+import { invitationExpiringEventVersion, consentExpiringEventVersion } from "../src/internal/family-notification-outbox";
 import { WorkspaceKind, RiskType, SafetySeverity, GuardianRelationshipType, GuardianAuthorityLevel } from "@guardora/core";
 import { createHash } from "node:crypto";
 
@@ -65,11 +66,12 @@ async function main() {
   check("★ invited email is NEVER a recipient (only canonical memberships)", ra.ok === true && ra.recipientUserIds.every((u) => u === uOwner || u === uGuard));
   const invPending = (await systemDb.familyGuardianInvitation.create({ data: { tenantId: A, invitedByMembershipId: mGuard, invitedEmailNormalized: `p_${sfx}@x.local`, tokenHash: th(), protectedProfileId: pA, intendedFamilyRole: "guardian", intendedGuardianRole: "secondary", intendedRelationshipType: "parent", status: "pending", expiresAt: days(3) } })).id;
   check("★ pending invitation cannot generate an accepted notification (zero)", (await resolve({ type: "family_guardian_invitation_accepted", invitationId: invPending, eventVersion: "e1" }) as { recipientUserIds: string[] }).recipientUserIds.length === 0);
-  // expiring windows: 3 days out → 7d window
-  check("★ pending invitation 3d out matches 7d window → inviter+managers", (await resolve({ type: "family_guardian_invitation_expiring", invitationId: invPending, expiryWindow: "7d", eventVersion: "e7" })).ok === true && ((await resolve({ type: "family_guardian_invitation_expiring", invitationId: invPending, expiryWindow: "7d", eventVersion: "e7" }) as { recipientUserIds: string[] }).recipientUserIds.length >= 2));
-  check("★ forged 1d window on a 3d-out invitation → zero recipients", (await resolve({ type: "family_guardian_invitation_expiring", invitationId: invPending, expiryWindow: "1d", eventVersion: "e1" }) as { recipientUserIds: string[] }).recipientUserIds.length === 0);
+  // Phase 3C — expiring uses a policy-versioned eventVersion encoding the CURRENT expiry (stale-expiry model).
+  const invPendingExp = (await systemDb.familyGuardianInvitation.findUnique({ where: { id: invPending }, select: { expiresAt: true } }))!.expiresAt!.getTime();
+  check("★ pending invitation, eventVersion matching current expiry → inviter+managers", (await resolve({ type: "family_guardian_invitation_expiring", invitationId: invPending, eventVersion: invitationExpiringEventVersion(invPendingExp) })).ok === true && ((await resolve({ type: "family_guardian_invitation_expiring", invitationId: invPending, eventVersion: invitationExpiringEventVersion(invPendingExp) }) as { recipientUserIds: string[] }).recipientUserIds.length >= 2));
+  check("★ stale (extended) expiry version → not_applicable (ok:false)", (await resolve({ type: "family_guardian_invitation_expiring", invitationId: invPending, eventVersion: invitationExpiringEventVersion(invPendingExp + 86_400_000) })).ok === false);
   const invExpired = (await systemDb.familyGuardianInvitation.create({ data: { tenantId: A, invitedByMembershipId: mGuard, invitedEmailNormalized: `e_${sfx}@x.local`, tokenHash: th(), protectedProfileId: pA, intendedFamilyRole: "guardian", intendedGuardianRole: "secondary", intendedRelationshipType: "parent", status: "expired", expiresAt: days(-1) } })).id;
-  check("★ expired/accepted invitation produces no expiring recipients", (await resolve({ type: "family_guardian_invitation_expiring", invitationId: invExpired, expiryWindow: "7d", eventVersion: "e1" }) as { recipientUserIds: string[] }).recipientUserIds.length === 0 && (await resolve({ type: "family_guardian_invitation_expiring", invitationId: invAcc, expiryWindow: "7d", eventVersion: "e1" }) as { recipientUserIds: string[] }).recipientUserIds.length === 0);
+  check("★ expired / accepted invitation → not_applicable (ok:false)", (await resolve({ type: "family_guardian_invitation_expiring", invitationId: invExpired, eventVersion: invitationExpiringEventVersion(days(-1).getTime()) })).ok === false && (await resolve({ type: "family_guardian_invitation_expiring", invitationId: invAcc, eventVersion: invitationExpiringEventVersion(days(3).getTime()) })).ok === false);
 
   console.log("\n3. authority change — affected guardian + managers");
   const ac = await resolve({ type: "family_authority_changed", guardianAuthorityRecordId: authA, eventVersion: "e1" });
@@ -82,14 +84,16 @@ async function main() {
   check("★ recipient-auth change → affected recipient (guard) + managers (owner)", rac.ok === true && rac.recipientUserIds.includes(uGuard) && rac.recipientUserIds.includes(uOwner));
   check("★ cross-tenant decision fails closed", (await withTenant(B, (tx) => resolveFamilyNotificationRecipientsTx(tx, { tenantId: B, source: { type: "family_recipient_authorization_changed", authorizationDecisionId: decision.id, eventVersion: "e1" } }))).ok === false);
 
-  console.log("\n5. consent expiry — managers only, window + state gated");
-  const ce = await resolve({ type: "family_consent_expiring", consentRecordId: consentA, expiryWindow: "7d", eventVersion: "e7" });
-  check("★ consent 5d out matches 7d window → ConsentManage managers only (owner in, viewer out)", ce.ok === true && ce.recipientUserIds.includes(uOwner) && !ce.recipientUserIds.includes(uView));
-  check("★ forged 1d window on a 5d-out consent → zero", (await resolve({ type: "family_consent_expiring", consentRecordId: consentA, expiryWindow: "1d", eventVersion: "e1" }) as { recipientUserIds: string[] }).recipientUserIds.length === 0);
+  console.log("\n5. consent expiry — managers only, eventVersion-stale gated (Phase 3C)");
+  const consentExp = (await systemDb.consentRecord.findUnique({ where: { id: consentA }, select: { validUntil: true } }))!.validUntil!.getTime();
+  const ce = await resolve({ type: "family_consent_expiring", consentRecordId: consentA, eventVersion: consentExpiringEventVersion(consentExp) });
+  check("★ effective consent, matching expiry version → ConsentManage managers only (owner in, viewer out)", ce.ok === true && ce.recipientUserIds.includes(uOwner) && !ce.recipientUserIds.includes(uView));
+  check("★ stale (extended) consent version → not_applicable (ok:false)", (await resolve({ type: "family_consent_expiring", consentRecordId: consentA, eventVersion: consentExpiringEventVersion(consentExp + 86_400_000) })).ok === false);
   await systemDb.consentRecord.update({ where: { id: consentA }, data: { consentStatus: "withdrawn", revokedAt: new Date() } });
-  check("★ revoked consent → no upcoming-expiry recipients", (await resolve({ type: "family_consent_expiring", consentRecordId: consentA, expiryWindow: "7d", eventVersion: "e7" }) as { recipientUserIds: string[] }).recipientUserIds.length === 0);
+  check("★ revoked consent → not_applicable (ok:false)", (await resolve({ type: "family_consent_expiring", consentRecordId: consentA, eventVersion: consentExpiringEventVersion(consentExp) })).ok === false);
   await systemDb.consentRecord.update({ where: { id: consentA }, data: { consentStatus: "active", revokedAt: null, validUntil: null } });
-  check("★ consent with no validUntil → no recipients", (await resolve({ type: "family_consent_expiring", consentRecordId: consentA, expiryWindow: "7d", eventVersion: "e7" }) as { recipientUserIds: string[] }).recipientUserIds.length === 0);
+  check("★ consent with no validUntil (indefinite) → not_applicable (ok:false)", (await resolve({ type: "family_consent_expiring", consentRecordId: consentA, eventVersion: consentExpiringEventVersion(consentExp) })).ok === false);
+  await systemDb.consentRecord.update({ where: { id: consentA }, data: { validUntil: days(5) } });
   await systemDb.consentRecord.update({ where: { id: consentA }, data: { validUntil: days(5) } });
 
   console.log("\n6. authorized creation + transactions (new types)");

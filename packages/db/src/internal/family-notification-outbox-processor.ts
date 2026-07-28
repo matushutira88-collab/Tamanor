@@ -101,6 +101,10 @@ function buildAuthorizationSource(ev: ClaimedRow): FamilyNotificationAuthorizati
       return { type: t, incidentId: ev.sourceId, ...common };
     case "family_protection_plan_updated":
       return { type: t, protectionPlanId: ev.sourceId, ...common };
+    case "family_guardian_invitation_expiring":
+      return { type: t, invitationId: ev.sourceId, ...common };
+    case "family_consent_expiring":
+      return { type: t, consentRecordId: ev.sourceId, ...common };
     default:
       return null;
   }

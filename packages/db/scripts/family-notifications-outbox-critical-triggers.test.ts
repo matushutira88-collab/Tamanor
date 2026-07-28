@@ -58,8 +58,8 @@ async function main() {
   // ═════════ 1. Audit & type boundary ═════════
   console.log("\n1. audit & type boundary");
   const types = Object.keys(OUTBOX_TYPE_SOURCE);
-  check("★ (1) outbox supports exactly eleven notification types", types.length === 11 && ["family_signal_available", "family_urgent_signal", "family_incident_created", "family_incident_escalated"].every((t) => types.includes(t)));
-  check("★ (2) the two deferred (expiry) types remain fail-closed", ["family_guardian_invitation_expiring", "family_consent_expiring"].every((t) => !(t in OUTBOX_TYPE_SOURCE)));
+  check("★ (1) outbox supports exactly THIRTEEN notification types", types.length === 13 && ["family_signal_available", "family_urgent_signal", "family_incident_created", "family_incident_escalated"].every((t) => types.includes(t)));
+  check("★ (2) an unknown type remains fail-closed", ["family_totally_unknown_type"].every((t) => !(t in OUTBOX_TYPE_SOURCE)));
   check("★ (3) signal/incident types map to safety_signal / child_safety_incident", (OUTBOX_TYPE_SOURCE as Record<string, { sourceType: string }>).family_signal_available.sourceType === "safety_signal" && (OUTBOX_TYPE_SOURCE as Record<string, { sourceType: string }>).family_incident_created.sourceType === "child_safety_incident");
   check("★ (6) the four critical types are marked for readiness", ["family_signal_available", "family_urgent_signal", "family_incident_created", "family_incident_escalated"].every((t) => CRITICAL_OUTBOX_TYPES.has(t)));
   // (4) malformed type/source combo dead-letters.

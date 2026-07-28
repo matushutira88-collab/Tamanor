@@ -427,10 +427,132 @@ incident id; logs/health are aggregate + bounded-code only.
   suites, Business 13). **No new migration**; clean-DB replay re-verified (RLS forced, app-role no-DELETE,
   plan/incident/escalation grants 0, delivery CHECKs present, 13 enum values).
 
-## Remaining trigger work — Phase 3C (NOT in Phase 3A/3B1/3B2/3B3)
+## Phase 3C — deterministic expiry evaluators & production scheduler (delivered)
 
-The final **two** triggers are unwired: `family_guardian_invitation_expiring` and `family_consent_expiring` —
-both require deterministic expiry evaluation and a production scheduler (Phase 3C). Also unimplemented: the expiry
-evaluator runner, scheduling / cron, notification preferences, `/family/notifications`, the shell bell and UI
-actions, Family-facing incident/plan routes, and any email/push/SMS/webhook/messenger channel. Their recipient
-RESOLUTION already exists (Phase 2b); Phase 3C will enqueue them onto this same outbox.
+Phase 3C completes the final two triggers — `family_guardian_invitation_expiring` and `family_consent_expiring` —
+so **all 13 Family notification catalogue types are now wired**. It adds deterministic expiry evaluators, a
+DB-backed scheduler lease, a bounded runner, an authenticated production cron endpoint, and the `*/5` schedule
+config. (This does NOT mean the Family Notification Center, preferences, or external delivery channels are
+complete.)
+
+### The 13 wired types (Phase 3C additions)
+
+| type | trigger | sourceType | eventVersion |
+|---|---|---|---|
+| `family_guardian_invitation_expiring` | `evaluateExpiringGuardianInvitations` (scheduled) | `family_guardian_invitation` | `invitation-expiring:v1:<expiresAt epoch ms>` |
+| `family_consent_expiring` | `evaluateExpiringConsents` (scheduled) | `consent_record` | `consent-expiring:v1:<validUntil epoch ms>` |
+
+### Warning policy + exact boundaries (UTC)
+
+- **Invitation:** exactly one warning when a `pending` invitation enters the final **24 hours** before `expiresAt`.
+- **Consent:** exactly one warning when an **effective** consent enters the final **14 days** before `validUntil`.
+- Eligibility boundary: `expiry > now AND expiry <= now + window`. Already-expired sources never warn. An
+  extended expiry or a renewed/replaced consent is a **new expiry version** → at most one new warning. No repeated
+  daily reminders (the outbox unique index collapses re-scans to one event per `(source, expiry version)`).
+
+### Lifecycle states audited
+
+- **Invitation eligible** = `status = "pending"` only. Ineligible: accepted / declined / revoked / expired /
+  outside-window / already-past / missing expiry.
+- **Consent eligible** = `consentStatus = "active"` AND `revokedAt IS NULL` AND `archivedAt IS NULL` AND a
+  `validUntil` in `(now, now+14d]` (mirrors the existing effective-consent rule — no second definition).
+  Ineligible: pending / rejected / revoked / superseded (any non-active status) / indefinite (no expiry) /
+  already-expired.
+
+### eventVersion + stale-expiry protection
+
+eventVersions encode the canonical expiry instant (never a scheduler/worker clock, attempt, or random). At
+**processing** time the resolver re-validates: source still exists + still in the eligible state + **current expiry
+equals the eventVersion-encoded expiry** + `now < expiry`. A mismatch (extended / renewed / accepted / revoked /
+elapsed) → **`not_applicable`** (a later evaluator pass may enqueue one new event for the new version). This
+replaced the old 7d/1d window param on these two resolver sources.
+
+### Evaluator architecture, pagination & index audit
+
+Owner (`systemDb`) cross-tenant scanners with an explicit `now`, a bounded batch (default 100, hard max 500),
+deterministic `ORDER BY (expiry, id)` and optional keyset continuation (never skips equal-expiry rows). They read
+**narrow projections only** (invitation: `id, tenantId, expiresAt` — never token/email/message; consent:
+`id, tenantId, validUntil` — never notes/evidence/reason), **never mutate the source** (no `warningSentAt`), never
+create a notification row, and enqueue through the bounded owner outbox wrapper with an explicit `tenantId`,
+returning aggregate counts only. **Index audit / migration:** the cross-tenant scans filter by status/expiry with an
+id tie-break, which the old per-tenant indexes did not order — so migration `20260827090000_family_notification_
+scheduler` adds `family_guardian_invitations (status, expiresAt, id)` and `consent_records (consentStatus,
+validUntil, id)` (plus the lease table). **A migration WAS required** (new lease table + two scan indexes);
+nothing existing was modified/reset.
+
+### Concurrent dedupe
+
+Two concurrent evaluator runs (or re-scans) over the same source produce exactly one outbox row (unique
+`(tenantId, dedupeKey)` with `INSERT … ON CONFLICT DO NOTHING`) and exactly-once observable notification rows (the
+notification dedupe). The scheduler lease reduces duplicate work but is **not** the dedupe authority.
+
+### Current authorization
+
+Processing re-uses the existing recipient rules: invitation-expiring → active inviter (from
+`invitedByMembershipId`) + current `FamilyInvitationView` managers, deduped; consent-expiring → current
+`ConsentManage` managers. Revoked/inactive-before-processing users receive nothing; a newly-eligible manager may
+receive; a prior notification / outbox ownership / platform role alone grants no access. Expiry warnings are
+advisory — they do **not** use the Phase 3B2 `authorization_pending` readiness window.
+
+### Scheduler infrastructure
+
+**Audited** existing production scheduling: Vercel Cron via `apps/web/vercel.json` + internal job routes under
+`/api/internal/jobs/*` authenticated by `assertCronAuth` (`CRON_SECRET`, fail-closed, constant-time). **Reused**
+that mechanism (no competing scheduler). **Lease:** `SyncLease` is per-connected-account/tenant, unsuitable for a
+global scheduler lease, so a focused additive **`scheduler_leases`** table was added (owner-only, 0 `tamanor_app`
+grants) — atomic acquire via `INSERT … ON CONFLICT DO UPDATE … WHERE expiresAt < now`, a live lease can't be
+stolen, an expired lease is recoverable, only the holder token can release, a crash lets it expire; it stores no
+tenant/user/source id and is not the dedupe authority.
+
+**Runner:** `runFamilyNotificationScheduler` — acquire lease → evaluate invitations → evaluate consents → drain the
+outbox in bounded batches (stop on empty / `batch_limit` / `time_budget`) → release. Returns aggregate counts + a
+bounded `stoppedReason` only. **Endpoint:** `GET /api/internal/cron/family-notifications` (Node.js runtime,
+`force-dynamic`, `Cache-Control: no-store`) requires `Authorization: Bearer $CRON_SECRET` (no cookie/session/
+query-string secret; fail-closed if the secret is unset; generic 401; constant-time; never logged/echoed), calls
+only the shared runner with **no caller-controlled input** (a caller cannot raise bounds or choose a tenant/
+source), and returns aggregate counts only. **Schedule:** exactly one `*/5 * * * *` entry in `apps/web/vercel.json`
+(the three pre-existing jobs are unchanged). **Cadence:** every 5 minutes. **Local command:**
+`pnpm family-notifications-scheduler:run` (safe-target, one bounded cycle, aggregate counts only, non-zero on
+failure, no loop). `pnpm family-notifications-outbox:process` is unchanged.
+
+### Operational health
+
+`getFamilyNotificationSchedulerHealth(now)` → outbox aggregates (pending, processing, lease_expired, retry_due,
+dead_letter, oldest-pending age bucket) + `invitationsInWindow` / `consentsInWindow` + scheduler lease state
+(`free` / `active` / `expired`). Aggregate + bounded-code only; no ids/tenants/emails/timestamps.
+
+### Required production variable
+
+`CRON_SECRET` (the repository-standard cron secret shared by every internal job route) — required in production,
+fail-closed if unset, sufficiently long, never logged or returned. (No new per-feature secret was introduced.)
+
+### Committed code vs. verified production activation
+
+Phase 3C **committed and locally verified** the evaluators, lease, runner, endpoint, and `*/5` config. Production
+scheduling is **NOT** proven by a committed cron config alone — it additionally requires: deployed code, deployed
+cron config, a configured production `CRON_SECRET`, valid production DB variables, and at least one authenticated
+production invocation with an aggregate result verified without identifiers. Those deployment steps are outside
+this local sprint and remain **unverified**.
+
+### Tests & clean-DB
+
+- `family-notifications-expiry:test` (44) — type map, invitation/consent boundary + state eligibility,
+  eventVersion, stale-expiry → not_applicable, current authorization, evaluator determinism/bounds/ordering/no-
+  mutation, processor + no-readiness.
+- `family-notifications-scheduler:test` (32) — lease (acquire / busy / no-steal / expired-recover / owner-token /
+  crash / no ids / 0 grants), runner (staged bounded cycle / time-budget / batch-limit / empty / aggregate-only),
+  endpoint auth (missing / wrong / query-string / cookie / correct / missing-secret / no-store / aggregate-only /
+  no caller bounds), and schedule config (exactly one `*/5` entry in the deployed root, unrelated jobs unchanged).
+- `family-notifications-source:test` extended to 79 (all 13 wired; evaluator narrow projections; no source
+  mutation; explicit windows; stale-expiry validation; DB lease; bearer-only cron; aggregate-only route; no
+  competing scheduler).
+- Full gate green. Clean-DB replay verified: migration applies, RLS forced, app-role no-DELETE, owner-only +
+  scheduler-lease 0 grants, both expiry indexes present, 13 enum values.
+
+## Remaining scope — Family Notification Center (NOT in Phase 3)
+
+All 13 triggers, the durable outbox, the processor, the expiry evaluators, and the authenticated scheduler path are
+implemented. Still unbuilt: notification preferences, `/family/notifications`, the Family shell bell, notification
+UI actions, Family-facing incident/plan routes, and any email / push / SMS / webhook / external-messenger delivery
+channel. And, per the deployment-honesty note above, production scheduler activation is unverified until a real
+deployed, secret-configured, authenticated production run is observed.

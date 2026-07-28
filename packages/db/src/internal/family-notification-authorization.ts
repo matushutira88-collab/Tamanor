@@ -14,17 +14,17 @@
  * Privacy: only narrow id/status projections are read; no content/name/age/email/note/token is ever loaded,
  * returned, logged, or thrown. Recipient IDs are internal and are NEVER returned to browser-facing callers.
  */
-import { WorkspaceKind, FamilyAction, familyRoleCan, familyRoleForMembershipRole, familyExpiryWindow, familyDaysUntil, type FamilyActorContext } from "@guardora/core";
+import { WorkspaceKind, FamilyAction, familyRoleCan, familyRoleForMembershipRole, type FamilyActorContext } from "@guardora/core";
 import { withTenant } from "../repositories";
 import { systemDb } from "../index";
 import { getEffectiveRecipientAuthorization } from "../child-safety-recipient-authorization";
 import { evaluateSafetySignalDeliveryEligibility } from "../child-safety-delivery";
 import { createFamilyNotificationTx } from "../family-notification-repo";
 import { resolveIncidentRecipientUserIds, loadFamilyDisclosablePlan, type FamilyIncidentVisibilityReason } from "./family-incident-visibility";
+import { parseInvitationExpiringEventVersion, parseConsentExpiringEventVersion } from "./family-notification-outbox";
 import type { TenantTx } from "../tenant-db";
 
 // ── Supported source union (typed; never accepts recipients/metadata/severity/route/dedupe) ──────
-export type ExpiryWindow = "7d" | "1d";
 export type FamilyNotificationAuthorizationSource =
   // Phase 2b-A (signals + delivery available)
   | { type: "family_signal_available"; safetySignalId: string; eventVersion: string; occurredAt?: Date }
@@ -33,9 +33,11 @@ export type FamilyNotificationAuthorizationSource =
   // Phase 2b-B1 (managers, invitations, affected guardian)
   | { type: "family_delivery_acknowledged" | "family_delivery_declined"; deliveryId: string; eventVersion: string; occurredAt?: Date }
   | { type: "family_guardian_invitation_accepted"; invitationId: string; eventVersion: string; occurredAt?: Date }
-  | { type: "family_guardian_invitation_expiring"; invitationId: string; expiryWindow: ExpiryWindow; eventVersion: string; occurredAt?: Date }
+  // Phase 3C — expiry warnings carry ONLY the id + the policy-versioned eventVersion (the encoded expiry instant);
+  // the window decision belongs to the deterministic evaluator, and the resolver re-validates against it (stale).
+  | { type: "family_guardian_invitation_expiring"; invitationId: string; eventVersion: string; occurredAt?: Date }
   | { type: "family_authority_changed"; guardianAuthorityRecordId: string; eventVersion: string; occurredAt?: Date }
-  | { type: "family_consent_expiring"; consentRecordId: string; expiryWindow: ExpiryWindow; eventVersion: string; occurredAt?: Date }
+  | { type: "family_consent_expiring"; consentRecordId: string; eventVersion: string; occurredAt?: Date }
   | { type: "family_recipient_authorization_changed"; authorizationDecisionId: string; eventVersion: string; occurredAt?: Date }
   // Phase 2b-B2 (incident + protection-plan visibility — owner-only source boundary)
   | { type: "family_incident_created" | "family_incident_escalated"; incidentId: string; eventVersion: string; occurredAt?: Date }
@@ -218,13 +220,6 @@ async function resolveAuthorizedFamilyManagersTx(tenantId: string, action: Famil
   return [...new Set(ids)].sort();
 }
 
-/** Match a whole-day-count to the requested expiry window ("7d" for 1<d<=7; "1d" for d<=1). */
-function expiryWindowMatches(daysRemaining: number | null, requested: ExpiryWindow): boolean {
-  if (daysRemaining == null) return false;
-  const w = familyExpiryWindow(daysRemaining);
-  return (w === 7 && requested === "7d") || (w === 1 && requested === "1d");
-}
-
 const ok = (notificationType: FamilyNotificationAuthorizationSource["type"], recipientUserIds: string[]): FamilyNotificationRecipientResolution => ({ ok: true, notificationType, recipientUserIds: [...new Set(recipientUserIds)].sort() });
 
 // ── family_manager: delivery outcome (acknowledged / declined) ──
@@ -247,8 +242,14 @@ async function resolveInvitationRecipients(tenantId: string, source: Extract<Fam
   if (source.type === "family_guardian_invitation_accepted") {
     if (inv.status !== "accepted" || !inv.acceptedAt) return ok(source.type, []);
   } else {
-    if (inv.status !== "pending" || !inv.expiresAt) return ok(source.type, []);
-    if (!expiryWindowMatches(familyDaysUntil(inv.expiresAt, now), source.expiryWindow)) return ok(source.type, []);
+    // STALE-EXPIRY protection (Phase 3C): a warning is valid ONLY while the invitation is still pending AND the
+    // CURRENT expiry equals the expiry encoded in the eventVersion AND now is still before it. Accepted/revoked/
+    // cancelled/expired, or an EXTENDED expiry (new version), or an already-elapsed expiry → not_applicable (a
+    // later evaluator pass may enqueue one new event for the new expiry version). The window (24h) was decided by
+    // the evaluator; the resolver never re-derives it.
+    if (inv.status !== "pending" || !inv.expiresAt) return { ok: false, reason: "source_state_invalid" };
+    const encoded = parseInvitationExpiringEventVersion(source.eventVersion);
+    if (encoded === null || encoded !== inv.expiresAt.getTime() || now.getTime() >= inv.expiresAt.getTime()) return { ok: false, reason: "source_state_invalid" };
   }
   const inviter = await membershipUserIds(tenantId, [inv.invitedByMembershipId]);
   const managers = await resolveAuthorizedFamilyManagersTx(tenantId, FamilyAction.FamilyInvitationView);
@@ -282,9 +283,14 @@ async function resolveConsentExpiringRecipients(tenantId: string, source: Extrac
   if (!c) return { ok: false, reason: "source_not_found" };
   const active = await isProfileActive(tenantId, c.protectedProfileId);
   if (active === null) return { ok: false, reason: "profile_mismatch" };
+  // STALE-EXPIRY protection (Phase 3C): valid ONLY while the consent is still EFFECTIVE (active, not revoked, has
+  // an expiry) AND the current expiry equals the eventVersion-encoded instant AND now is still before it. A
+  // revoked/superseded/rejected/pending/indefinite/renewed consent, an extended expiry, or an elapsed expiry →
+  // not_applicable. The 14-day window was the evaluator's decision; the resolver never re-derives it.
   const effective = c.consentStatus === "active" && !c.revokedAt && c.validUntil != null;
-  if (!active || !effective) return ok(source.type, []);
-  if (!expiryWindowMatches(familyDaysUntil(c.validUntil, now), source.expiryWindow)) return ok(source.type, []);
+  if (!active || !effective) return { ok: false, reason: "source_state_invalid" };
+  const encoded = parseConsentExpiringEventVersion(source.eventVersion);
+  if (encoded === null || encoded !== c.validUntil!.getTime() || now.getTime() >= c.validUntil!.getTime()) return { ok: false, reason: "source_state_invalid" };
   return ok(source.type, await resolveAuthorizedFamilyManagersTx(tenantId, FamilyAction.ConsentManage));
 }
 

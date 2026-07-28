@@ -77,8 +77,8 @@ async function main() {
   // ═════════ 1. Type & source boundary ═════════
   console.log("\n1. type & source boundary");
   const types = Object.keys(OUTBOX_TYPE_SOURCE);
-  check("★ (1) outbox supports exactly eleven notification types", types.length === 11 && types.includes("family_protection_plan_updated"));
-  check("★ (2) invitation-expiring + consent-expiring remain fail-closed", !("family_guardian_invitation_expiring" in OUTBOX_TYPE_SOURCE) && !("family_consent_expiring" in OUTBOX_TYPE_SOURCE));
+  check("★ (1) outbox supports exactly THIRTEEN notification types", types.length === 13 && types.includes("family_protection_plan_updated"));
+  check("★ (2) an unknown type remains fail-closed", !("family_totally_unknown_type" in OUTBOX_TYPE_SOURCE));
   check("★ (3) plan type maps only to child_safety_protection_plan", (OUTBOX_TYPE_SOURCE as Record<string, { sourceType: string; idKey: string }>).family_protection_plan_updated.sourceType === "child_safety_protection_plan" && (OUTBOX_TYPE_SOURCE as Record<string, { idKey: string }>).family_protection_plan_updated.idKey === "protectionPlanId");
   check("★ (readiness) plan updates are NOT a critical readiness type", !CRITICAL_OUTBOX_TYPES.has("family_protection_plan_updated"));
   check("★ (materiality helper) matches the visibility allow-list {active, reopened}", isMaterialFamilyProtectionPlanUpdate({ status: "draft" }, { status: "active" }) === true && isMaterialFamilyProtectionPlanUpdate({ status: "completed" }, { status: "reopened" }) === true && isMaterialFamilyProtectionPlanUpdate({ status: "active" }, { status: "completed" }) === false && isMaterialFamilyProtectionPlanUpdate({ status: "draft" }, { status: "cancelled" }) === false && [...FAMILY_DISCLOSABLE_PLAN_STATES].sort().join(",") === "active,reopened");

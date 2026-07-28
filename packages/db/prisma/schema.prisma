@@ -2680,6 +2680,22 @@ model FamilyNotificationOutboxEvent {
   @@map("family_notification_outbox_events")
 }
 
+// FAMILY NOTIFICATIONS PHASE 3C — a global, named, DB-backed lease for the expiry/outbox scheduler (overlap
+// protection across concurrent cron invocations). Owner-only (systemDb; REVOKE ALL from tamanor_app in the
+// migration): the scheduler runs as the owner. Bounded lease (expiresAt) with owner-token release/steal-when-
+// expired — NOT the dedupe authority (the outbox unique index remains that). Stores NO tenant/user/source id.
+model SchedulerLease {
+  leaseKey    String   @id
+  holder      String
+  acquiredAt  DateTime @default(now())
+  expiresAt   DateTime
+  heartbeatAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("scheduler_leases")
+}
+
 // V1.71 (Release B / B4) — tenant-scoped team invites. RLS-enforced (enable + FORCE + policy + grant in
 // the migration). The token is stored ONLY as a sha256 hash (plaintext lives solely in the emailed link).
 // A partial unique index (migration) forbids two PENDING invites for the same (tenant, email). Expired /
@@ -2830,6 +2846,8 @@ model FamilyGuardianInvitation {
   @@index([tenantId, protectedProfileId])
   @@index([tenantId, invitedEmailNormalized, status])
   @@index([expiresAt])
+  // Phase 3C — owner cross-tenant expiry scan: WHERE status='pending' AND expiresAt in (now, cutoff] ORDER BY expiresAt, id.
+  @@index([status, expiresAt, id])
   @@map("family_guardian_invitations")
 }
 
@@ -2898,6 +2916,8 @@ model ConsentRecord {
   @@unique([id, tenantId])
   @@index([tenantId, protectedProfileId, consentStatus])
   @@index([tenantId, guardianRelationshipId])
+  // Phase 3C — owner cross-tenant expiry scan: WHERE consentStatus='active' AND validUntil in (now, cutoff] ORDER BY validUntil, id.
+  @@index([consentStatus, validUntil, id])
   @@map("consent_records")
 }
 

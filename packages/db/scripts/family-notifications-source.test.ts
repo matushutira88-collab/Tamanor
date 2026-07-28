@@ -139,11 +139,40 @@ function main() {
   check("★ plan trigger passes NO plan actions/notes/content to the enqueue (only protectionPlanId)", (() => { const call = planSrc.match(/enqueueFamilyNotificationOutboxEventOwnerTx\(tx, \{[^]*?\}\)/)?.[0] ?? ""; return /protectionPlanId/.test(call) && !/action|note|title|content|reason(?!Code)|evidence|priority/i.test(call); })());
   check("★ plan updates are NOT a critical readiness type", /CRITICAL_OUTBOX_TYPES[^]*?=\s*new Set\(\[([^\]]*)\]\)/.test(enqueueSrc) && !new RegExp(`CRITICAL_OUTBOX_TYPES[^]*?=\\s*new Set\\(\\[([^\\]]*family_protection_plan_updated[^\\]]*)\\]`).test(enqueueSrc));
   // Exactly ELEVEN enqueueable types; the TWO deferred (expiry) types are NOT in the enqueue map.
-  const wiredTypes = ["family_delivery_available", "family_delivery_acknowledged", "family_delivery_declined", "family_guardian_invitation_accepted", "family_authority_changed", "family_recipient_authorization_changed", "family_signal_available", "family_urgent_signal", "family_incident_created", "family_incident_escalated", "family_protection_plan_updated"];
-  const deferredTypes = ["family_guardian_invitation_expiring", "family_consent_expiring"];
+  const wiredTypes = ["family_delivery_available", "family_delivery_acknowledged", "family_delivery_declined", "family_guardian_invitation_accepted", "family_authority_changed", "family_recipient_authorization_changed", "family_signal_available", "family_urgent_signal", "family_incident_created", "family_incident_escalated", "family_protection_plan_updated", "family_guardian_invitation_expiring", "family_consent_expiring"];
   const typeMapBlock = enqueueSrc.match(/OUTBOX_TYPE_SOURCE = \{[^]*?\} as const/)?.[0] ?? "";
-  check("★ exactly eleven enqueueable types; the two deferred (expiry) types are NOT wired", deferredTypes.every((t) => !typeMapBlock.includes(t)) && wiredTypes.every((t) => typeMapBlock.includes(t)) && (typeMapBlock.match(/sourceType:/g) ?? []).length === 11);
-  check("★ no deferred type is enqueued anywhere in src", !srcFiles.some((p) => /enqueueFamilyNotificationOutboxEvent(Owner)?Tx|enqueueAuthorityChangedIfMaterialTx/.test(read(p)) && deferredTypes.some((t) => new RegExp(`notificationType:\\s*"${t}"`).test(read(p)))));
+  check("★ exactly THIRTEEN enqueueable types (the full catalogue is wired; no unsupported type remains)", wiredTypes.every((t) => typeMapBlock.includes(t)) && (typeMapBlock.match(/sourceType:/g) ?? []).length === 13 && wiredTypes.length === 13);
+
+  console.log("\n12. Phase 3C — deterministic expiry evaluators + scheduler boundary invariants");
+  const expirySrc = read("packages/db/src/internal/family-notification-expiry.ts");
+  const expiryCode = stripComments(expirySrc);
+  const schedulerSrc = read("packages/db/src/internal/family-notification-scheduler.ts");
+  const cronAuthSrc = read("apps/web/src/lib/cron-auth.ts");
+  const cronRouteSrc = read("apps/web/src/app/api/internal/cron/family-notifications/route.ts");
+  const authSrc = read("packages/db/src/internal/family-notification-authorization.ts");
+  const dbIndexCode = stripComments(dbIndex);
+  // Evaluators enqueue the two expiry types via the bounded enqueue ONLY; never create a notification row.
+  check("★ expiry evaluators enqueue via the bounded owner enqueue (both expiry types)", /family_guardian_invitation_expiring/.test(expiryCode) && /family_consent_expiring/.test(expiryCode) && /enqueueFamilyNotificationOutboxEventOwnerTx/.test(expiryCode) && !/createFamilyNotification|createAuthorizedFamilyNotification|\.notification\.create/.test(expiryCode));
+  // Narrow projections: the evaluator CODE (comments stripped) never references token/email/message (invitation)
+  // or notes/evidence/reason (consent); it selects only bounded routing fields.
+  check("★ invitation evaluator reads NO token/email/message (narrow projection)", /familyGuardianInvitation\.findMany/.test(expiryCode) && /select: \{ id: true, tenantId: true, expiresAt: true \}/.test(expiryCode) && !/token|invitedEmail|\bmessage\b/i.test(expiryCode));
+  check("★ consent evaluator reads NO notes/evidence/reason (narrow projection)", /consentRecord\.findMany/.test(expiryCode) && /select: \{ id: true, tenantId: true, validUntil: true \}/.test(expiryCode) && !/note|evidence|reasonCode|\bscope\b/i.test(expiryCode));
+  check("★ evaluators do NOT mutate the source (no warningSentAt; no source .update)", !/warningSentAt/.test(expiryCode) && !/familyGuardianInvitation\.update|consentRecord\.update/.test(expiryCode));
+  check("★ eventVersion is based on the canonical expiry instant, never a clock/random", /invitationExpiringEventVersion\(inv\.expiresAt\.getTime\(\)\)/.test(expiryCode) && /consentExpiringEventVersion\(c\.validUntil\.getTime\(\)\)/.test(expiryCode) && !/Date\.now\(\)|Math\.random/.test(expiryCode));
+  check("★ warning windows are explicit constants (24h / 14d); no per-day reminder loop", /INVITATION_WARNING_WINDOW_MS = 24 \* 60 \* 60 \* 1000/.test(enqueueSrc) && /CONSENT_WARNING_WINDOW_MS = 14 \* 24 \* 60 \* 60 \* 1000/.test(enqueueSrc) && !/setInterval/.test(expiryCode));
+  check("★ resolver has explicit stale-expiry validation (eventVersion-encoded expiry re-check)", /parseInvitationExpiringEventVersion/.test(authSrc) && /parseConsentExpiringEventVersion/.test(authSrc) && /source_state_invalid/.test(authSrc));
+  // Scheduler: DB-backed lease; NO competing mechanism (no in-memory mutex / setInterval).
+  check("★ scheduler uses a DB-backed lease (scheduler_leases; atomic acquire; owner-token release)", /scheduler_leases/.test(schedulerSrc) && /acquireSchedulerLease/.test(schedulerSrc) && /ON CONFLICT/.test(schedulerSrc) && !/setInterval|new Map\(\)|globalThis\./.test(stripComments(schedulerSrc)));
+  check("★ NO competing scheduler mechanism added (no cron/setInterval in db/src)", !srcFiles.some((p) => /setInterval|node-cron|CronJob/i.test(stripComments(read(p)))));
+  // Cron route: bearer secret required; query-string/session rejected; aggregate only; server-only; reuses runner.
+  check("★ cron route requires the bearer secret (assertCronAuth) before any work", /assertCronAuth\(req\)/.test(cronRouteSrc) && cronRouteSrc.indexOf("assertCronAuth") < cronRouteSrc.indexOf("runFamilyNotificationScheduler"));
+  check("★ cron auth is fail-closed + constant-time + never a query-string/session secret", /cron_secret_unset/.test(cronAuthSrc) && /charCodeAt/.test(cronAuthSrc) && !/searchParams|cookie/i.test(stripComments(cronAuthSrc)));
+  check("★ cron route returns aggregate counts only (spreads the runner result) + no-store", /Response\.json\(\s*\{ ok: true, \.\.\.r \}/.test(cronRouteSrc) && /no-store/.test(cronRouteSrc));
+  check("★ a user session cannot authorize the cron (no cookie/session auth in the route)", !/cookies\(\)|getServerSession|auth\(\)/.test(cronRouteSrc));
+  check("★ processor still calls ONLY createAuthorizedFamilyNotification (never the internal resolver)", /createAuthorizedFamilyNotification/.test(procSrc) && !/resolveFamilyNotificationRecipientsTx|createFamilyNotificationTx/.test(procSrc));
+  check("★ resolver stays internal; only the scheduler runner + health are the new barrel exports", !/resolveFamilyNotificationRecipientsTx/.test(dbIndexCode) && /runFamilyNotificationScheduler/.test(dbIndexCode));
+  check("★ no identifiers logged by the runner/route (aggregate ops events only)", !/console\.(log|error)\(/.test(stripComments(schedulerSrc)) && !/emitOpsEvent\([^)]*(tenant|user|source|email|id)/i.test(cronRouteSrc));
+  check("★ no NON-catalogue type is enqueued anywhere in src (all enqueued types are among the wired 13)", srcFiles.every((p) => { const s = read(p); if (!/enqueueFamilyNotificationOutboxEvent(Owner)?Tx/.test(s)) return true; return [...s.matchAll(/notificationType:\s*"(family_[a-z_]+)"/g)].every((m) => wiredTypes.includes(m[1]!)); }));
   // Owner-only incident boundary: the incident/escalation triggers use the SAME supplied owner tx (no escape to a
   // fresh systemDb transaction inside the enqueue), and no reviewer/manager/owner-role shortcut grants visibility.
   check("★ incident/escalation enqueue uses the supplied owner tx (no nested transaction escape)", /enqueueFamilyNotificationOutboxEventOwnerTx\(tx,/.test(incidentSrc) && /enqueueFamilyNotificationOutboxEventOwnerTx\(tx,/.test(escalationSrc) && !/enqueueFamilyNotificationOutboxEventOwnerTx\(await systemDb|systemDb\.\$transaction\([^)]*enqueueFamilyNotificationOutboxEventOwnerTx\(systemDb/.test(incidentSrc + escalationSrc));
