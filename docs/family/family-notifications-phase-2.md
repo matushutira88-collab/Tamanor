@@ -107,9 +107,45 @@ Extends the internal kernel to **10** supported types (the 3 A + 7 B1). The 3 B2
 - **Boundary:** low-level primitive + resolver still internal (not barrel-exported); source tests prove no domain module imports the kernel, no email/all-members/token path, and the 3 B2 types remain unsupported.
 - **Tests:** `family-notifications-recipients-management` (28 DB) + extended source invariants; the full dependent gate stays green (delivery 65/65, recipient-auth 46/46). No migration required.
 
-## Not implemented in Phase 2 (explicit)
-- `resolveFamilyNotificationRecipientsTx` (the 6 recipient rules composing the child-safety chain) and its
-  authorization DB tests — deferred so the privacy-critical resolver is built + fully tested as one unit.
+## Phase 2b-B2 — Family incident & protection-plan visibility authority — IMPLEMENTED & DB-verified
+Closes the catalogue: all **13** types now resolve recipients (10 A+B1 + the final 3), all **6** recipient
+rules implemented, exhaustive `switch` proven by `never`. Adds one canonical read-only domain authority,
+`evaluateFamilyIncidentVisibilityTx(tx, actor, incidentId, now)` in
+`packages/db/src/internal/family-incident-visibility.ts`.
+- **The rule (single source of truth):** a Family user may know an internal incident *exists* **only when they
+  are currently authorized for ≥1 canonical safety signal linked to that incident** — decided *exclusively* by
+  looping the canonical `getEffectiveRecipientAuthorization` over the incident's linked signals. **No** reviewer/
+  manager/owner role, capability flag, or incident-specific chain ever stands in for signal authorization. Returns
+  `{allowed, protectedProfileId, authorizedLinkedSignalIds}` or `{allowed:false, reason}`.
+- **Owner-only boundary + transaction strategy:** `child_safety_incidents` / `child_safety_protection_plans` /
+  `child_safety_incident_signals` have **0 `tamanor_app` grants** (REVOKE ALL), so the authority reads them via
+  **`systemDb` (owner)** with explicit `tenantId` + `workspaceKind` constraints — never `withTenant`. The
+  signal-chain reads run inside `getEffectiveRecipientAuthorization`'s own tenant transactions; notification rows
+  are written through the passed `tx`. Owner reads and `tamanor_app` writes **cannot** share one transaction, so
+  incident-notification rollback atomicity is explicitly a Phase 3 concern (durable-recovery/outbox).
+- **Fail-closed reasons:** `incident_not_found` / `workspace_mismatch` / `tenant_mismatch` / `profile_unavailable`
+  / `incident_not_family_disclosable` (terminal status) / `no_authorized_linked_signal` / `authorization_ambiguous`
+  (linked signals span >1 profile) / `evaluator_error`. The resolver treats `incident_not_family_disclosable`,
+  `profile_unavailable`, `no_authorized_linked_signal` as **soft** (→ zero recipients, `ok:true`); missing/
+  cross-tenant/ambiguous are **hard** (`ok:false` → `source_not_found` / `authorization_ambiguous` / `resolver_error`).
+- **Escalation (`family_incident_escalated`):** identical visibility, plus the persisted incident must actually be
+  `escalationState="escalated"`; a non-escalated incident yields zero. Escalation **never broadens** the audience —
+  still only currently-authorized guardians.
+- **Protection plan (`family_protection_plan_updated`):** disclosed **only** via plan → linked incident → incident
+  visibility → linked-signal authorization. Family-disclosable plan state is an **explicit allow-list**
+  `{active, reopened}` (NOT `status !== "deleted"`); `draft`/`completed`/`cancelled` → zero. A plan is unique per
+  incident. No visibility flag/migration was invented — a non-disclosable state simply fails closed.
+- **Privacy:** narrow projections only — no narrative/evidence/reviewer notes/child name/email/token; metadata
+  carries no incident/plan id and the safe route has no id; notification content is the bounded catalogue keys.
+- **Boundary:** only the high-level `createAuthorizedFamilyNotificationTx` (+ non-tx wrapper) is barrel-exported;
+  the resolver, `createFamilyNotificationTx`, and `evaluateFamilyIncidentVisibilityTx` stay internal. Source tests
+  prove no domain module imports the internal kernel/visibility authority (index.ts barrel excluded), the authority
+  reads owner-only tables via `systemDb` (never `withTenant`), and uses no reviewer/role-capability code shortcut.
+- **Tests:** `family-notifications-recipients-incidents` (23 DB) + extended source invariants (27); full gate green
+  (delivery 65/65, recipient-auth 46/46, protection-plan 50/50, reviewer 68/68). **0 `tamanor_app` grants** on
+  incident/plan re-verified. No migration required.
+
+## Not implemented after Phase 2b (explicit)
 - Live signal/incident/delivery/invitation/authority/consent/protection-plan triggers.
 - Expiry-evaluator execution / scheduling.
 - `/family/notifications`, the shell bell, server actions/forms.

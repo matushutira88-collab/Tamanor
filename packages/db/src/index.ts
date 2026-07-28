@@ -102,6 +102,10 @@ export * from "./resource-limits";
 export * from "./export-repo";
 export * from "./notification-repo";
 export * from "./family-notification-repo";
+// FAMILY NOTIFICATIONS — the ONLY publicly-supported trigger-facing entry point. The recipient resolver
+// (resolveFamilyNotificationRecipientsTx) and the incident-visibility authority (evaluateFamilyIncidentVisibilityTx)
+// stay INTERNAL (their files are not barrel-exported). No production caller invokes this yet (Phase 3).
+export { createAuthorizedFamilyNotificationTx, createAuthorizedFamilyNotification, type FamilyNotificationAuthorizationSource, type AuthorizedFamilyNotificationCreationResult } from "./internal/family-notification-authorization";
 export * from "./notification-email";
 export * from "./team-repo";
 export * from "./tenant-db";

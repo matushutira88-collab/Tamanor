@@ -109,7 +109,7 @@ async function main() {
   check("★ metadata carries no email/token/note/scope key", Object.keys(meta0).every((k) => !/email|token|note|scope|reason/i.test(k)));
 
   console.log("\n7. boundary — B2 types still unsupported");
-  check("★ family_incident_created still unsupported (fail closed)", (await withTenant(A, (tx) => resolveFamilyNotificationRecipientsTx(tx, { tenantId: A, source: { type: "family_protection_plan_updated" as never, incidentId: "x", eventVersion: "e1" } }))).ok === false);
+  check("★ unknown type still unsupported (fail closed)", (await withTenant(A, (tx) => resolveFamilyNotificationRecipientsTx(tx, { tenantId: A, source: { type: "family_totally_unknown" as never, incidentId: "x", eventVersion: "e1" } }))).ok === false);
 }
 
 main()

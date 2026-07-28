@@ -56,20 +56,29 @@ function main() {
 
   console.log("\n9. Phase 2b-A internal authorization kernel — boundary invariants");
   const kernel = read("packages/db/src/internal/family-notification-authorization.ts");
+  const visibility = read("packages/db/src/internal/family-incident-visibility.ts");
+  // Strip comments before scanning for role-capability CODE shortcuts — a doc comment that merely NAMES what we
+  // forbid (e.g. "manager/owner/reviewer role alone is never enough") must not trip the guard.
+  const stripComments = (s: string) => s.replace(/\/\*[^]*?\*\//g, "").replace(/\/\/.*/g, "");
+  const visibilityCode = stripComments(visibility);
   const dbIndex = read("packages/db/src/index.ts");
-  check("★ internal kernel is NOT exported from the @guardora/db barrel", !/internal\/family-notification-authorization/.test(dbIndex));
-  // No PRODUCTION file (outside the kernel + its tests) imports the internal kernel path.
-  const allTs = [...readdirSync(join(REPO, "packages/db/src")).filter((f) => f.endsWith(".ts")).map((f) => `packages/db/src/${f}`),
+  check("★ barrel exports ONLY the high-level authorized service; resolver + visibility authority stay internal", /createAuthorizedFamilyNotification/.test(dbIndex) && !/export.*resolveFamilyNotificationRecipientsTx/.test(dbIndex) && !/family-incident-visibility/.test(dbIndex.replace(/\/\/.*/g, "")));
+  // No PRODUCTION file (outside the kernel + its tests) imports the internal kernel path. index.ts is the barrel
+  // itself — it re-exports ONLY the high-level authorized service (asserted separately above), so exclude it here.
+  const allTs = [...readdirSync(join(REPO, "packages/db/src")).filter((f) => f.endsWith(".ts") && f !== "index.ts").map((f) => `packages/db/src/${f}`),
     ...readdirSync(join(REPO, "apps/web/src/app/family")).filter((f) => f.endsWith(".ts") || f.endsWith(".tsx")).map((f) => `apps/web/src/app/family/${f}`)];
-  const importers = allTs.filter((p) => { try { return /from\s+["'][^"']*internal\/family-notification-authorization/.test(read(p)); } catch { return false; } });
-  check("★ no production/domain module imports the internal kernel", importers.length === 0, importers.join(","));
+  const internalRe = /from\s+["'][^"']*internal\/family-(notification-authorization|incident-visibility)/;
+  const importers = allTs.filter((p) => { try { return internalRe.test(read(p)); } catch { return false; } });
+  check("★ no production/domain module imports the internal kernel or visibility authority", importers.length === 0, importers.join(","));
   check("★ low-level persistence primitive is marked @internal", /@internal[^]*createFamilyNotificationTx/.test(repoSrc));
   check("★ high-level authorized service resolves recipients via resolveFamilyNotificationRecipientsTx", /createAuthorizedFamilyNotificationTx[^]*resolveFamilyNotificationRecipientsTx/.test(kernel));
-  check("★ kernel has NO 'all members' or tenant-wide recipient path", !/allMembers|everyMember|allTenantMembers|tenantWide/i.test(kernel));
-  check("★ kernel has NO email-based recipient lookup", !/where:\s*\{[^}]*email/i.test(kernel) && !/byEmail|matchEmail/i.test(kernel));
-  check("★ kernel composes canonical evaluators (getEffectiveRecipientAuthorization / evaluateSafetySignalDeliveryEligibility)", /getEffectiveRecipientAuthorization/.test(kernel) && /evaluateSafetySignalDeliveryEligibility/.test(kernel));
-  check("★ kernel supports the 10 A+B1 types but NOT the 3 B2 types (incident/protection-plan fail closed)", /unsupported_type/.test(kernel) && /family_delivery_acknowledged/.test(kernel) && /family_authority_changed/.test(kernel) && !/family_incident_created/.test(kernel) && !/family_incident_escalated/.test(kernel) && !/family_protection_plan_updated/.test(kernel));
-  check("★ no live trigger wired (no child-safety module imports the kernel)", csFiles.every((f) => !/internal\/family-notification-authorization/.test(read(`packages/db/src/${f}`))));
+  check("★ kernel has NO 'all members' or tenant-wide recipient path", !/allMembers|everyMember|allTenantMembers|tenantWide/i.test(kernel) && !/allMembers|everyMember/i.test(visibility));
+  check("★ kernel/visibility have NO email-based recipient lookup", !/where:\s*\{[^}]*email/i.test(kernel) && !/where:\s*\{[^}]*email/i.test(visibility));
+  check("★ kernel composes canonical evaluators; visibility composes getEffectiveRecipientAuthorization", /getEffectiveRecipientAuthorization/.test(kernel) && /evaluateSafetySignalDeliveryEligibility/.test(kernel) && /getEffectiveRecipientAuthorization/.test(visibility));
+  check("★ ALL 13 types supported (exhaustive never; no placeholder unsupported Family type)", /family_incident_created/.test(kernel) && /family_incident_escalated/.test(kernel) && /family_protection_plan_updated/.test(kernel) && /: never/.test(kernel));
+  check("★ visibility reads owner-only incident/plan tables via systemDb (never a tamanor_app grant)", /systemDb\.childSafetyIncident/.test(visibility) && /systemDb\.childSafetyProtectionPlan/.test(visibility) && !/withTenant/.test(visibility));
+  check("★ visibility uses NO reviewer/role-capability shortcut for Family visibility (linked-signal auth only)", !/canView|canManage|reviewer|ProtectionActor/i.test(visibilityCode));
+  check("★ no live trigger wired (no child-safety module imports the kernel/visibility)", csFiles.every((f) => !internalRe.test(read(`packages/db/src/${f}`))));
 
   console.log("\n10. provisioning alignment — set-app-role-password CS revokes stay in sync with migrations");
   const prov = read("packages/db/scripts/set-app-role-password.ts");

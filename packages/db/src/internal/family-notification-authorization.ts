@@ -16,9 +16,11 @@
  */
 import { WorkspaceKind, FamilyAction, familyRoleCan, familyRoleForMembershipRole, familyExpiryWindow, familyDaysUntil, type FamilyActorContext } from "@guardora/core";
 import { withTenant } from "../repositories";
+import { systemDb } from "../index";
 import { getEffectiveRecipientAuthorization } from "../child-safety-recipient-authorization";
 import { evaluateSafetySignalDeliveryEligibility } from "../child-safety-delivery";
 import { createFamilyNotificationTx } from "../family-notification-repo";
+import { resolveIncidentRecipientUserIds, loadFamilyDisclosablePlan, type FamilyIncidentVisibilityReason } from "./family-incident-visibility";
 import type { TenantTx } from "../tenant-db";
 
 // ── Supported source union (typed; never accepts recipients/metadata/severity/route/dedupe) ──────
@@ -34,7 +36,10 @@ export type FamilyNotificationAuthorizationSource =
   | { type: "family_guardian_invitation_expiring"; invitationId: string; expiryWindow: ExpiryWindow; eventVersion: string; occurredAt?: Date }
   | { type: "family_authority_changed"; guardianAuthorityRecordId: string; eventVersion: string; occurredAt?: Date }
   | { type: "family_consent_expiring"; consentRecordId: string; expiryWindow: ExpiryWindow; eventVersion: string; occurredAt?: Date }
-  | { type: "family_recipient_authorization_changed"; authorizationDecisionId: string; eventVersion: string; occurredAt?: Date };
+  | { type: "family_recipient_authorization_changed"; authorizationDecisionId: string; eventVersion: string; occurredAt?: Date }
+  // Phase 2b-B2 (incident + protection-plan visibility — owner-only source boundary)
+  | { type: "family_incident_created" | "family_incident_escalated"; incidentId: string; eventVersion: string; occurredAt?: Date }
+  | { type: "family_protection_plan_updated"; protectionPlanId: string; eventVersion: string; occurredAt?: Date };
 
 export type FamilyNotificationResolutionFailure =
   | "unsupported_type" | "source_not_found" | "workspace_mismatch" | "tenant_mismatch"
@@ -49,8 +54,8 @@ const SUPPORTED = new Set([
   "family_delivery_acknowledged", "family_delivery_declined",
   "family_guardian_invitation_accepted", "family_guardian_invitation_expiring",
   "family_authority_changed", "family_consent_expiring", "family_recipient_authorization_changed",
-]);
-// The three B2 types remain UNSUPPORTED (they need the incident-visibility authority) → unsupported_type.
+  "family_incident_created", "family_incident_escalated", "family_protection_plan_updated",
+]); // ALL 13 catalogue types are now supported.
 const EVENT_VERSION_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 /** Catalogue type → the exact canonical Family MANAGER action (fail-closed; no role-name shortcuts). */
 const MANAGER_ACTION: Record<string, FamilyAction> = {
@@ -115,6 +120,11 @@ export async function resolveFamilyNotificationRecipientsTx(
         return await resolveRecipientAuthorizationChangeRecipients(input.tenantId, source, now);
       case "family_consent_expiring":
         return await resolveConsentExpiringRecipients(input.tenantId, source, now);
+      case "family_incident_created":
+      case "family_incident_escalated":
+        return await resolveIncidentRecipients(input.tenantId, source, now);
+      case "family_protection_plan_updated":
+        return await resolveProtectionPlanRecipients(input.tenantId, source, now);
       default: {
         // Exhaustiveness: any unhandled (incl. the 3 deferred B2 types) fails closed. `never` proves it.
         const _exhaustive: never = source;
@@ -278,6 +288,30 @@ async function resolveConsentExpiringRecipients(tenantId: string, source: Extrac
   return ok(source.type, await resolveAuthorizedFamilyManagersTx(tenantId, FamilyAction.ConsentManage));
 }
 
+// ── cs_authorized_recipient (incidents) + protection_plan_viewer (Phase 2b-B2) ──
+function mapIncidentReason(reason: FamilyIncidentVisibilityReason): FamilyNotificationResolutionFailure {
+  switch (reason) {
+    case "incident_not_found": return "source_not_found";
+    case "workspace_mismatch": return "workspace_mismatch";
+    case "tenant_mismatch": return "tenant_mismatch";
+    case "authorization_ambiguous": return "authorization_ambiguous";
+    default: return "resolver_error";
+  }
+}
+
+async function resolveIncidentRecipients(tenantId: string, source: Extract<FamilyNotificationAuthorizationSource, { incidentId: string }>, now: Date): Promise<FamilyNotificationRecipientResolution> {
+  const r = await resolveIncidentRecipientUserIds(tenantId, source.incidentId, now, source.type === "family_incident_escalated");
+  return r.ok ? ok(source.type, r.userIds) : { ok: false, reason: mapIncidentReason(r.reason) };
+}
+
+async function resolveProtectionPlanRecipients(tenantId: string, source: Extract<FamilyNotificationAuthorizationSource, { protectionPlanId: string }>, now: Date): Promise<FamilyNotificationRecipientResolution> {
+  const plan = await loadFamilyDisclosablePlan(tenantId, source.protectionPlanId);
+  if (!plan.ok) return { ok: false, reason: "source_not_found" };
+  if (!plan.disclosable) return ok(source.type, []); // not a Family-disclosable plan state → zero recipients
+  const r = await resolveIncidentRecipientUserIds(tenantId, plan.incidentId, now, false);
+  return r.ok ? ok(source.type, r.userIds) : { ok: false, reason: mapIncidentReason(r.reason) };
+}
+
 /** Resolve ACTIVE users behind the given membership ids (same tenant). Unique + deterministically sorted. */
 async function membershipUserIds(tenantId: string, membershipIds: string[]): Promise<string[]> {
   if (membershipIds.length === 0) return [];
@@ -313,6 +347,8 @@ export async function createAuthorizedFamilyNotificationTx(
     : "guardianAuthorityRecordId" in s ? s.guardianAuthorityRecordId
     : "consentRecordId" in s ? s.consentRecordId
     : "authorizationDecisionId" in s ? s.authorizationDecisionId
+    : "incidentId" in s ? s.incidentId
+    : "protectionPlanId" in s ? s.protectionPlanId
     : s.safetySignalId;
   const profileId = await sourceProfileId(input.tenantId, s);
   const created = await createFamilyNotificationTx(tx, {
@@ -328,6 +364,12 @@ export async function createAuthorizedFamilyNotificationTx(
   return { ok: true, eligibleRecipientCount: resolution.recipientUserIds.length, createdCount: created.created, duplicateCount: created.recipients - created.created };
 }
 
+/** Non-transactional convenience: opens a tenant-scoped transaction and creates. This is the SUPPORTED public
+ *  trigger-facing entry point (the resolver + low-level primitive stay internal). */
+export async function createAuthorizedFamilyNotification(input: { tenantId: string; source: FamilyNotificationAuthorizationSource; safeReasonCode?: string | null; now?: Date }): Promise<AuthorizedFamilyNotificationCreationResult> {
+  return withTenant(input.tenantId, (tx) => createAuthorizedFamilyNotificationTx(tx, input));
+}
+
 /** Best-effort bounded profileId for metadata (optional). Invitations are workspace-level → null. */
 async function sourceProfileId(tenantId: string, source: FamilyNotificationAuthorizationSource): Promise<string | null> {
   if ("safetySignalId" in source) return (await withTenant(tenantId, (db) => db.safetySignal.findFirst({ where: { id: source.safetySignalId, tenantId }, select: { protectedProfileId: true } })))?.protectedProfileId ?? null;
@@ -338,6 +380,13 @@ async function sourceProfileId(tenantId: string, source: FamilyNotificationAutho
     const auth = await withTenant(tenantId, (db) => db.guardianAuthorityRecord.findFirst({ where: { id: source.guardianAuthorityRecordId, tenantId }, select: { guardianRelationshipId: true } }));
     if (!auth) return null;
     return (await withTenant(tenantId, (db) => db.guardianRelationship.findFirst({ where: { id: auth.guardianRelationshipId, tenantId }, select: { protectedProfileId: true } })))?.protectedProfileId ?? null;
+  }
+  // Owner-only source tables (incident / protection plan) → read via the owner client, tenant-constrained.
+  if ("incidentId" in source) return (await systemDb.childSafetyIncident.findFirst({ where: { id: source.incidentId, tenantId }, select: { protectedProfileId: true } }))?.protectedProfileId ?? null;
+  if ("protectionPlanId" in source) {
+    const plan = await systemDb.childSafetyProtectionPlan.findFirst({ where: { id: source.protectionPlanId, tenantId }, select: { incidentId: true } });
+    if (!plan) return null;
+    return (await systemDb.childSafetyIncident.findFirst({ where: { id: plan.incidentId, tenantId }, select: { protectedProfileId: true } }))?.protectedProfileId ?? null;
   }
   return null; // invitationId — workspace-level, no single profile
 }
