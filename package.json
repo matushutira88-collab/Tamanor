@@ -261,7 +261,8 @@
     "platform-admin-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/platform-admin-ui.test.ts",
     "privacy-analytics-ui:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/privacy-analytics-ui.test.ts",
     "analytics:maintenance": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/analytics-maintenance.cli.ts",
-    "platform:bootstrap-owner": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/platform-bootstrap-owner.cli.ts"
+    "platform:bootstrap-owner": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/platform-bootstrap-owner.cli.ts",
+    "platform-owner-bootstrap-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/platform-owner-bootstrap-workflow.test.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

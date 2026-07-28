@@ -35,12 +35,16 @@ concurrency:
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
-    # GitHub Environment `production` — configure required reviewers + protection rules so this job pauses
-    # for manual approval before any step runs.
-    environment: production
+    # GitHub Environment name MUST match the dashboard EXACTLY (it is "Production" with a capital P). This is
+    # what scopes `secrets.PRODUCTION_DATABASE_URL` to the job — a mismatched name yields an EMPTY secret.
+    # Configure required reviewers + protection rules on this Environment so the job pauses for approval.
+    environment: Production
     timeout-minutes: 15
     env:
       DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      # OPTIONAL defense-in-depth: if set as a Production Environment secret, the CLI additionally requires the
+      # target host fingerprint to match. Left unset it is skipped; the CLI still echoes the actual fingerprint
+      # (never the URL) so an operator can copy it into this secret later. Never hardcode a URL/password here.
       PRODUCTION_DATABASE_HOST_FINGERPRINT: ${{ secrets.PRODUCTION_DATABASE_HOST_FINGERPRINT }}
       TAMANOR_BOOTSTRAP_PLATFORM_OWNER_EMAIL: ${{ inputs.owner_email }}
       BOOTSTRAP_ENVIRONMENT: ${{ inputs.environment }}
@@ -52,6 +56,16 @@ jobs:
             echo "Refusing: this workflow may only run on main (got ${GITHUB_REF})."
             exit 1
           fi
+
+      - name: Assert the PRODUCTION_DATABASE_URL secret is mapped (fail-closed; NEVER prints it)
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "✗ DATABASE_URL is EMPTY — the 'Production' Environment secret PRODUCTION_DATABASE_URL is not"
+            echo "  mapped to this job. Confirm the secret exists in the GitHub Environment named exactly"
+            echo "  'Production' and that this job's 'environment:' matches it. (Value never printed.)"
+            exit 1
+          fi
+          echo "✓ PRODUCTION_DATABASE_URL secret is present and mapped (value hidden — never printed)."
 
       - uses: actions/checkout@v4
 
