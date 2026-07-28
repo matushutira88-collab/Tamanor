@@ -228,11 +228,36 @@ export function makeSafetySignalDeliveryAvailable(actor: FamilyActorContext, id:
     },
   );
 }
-export function acknowledgeSafetySignalDelivery(actor: FamilyActorContext, id: string): Promise<SafetySignalDeliveryVM> {
-  return transition(actor, id, FamilyAction.SafetyDeliveryAcknowledge, SafetyDeliveryStatus.Acknowledged, CHILD_SAFETY_AUDIT_EVENTS.deliveryAcknowledged, (mid) => ({ acknowledgedAt: new Date(), acknowledgedByMembershipId: mid }), true);
+/**
+ * PHASE 3B1 trigger. The acknowledge transition and the durable `family_delivery_acknowledged` outbox enqueue
+ * commit as ONE atomic transaction (enqueue failure rolls the acknowledgement back). eventVersion is the
+ * persisted write-once `acknowledgedAt` (the invalid-transition guard prevents re-acknowledging, so it is stable;
+ * the outbox unique index is the final dedupe authority). No decline note / free text / recipient id is stored.
+ */
+export function acknowledgeSafetySignalDelivery(actor: FamilyActorContext, id: string, now: Date = new Date()): Promise<SafetySignalDeliveryVM> {
+  return transition(
+    actor, id, FamilyAction.SafetyDeliveryAcknowledge, SafetyDeliveryStatus.Acknowledged, CHILD_SAFETY_AUDIT_EVENTS.deliveryAcknowledged,
+    (mid) => ({ acknowledgedAt: now, acknowledgedByMembershipId: mid }), true,
+    async (db, row) => {
+      const at = row.acknowledgedAt ?? now;
+      await enqueueFamilyNotificationOutboxEventTx(db, { tenantId: actor.tenantId, notificationType: "family_delivery_acknowledged", source: { deliveryId: row.id }, eventVersion: String(at.getTime()), occurredAt: at });
+    },
+  );
 }
-export function declineSafetySignalDelivery(actor: FamilyActorContext, id: string): Promise<SafetySignalDeliveryVM> {
-  return transition(actor, id, FamilyAction.SafetyDeliveryDecline, SafetyDeliveryStatus.Declined, CHILD_SAFETY_AUDIT_EVENTS.deliveryDeclined, (mid) => ({ declinedAt: new Date(), declinedByMembershipId: mid }), true);
+/**
+ * PHASE 3B1 trigger. The decline transition and the durable `family_delivery_declined` outbox enqueue commit as
+ * ONE atomic transaction (enqueue failure rolls the decline back). eventVersion is the persisted write-once
+ * `declinedAt`. The outbox event carries only bounded source identity + eventVersion — never the decline note.
+ */
+export function declineSafetySignalDelivery(actor: FamilyActorContext, id: string, now: Date = new Date()): Promise<SafetySignalDeliveryVM> {
+  return transition(
+    actor, id, FamilyAction.SafetyDeliveryDecline, SafetyDeliveryStatus.Declined, CHILD_SAFETY_AUDIT_EVENTS.deliveryDeclined,
+    (mid) => ({ declinedAt: now, declinedByMembershipId: mid }), true,
+    async (db, row) => {
+      const at = row.declinedAt ?? now;
+      await enqueueFamilyNotificationOutboxEventTx(db, { tenantId: actor.tenantId, notificationType: "family_delivery_declined", source: { deliveryId: row.id }, eventVersion: String(at.getTime()), occurredAt: at });
+    },
+  );
 }
 export function revokeSafetySignalDelivery(actor: FamilyActorContext, id: string): Promise<SafetySignalDeliveryVM> {
   return transition(actor, id, FamilyAction.SafetyDeliveryRevoke, SafetyDeliveryStatus.Revoked, CHILD_SAFETY_AUDIT_EVENTS.deliveryRevoked, () => ({ revokedAt: new Date() }), false);

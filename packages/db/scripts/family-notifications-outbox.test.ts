@@ -269,11 +269,14 @@ async function main() {
   console.log("\n8. targeted regression");
   const direct = await withTenant(A, (tx) => resolveFamilyNotificationRecipientsTx(tx, { tenantId: A, source: { type: "family_delivery_available", deliveryId: raceN.id, eventVersion: "z1" } }));
   check("★ (47) direct family_delivery_available resolver still returns the recipient", direct.ok === true && direct.recipientUserIds.includes(uG1));
-  // (52) only the delivery transition wires the enqueue — no other src module imports it.
+  // (52) only the authorized canonical DOMAIN services wire the enqueue (Phase 3B1 adds the four advisory
+  // triggers to the Phase 3A delivery trigger). The full "exactly six types / no forbidden trigger" invariants
+  // live in the source-invariants + advisory suites; here we assert the importer SET is exactly the authorized one.
   const { readFileSync, readdirSync } = await import("node:fs");
   const srcDir = new URL("../src/", import.meta.url).pathname;
-  const importers = readdirSync(srcDir).filter((f) => f.endsWith(".ts")).filter((f) => /internal\/family-notification-outbox["']|from ["'][^"']*family-notification-outbox["']/.test(readFileSync(srcDir + f, "utf8")));
-  check("★ (52) only child-safety-delivery wires the outbox enqueue (no other trigger)", importers.length === 1 && importers[0] === "child-safety-delivery.ts");
+  const importers = readdirSync(srcDir).filter((f) => f.endsWith(".ts")).filter((f) => /from ["'][^"']*internal\/family-notification-outbox["']/.test(readFileSync(srcDir + f, "utf8"))).sort();
+  const authorized = ["child-safety-consent.ts", "child-safety-delivery.ts", "child-safety-recipient-authorization.ts", "family-invitation.ts"];
+  check("★ (52) only the authorized canonical domain services wire the outbox enqueue", JSON.stringify(importers) === JSON.stringify(authorized), importers.join(","));
   // dedupe helper purity: same inputs → same key; recipient/attempt/worker NEVER part of identity.
   const k1 = familyNotificationOutboxDedupeKey({ tenantId: A, notificationType: "family_delivery_available", sourceType: "safety_signal_delivery", sourceId: d1.id, eventVersion: "e" });
   const k2 = familyNotificationOutboxDedupeKey({ tenantId: A, notificationType: "family_delivery_available", sourceType: "safety_signal_delivery", sourceId: d1.id, eventVersion: "e" });

@@ -2,6 +2,11 @@ import { ActorKind, Prisma } from "@prisma/client";
 import { withTenant } from "./repositories";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError, isActiveGuardianRelationship } from "./child-safety-family";
 import { getEffectiveGuardianAuthority, getEffectiveConsent, getEffectiveSafeRecipientEligibility } from "./child-safety-consent";
+// PHASE 3B1 — a new decision or a material lifecycle change (revoke/supersede) atomically enqueues one bounded
+// family_recipient_authorization_changed outbox event. Append-only decisions use the immutable decision id as
+// eventVersion; lifecycle transitions use a bounded status:timestamp marker. No scopes/reasons/evaluator facts /
+// recipient membership id are stored — the recipient resolver derives the affected recipient + managers.
+import { enqueueFamilyNotificationOutboxEventTx } from "./internal/family-notification-outbox";
 import {
   FamilyAction, authorizeFamilyAction, familyRoleForMembershipRole, FamilyRole, CHILD_SAFETY_AUDIT_EVENTS,
   validateChildSafetyInput, evaluateCanReceiveSafetyInformation, ConsentType,
@@ -173,6 +178,9 @@ export async function createRecipientAuthorizationDecision(actor: FamilyActorCon
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.recipientAuthorizationEvaluated, row.id, meta);
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.recipientAuthorizationCreated, row.id, meta);
     await audit(db, actor, result.authorized ? CHILD_SAFETY_AUDIT_EVENTS.recipientAuthorizationAuthorized : CHILD_SAFETY_AUDIT_EVENTS.recipientAuthorizationDenied, row.id, meta);
+    // A brand-new (append-only) decision is a material lifecycle event. eventVersion = the immutable decision id
+    // (a genuinely new decision → new id → new event; retrying processes the same id → same event).
+    await enqueueFamilyNotificationOutboxEventTx(db, { tenantId: actor.tenantId, notificationType: "family_recipient_authorization_changed", source: { authorizationDecisionId: row.id }, eventVersion: row.id, occurredAt: row.evaluatedAt ?? now });
     return row;
   });
 }
@@ -236,6 +244,9 @@ export async function revokeRecipientAuthorizationDecision(actor: FamilyActorCon
     if (existing.revokedAt) return db.safetyRecipientAuthorizationDecision.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: DECISION_SELECT });
     const row = await db.safetyRecipientAuthorizationDecision.update({ where: { id }, data: { decisionStatus: RecipientAuthorizationDecisionStatus.Revoked, revokedAt: new Date(), reasonCode: RecipientAuthorizationReasonCode.AuthorizationRevoked }, select: DECISION_SELECT });
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.recipientAuthorizationRevoked, row.id, { decisionStatus: row.decisionStatus, reasonCode: row.reasonCode });
+    // Material lifecycle change on an existing decision → eventVersion from the write-once revokedAt (distinct
+    // from the create event's id-based version, so it is its own outbox event).
+    if (row.revokedAt) await enqueueFamilyNotificationOutboxEventTx(db, { tenantId: actor.tenantId, notificationType: "family_recipient_authorization_changed", source: { authorizationDecisionId: row.id }, eventVersion: `rev:${row.revokedAt.getTime()}`, occurredAt: row.revokedAt });
     return row;
   });
 }
@@ -249,6 +260,7 @@ export async function supersedeRecipientAuthorizationDecision(actor: FamilyActor
     if (existing.supersededAt) return db.safetyRecipientAuthorizationDecision.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: DECISION_SELECT });
     const row = await db.safetyRecipientAuthorizationDecision.update({ where: { id }, data: { decisionStatus: RecipientAuthorizationDecisionStatus.Superseded, supersededAt: new Date(), reasonCode: RecipientAuthorizationReasonCode.SupersededByNewDecision }, select: DECISION_SELECT });
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.recipientAuthorizationSuperseded, row.id, { decisionStatus: row.decisionStatus, reasonCode: row.reasonCode });
+    if (row.supersededAt) await enqueueFamilyNotificationOutboxEventTx(db, { tenantId: actor.tenantId, notificationType: "family_recipient_authorization_changed", source: { authorizationDecisionId: row.id }, eventVersion: `sup:${row.supersededAt.getTime()}`, occurredAt: row.supersededAt });
     return row;
   });
 }

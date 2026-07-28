@@ -11,6 +11,10 @@ import { systemDb } from "./index";
 import { withTenant } from "./repositories";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError } from "./child-safety-family";
 import { enforceFamilyCapacity } from "./family-billing-guard";
+// PHASE 3B1 — the canonical invitation-acceptance transition atomically enqueues one bounded
+// family_guardian_invitation_accepted outbox event (never a token/email/user id). The recipient resolver later
+// derives the inviter + managers from the canonical invitation row.
+import { enqueueFamilyNotificationOutboxEventTx } from "./internal/family-notification-outbox";
 
 /**
  * CS-C8 — Family Guardian Invitation & Membership Activation. A SEPARATE, FAMILY-only, content-free domain
@@ -303,6 +307,15 @@ export async function acceptFamilyGuardianInvitation(token: string, userId: stri
       }
 
       await audit(tx, inv.tenantId, CHILD_SAFETY_AUDIT_EVENTS.familyInvitationAccepted, userId, inv.id);
+      // Atomic with the acceptance: enqueue the advisory event. eventVersion = the write-once acceptedAt (`now`,
+      // just persisted by the single-use claim above). Enqueue failure rolls the whole acceptance back.
+      await enqueueFamilyNotificationOutboxEventTx(tx, {
+        tenantId: inv.tenantId,
+        notificationType: "family_guardian_invitation_accepted",
+        source: { invitationId: inv.id },
+        eventVersion: String(now.getTime()),
+        occurredAt: now,
+      });
       return { ok: true, tenantId: inv.tenantId, membershipCreated, relationshipCreated, relationshipReactivated };
     });
   } catch (e) {

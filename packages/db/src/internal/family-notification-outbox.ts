@@ -59,16 +59,34 @@ export type OutboxErrorCode = (typeof OUTBOX_ERROR_CODE)[keyof typeof OUTBOX_ERR
 /** The canonical source kind string persisted in `sourceType`. */
 export const OUTBOX_SOURCE_TYPE = {
   safety_signal_delivery: "safety_signal_delivery",
+  family_guardian_invitation: "family_guardian_invitation",
+  guardian_authority_record: "guardian_authority_record",
+  recipient_authorization_decision: "recipient_authorization_decision",
 } as const;
 
-/** Enqueue input — ONLY family_delivery_available in Phase 3A (compile-time closed union). */
-export type EnqueueableFamilyOutboxInput = {
-  tenantId: string;
-  notificationType: "family_delivery_available";
-  source: { deliveryId: string };
-  eventVersion: string;
-  occurredAt: Date;
-};
+/**
+ * The SINGLE source of truth for which Family notification types are enqueueable and their canonical sourceType +
+ * the id field carrying the sourceId. Phase 3B1 supports exactly SIX types; the other seven have no entry and so
+ * fail closed at enqueue AND fail as a malformed combination in the processor. Both the enqueue service and the
+ * processor route through this map so they can never drift.
+ */
+export const OUTBOX_TYPE_SOURCE = {
+  family_delivery_available: { sourceType: OUTBOX_SOURCE_TYPE.safety_signal_delivery, idKey: "deliveryId" },
+  family_delivery_acknowledged: { sourceType: OUTBOX_SOURCE_TYPE.safety_signal_delivery, idKey: "deliveryId" },
+  family_delivery_declined: { sourceType: OUTBOX_SOURCE_TYPE.safety_signal_delivery, idKey: "deliveryId" },
+  family_guardian_invitation_accepted: { sourceType: OUTBOX_SOURCE_TYPE.family_guardian_invitation, idKey: "invitationId" },
+  family_authority_changed: { sourceType: OUTBOX_SOURCE_TYPE.guardian_authority_record, idKey: "guardianAuthorityRecordId" },
+  family_recipient_authorization_changed: { sourceType: OUTBOX_SOURCE_TYPE.recipient_authorization_decision, idKey: "authorizationDecisionId" },
+} as const;
+export type EnqueueableOutboxType = keyof typeof OUTBOX_TYPE_SOURCE;
+export const SUPPORTED_OUTBOX_TYPES: readonly string[] = Object.keys(OUTBOX_TYPE_SOURCE);
+
+/** Enqueue input — the SIX supported types (compile-time closed union; the caller supplies only bounded ids). */
+export type EnqueueableFamilyOutboxInput =
+  | { tenantId: string; notificationType: "family_delivery_available" | "family_delivery_acknowledged" | "family_delivery_declined"; source: { deliveryId: string }; eventVersion: string; occurredAt: Date }
+  | { tenantId: string; notificationType: "family_guardian_invitation_accepted"; source: { invitationId: string }; eventVersion: string; occurredAt: Date }
+  | { tenantId: string; notificationType: "family_authority_changed"; source: { guardianAuthorityRecordId: string }; eventVersion: string; occurredAt: Date }
+  | { tenantId: string; notificationType: "family_recipient_authorization_changed"; source: { authorizationDecisionId: string }; eventVersion: string; occurredAt: Date };
 
 export interface EnqueueOutboxResult {
   enqueued: boolean;
@@ -123,11 +141,13 @@ export async function enqueueFamilyNotificationOutboxEventTx(
   input: EnqueueableFamilyOutboxInput,
 ): Promise<EnqueueOutboxResult> {
   if (enqueueFaultForTests) throw new Error("__outbox_enqueue_fault_for_tests");
-  // Fail closed: only the one wired type is enqueueable this phase.
-  if (input.notificationType !== "family_delivery_available") throw new Error("outbox_unsupported_type");
+  // Fail closed: only the SIX mapped types are enqueueable; the derivation of sourceType/sourceId is internal —
+  // the caller never supplies an arbitrary sourceType.
+  const mapping = (OUTBOX_TYPE_SOURCE as Record<string, { sourceType: string; idKey: string } | undefined>)[input.notificationType];
+  if (!mapping) throw new Error("outbox_unsupported_type");
   if (!EVENT_VERSION_RE.test(input.eventVersion)) throw new Error("outbox_invalid_event_version");
-  const sourceType = OUTBOX_SOURCE_TYPE.safety_signal_delivery;
-  const sourceId = input.source.deliveryId;
+  const sourceType = mapping.sourceType;
+  const sourceId = (input.source as Record<string, string | undefined>)[mapping.idKey];
   if (!sourceId) throw new Error("outbox_invalid_source");
 
   const dedupeKey = familyNotificationOutboxDedupeKey({
@@ -161,4 +181,47 @@ export async function enqueueFamilyNotificationOutboxEventTx(
     select: { id: true },
   });
   return { enqueued, duplicate: !enqueued, outboxEventId: row?.id };
+}
+
+// ── Authority materiality (explicit bounded-field comparison; never a bare updatedAt inequality) ─────
+/** EFFECTIVE authority = status "verified" only (pending/rejected/suspended/revoked/expired are NOT effective). */
+const AUTHORITY_EFFECTIVE_STATUS = "verified";
+const isAuthorityEffective = (status: string | null | undefined): boolean => status === AUTHORITY_EFFECTIVE_STATUS;
+
+export interface AuthoritySnapshot { authorityStatus: string; authorityLevel: string | null }
+export interface AuthorityAfter extends AuthoritySnapshot { updatedAt: Date }
+
+/**
+ * True when the transition materially changes the guardian's EFFECTIVE authority: effectiveness flipped
+ * (became/ceased effective), OR the granted scope (authorityLevel) changed WHILE effective. A pure technical
+ * update (no effectiveness or in-effect scope change) is NOT material. `before === null` = a fresh record
+ * (e.g. grant creating a verified authority).
+ */
+export function isMaterialAuthorityChange(before: AuthoritySnapshot | null, after: AuthoritySnapshot): boolean {
+  const effBefore = before ? isAuthorityEffective(before.authorityStatus) : false;
+  const effAfter = isAuthorityEffective(after.authorityStatus);
+  if (effBefore !== effAfter) return true; // became or ceased effective
+  if (effAfter && before && before.authorityLevel !== after.authorityLevel) return true; // in-effect scope change
+  return false;
+}
+
+/**
+ * Enqueue `family_authority_changed` IFF the transition is material (explicit effective-authority comparison).
+ * eventVersion is the persisted, post-transition `updatedAt` — written exactly once by this canonical transition
+ * (non-material/idempotent transitions never reach here, so it is stable per material event; the outbox unique
+ * index remains the final dedupe authority). Returns whether it was deemed material (+ enqueue result).
+ */
+export async function enqueueAuthorityChangedIfMaterialTx(
+  tx: TenantTx,
+  args: { tenantId: string; guardianAuthorityRecordId: string; before: AuthoritySnapshot | null; after: AuthorityAfter; occurredAt?: Date },
+): Promise<{ material: boolean; enqueued: boolean; duplicate: boolean }> {
+  if (!isMaterialAuthorityChange(args.before, args.after)) return { material: false, enqueued: false, duplicate: false };
+  const res = await enqueueFamilyNotificationOutboxEventTx(tx, {
+    tenantId: args.tenantId,
+    notificationType: "family_authority_changed",
+    source: { guardianAuthorityRecordId: args.guardianAuthorityRecordId },
+    eventVersion: String(args.after.updatedAt.getTime()),
+    occurredAt: args.occurredAt ?? args.after.updatedAt,
+  });
+  return { material: true, enqueued: res.enqueued, duplicate: res.duplicate };
 }

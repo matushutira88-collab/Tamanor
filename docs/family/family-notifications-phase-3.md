@@ -173,10 +173,85 @@ exactly-once observable notification rows under at-least-once event delivery.
 Full dependent gate stays green (delivery 65/65, recipient-auth 46/46, protection-plan 50/50, reviewer 68/68, all
 Family suites, Business notifications 13/13). Clean-DB migration replay verified.
 
-## Remaining trigger work (NOT in Phase 3A)
+## Phase 3B1 — advisory lifecycle triggers (delivered)
 
-The other 12 live triggers (signals, urgent signals, delivery acknowledged/declined, invitation accepted/expiring,
-authority changed, consent expiring, recipient-authorization changed, incident created/escalated, protection-plan
-updated), expiry scheduling / cron, notification preferences, `/family/notifications`, the shell bell and UI
-actions, Family-facing incident/plan routes, and any email/push/SMS/webhook/messenger channel remain unimplemented.
-Their recipient RESOLUTION already exists (Phase 2b); Phase 3B+ will enqueue them onto this same outbox.
+Phase 3B1 wires **five** more canonical live triggers onto the same durable outbox, taking the enqueue service to
+**six** supported types. The other seven remain fail-closed. Nothing in the Phase 3A architecture changed
+(explicit columns, no JSON/recipient ids, RLS forced, app-role SELECT/INSERT/UPDATE only, lease/backoff/
+dead-letter, current-authorization processing, exactly-once rows).
+
+### The six wired notification types + canonical integration points
+
+| type | canonical service (integration point) | sourceType | eventVersion source |
+|---|---|---|---|
+| `family_delivery_available` | `makeSafetySignalDeliveryAvailable` (Phase 3A) | `safety_signal_delivery` | write-once `availableAt` epoch ms |
+| `family_delivery_acknowledged` | `acknowledgeSafetySignalDelivery` | `safety_signal_delivery` | write-once `acknowledgedAt` epoch ms |
+| `family_delivery_declined` | `declineSafetySignalDelivery` | `safety_signal_delivery` | write-once `declinedAt` epoch ms |
+| `family_guardian_invitation_accepted` | `acceptFamilyGuardianInvitation` | `family_guardian_invitation` | write-once `acceptedAt` epoch ms |
+| `family_authority_changed` | `verify` / `grant` / `changeLevel` / `suspend` / `resume` / `revoke` guardian-authority services (via `enqueueAuthorityChangedIfMaterialTx`) | `guardian_authority_record` | post-transition `updatedAt` epoch ms (material transitions only) |
+| `family_recipient_authorization_changed` | `createRecipientAuthorizationDecision` / `revoke` / `supersede` | `recipient_authorization_decision` | new decision → immutable **decision id**; lifecycle change → `rev:<revokedAt>` / `sup:<supersededAt>` |
+
+The single source of truth for (type → sourceType, id field) is `OUTBOX_TYPE_SOURCE` in
+`internal/family-notification-outbox.ts`; both the enqueue service and the processor route through it, so they
+can never drift. Enqueue happens ONLY inside these canonical domain services — never a route, UI action, audit
+listener, later read process, or Prisma middleware.
+
+### Atomic enqueue & rollback
+
+Each trigger enqueues in the SAME transaction as its canonical transition (the delivery transitions and the
+authority/recipient-authorization services run under `withTenant`; invitation acceptance runs under
+`systemDb.$transaction`). If the enqueue throws, the whole canonical transition rolls back — a delivery is never
+left acknowledged/declined, an invitation never accepted, an authority/decision never transitioned, without its
+durable outbox marker. Repeated/ idempotent transitions do not enqueue a second event (invalid-transition guards +
+idempotent early-returns + the outbox unique index).
+
+### Material authority-change definition
+
+`family_authority_changed` fires only on a **material EFFECTIVE-authority change**, decided by an explicit bounded
+comparison (`isMaterialAuthorityChange(before, after)`), never a bare `updatedAt` inequality. EFFECTIVE authority
+= status `verified`. Material = effectiveness flipped (became/ceased effective: verify, grant, suspend, resume,
+revoke-from-verified) **or** the granted scope (`authorityLevel`) changed while effective. Non-material (no event):
+creating a pending record, reject (pending→rejected, never effective), revoking an already-suspended (already
+not-effective) authority, idempotent no-ops, or a scope edit while suspended.
+
+### Material recipient-authorization-change definition
+
+`family_recipient_authorization_changed` fires on a **new decision** (decisions are append-only → the immutable
+decision id is the eventVersion; a genuinely new decision = new id = new event) or a **material lifecycle
+transition** of an existing decision (revoke / supersede → a distinct `rev:`/`sup:` eventVersion). Idempotent
+no-ops (revoking an already-revoked decision) enqueue nothing.
+
+### Processor source routing
+
+`buildAuthorizationSource(ev)` maps each `(notificationType, sourceType)` row to the exact typed
+`FamilyNotificationAuthorizationSource` via `OUTBOX_TYPE_SOURCE`. Any other combination (or unknown type) is a
+PERMANENT `malformed_event` → dead-letter (never retried). All recipient/relationship information is derived by the
+resolver from the canonical source record at processing time; the outbox carries only bounded ids.
+
+### Strict privacy projections
+
+The outbox stores only bounded routing (`sourceType`, `sourceId`, `eventVersion`, timestamps, bounded codes). The
+trigger call-sites pass only ids: the invitation trigger passes the invitationId (never token/email/user id); the
+authority trigger passes the record id (never notes/evidence/scope detail/reviewer identity); the
+recipient-authorization trigger passes the decision id (never disclosure scopes, reason text, evaluator facts, or
+the recipient membership id).
+
+### Tests & clean-DB
+
+- `family-notifications-outbox-advisory:test` — 54 DB assertions (type/source security, per-trigger atomic
+  enqueue + forced-rollback + stable eventVersion + no-content, processing with current authorization, materiality,
+  idempotency/retry/crash/concurrency, mixed-batch, dead-letter, static boundary).
+- `family-notifications-source:test` — extended to 50 (six wired types owned by their canonical services; the
+  seven deferred types not wired; per-trigger privacy projections; no middleware-generated events).
+- Full gate green (delivery 65/65, recipient-auth 46/46, guardian-authority 140/140, guardian-invitation 164/164,
+  consent-lifecycle 123/123, all Family suites, Business notifications 13/13). **No new migration** was required;
+  clean-DB replay re-verified (RLS forced, app-role no DELETE, incident/plan grants 0, delivery CHECKs present).
+
+## Remaining trigger work (NOT in Phase 3A/3B1)
+
+The other **seven** live triggers remain unwired: `family_signal_available`, `family_urgent_signal`,
+`family_guardian_invitation_expiring`, `family_consent_expiring`, `family_incident_created`,
+`family_incident_escalated`, `family_protection_plan_updated`. Also unimplemented: expiry scheduling / cron,
+notification preferences, `/family/notifications`, the shell bell and UI actions, Family-facing incident/plan
+routes, and any email/push/SMS/webhook/messenger channel. Their recipient RESOLUTION already exists (Phase 2b);
+later phases will enqueue them onto this same outbox.

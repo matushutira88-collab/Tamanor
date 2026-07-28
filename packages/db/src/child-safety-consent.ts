@@ -1,6 +1,11 @@
 import { ActorKind, Prisma } from "@prisma/client";
 import { withTenant } from "./repositories";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError, isActiveGuardianRelationship } from "./child-safety-family";
+// PHASE 3B1 — material guardian-authority transitions atomically enqueue one bounded family_authority_changed
+// outbox event. Materiality = an explicit EFFECTIVE-authority change (never a bare updatedAt inequality); no
+// notes/evidence/scope-detail/reviewer identity is ever stored. The affected guardian + managers are derived by
+// the recipient resolver at processing time.
+import { enqueueAuthorityChangedIfMaterialTx } from "./internal/family-notification-outbox";
 import {
   FamilyAction, authorizeFamilyAction, CHILD_SAFETY_AUDIT_EVENTS, validateChildSafetyInput,
   GuardianRelationshipStatus, ConsentStatus, ConsentType, SafetyRecipientEligibility,
@@ -90,11 +95,12 @@ export async function verifyGuardianAuthorityRecord(actor: FamilyActorContext, i
   if (!v.ok) throw new FamilyValidationError(v.errors[0]?.field ?? "$");
   if (input.verificationMethod != null && !isVerificationMethod(input.verificationMethod)) throw new FamilyValidationError("verificationMethod");
   return withTenant(actor.tenantId, async (db) => {
-    const existing = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, revokedAt: true } });
+    const existing = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, revokedAt: true, authorityStatus: true, authorityLevel: true } });
     if (!existing) throw new FamilyNotFoundError("guardian_authority_record");
     if (existing.revokedAt) throw new FamilyValidationError("revoked"); // a revoked authority cannot be re-verified
     const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityStatus: GuardianAuthorityStatus.Verified, verifiedAt: new Date(), verificationMethod: input.verificationMethod ?? null, ...(input.validUntil ? { validUntil: input.validUntil } : {}) }, select: AUTH_SELECT });
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityVerified, "guardian_authority_record", row.id, input.verificationMethod ? { verificationMethod: input.verificationMethod } : undefined);
+    await enqueueAuthorityChangedIfMaterialTx(db, { tenantId: actor.tenantId, guardianAuthorityRecordId: row.id, before: { authorityStatus: existing.authorityStatus, authorityLevel: existing.authorityLevel }, after: row });
     return row;
   });
 }
@@ -113,11 +119,12 @@ export async function rejectGuardianAuthorityRecord(actor: FamilyActorContext, i
 export async function revokeGuardianAuthorityRecord(actor: FamilyActorContext, id: string): Promise<GuardianAuthorityRecordVM> {
   assertFamily(actor, FamilyAction.GuardianAuthorityManage);
   return withTenant(actor.tenantId, async (db) => {
-    const existing = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, revokedAt: true } });
+    const existing = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, revokedAt: true, authorityStatus: true, authorityLevel: true } });
     if (!existing) throw new FamilyNotFoundError("guardian_authority_record");
     if (existing.revokedAt) return db.guardianAuthorityRecord.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: AUTH_SELECT });
     const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityStatus: GuardianAuthorityStatus.Revoked, revokedAt: new Date() }, select: AUTH_SELECT });
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityRevoked, "guardian_authority_record", row.id);
+    await enqueueAuthorityChangedIfMaterialTx(db, { tenantId: actor.tenantId, guardianAuthorityRecordId: row.id, before: { authorityStatus: existing.authorityStatus, authorityLevel: existing.authorityLevel }, after: row });
     return row;
   });
 }
@@ -187,6 +194,8 @@ export async function grantGuardianAuthority(actor: FamilyActorContext, input: {
       select: AUTH_SELECT,
     });
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityGranted, "guardian_authority_record", row.id, { authorityType: row.authorityType, authorityLevel: row.authorityLevel });
+    // Fresh verified authority (before = null → becomes effective) → material.
+    await enqueueAuthorityChangedIfMaterialTx(db, { tenantId: actor.tenantId, guardianAuthorityRecordId: row.id, before: null, after: row, occurredAt: now });
     return row;
   });
 }
@@ -206,6 +215,8 @@ export async function changeGuardianAuthorityLevel(actor: FamilyActorContext, id
     if (rec.authorityLevel === authorityLevel) return db.guardianAuthorityRecord.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: AUTH_SELECT });
     const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityLevel }, select: AUTH_SELECT });
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityLevelChanged, "guardian_authority_record", row.id, { from: rec.authorityLevel, to: authorityLevel });
+    // Scope change → material only while the authority is effective (verified). Suspended-scope edits are not.
+    await enqueueAuthorityChangedIfMaterialTx(db, { tenantId: actor.tenantId, guardianAuthorityRecordId: row.id, before: { authorityStatus: rec.authorityStatus, authorityLevel: rec.authorityLevel }, after: row });
     return row;
   });
 }
@@ -214,7 +225,7 @@ export async function changeGuardianAuthorityLevel(actor: FamilyActorContext, id
 export async function suspendGuardianAuthority(actor: FamilyActorContext, id: string): Promise<GuardianAuthorityRecordVM> {
   assertFamily(actor, FamilyAction.FamilyAuthoritySuspend);
   return withTenant(actor.tenantId, async (db) => {
-    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, guardianRelationshipId: true } });
+    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, authorityLevel: true, guardianRelationshipId: true } });
     if (!rec) throw new FamilyNotFoundError("guardian_authority_record");
     if (rec.authorityStatus === GuardianAuthorityStatus.Suspended) return db.guardianAuthorityRecord.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: AUTH_SELECT });
     if (rec.authorityStatus !== GuardianAuthorityStatus.Verified) throw new FamilyValidationError("invalid_state");
@@ -222,6 +233,7 @@ export async function suspendGuardianAuthority(actor: FamilyActorContext, id: st
     assertNotSelfManaged(actor, guardianUserId);
     const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityStatus: GuardianAuthorityStatus.Suspended }, select: AUTH_SELECT });
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthoritySuspended, "guardian_authority_record", row.id);
+    await enqueueAuthorityChangedIfMaterialTx(db, { tenantId: actor.tenantId, guardianAuthorityRecordId: row.id, before: { authorityStatus: rec.authorityStatus, authorityLevel: rec.authorityLevel }, after: row });
     return row;
   });
 }
@@ -230,7 +242,7 @@ export async function suspendGuardianAuthority(actor: FamilyActorContext, id: st
 export async function resumeGuardianAuthority(actor: FamilyActorContext, id: string, now: Date = new Date()): Promise<GuardianAuthorityRecordVM> {
   assertFamily(actor, FamilyAction.FamilyAuthorityResume);
   return withTenant(actor.tenantId, async (db) => {
-    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, validUntil: true, guardianRelationshipId: true } });
+    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, authorityLevel: true, validUntil: true, guardianRelationshipId: true } });
     if (!rec) throw new FamilyNotFoundError("guardian_authority_record");
     if (rec.authorityStatus !== GuardianAuthorityStatus.Suspended) throw new FamilyValidationError("invalid_state");
     if (rec.validUntil != null && rec.validUntil.getTime() <= now.getTime()) throw new FamilyValidationError("authority_expired");
@@ -240,6 +252,7 @@ export async function resumeGuardianAuthority(actor: FamilyActorContext, id: str
     assertNotSelfManaged(actor, guardianUserId);
     const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityStatus: GuardianAuthorityStatus.Verified }, select: AUTH_SELECT });
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityResumed, "guardian_authority_record", row.id);
+    await enqueueAuthorityChangedIfMaterialTx(db, { tenantId: actor.tenantId, guardianAuthorityRecordId: row.id, before: { authorityStatus: rec.authorityStatus, authorityLevel: rec.authorityLevel }, after: row, occurredAt: now });
     return row;
   });
 }
@@ -248,7 +261,7 @@ export async function resumeGuardianAuthority(actor: FamilyActorContext, id: str
 export async function revokeGuardianAuthority(actor: FamilyActorContext, id: string): Promise<GuardianAuthorityRecordVM> {
   assertFamily(actor, FamilyAction.FamilyAuthorityRevoke);
   return withTenant(actor.tenantId, async (db) => {
-    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, revokedAt: true, guardianRelationshipId: true } });
+    const rec = await db.guardianAuthorityRecord.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, authorityStatus: true, authorityLevel: true, revokedAt: true, guardianRelationshipId: true } });
     if (!rec) throw new FamilyNotFoundError("guardian_authority_record");
     if (rec.authorityStatus === GuardianAuthorityStatus.Revoked || rec.revokedAt != null) return db.guardianAuthorityRecord.findFirstOrThrow({ where: { id, tenantId: actor.tenantId }, select: AUTH_SELECT });
     if (rec.authorityStatus !== GuardianAuthorityStatus.Verified && rec.authorityStatus !== GuardianAuthorityStatus.Suspended) throw new FamilyValidationError("invalid_state");
@@ -256,6 +269,9 @@ export async function revokeGuardianAuthority(actor: FamilyActorContext, id: str
     assertNotSelfManaged(actor, guardianUserId);
     const row = await db.guardianAuthorityRecord.update({ where: { id }, data: { authorityStatus: GuardianAuthorityStatus.Revoked, revokedAt: new Date() }, select: AUTH_SELECT });
     await audit(db, actor, CHILD_SAFETY_AUDIT_EVENTS.guardianAuthorityRevoked, "guardian_authority_record", row.id);
+    // Material only when it was EFFECTIVE (verified) before — revoking an already-not-effective (suspended)
+    // authority does not change the guardian's effective authority.
+    await enqueueAuthorityChangedIfMaterialTx(db, { tenantId: actor.tenantId, guardianAuthorityRecordId: row.id, before: { authorityStatus: rec.authorityStatus, authorityLevel: rec.authorityLevel }, after: row });
     return row;
   });
 }

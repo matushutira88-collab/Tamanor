@@ -90,22 +90,40 @@ function main() {
   check("★ every migration REVOKE-ALL child_safety_* table is re-asserted by the provisioning script", missing.length === 0, `missing: ${missing.join(",")}`);
   check("★ provisioning re-asserts DELETE,TRUNCATE revokes on the soft-delete safety tables", /REVOKE DELETE, TRUNCATE/.test(prov) && /safety_signal_deliveries/.test(prov) && /safety_recipient_authorization_decisions/.test(prov));
 
-  console.log("\n11. Phase 3A durable outbox — trigger + processor boundary invariants");
+  console.log("\n11. Phase 3B1 durable outbox — six wired triggers + processor boundary invariants");
   const enqueueSrc = read("packages/db/src/internal/family-notification-outbox.ts");
   const procSrc = read("packages/db/src/internal/family-notification-outbox-processor.ts");
   const deliverySrc = read("packages/db/src/child-safety-delivery.ts");
+  const consentSrc = read("packages/db/src/child-safety-consent.ts");
+  const recipAuthSrc = read("packages/db/src/child-safety-recipient-authorization.ts");
+  const inviteSrc = read("packages/db/src/family-invitation.ts");
   const schema = read("packages/db/prisma/schema.prisma");
   const outboxMig = read("packages/db/prisma/migrations/20260826090000_family_notification_outbox/migration.sql");
   const provDelete = new Set([...prov.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]));
 
-  // Only the canonical delivery transition wires the enqueue; no other src module imports it.
+  // Exactly the authorized canonical DOMAIN services wire the enqueue — no route/UI/middleware, no other module.
   const enqueueRe = /from\s+["'][^"']*internal\/family-notification-outbox["']/;
   const srcFiles = readdirSync(join(REPO, "packages/db/src")).filter((f) => f.endsWith(".ts")).map((f) => `packages/db/src/${f}`);
-  const enqueueImporters = srcFiles.filter((p) => enqueueRe.test(read(p)));
-  check("★ ONLY child-safety-delivery imports the outbox enqueue (single wired trigger)", enqueueImporters.length === 1 && /child-safety-delivery\.ts$/.test(enqueueImporters[0]!), enqueueImporters.join(","));
-  check("★ the enqueue lives INSIDE makeSafetySignalDeliveryAvailable (the canonical transition owns it)", /makeSafetySignalDeliveryAvailable[^]*enqueueFamilyNotificationOutboxEventTx/.test(deliverySrc));
-  check("★ only family_delivery_available is enqueueable (fail-closed on any other type)", /notificationType: "family_delivery_available"/.test(enqueueSrc) && /!== "family_delivery_available"/.test(enqueueSrc));
-  check("★ no OTHER Family trigger was wired (no other type enqueued anywhere in src)", !srcFiles.some((p) => !/child-safety-delivery|internal\/family-notification-outbox/.test(p) && /enqueueFamilyNotificationOutboxEventTx/.test(read(p))));
+  const enqueueImporters = srcFiles.filter((p) => enqueueRe.test(read(p))).map((p) => p.split("/").pop()!).sort();
+  const authorizedImporters = ["child-safety-consent.ts", "child-safety-delivery.ts", "child-safety-recipient-authorization.ts", "family-invitation.ts"];
+  check("★ EXACTLY the authorized canonical domain services wire the enqueue", JSON.stringify(enqueueImporters) === JSON.stringify(authorizedImporters), enqueueImporters.join(","));
+  // Each of the six triggers is owned by its canonical transition/service.
+  check("★ delivery available/ack/decline enqueues live in the delivery transitions", /makeSafetySignalDeliveryAvailable[^]*enqueueFamilyNotificationOutboxEventTx/.test(deliverySrc) && /family_delivery_acknowledged/.test(deliverySrc) && /family_delivery_declined/.test(deliverySrc));
+  check("★ invitation-accepted enqueue lives in acceptFamilyGuardianInvitation", /acceptFamilyGuardianInvitation[^]*enqueueFamilyNotificationOutboxEventTx/.test(inviteSrc) && /family_guardian_invitation_accepted/.test(inviteSrc));
+  check("★ authority-changed enqueue lives in the consent/authority services (material helper)", /enqueueAuthorityChangedIfMaterialTx/.test(consentSrc) && /family_authority_changed/.test(enqueueSrc));
+  check("★ recipient-authorization-changed enqueue lives in the decision services", /family_recipient_authorization_changed/.test(recipAuthSrc) && /enqueueFamilyNotificationOutboxEventTx/.test(recipAuthSrc));
+  // Exactly SIX enqueueable types; the seven deferred types are NOT in the enqueue map.
+  const forbiddenTypes = ["family_signal_available", "family_urgent_signal", "family_guardian_invitation_expiring", "family_consent_expiring", "family_incident_created", "family_incident_escalated", "family_protection_plan_updated"];
+  const typeMapBlock = enqueueSrc.match(/OUTBOX_TYPE_SOURCE = \{[^]*?\} as const/)?.[0] ?? "";
+  check("★ exactly six enqueueable types; the seven deferred types are NOT wired", forbiddenTypes.every((t) => !typeMapBlock.includes(t)) && ["family_delivery_available", "family_delivery_acknowledged", "family_delivery_declined", "family_guardian_invitation_accepted", "family_authority_changed", "family_recipient_authorization_changed"].every((t) => typeMapBlock.includes(t)));
+  check("★ no forbidden type is enqueued anywhere in src", !srcFiles.some((p) => /enqueueFamilyNotificationOutboxEventTx|enqueueAuthorityChangedIfMaterialTx/.test(read(p)) && forbiddenTypes.some((t) => new RegExp(`notificationType:\\s*"${t}"`).test(read(p)))));
+  // Per-trigger privacy projections: the enqueue call-sites pass only bounded ids.
+  check("★ invitation trigger passes NO email/token to the enqueue (only invitationId)", (() => { const call = inviteSrc.match(/enqueueFamilyNotificationOutboxEventTx\(tx, \{[^]*?\}\)/)?.[0] ?? ""; return /invitationId/.test(call) && !/token|email|invitedEmail|acceptedByUserId/i.test(call); })());
+  check("★ authority materiality helper stores only a status/level comparison (no notes/evidence)", !/note|evidence|document|reviewer/i.test(stripComments(enqueueSrc.match(/enqueueAuthorityChangedIfMaterialTx[^]*?^}/m)?.[0] ?? enqueueSrc)));
+  // occurredAt may be a bounded timestamp (e.g. the decision's evaluatedAt) — forbid only disclosure SCOPES and
+  // the reason-code VALUE being passed into the outbox event, never a bounded timestamp field.
+  check("★ recipient-auth trigger passes NO scope/reason to the enqueue (only decision id)", (() => { const calls = [...recipAuthSrc.matchAll(/enqueueFamilyNotificationOutboxEventTx\(db, \{[^]*?\}\)/g)].map((m) => m[0]).join(" "); return /authorizationDecisionId/.test(calls) && !/disclosureScope|scope:|reasonCode/i.test(calls); })());
+  check("★ no Prisma middleware ($use) generates outbox events", !srcFiles.some((p) => /\$use\(/.test(read(p)) && /enqueueFamilyNotificationOutbox/.test(read(p))));
 
   // Route / UI code never enqueues, and the outbox stays off the browser boundary.
   const familyAppDir = join(REPO, "apps/web/src/app/family");

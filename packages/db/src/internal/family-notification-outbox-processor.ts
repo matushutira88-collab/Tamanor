@@ -17,12 +17,13 @@ import { Prisma } from "@prisma/client";
 import { systemDb } from "../index";
 import {
   OUTBOX_MAX_ATTEMPTS, OUTBOX_LEASE_DURATION_MS, OUTBOX_DEFAULT_BATCH_SIZE, OUTBOX_MAX_BATCH_SIZE,
-  OUTBOX_SAFE_REASON, OUTBOX_ERROR_CODE, OUTBOX_SOURCE_TYPE, outboxRetryDelayMs,
+  OUTBOX_SAFE_REASON, OUTBOX_ERROR_CODE, OUTBOX_TYPE_SOURCE, outboxRetryDelayMs,
   type OutboxSafeReason, type OutboxErrorCode,
 } from "./family-notification-outbox";
 import {
   createAuthorizedFamilyNotification as realCreateAuthorizedFamilyNotification,
   type AuthorizedFamilyNotificationCreationResult,
+  type FamilyNotificationAuthorizationSource,
 } from "./family-notification-authorization";
 
 const EVENT_VERSION_RE = /^[A-Za-z0-9._:-]{1,64}$/;
@@ -63,10 +64,36 @@ export interface ProcessOutboxResult {
 export interface OutboxProcessorDeps {
   createAuthorizedFamilyNotification?: (input: {
     tenantId: string;
-    source: { type: "family_delivery_available"; deliveryId: string; eventVersion: string; occurredAt?: Date };
+    source: FamilyNotificationAuthorizationSource;
     safeReasonCode?: string | null;
     now?: Date;
   }) => Promise<AuthorizedFamilyNotificationCreationResult>;
+}
+
+/**
+ * Route a bounded outbox row into the exact typed authorization source, enforcing the ONE valid (notificationType,
+ * sourceType) combination per type via OUTBOX_TYPE_SOURCE. Any other combination (or unknown type) is a PERMANENT
+ * malformed condition → null (the caller dead-letters it, never retries).
+ */
+function buildAuthorizationSource(ev: ClaimedRow): FamilyNotificationAuthorizationSource | null {
+  const mapping = (OUTBOX_TYPE_SOURCE as Record<string, { sourceType: string; idKey: string } | undefined>)[ev.notificationType];
+  if (!mapping || ev.sourceType !== mapping.sourceType || !ev.sourceId) return null;
+  const t = ev.notificationType;
+  const common = { eventVersion: ev.eventVersion, occurredAt: ev.occurredAt };
+  switch (t) {
+    case "family_delivery_available":
+    case "family_delivery_acknowledged":
+    case "family_delivery_declined":
+      return { type: t, deliveryId: ev.sourceId, ...common };
+    case "family_guardian_invitation_accepted":
+      return { type: t, invitationId: ev.sourceId, ...common };
+    case "family_authority_changed":
+      return { type: t, guardianAuthorityRecordId: ev.sourceId, ...common };
+    case "family_recipient_authorization_changed":
+      return { type: t, authorizationDecisionId: ev.sourceId, ...common };
+    default:
+      return null;
+  }
 }
 
 type Outcome =
@@ -148,17 +175,14 @@ async function processOne(
   createFn: NonNullable<OutboxProcessorDeps["createAuthorizedFamilyNotification"]>,
 ): Promise<Outcome> {
   // Bounded parse/validate — a malformed or not-yet-wired event dead-letters (never retried forever).
-  if (ev.notificationType !== "family_delivery_available") return { kind: "dead_letter", errorCode: OUTBOX_ERROR_CODE.unsupported_type };
-  if (ev.sourceType !== OUTBOX_SOURCE_TYPE.safety_signal_delivery || !ev.sourceId) return { kind: "dead_letter", errorCode: OUTBOX_ERROR_CODE.malformed_event };
+  if (!(ev.notificationType in OUTBOX_TYPE_SOURCE)) return { kind: "dead_letter", errorCode: OUTBOX_ERROR_CODE.unsupported_type };
   if (!EVENT_VERSION_RE.test(ev.eventVersion)) return { kind: "dead_letter", errorCode: OUTBOX_ERROR_CODE.invalid_event_version };
+  const source = buildAuthorizationSource(ev);
+  if (!source) return { kind: "dead_letter", errorCode: OUTBOX_ERROR_CODE.malformed_event };
 
   let result: AuthorizedFamilyNotificationCreationResult;
   try {
-    result = await createFn({
-      tenantId: ev.tenantId,
-      source: { type: "family_delivery_available", deliveryId: ev.sourceId, eventVersion: ev.eventVersion, occurredAt: ev.occurredAt },
-      now,
-    });
+    result = await createFn({ tenantId: ev.tenantId, source, now });
   } catch {
     // Any thrown error is treated as transient (bounded code only; NO raw exception text is persisted).
     return { kind: "retry", errorCode: OUTBOX_ERROR_CODE.processing_error };
