@@ -26,7 +26,7 @@ export interface PlatformAdminEntryCopy {
 
 export function PlatformAdminEntry({ copy, metrics }: { copy: PlatformAdminEntryCopy; metrics: PlatformAdminMetrics | null }) {
   return (
-    <section aria-label={copy.title} data-testid="platform-admin-entry" className="mt-8">
+    <section aria-label={copy.title} data-testid="platform-admin-entry" data-platform-admin-visible="true" className="mt-6">
       <Card className="border-[var(--color-brand)] p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
