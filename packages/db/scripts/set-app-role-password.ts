@@ -78,7 +78,38 @@ async function main() {
     );
   }
 
-  console.log("✓ tamanor_app password aligned with APP_DATABASE_URL; privileges + revocations ensured (fail-closed).");
+  // CHILD-SAFETY hardening parity (CS-C*). The child-safety migrations REVOKE privileges from tamanor_app; the
+  // broad `GRANT … DELETE ON ALL TABLES` above would otherwise UNDO that hardening whenever this script re-runs
+  // after `migrate deploy` (e.g. a local rebuild), leaving DELETE on soft-delete-protected safety tables and full
+  // access on owner-only reviewer/incident tables. Re-assert both, so re-running this NEVER re-opens a hole the
+  // migrations closed. Kept EXACTLY in sync with the migration REVOKE statements (existence-guarded).
+  const CS_REVOKE_ALL = [
+    "child_safety_incidents", "child_safety_incident_signals", "child_safety_escalations",
+    "child_safety_interventions", "child_safety_reviewer_notes", "child_safety_review_events",
+    "child_safety_protection_plans", "child_safety_protection_actions", "child_safety_protection_action_events",
+    "child_safety_installations", "child_safety_signal_ingestions", "child_safety_signal_receipts",
+    "child_safety_evidence", "child_safety_evidence_custody_events",
+    "child_safety_policies", "child_safety_policy_versions", "child_safety_policy_decisions", "child_safety_policy_activation_approvals",
+    "child_safety_integration_partners", "child_safety_integration_applications", "child_safety_integration_installations",
+    "child_safety_integration_keys", "child_safety_integration_subjects",
+    "child_safety_partner_pilots", "child_safety_partner_pilot_checks", "child_safety_partner_pilot_events",
+    "child_safety_partner_contacts", "child_safety_partner_operational_alerts", "child_safety_partner_test_runs",
+  ];
+  const CS_REVOKE_DELETE = [
+    "protected_profiles", "guardian_relationships", "safety_signals",
+    "guardian_authority_records", "consent_records", "safe_recipient_assessments",
+    "safety_recipient_authorization_decisions", "safety_signal_deliveries",
+    "family_guardian_invitations", "workspace_onboarding_states",
+  ];
+  const safe = (t: string) => t.replace(/[^a-z_]/gi, "");
+  for (const t of CS_REVOKE_ALL) {
+    await systemDb.$executeRawUnsafe(`DO $$ BEGIN IF to_regclass('public.${safe(t)}') IS NOT NULL THEN REVOKE ALL PRIVILEGES ON TABLE "${safe(t)}" FROM tamanor_app; END IF; END $$;`);
+  }
+  for (const t of CS_REVOKE_DELETE) {
+    await systemDb.$executeRawUnsafe(`DO $$ BEGIN IF to_regclass('public.${safe(t)}') IS NOT NULL THEN REVOKE DELETE, TRUNCATE ON TABLE "${safe(t)}" FROM tamanor_app; END IF; END $$;`);
+  }
+
+  console.log("✓ tamanor_app password aligned with APP_DATABASE_URL; privileges + revocations (incl. child-safety hardening) ensured (fail-closed).");
 
   // Warn if RLS is not actually enforced yet (migrations not deployed).
   try {

@@ -86,6 +86,20 @@ Phase 3 must not silently swallow failures; record the class per trigger.
 - `/family/notifications`, the shell bell, server actions/forms.
 - Push, email, SMS, webhook, external messengers, notification preferences.
 
+## Phase 2b reconciliation — child-safety DELETE-grant regression (fixed)
+**Root cause (not a fixture, not a bad runtime row):** the child-safety migrations `REVOKE DELETE, TRUNCATE`
+(soft-delete-protected tables) and `REVOKE ALL PRIVILEGES` (owner-only reviewer/incident/policy/evidence tables)
+from `tamanor_app`. The provisioning script `set-app-role-password.ts` runs a broad `GRANT … DELETE ON ALL
+TABLES` and — when re-run after `migrate deploy` (e.g. a local DB rebuild) — **re-granted DELETE, undoing that
+hardening**. The failing assertions were `tamanor_app has … NOT DELETE/TRUNCATE` in `child-safety-delivery` and
+`child-safety-recipient-authorization` (the `ssd_ack_consistent`/`ssd_decline_consistent` violations in those runs
+are DELIBERATE negative checks that PASS). **Fix:** `set-app-role-password` now re-asserts the child-safety
+revokes (kept in sync with the migrations, existence-guarded) after its blanket grant, so re-running it never
+re-opens a hole. No constraint was dropped/weakened, no fixture was rewritten, no raw SQL inserted an impossible
+state. Verified: delivery 65/65, recipient-auth 46/46, and the full child-safety suite green. Production is
+unaffected (it aligns the role password via the `production-app-role-align` workflow, which does NOT run the
+blanket grant).
+
 ## Known limitation
 The runtime `tamanor_app` role retains the blanket table `DELETE` grant from app-role provisioning
 (`set-app-role-password`), so "no DELETE on notifications" is enforced at the **service + source-test** layer
