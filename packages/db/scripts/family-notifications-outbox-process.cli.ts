@@ -24,6 +24,7 @@ async function main() {
   console.log(`notifications_created=${r.notifications_created}`);
   console.log(`duplicates=${r.duplicates}`);
   console.log(`no_recipients=${r.no_recipients}`);
+  console.log(`authorization_pending=${r.authorization_pending}`);
 }
 
 main()

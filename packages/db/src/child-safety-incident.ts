@@ -16,6 +16,11 @@ import {
 } from "@guardora/core";
 import { ActorKind } from "@prisma/client";
 import { systemDb } from "./index";
+// PHASE 3B2 — the canonical incident-creation transition atomically enqueues one bounded family_incident_created
+// event (owner-only incident table → the enqueue runs in the SAME systemDb transaction, explicit tenantId, no
+// incident narrative/evidence). Only a genuinely NEW incident enqueues; grouping into an existing incident does
+// not. The processor later resolves recipients via the Phase 2b linked-signal visibility authority.
+import { enqueueFamilyNotificationOutboxEventOwnerTx } from "./internal/family-notification-outbox";
 
 const SEVERITY_RANK: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
 const URGENCY_RANK: Record<string, number> = { routine: 0, elevated: 1, immediate: 2 };
@@ -115,6 +120,18 @@ export async function correlateAndLinkSignal(input: {
 
     // Link exactly-once (unique safetySignalId). Serialized by the advisory lock; unique index is the backstop.
     await tx.childSafetyIncidentSignal.create({ data: { tenantId: input.tenantId, incidentId, safetySignalId: input.safetySignalId } });
+    // A genuinely NEW Family-disclosable incident (Open, now linked to ≥1 signal on one profile) enqueues its
+    // durable event IN THIS OWNER TRANSACTION. eventVersion = the write-once creation marker (openedAt = now).
+    // Grouping into an existing incident is NOT a creation event (that incident already fired on its own open).
+    if (createdIncident) {
+      await enqueueFamilyNotificationOutboxEventOwnerTx(tx, {
+        tenantId: input.tenantId,
+        notificationType: "family_incident_created",
+        source: { incidentId },
+        eventVersion: `created:${now.getTime()}`,
+        occurredAt: now,
+      });
+    }
     return { incidentId, createdIncident, linkCreated: true, severity, urgency };
   }).then(async (r) => {
     await audit(input.tenantId, r.createdIncident ? CHILD_SAFETY_INCIDENT_EVENTS.created : CHILD_SAFETY_INCIDENT_EVENTS.reused, r.incidentId, { riskFamily: input.riskFamily, severity: r.severity });

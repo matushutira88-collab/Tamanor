@@ -247,11 +247,98 @@ the recipient membership id).
   consent-lifecycle 123/123, all Family suites, Business notifications 13/13). **No new migration** was required;
   clean-DB replay re-verified (RLS forced, app-role no DELETE, incident/plan grants 0, delivery CHECKs present).
 
-## Remaining trigger work (NOT in Phase 3A/3B1)
+## Phase 3B2 — critical safety-signal & incident triggers (delivered)
 
-The other **seven** live triggers remain unwired: `family_signal_available`, `family_urgent_signal`,
-`family_guardian_invitation_expiring`, `family_consent_expiring`, `family_incident_created`,
-`family_incident_escalated`, `family_protection_plan_updated`. Also unimplemented: expiry scheduling / cron,
-notification preferences, `/family/notifications`, the shell bell and UI actions, Family-facing incident/plan
-routes, and any email/push/SMS/webhook/messenger channel. Their recipient RESOLUTION already exists (Phase 2b);
-later phases will enqueue them onto this same outbox.
+Phase 3B2 wires the **four safety-critical triggers**, taking the outbox to **ten** supported types. The remaining
+**three** (`family_guardian_invitation_expiring`, `family_consent_expiring`, `family_protection_plan_updated`) stay
+fail-closed. All Phase 3A/3B1 invariants are preserved.
+
+### The ten wired types (Phase 3B2 additions)
+
+| type | canonical Family-notifiable transition | sourceType | eventVersion |
+|---|---|---|---|
+| `family_signal_available` | `confirmSafetySignalRisk` (→ confirmed_risk), severity low/medium | `safety_signal` | `available:<reviewedAt epoch ms>` |
+| `family_urgent_signal` | `confirmSafetySignalRisk` (→ confirmed_risk), severity high/critical | `safety_signal` | `urgent:<reviewedAt epoch ms>` |
+| `family_incident_created` | `correlateAndLinkSignal` (new incident opened + signal linked) | `child_safety_incident` | `created:<openedAt epoch ms>` |
+| `family_incident_escalated` | `createOrReuseEscalation` (new escalation record) | `child_safety_incident` | `escalated:<escalation record id>` |
+
+### Canonical Family-notifiable signal transition + writer coverage
+
+A raw inbound signal is **not** Family-visible. The **sole** trusted, Family-notifiable transition is
+`confirmSafetySignalRisk` → `ConfirmedRisk` (audited: it is the only writer of `confirmed_risk`). Raw
+create/ingest (`new`), acknowledge, under-review, and **dismissed** (quarantined/false-positive) never enqueue.
+The enqueue fires only on the genuine first transition INTO `confirmed_risk` (a re-confirm does not re-enqueue).
+
+### Mutually exclusive normal/urgent policy + urgent-promotion materiality
+
+At confirmation, the signal's severity selects **exactly one** type: low/medium → `family_signal_available`,
+high/critical → `family_urgent_signal` (never both). **Audited: `SafetySignal.severity` is immutable after
+creation — there is no canonical severity-mutation writer — so no separate urgent-promotion event is enqueued.**
+The pure rule `isMaterialUrgentSignalTransition(before, after)` (true only when crossing low/medium → high/critical;
+high→critical is NOT treated as a new urgent lifecycle event) is implemented and unit-tested, ready for the day
+severity becomes mutable. Urgency changes presentation only — it never bypasses membership, guardian relationship,
+authority, consent, safe-recipient assessment, recipient authorization, or disclosure-scope evaluation (the
+processor re-runs the full chain).
+
+### Incident creation & escalation integration points
+
+- **Creation:** `correlateAndLinkSignal` (owner `systemDb.$transaction`). The enqueue fires only for a genuinely
+  **new** incident (`createdIncident`), which is always opened `Open` (non-escalated) and linked to ≥1 signal on
+  one profile. Grouping a signal into an existing incident is not a creation event.
+- **Escalation:** `createOrReuseEscalation`. The escalation record create + incident `escalationState="escalated"`
+  + enqueue are now wrapped in one `systemDb.$transaction`, firing only for a **new** escalation record
+  (`createdEscalation`); reused/idempotent escalations enqueue nothing. Escalation never broadens recipients — the
+  processor re-uses the same linked-signal visibility authority.
+
+### Directly-escalated incident policy
+
+Audited: creation always opens a **non-escalated** incident and escalation is always a **distinct later**
+transition, so one atomic transition never emits both `created` + `escalated`. Creation enqueues
+`family_incident_created`; a later escalation enqueues `family_incident_escalated` — one event per transition.
+
+### Owner-only transaction strategy
+
+Incident/incident-signal/escalation tables remain owner-only (**0 `tamanor_app` grants**). Their triggers run in
+the canonical **owner** (`systemDb`) transaction and enqueue through `enqueueFamilyNotificationOutboxEventOwnerTx`
+— a thin owner-boundary wrapper that **delegates to the single core enqueue primitive** (identical validation +
+dedupe; no duplicated logic). It writes the outbox row in that SAME owner transaction (BYPASSRLS) with an explicit
+trusted `tenantId`; no nested/separate transaction escape. The tenant-scoped writers keep using the RLS path.
+
+### Authorization-readiness audit & selected policy (Option B)
+
+**Audited ordering:** recipient authorization decisions are created independently of, and often AFTER, signal
+confirmation / incident creation. Completing a critical event as `no_recipients` immediately would permanently lose
+the notification if authorization is established moments later. **Selected: Option B — bounded
+authorization-readiness retry.** For the four critical types only, when processing returns a currently-valid,
+disclosable source with **zero** authorized recipients, the event is held `pending` with a bounded
+`authorization_pending` marker and deterministic backoff (`OUTBOX_READINESS_MAX_ATTEMPTS`=8, 1 min→15 min ceiling)
+for a finite window; after the window it completes `no_recipients`. A permanent denial / invalid source is
+terminal (never a loop); a decision added during the window delivers exactly once (notification dedupe). No
+recipient ids or raw authorization details are stored — only the bounded readiness code.
+
+### Privacy
+
+Trigger projections pass only bounded ids (safetySignalId / incidentId) + a stable eventVersion + occurredAt —
+never signal content, severity, source reference, incident narrative, escalation reason, evidence, or reviewer
+identity. The outbox has no content/JSON/recipient columns; logs and health are aggregate + bounded-code only.
+
+### Tests & clean-DB
+
+- `family-notifications-outbox-critical:test` — 56 DB assertions (type/source boundary, signal available/urgent
+  incl. mutual exclusion + raw/dismissed non-enqueue + rollback + no-content, incident created incl.
+  multi-profile fail-closed + rollback, escalation incl. reused/reversed + rollback, directly-escalated policy,
+  authorization-readiness incl. added-during-window / exhaustion / no-duplicate, owner-tx security, worker/recovery).
+- `family-notifications-source:test` — extended to 57 (ten wired types; three deferred not wired; signal owned only
+  by confirm-risk; incident/escalation owner-tx no-escape; readiness bounded).
+- Full gate green (delivery 65, recipient-auth 46, reviewer 68, protection-plan 50, guardian-authority 140,
+  guardian-invitation 164, safety-signal 32, incident-domain 36, incident-core 32, ingest-integrity, Business 13).
+  **No new migration**; clean-DB replay re-verified (RLS forced, app-role no-DELETE, incident/escalation/plan
+  grants 0, delivery CHECKs present, 13 enum values).
+
+## Remaining trigger work (NOT in Phase 3A/3B1/3B2)
+
+The remaining **three** triggers are unwired: `family_guardian_invitation_expiring`, `family_consent_expiring`,
+`family_protection_plan_updated` (the two expiry triggers need a scheduler; the protection-plan trigger is
+deferred). Also unimplemented: expiry scheduling / cron, notification preferences, `/family/notifications`, the
+shell bell and UI actions, Family-facing incident/plan routes, and any email/push/SMS/webhook/messenger channel.
+Their recipient RESOLUTION already exists (Phase 2b); later phases will enqueue them onto this same outbox.

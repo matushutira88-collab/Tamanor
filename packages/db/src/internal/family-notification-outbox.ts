@@ -26,11 +26,26 @@ export const OUTBOX_LEASE_DURATION_MS = 300_000; // 5 min processing lease
 export const OUTBOX_DEFAULT_BATCH_SIZE = 50;
 export const OUTBOX_MAX_BATCH_SIZE = 500;
 
+// Phase 3B2 — bounded AUTHORIZATION-READINESS window (Option B) for the four critical signal/incident types.
+// When a critical event is currently valid+disclosable but has zero authorized recipients (authorization not yet
+// established), it is retained as pending for a FINITE window instead of completing no_recipients immediately, so
+// a decision created shortly after the event still reaches the family. Bounded attempts + deterministic backoff.
+export const OUTBOX_READINESS_MAX_ATTEMPTS = 8;
+export const OUTBOX_READINESS_BASE_DELAY_MS = 60_000; // 1 min
+export const OUTBOX_READINESS_MAX_DELAY_MS = 900_000; // 15 min ceiling
+
 /** Deterministic, bounded exponential backoff for retry #attempt (1-based). Capped at the max delay. */
 export function outboxRetryDelayMs(attemptCount: number): number {
   const n = Math.max(1, Math.floor(attemptCount));
   const raw = OUTBOX_BASE_RETRY_DELAY_MS * 2 ** (n - 1);
   return Math.min(OUTBOX_MAX_RETRY_DELAY_MS, raw);
+}
+
+/** Deterministic, bounded backoff for the Nth readiness attempt (1-based). Capped at the readiness ceiling. */
+export function outboxReadinessDelayMs(attemptCount: number): number {
+  const n = Math.max(1, Math.floor(attemptCount));
+  const raw = OUTBOX_READINESS_BASE_DELAY_MS * 2 ** (n - 1);
+  return Math.min(OUTBOX_READINESS_MAX_DELAY_MS, raw);
 }
 
 // ── Bounded code catalogues (NO raw exception / Prisma / SQL text is ever persisted) ─────────────
@@ -52,6 +67,7 @@ export const OUTBOX_ERROR_CODE = {
   invalid_event_version: "invalid_event_version", // permanent — bad persisted marker
   contradictory_linkage: "contradictory_linkage", // permanent — ambiguous canonical linkage
   max_attempts_exceeded: "max_attempts_exceeded", // permanent — retries exhausted
+  authorization_pending: "authorization_pending", // NON-terminal — critical event awaiting authorization (readiness)
 } as const;
 export type OutboxErrorCode = (typeof OUTBOX_ERROR_CODE)[keyof typeof OUTBOX_ERROR_CODE];
 
@@ -62,6 +78,8 @@ export const OUTBOX_SOURCE_TYPE = {
   family_guardian_invitation: "family_guardian_invitation",
   guardian_authority_record: "guardian_authority_record",
   recipient_authorization_decision: "recipient_authorization_decision",
+  safety_signal: "safety_signal",
+  child_safety_incident: "child_safety_incident",
 } as const;
 
 /**
@@ -77,16 +95,43 @@ export const OUTBOX_TYPE_SOURCE = {
   family_guardian_invitation_accepted: { sourceType: OUTBOX_SOURCE_TYPE.family_guardian_invitation, idKey: "invitationId" },
   family_authority_changed: { sourceType: OUTBOX_SOURCE_TYPE.guardian_authority_record, idKey: "guardianAuthorityRecordId" },
   family_recipient_authorization_changed: { sourceType: OUTBOX_SOURCE_TYPE.recipient_authorization_decision, idKey: "authorizationDecisionId" },
+  // Phase 3B2 — critical signal + incident triggers (owner-only incident source).
+  family_signal_available: { sourceType: OUTBOX_SOURCE_TYPE.safety_signal, idKey: "safetySignalId" },
+  family_urgent_signal: { sourceType: OUTBOX_SOURCE_TYPE.safety_signal, idKey: "safetySignalId" },
+  family_incident_created: { sourceType: OUTBOX_SOURCE_TYPE.child_safety_incident, idKey: "incidentId" },
+  family_incident_escalated: { sourceType: OUTBOX_SOURCE_TYPE.child_safety_incident, idKey: "incidentId" },
 } as const;
 export type EnqueueableOutboxType = keyof typeof OUTBOX_TYPE_SOURCE;
 export const SUPPORTED_OUTBOX_TYPES: readonly string[] = Object.keys(OUTBOX_TYPE_SOURCE);
 
-/** Enqueue input — the SIX supported types (compile-time closed union; the caller supplies only bounded ids). */
+/** The four safety-critical types eligible for bounded authorization-readiness retry (Option B). */
+export const CRITICAL_OUTBOX_TYPES: ReadonlySet<string> = new Set([
+  "family_signal_available", "family_urgent_signal", "family_incident_created", "family_incident_escalated",
+]);
+
+/** high/critical are the urgent severities (family_urgent_signal); low/medium are normal (family_signal_available). */
+export const URGENT_SIGNAL_SEVERITIES: ReadonlySet<string> = new Set(["high", "critical"]);
+
+/**
+ * Explicit materiality for an URGENT-severity PROMOTION (never a bare updatedAt inequality): true only when the
+ * signal crosses FROM low/medium INTO high/critical. NOTE (audited): the current SafetySignal model has NO
+ * canonical severity-mutation writer — severity is immutable after creation — so no code path invokes this and no
+ * separate promotion event is enqueued. This helper is the ready, tested rule for the day severity becomes
+ * mutable; until then the mutual-exclusion at confirmation is the only urgent path. high→critical is NOT treated
+ * as a new urgent lifecycle event.
+ */
+export function isMaterialUrgentSignalTransition(beforeSeverity: string, afterSeverity: string): boolean {
+  return !URGENT_SIGNAL_SEVERITIES.has(beforeSeverity) && URGENT_SIGNAL_SEVERITIES.has(afterSeverity);
+}
+
+/** Enqueue input — the TEN supported types (compile-time closed union; the caller supplies only bounded ids). */
 export type EnqueueableFamilyOutboxInput =
   | { tenantId: string; notificationType: "family_delivery_available" | "family_delivery_acknowledged" | "family_delivery_declined"; source: { deliveryId: string }; eventVersion: string; occurredAt: Date }
   | { tenantId: string; notificationType: "family_guardian_invitation_accepted"; source: { invitationId: string }; eventVersion: string; occurredAt: Date }
   | { tenantId: string; notificationType: "family_authority_changed"; source: { guardianAuthorityRecordId: string }; eventVersion: string; occurredAt: Date }
-  | { tenantId: string; notificationType: "family_recipient_authorization_changed"; source: { authorizationDecisionId: string }; eventVersion: string; occurredAt: Date };
+  | { tenantId: string; notificationType: "family_recipient_authorization_changed"; source: { authorizationDecisionId: string }; eventVersion: string; occurredAt: Date }
+  | { tenantId: string; notificationType: "family_signal_available" | "family_urgent_signal"; source: { safetySignalId: string }; eventVersion: string; occurredAt: Date }
+  | { tenantId: string; notificationType: "family_incident_created" | "family_incident_escalated"; source: { incidentId: string }; eventVersion: string; occurredAt: Date };
 
 export interface EnqueueOutboxResult {
   enqueued: boolean;
@@ -181,6 +226,20 @@ export async function enqueueFamilyNotificationOutboxEventTx(
     select: { id: true },
   });
   return { enqueued, duplicate: !enqueued, outboxEventId: row?.id };
+}
+
+/**
+ * OWNER-boundary wrapper (identical validation + dedupe — delegates to the single core primitive, no logic
+ * duplication). For owner-only canonical writers (incidents / escalations) whose tables are not `tamanor_app`-
+ * accessible: they run in a `systemDb.$transaction`, so the outbox row is inserted in that SAME owner
+ * transaction (BYPASSRLS) with an explicit trusted `tenantId`. Behaviourally identical to the tenant/RLS path —
+ * the only difference is which transaction client (and therefore RLS enforcement) the caller supplies.
+ */
+export async function enqueueFamilyNotificationOutboxEventOwnerTx(
+  tx: TenantTx,
+  input: EnqueueableFamilyOutboxInput,
+): Promise<EnqueueOutboxResult> {
+  return enqueueFamilyNotificationOutboxEventTx(tx, input);
 }
 
 // ── Authority materiality (explicit bounded-field comparison; never a bare updatedAt inequality) ─────

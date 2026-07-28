@@ -158,6 +158,7 @@
     "family-notifications-outbox:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/family-notifications-outbox.test.ts",
     "family-notifications-outbox:process": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/family-notifications-outbox-process.cli.ts",
     "family-notifications-outbox-advisory:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/family-notifications-outbox-advisory-triggers.test.ts",
+    "family-notifications-outbox-critical:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/family-notifications-outbox-critical-triggers.test.ts",
     "family-notifications-i18n:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/family-notifications-i18n.test.ts",
     "stripe-smoke-verify": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/stripe-smoke-verify.ts",
     "entitlements:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/entitlements.test.ts",

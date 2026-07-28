@@ -8,6 +8,11 @@
 import { Prisma, ActorKind } from "@prisma/client";
 import { systemDb } from "./index";
 import { createNotification } from "./notification-repo";
+// PHASE 3B2 — a material escalation (a NEW escalation record → incident escalationState "escalated") atomically
+// enqueues one bounded family_incident_escalated event in the SAME owner transaction (explicit tenantId, no
+// escalation reason/notes). Escalation never broadens recipients — the processor re-uses the same linked-signal
+// visibility. Reused/idempotent escalations enqueue nothing.
+import { enqueueFamilyNotificationOutboxEventOwnerTx } from "./internal/family-notification-outbox";
 
 const isUnique = (e: unknown): boolean => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
@@ -48,6 +53,7 @@ export async function createOrReuseEscalation(input: {
   severity: string;
   now?: Date;
 }): Promise<EscalationResult> {
+  const now = input.now ?? new Date();
   // The incident MUST exist in this tenant (fail-closed; also enforced by the composite FK).
   const incident = await systemDb.childSafetyIncident.findFirst({ where: { id: input.incidentId, tenantId: input.tenantId }, select: { id: true } });
   if (!incident) throw new Error("child_safety_escalation:incident_not_found");
@@ -60,10 +66,23 @@ export async function createOrReuseEscalation(input: {
     createdEscalation = false;
   } else {
     try {
-      const row = await systemDb.childSafetyEscalation.create({ data: { tenantId: input.tenantId, incidentId: input.incidentId, escalationType: input.escalationType, urgency: input.urgency, reasonCode: input.reasonCode, status: "triggered" }, select: { id: true } });
-      escalationId = row.id;
+      // Atomic: create the escalation record, flip the incident to escalated, AND enqueue the durable event as
+      // ONE owner transaction. If the enqueue fails, the whole escalation transition rolls back — a materially
+      // escalated incident is never left without its notification event. eventVersion = the immutable escalation
+      // record id (append-only per (incident, type); a new escalation → new id → new event; retry → same).
+      escalationId = await systemDb.$transaction(async (tx) => {
+        const row = await tx.childSafetyEscalation.create({ data: { tenantId: input.tenantId, incidentId: input.incidentId, escalationType: input.escalationType, urgency: input.urgency, reasonCode: input.reasonCode, status: "triggered" }, select: { id: true } });
+        await tx.childSafetyIncident.update({ where: { id: input.incidentId }, data: { escalationState: "escalated" } });
+        await enqueueFamilyNotificationOutboxEventOwnerTx(tx, {
+          tenantId: input.tenantId,
+          notificationType: "family_incident_escalated",
+          source: { incidentId: input.incidentId },
+          eventVersion: `escalated:${row.id}`,
+          occurredAt: now,
+        });
+        return row.id;
+      });
       createdEscalation = true;
-      await systemDb.childSafetyIncident.update({ where: { id: input.incidentId }, data: { escalationState: "escalated" } }).catch(() => {});
     } catch (e) {
       if (!isUnique(e)) throw e;
       const winner = await systemDb.childSafetyEscalation.findFirst({ where: { tenantId: input.tenantId, incidentId: input.incidentId, escalationType: input.escalationType }, select: { id: true } });

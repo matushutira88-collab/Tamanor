@@ -2,6 +2,11 @@ import { ActorKind, Prisma } from "@prisma/client";
 import { withTenant } from "./repositories";
 import { systemDb } from "./index";
 import { FamilyForbiddenError, FamilyNotFoundError, FamilyValidationError } from "./child-safety-family";
+// PHASE 3B2 — the SOLE trusted Family-notifiable signal transition (confirm-risk → confirmed_risk) atomically
+// enqueues exactly ONE bounded Family notification event. Mutually exclusive by (immutable) severity:
+// low/medium → family_signal_available, high/critical → family_urgent_signal. Urgency changes presentation, NEVER
+// authorization — the processor still re-runs the full CS chain. No raw content enters the outbox.
+import { enqueueFamilyNotificationOutboxEventTx } from "./internal/family-notification-outbox";
 import {
   FamilyAction, authorizeFamilyAction, CHILD_SAFETY_AUDIT_EVENTS, validateChildSafetyInput,
   SafetySignalReviewStatus, SAFETY_SIGNAL_DEFAULT_REVIEW_STATUS, SAFETY_SIGNAL_DEFAULT_CONFIDENCE_BAND,
@@ -114,17 +119,23 @@ export function listSafetySignals(actor: FamilyActorContext, opts: SafetySignalL
 
 // --- review lifecycle (explicit; nothing auto-advances or notifies) ---------
 
-async function reviewTransition(actor: FamilyActorContext, id: string, next: SafetySignalReviewStatus, event: string, data: Prisma.SafetySignalUpdateInput, extraAudit?: Record<string, string | number | boolean>): Promise<SafetySignalVM> {
+async function reviewTransition(actor: FamilyActorContext, id: string, next: SafetySignalReviewStatus, event: string, data: Prisma.SafetySignalUpdateInput, extraAudit?: Record<string, string | number | boolean>, afterUpdate?: (db: Prisma.TransactionClient, row: SafetySignalVM, beforeStatus: string) => Promise<void>): Promise<SafetySignalVM> {
   return withTenant(actor.tenantId, async (db) => {
-    const existing = await db.safetySignal.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, archivedAt: true } });
+    const existing = await db.safetySignal.findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, archivedAt: true, reviewStatus: true } });
     if (!existing) throw new FamilyNotFoundError("safety_signal");
     if (existing.archivedAt) throw new FamilyValidationError("archived"); // an archived signal is terminal
     const reviewedByMembershipId = await actorMembershipId(db, actor);
     const row = await db.safetySignal.update({ where: { id }, data: { reviewStatus: next, reviewedAt: new Date(), reviewedByMembershipId, ...data }, select: SIGNAL_SELECT });
     await audit(db, actor, event, row.id, { reviewStatus: row.reviewStatus, ...(extraAudit ?? {}) });
+    // In-transaction side effect (e.g. the Phase 3B2 Family-notifiable enqueue). Runs in the SAME tx: enqueue
+    // failure rolls back the review transition (a confirmed signal is never left without its durable event).
+    if (afterUpdate) await afterUpdate(db, row, existing.reviewStatus);
     return row;
   });
 }
+
+/** high/critical → urgent notification; low/medium → available. Urgency is presentation only, never authorization. */
+const URGENT_SIGNAL_SEVERITIES: ReadonlySet<string> = new Set(["high", "critical"]);
 
 export function acknowledgeSafetySignal(actor: FamilyActorContext, id: string): Promise<SafetySignalVM> {
   assertFamily(actor, FamilyAction.SafetySignalReview);
@@ -144,13 +155,36 @@ export function dismissSafetySignal(actor: FamilyActorContext, id: string, input
   return reviewTransition(actor, id, SafetySignalReviewStatus.Dismissed, CHILD_SAFETY_AUDIT_EVENTS.safetySignalDismissed, { resolutionCode: input.resolutionCode ?? null } as Prisma.SafetySignalUpdateInput, input.resolutionCode ? { resolutionCode: input.resolutionCode } : undefined);
 }
 
-/** Confirm the signal represents a real risk. NEVER auto-notifies, escalates, or creates an incident. */
+/**
+ * Confirm the signal represents a real risk — the SOLE trusted, Family-notifiable transition. On the FIRST
+ * transition INTO confirmed_risk (never a re-confirm), it enqueues exactly one Family notification, chosen
+ * mutually-exclusively by the signal's (immutable) severity. eventVersion = `available:`/`urgent:` + the
+ * write-once `reviewedAt` epoch ms (confirmed_risk is a final review state → stable across retries; the outbox
+ * unique index is the final dedupe authority). Enqueue failure rolls the confirmation back.
+ */
 export function confirmSafetySignalRisk(actor: FamilyActorContext, id: string, input: { resolutionCode?: string } = {}): Promise<SafetySignalVM> {
   assertFamily(actor, FamilyAction.SafetySignalReview);
   const v = validateChildSafetyInput(input, SAFETY_SIGNAL_DECIDE_FIELDS);
   if (!v.ok) throw new FamilyValidationError(v.errors[0]?.field ?? "$");
   if (input.resolutionCode != null && !isSafetySignalResolutionCode(input.resolutionCode)) throw new FamilyValidationError("resolutionCode");
-  return reviewTransition(actor, id, SafetySignalReviewStatus.ConfirmedRisk, CHILD_SAFETY_AUDIT_EVENTS.safetySignalConfirmed, { resolutionCode: input.resolutionCode ?? null } as Prisma.SafetySignalUpdateInput, input.resolutionCode ? { resolutionCode: input.resolutionCode } : undefined);
+  return reviewTransition(
+    actor, id, SafetySignalReviewStatus.ConfirmedRisk, CHILD_SAFETY_AUDIT_EVENTS.safetySignalConfirmed,
+    { resolutionCode: input.resolutionCode ?? null } as Prisma.SafetySignalUpdateInput,
+    input.resolutionCode ? { resolutionCode: input.resolutionCode } : undefined,
+    async (db, row, beforeStatus) => {
+      // Only the genuine into-confirmed transition enqueues (a re-confirm on an already-confirmed signal does not).
+      if (beforeStatus === SafetySignalReviewStatus.ConfirmedRisk) return;
+      const at = row.reviewedAt ?? new Date();
+      const urgent = URGENT_SIGNAL_SEVERITIES.has(String(row.severity));
+      await enqueueFamilyNotificationOutboxEventTx(db, {
+        tenantId: actor.tenantId,
+        notificationType: urgent ? "family_urgent_signal" : "family_signal_available",
+        source: { safetySignalId: row.id },
+        eventVersion: `${urgent ? "urgent" : "available"}:${at.getTime()}`,
+        occurredAt: at,
+      });
+    },
+  );
 }
 
 /** Soft archive (never DELETE). Idempotent. Keeps reviewedAt/By/resolutionCode + full history. */

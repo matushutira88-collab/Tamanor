@@ -18,6 +18,7 @@ import { systemDb } from "../index";
 import {
   OUTBOX_MAX_ATTEMPTS, OUTBOX_LEASE_DURATION_MS, OUTBOX_DEFAULT_BATCH_SIZE, OUTBOX_MAX_BATCH_SIZE,
   OUTBOX_SAFE_REASON, OUTBOX_ERROR_CODE, OUTBOX_TYPE_SOURCE, outboxRetryDelayMs,
+  CRITICAL_OUTBOX_TYPES, OUTBOX_READINESS_MAX_ATTEMPTS, outboxReadinessDelayMs,
   type OutboxSafeReason, type OutboxErrorCode,
 } from "./family-notification-outbox";
 import {
@@ -58,6 +59,7 @@ export interface ProcessOutboxResult {
   notifications_created: number;
   duplicates: number;
   no_recipients: number;
+  authorization_pending: number; // critical events retained for the bounded readiness window
 }
 
 /** Injectable for tests (fault injection / determinism). Production always uses the real safe entry point. */
@@ -91,6 +93,12 @@ function buildAuthorizationSource(ev: ClaimedRow): FamilyNotificationAuthorizati
       return { type: t, guardianAuthorityRecordId: ev.sourceId, ...common };
     case "family_recipient_authorization_changed":
       return { type: t, authorizationDecisionId: ev.sourceId, ...common };
+    case "family_signal_available":
+    case "family_urgent_signal":
+      return { type: t, safetySignalId: ev.sourceId, ...common };
+    case "family_incident_created":
+    case "family_incident_escalated":
+      return { type: t, incidentId: ev.sourceId, ...common };
     default:
       return null;
   }
@@ -99,6 +107,7 @@ function buildAuthorizationSource(ev: ClaimedRow): FamilyNotificationAuthorizati
 type Outcome =
   | { kind: "completed"; safeReasonCode: OutboxSafeReason; created: number; duplicates: number; noRecipients: boolean }
   | { kind: "retry"; errorCode: OutboxErrorCode }
+  | { kind: "authorization_pending" } // critical event, currently zero authorized recipients — readiness retry
   | { kind: "dead_letter"; errorCode: OutboxErrorCode };
 
 /**
@@ -132,7 +141,7 @@ export async function processFamilyNotificationOutboxBatch(
               e."eventVersion", e."occurredAt", e."attemptCount"
   `);
 
-  const agg: ProcessOutboxResult = { claimed: claimed.length, completed: 0, retried: 0, dead_letter: 0, notifications_created: 0, duplicates: 0, no_recipients: 0 };
+  const agg: ProcessOutboxResult = { claimed: claimed.length, completed: 0, retried: 0, dead_letter: 0, notifications_created: 0, duplicates: 0, no_recipients: 0, authorization_pending: 0 };
 
   for (const ev of claimed) {
     const outcome = await processOne(ev, now, createFn);
@@ -145,6 +154,16 @@ export async function processFamilyNotificationOutboxBatch(
         UPDATE "family_notification_outbox_events"
         SET "status" = 'completed', "completedAt" = ${now}, "safeReasonCode" = ${outcome.safeReasonCode},
             "lastErrorCode" = NULL, "lockedAt" = NULL, "lockExpiresAt" = NULL, "updatedAt" = ${now}
+        WHERE "id" = ${ev.id} AND "tenantId" = ${ev.tenantId}`);
+    } else if (outcome.kind === "authorization_pending") {
+      // NON-terminal readiness hold: stay pending with a bounded readiness backoff and a bounded marker. NOT a
+      // failure (never dead-letters via the attempts cap — this branch is only reached below the readiness cap).
+      agg.authorization_pending += 1;
+      const nextAttemptAt = new Date(now.getTime() + outboxReadinessDelayMs(ev.attemptCount));
+      await systemDb.$executeRaw(Prisma.sql`
+        UPDATE "family_notification_outbox_events"
+        SET "status" = 'pending', "nextAttemptAt" = ${nextAttemptAt}, "lastErrorCode" = ${OUTBOX_ERROR_CODE.authorization_pending},
+            "lockedAt" = NULL, "lockExpiresAt" = NULL, "updatedAt" = ${now}
         WHERE "id" = ${ev.id} AND "tenantId" = ${ev.tenantId}`);
     } else if (outcome.kind === "retry" && ev.attemptCount < OUTBOX_MAX_ATTEMPTS) {
       agg.retried += 1;
@@ -190,6 +209,12 @@ async function processOne(
 
   if (result.ok) {
     if (result.eligibleRecipientCount === 0) {
+      // The source is currently VALID + disclosable (the resolver returned ok) but nobody is yet authorized. For
+      // the four critical types this may be authorization-not-yet-established → hold for the bounded readiness
+      // window (Option B); after it exhausts, complete no_recipients. Non-critical types complete immediately.
+      if (CRITICAL_OUTBOX_TYPES.has(ev.notificationType) && ev.attemptCount < OUTBOX_READINESS_MAX_ATTEMPTS) {
+        return { kind: "authorization_pending" };
+      }
       return { kind: "completed", safeReasonCode: OUTBOX_SAFE_REASON.no_recipients, created: 0, duplicates: result.duplicateCount, noRecipients: true };
     }
     const safeReasonCode = result.createdCount > 0 ? OUTBOX_SAFE_REASON.delivered : OUTBOX_SAFE_REASON.already_delivered;

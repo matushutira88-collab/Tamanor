@@ -90,13 +90,16 @@ function main() {
   check("★ every migration REVOKE-ALL child_safety_* table is re-asserted by the provisioning script", missing.length === 0, `missing: ${missing.join(",")}`);
   check("★ provisioning re-asserts DELETE,TRUNCATE revokes on the soft-delete safety tables", /REVOKE DELETE, TRUNCATE/.test(prov) && /safety_signal_deliveries/.test(prov) && /safety_recipient_authorization_decisions/.test(prov));
 
-  console.log("\n11. Phase 3B1 durable outbox — six wired triggers + processor boundary invariants");
+  console.log("\n11. Phase 3B2 durable outbox — TEN wired triggers + processor boundary invariants");
   const enqueueSrc = read("packages/db/src/internal/family-notification-outbox.ts");
   const procSrc = read("packages/db/src/internal/family-notification-outbox-processor.ts");
   const deliverySrc = read("packages/db/src/child-safety-delivery.ts");
   const consentSrc = read("packages/db/src/child-safety-consent.ts");
   const recipAuthSrc = read("packages/db/src/child-safety-recipient-authorization.ts");
   const inviteSrc = read("packages/db/src/family-invitation.ts");
+  const signalSrc = read("packages/db/src/child-safety-safety-signal.ts");
+  const incidentSrc = read("packages/db/src/child-safety-incident.ts");
+  const escalationSrc = read("packages/db/src/child-safety-escalation.ts");
   const schema = read("packages/db/prisma/schema.prisma");
   const outboxMig = read("packages/db/prisma/migrations/20260826090000_family_notification_outbox/migration.sql");
   const provDelete = new Set([...prov.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]));
@@ -105,18 +108,34 @@ function main() {
   const enqueueRe = /from\s+["'][^"']*internal\/family-notification-outbox["']/;
   const srcFiles = readdirSync(join(REPO, "packages/db/src")).filter((f) => f.endsWith(".ts")).map((f) => `packages/db/src/${f}`);
   const enqueueImporters = srcFiles.filter((p) => enqueueRe.test(read(p))).map((p) => p.split("/").pop()!).sort();
-  const authorizedImporters = ["child-safety-consent.ts", "child-safety-delivery.ts", "child-safety-recipient-authorization.ts", "family-invitation.ts"];
+  const authorizedImporters = ["child-safety-consent.ts", "child-safety-delivery.ts", "child-safety-escalation.ts", "child-safety-incident.ts", "child-safety-recipient-authorization.ts", "child-safety-safety-signal.ts", "family-invitation.ts"];
   check("★ EXACTLY the authorized canonical domain services wire the enqueue", JSON.stringify(enqueueImporters) === JSON.stringify(authorizedImporters), enqueueImporters.join(","));
-  // Each of the six triggers is owned by its canonical transition/service.
+  // Each trigger is owned by its canonical transition/service.
   check("★ delivery available/ack/decline enqueues live in the delivery transitions", /makeSafetySignalDeliveryAvailable[^]*enqueueFamilyNotificationOutboxEventTx/.test(deliverySrc) && /family_delivery_acknowledged/.test(deliverySrc) && /family_delivery_declined/.test(deliverySrc));
   check("★ invitation-accepted enqueue lives in acceptFamilyGuardianInvitation", /acceptFamilyGuardianInvitation[^]*enqueueFamilyNotificationOutboxEventTx/.test(inviteSrc) && /family_guardian_invitation_accepted/.test(inviteSrc));
   check("★ authority-changed enqueue lives in the consent/authority services (material helper)", /enqueueAuthorityChangedIfMaterialTx/.test(consentSrc) && /family_authority_changed/.test(enqueueSrc));
   check("★ recipient-authorization-changed enqueue lives in the decision services", /family_recipient_authorization_changed/.test(recipAuthSrc) && /enqueueFamilyNotificationOutboxEventTx/.test(recipAuthSrc));
-  // Exactly SIX enqueueable types; the seven deferred types are NOT in the enqueue map.
-  const forbiddenTypes = ["family_signal_available", "family_urgent_signal", "family_guardian_invitation_expiring", "family_consent_expiring", "family_incident_created", "family_incident_escalated", "family_protection_plan_updated"];
+  // Phase 3B2: the signal trigger is owned ONLY by the confirm-risk transition (never raw create/ingest); it is
+  // mutually exclusive by severity (available XOR urgent from the SAME `urgent` boolean); incident creation is
+  // owned by correlateAndLinkSignal; escalation by createOrReuseEscalation — each the sole canonical writer.
+  // The SINGLE enqueue call must sit AFTER the confirmSafetySignalRisk declaration (which is defined after
+  // createSafetySignal + the ingestion writer) → it is owned by the trusted confirm transition, never raw
+  // create/ingest. Combined with the "exactly one enqueue" check below this pins it to confirm.
+  check("★ signal enqueue lives ONLY in confirmSafetySignalRisk (trusted transition, never raw create/ingest)", (() => { const enq = signalSrc.indexOf("enqueueFamilyNotificationOutboxEventTx(db,"); const conf = signalSrc.indexOf("export function confirmSafetySignalRisk"); const create = signalSrc.indexOf("export async function createSafetySignal"); return enq > conf && conf > create && create > -1; })());
+  check("★ signal is mutually exclusive by severity (available XOR urgent, one enqueue)", /urgent \? "family_urgent_signal" : "family_signal_available"/.test(signalSrc) && (signalSrc.match(/enqueueFamilyNotificationOutboxEventTx\(db,/g) ?? []).length === 1);
+  check("★ incident-created enqueue lives in correlateAndLinkSignal, gated on createdIncident", /correlateAndLinkSignal/.test(incidentSrc) && /if \(createdIncident\)[^]*family_incident_created/.test(incidentSrc));
+  check("★ incident-escalated enqueue lives in createOrReuseEscalation, gated on the NEW escalation", /family_incident_escalated/.test(escalationSrc) && /systemDb\.\$transaction[^]*enqueueFamilyNotificationOutboxEventOwnerTx/.test(escalationSrc));
+  // Exactly TEN enqueueable types; the THREE deferred types are NOT in the enqueue map.
+  const wiredTypes = ["family_delivery_available", "family_delivery_acknowledged", "family_delivery_declined", "family_guardian_invitation_accepted", "family_authority_changed", "family_recipient_authorization_changed", "family_signal_available", "family_urgent_signal", "family_incident_created", "family_incident_escalated"];
+  const deferredTypes = ["family_guardian_invitation_expiring", "family_consent_expiring", "family_protection_plan_updated"];
   const typeMapBlock = enqueueSrc.match(/OUTBOX_TYPE_SOURCE = \{[^]*?\} as const/)?.[0] ?? "";
-  check("★ exactly six enqueueable types; the seven deferred types are NOT wired", forbiddenTypes.every((t) => !typeMapBlock.includes(t)) && ["family_delivery_available", "family_delivery_acknowledged", "family_delivery_declined", "family_guardian_invitation_accepted", "family_authority_changed", "family_recipient_authorization_changed"].every((t) => typeMapBlock.includes(t)));
-  check("★ no forbidden type is enqueued anywhere in src", !srcFiles.some((p) => /enqueueFamilyNotificationOutboxEventTx|enqueueAuthorityChangedIfMaterialTx/.test(read(p)) && forbiddenTypes.some((t) => new RegExp(`notificationType:\\s*"${t}"`).test(read(p)))));
+  check("★ exactly ten enqueueable types; the three deferred types are NOT wired", deferredTypes.every((t) => !typeMapBlock.includes(t)) && wiredTypes.every((t) => typeMapBlock.includes(t)));
+  check("★ no deferred type is enqueued anywhere in src", !srcFiles.some((p) => /enqueueFamilyNotificationOutboxEvent(Owner)?Tx|enqueueAuthorityChangedIfMaterialTx/.test(read(p)) && deferredTypes.some((t) => new RegExp(`notificationType:\\s*"${t}"`).test(read(p)))));
+  // Owner-only incident boundary: the incident/escalation triggers use the SAME supplied owner tx (no escape to a
+  // fresh systemDb transaction inside the enqueue), and no reviewer/manager/owner-role shortcut grants visibility.
+  check("★ incident/escalation enqueue uses the supplied owner tx (no nested transaction escape)", /enqueueFamilyNotificationOutboxEventOwnerTx\(tx,/.test(incidentSrc) && /enqueueFamilyNotificationOutboxEventOwnerTx\(tx,/.test(escalationSrc) && !/enqueueFamilyNotificationOutboxEventOwnerTx\(await systemDb|systemDb\.\$transaction\([^)]*enqueueFamilyNotificationOutboxEventOwnerTx\(systemDb/.test(incidentSrc + escalationSrc));
+  check("★ no signal/incident CONTENT is passed by trigger projections (only bounded ids)", (() => { const calls = [...signalSrc.matchAll(/enqueueFamilyNotificationOutboxEventTx\(db, \{[^]*?\}\)/g), ...incidentSrc.matchAll(/enqueueFamilyNotificationOutboxEventOwnerTx\(tx, \{[^]*?\}\)/g), ...escalationSrc.matchAll(/enqueueFamilyNotificationOutboxEventOwnerTx\(tx, \{[^]*?\}\)/g)].map((m) => m[0]).join(" "); return !/sourceReference|signalType|narrative|content|message|reviewer|reasonCode|escalationReason/i.test(calls); })());
+  check("★ processor readiness is bounded (CRITICAL types + finite readiness attempts, no infinite loop)", /CRITICAL_OUTBOX_TYPES\.has/.test(procSrc) && /OUTBOX_READINESS_MAX_ATTEMPTS/.test(procSrc) && /authorization_pending/.test(procSrc));
   // Per-trigger privacy projections: the enqueue call-sites pass only bounded ids.
   check("★ invitation trigger passes NO email/token to the enqueue (only invitationId)", (() => { const call = inviteSrc.match(/enqueueFamilyNotificationOutboxEventTx\(tx, \{[^]*?\}\)/)?.[0] ?? ""; return /invitationId/.test(call) && !/token|email|invitedEmail|acceptedByUserId/i.test(call); })());
   check("★ authority materiality helper stores only a status/level comparison (no notes/evidence)", !/note|evidence|document|reviewer/i.test(stripComments(enqueueSrc.match(/enqueueAuthorityChangedIfMaterialTx[^]*?^}/m)?.[0] ?? enqueueSrc)));
