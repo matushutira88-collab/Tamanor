@@ -10,7 +10,7 @@
  * Run: pnpm platform-admin-dashboard-entry:test
  */
 import {
-  systemDb, PlatformRole, resolvePlatformRole, platformRoleSatisfies,
+  systemDb, PlatformRole, resolvePlatformRole, resolvePlatformRoleDetailed, normalizePlatformRole, platformRoleSatisfies,
   canViewPlatformAdminEntry, platformDashboardMetrics,
 } from "@guardora/db";
 import { WorkspaceKind } from "@guardora/core";
@@ -61,6 +61,31 @@ async function main() {
   check("★ owner gets bounded numeric counts (no PII fields)", typeof m.activeTenants === "number" && typeof m.activeUsers === "number" && typeof m.unresolvedSecurityIncidents === "number" && typeof m.recentAuditEvents === "number");
   check("★ counts are non-negative", m.activeTenants >= 0 && m.activeUsers >= 0 && m.unresolvedSecurityIncidents >= 0 && m.recentAuditEvents >= 0);
   check("★ metrics object exposes ONLY the four bounded counts", Object.keys(m).sort().join(",") === "activeTenants,activeUsers,recentAuditEvents,unresolvedSecurityIncidents");
+
+  console.log("\n4. REAL Prisma enum round-trip through the DB (not a hand-written string)");
+  // Persist via the actual PlatformRole enum, then read the value BACK as Postgres/Prisma returns it — this is
+  // the exact pipeline the dashboard uses. Proves the stored representation is the lowercase label and that the
+  // whole resolve→predicate chain lights the card for a genuine DB-sourced owner.
+  const rt = `rt_${sfx}`; ids.push(rt);
+  await systemDb.user.create({ data: { id: rt, email: `${rt}@t.local`, name: "rt", platformRole: PlatformRole.owner } });
+  const readBack = await systemDb.user.findUnique({ where: { id: rt }, select: { platformRole: true } });
+  check("★ value read back from DB IS the enum PlatformRole.owner", readBack?.platformRole === PlatformRole.owner);
+  const rawText = await systemDb.$queryRawUnsafe<Array<{ r: string }>>(`SELECT "platformRole"::text AS r FROM users WHERE id = $1`, rt);
+  check("★ stored ::text casing is exactly lowercase 'owner' (rules out OWNER/casing drift)", rawText[0]?.r === "owner");
+  const rtRole = await resolvePlatformRole(rt);
+  check("★ resolvePlatformRole(DB owner) === PlatformRole.owner AND canView true", rtRole === PlatformRole.owner && canViewPlatformAdminEntry(rtRole) === true);
+  const rtDetail = await resolvePlatformRoleDetailed(rt);
+  check("★ detailed: found, assignedRole owner, not revoked, rawRole 'owner'", rtDetail.found && rtDetail.assignedRole === PlatformRole.owner && rtDetail.accessRevoked === false && rtDetail.rawRole === "owner");
+
+  console.log("\n5. normalization is representation-robust (defense-in-depth)");
+  check("★ casing/whitespace tolerated → owner", normalizePlatformRole("OWNER") === PlatformRole.owner && normalizePlatformRole(" Owner ") === PlatformRole.owner);
+  check("★ unknown / non-string / null → none (fail-closed, no foreign representation leaks in)", normalizePlatformRole("superuser") === PlatformRole.none && normalizePlatformRole({} as unknown) === PlatformRole.none && normalizePlatformRole(null) === PlatformRole.none);
+
+  console.log("\n6. diagnostics distinguish the hidden-card causes (PII-free)");
+  const revokedDetail = await resolvePlatformRoleDetailed(revokedOwner);
+  check("★ revoked owner: assignedRole owner BUT accessRevoked true → effective none", revokedDetail.assignedRole === PlatformRole.owner && revokedDetail.accessRevoked === true && revokedDetail.role === PlatformRole.none);
+  const missingDetail = await resolvePlatformRoleDetailed(`ghost_${sfx}`);
+  check("★ missing user: not found → none (no error)", missingDetail.found === false && missingDetail.errored === false && missingDetail.role === PlatformRole.none);
 }
 
 main()

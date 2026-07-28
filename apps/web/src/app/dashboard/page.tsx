@@ -23,7 +23,7 @@ import {
   getDashboardKpiDeltas,
   getRiskByCategory,
   getWatchedAccountsView,
-  resolvePlatformRole,
+  resolvePlatformRoleDetailed,
   canViewPlatformAdminEntry,
   platformDashboardMetrics,
 } from "@guardora/db";
@@ -154,8 +154,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // value, so `canViewPlatformAdminEntry` is true ONLY for an active platform owner. For everyone else the
   // section below is never constructed and is therefore absent from the HTML. This is independent of the
   // /admin route guard, which enforces its own server-side capability check.
-  const platformRole = await resolvePlatformRole(session.userId);
-  const isPlatformOwner = canViewPlatformAdminEntry(platformRole);
+  const platformResolution = await resolvePlatformRoleDetailed(session.userId);
+  const isPlatformOwner = canViewPlatformAdminEntry(platformResolution.role);
+  // TEMPORARY, PII-FREE production diagnostic for the owner-entry visibility. Emits ONLY bounded, non-sensitive
+  // facts (role LABELS + booleans) — never the email, session token, user id, or any DB payload. Lets us pin
+  // the exact reason the card is hidden in prod (wrong assigned role vs. revoked access vs. user row not found
+  // vs. a swallowed read error) without guessing. Remove once the incident is closed.
+  console.log(JSON.stringify({
+    evt: "PLATFORM_ADMIN_ENTRY_EVALUATED",
+    deployment: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.VERCEL_DEPLOYMENT_ID ?? "unknown",
+    route: "/dashboard",
+    hasPlatformRole: platformResolution.found && platformResolution.assignedRole !== "none",
+    normalizedRole: platformResolution.assignedRole,
+    accessRevoked: platformResolution.accessRevoked,
+    canViewEntry: isPlatformOwner,
+  }));
   const platformMetrics = isPlatformOwner ? await platformDashboardMetrics(session.userId).catch(() => null) : null;
   const platformEntry = isPlatformOwner ? (
     <PlatformAdminEntry

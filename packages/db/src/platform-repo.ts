@@ -58,21 +58,61 @@ export function canViewPlatformAdminEntry(role: PlatformRole | null | undefined)
   return role === PlatformRole.owner;
 }
 
-/** Fresh, trusted resolution of the platform role from persisted state. Fail-closed. */
-export async function resolvePlatformRole(userId: string | null | undefined): Promise<PlatformRole> {
-  if (!userId) return PlatformRole.none;
+/**
+ * Canonical mapping from a persisted/raw value to a PlatformRole. Representation-ROBUST: string-coerces, trims,
+ * and lowercases before matching the known enum labels, and returns `none` for anything unknown, non-string
+ * (e.g. an accidental object), null, or empty. This guarantees a value read from the DB enum column — or any
+ * upstream representation drift (casing/whitespace) — resolves to the correct role, and never leaks a foreign
+ * representation into the authorization comparison.
+ */
+const PLATFORM_ROLE_BY_LABEL: Record<string, PlatformRole> = {
+  none: PlatformRole.none, staff: PlatformRole.staff, admin: PlatformRole.admin,
+  owner: PlatformRole.owner, analyst: PlatformRole.analyst, support: PlatformRole.support,
+};
+export function normalizePlatformRole(value: unknown): PlatformRole {
+  if (typeof value !== "string") return PlatformRole.none;
+  return PLATFORM_ROLE_BY_LABEL[value.trim().toLowerCase()] ?? PlatformRole.none;
+}
+
+/** Bounded, PII-free resolution detail — for authorization AND safe diagnostics. Never carries email/session. */
+export interface PlatformRoleResolution {
+  /** Effective role AFTER the revoked-access collapse (this is what authorization uses). */
+  role: PlatformRole;
+  /** Assigned role BEFORE the revoked collapse (normalized) — so a revoked owner is still observable as owner. */
+  assignedRole: PlatformRole;
+  /** The exact stored representation (::text) — for diagnostics only; a role label, never PII. */
+  rawRole: string | null;
+  accessRevoked: boolean;
+  found: boolean;
+  errored: boolean;
+}
+
+/**
+ * Fresh, trusted resolution of the platform role from persisted state, with bounded diagnostics. Fail-closed:
+ * a missing user, revoked access, or a DB error all resolve `role` to `none`. Normalizes the stored value so
+ * representation drift can never hide a legitimate role.
+ */
+export async function resolvePlatformRoleDetailed(userId: string | null | undefined): Promise<PlatformRoleResolution> {
+  if (!userId) return { role: PlatformRole.none, assignedRole: PlatformRole.none, rawRole: null, accessRevoked: false, found: false, errored: false };
   try {
     const u = await prisma.user.findUnique({ where: { id: userId }, select: { platformRole: true, platformAccessRevokedAt: true } });
-    if (!u) return PlatformRole.none; // user gone → no access
-    if (u.platformAccessRevokedAt) return PlatformRole.none; // deactivated → no access (role preserved for reactivation)
-    return u.platformRole ?? PlatformRole.none;
+    if (!u) return { role: PlatformRole.none, assignedRole: PlatformRole.none, rawRole: null, accessRevoked: false, found: false, errored: false };
+    const rawRole = u.platformRole == null ? null : String(u.platformRole);
+    const assignedRole = normalizePlatformRole(u.platformRole);
+    const accessRevoked = u.platformAccessRevokedAt != null;
+    return { role: accessRevoked ? PlatformRole.none : assignedRole, assignedRole, rawRole, accessRevoked, found: true, errored: false };
   } catch (e) {
     // Fail CLOSED (deny) on a DB error, but keep it DIAGNOSTICALLY visible — it must not be silently
     // indistinguishable from a legitimate `none`. Safe payload only: error name/code, never the
     // message (may carry connection details) and never any PII.
     console.error(JSON.stringify({ evt: "platform.role_resolve_error", error: (e as Error)?.name ?? "unknown", code: (e as { code?: string })?.code ?? null }));
-    return PlatformRole.none;
+    return { role: PlatformRole.none, assignedRole: PlatformRole.none, rawRole: null, accessRevoked: false, found: false, errored: true };
   }
+}
+
+/** Fresh, trusted resolution of the platform role from persisted state. Fail-closed. */
+export async function resolvePlatformRole(userId: string | null | undefined): Promise<PlatformRole> {
+  return (await resolvePlatformRoleDetailed(userId)).role;
 }
 
 /** Thrown when a caller lacks the required platform capability. Carries NO lead data. */
