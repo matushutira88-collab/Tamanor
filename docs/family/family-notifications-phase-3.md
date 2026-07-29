@@ -556,3 +556,9 @@ implemented. Still unbuilt: notification preferences, `/family/notifications`, t
 UI actions, Family-facing incident/plan routes, and any email / push / SMS / webhook / external-messenger delivery
 channel. And, per the deployment-honesty note above, production scheduler activation is unverified until a real
 deployed, secret-configured, authenticated production run is observed.
+
+## Production activation status (Phase 4A.1)
+
+The scheduler/cron production activation is **NOT ACTIVATED** (Verdict C). The secure operator runbook —
+migration path, env-var names, deploy, cron verification, scheduler-health, rollback, stop conditions, and the
+41-point report — is at [family-notifications-production-activation.md](./family-notifications-production-activation.md).

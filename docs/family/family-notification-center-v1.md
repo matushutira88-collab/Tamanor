@@ -130,3 +130,7 @@ resolver, and a recent-notification popover.
 production bell/center have NOT been observed in a deployed environment (no browser automation was run locally —
 verification is DB/action + source/UI static + `pnpm build` compilation). The Phase 3C scheduler's production
 activation is likewise unchanged/unverified.
+
+Production activation (Verdict **C — NOT ACTIVATED**) and the secure operator runbook (deploy, cron/UI/canary
+verification, rollback, stop conditions, 41-point report) are documented in
+[family-notifications-production-activation.md](./family-notifications-production-activation.md).
