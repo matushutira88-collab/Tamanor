@@ -97,6 +97,12 @@ async function run() {
     assert(await denied(() => app.$queryRawUnsafe("SELECT payload FROM webhook_events LIMIT 1")) === "denied", "D25) raw webhook payload is unreachable by the app role");
     // systemDb (owner) flow still works
     assert((await owner.webhookEvent.count()) >= 1 && (await owner.lead.count()) >= 1, "D23/24) systemDb (owner) webhook + leads flow still functional");
+    // BUSINESS-VAULT-V1 — the provider credential vault is OWNER-ONLY: the app role must get permission-denied on
+    // every column (ciphertext must be unreachable by the ordinary UI/app role) while systemDb still works.
+    assert(await denied(() => app.$queryRawUnsafe("SELECT 1 FROM provider_credentials LIMIT 1")) === "denied", "D26) tamanor_app permission denied on provider_credentials");
+    assert(await denied(() => app.$queryRawUnsafe("SELECT ciphertext FROM provider_credentials LIMIT 1")) === "denied", "D27) vault ciphertext is unreachable by the app role");
+    assert(await denied(() => app.$queryRawUnsafe(`INSERT INTO provider_credentials ("id","tenantId","provider","purpose","connectedAccountId","ciphertext","iv","authTag","wrappedDataKey","keyProvider","keyVersion","formatVersion","fingerprint","updatedAt") VALUES ('x','x','meta','access_token','x','x','x','x','x','x','x','x','x', now())`)) === "denied", "D28) app role cannot INSERT into the vault");
+    assert((await owner.$queryRawUnsafe<Array<{ n: number }>>("SELECT count(*)::int AS n FROM provider_credentials")).length === 1, "D29) systemDb (owner) can read the vault table");
 
     // ---- E) role attributes + grants (catalog) ----
     const role = (await owner.$queryRawUnsafe<Array<{ rolsuper: boolean; rolbypassrls: boolean; rolcreaterole: boolean; rolcreatedb: boolean }>>(

@@ -35,6 +35,7 @@ import {
   type ConnectedAccount,
 } from "@guardora/db";
 import { createLeaseHeartbeat } from "./lease-heartbeat";
+import { parseMetaLeadgenChanges, ingestMetaLeadgenChanges } from "./meta-leads";
 import { randomUUID } from "node:crypto";
 import { buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, type ClassifierRule } from "@guardora/ai";
 import { classifyWithUsagePolicy } from "./metered-classify";
@@ -1111,6 +1112,14 @@ export async function processPendingWebhookEvents(): Promise<WebhookProcessResul
           metadata: { accounts: accounts.length, platforms: [...new Set(accounts.map((a) => a.platform))] },
         },
       }));
+      // BUSINESS-VAULT-V1 — Meta Lead Ads: ingest any leadgen changes in this trusted, signature-verified event.
+      // Additive + independent of the moderation sync above; a lead failure is ops-evented inside and NEVER blocks
+      // the webhook from being marked processed. Tenant/account are re-resolved from the trusted page id inside.
+      try {
+        const leadChanges = parseMetaLeadgenChanges(ev.payload);
+        if (leadChanges.length > 0) await ingestMetaLeadgenChanges(leadChanges);
+      } catch { /* never block webhook processing on a lead-ingestion error */ }
+
       await markWebhookProcessed(ev.id, true);
       matched++;
     } catch (err) {
@@ -1147,6 +1156,7 @@ export * from "./maintenance";
 export * from "./live-actions";
 export * from "./facebook-connector";
 export * from "./instagram-connector";
+export * from "./meta-leads";
 export * from "./instagram-moderation";
 export * from "./google-business-connector";
 export * from "./google-business-api-client";

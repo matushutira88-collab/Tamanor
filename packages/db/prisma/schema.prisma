@@ -4140,6 +4140,13 @@ enum BusinessIngestionResult {
   unmapped_connection
 }
 
+// The kind of provider secret a vault row holds. Provider-neutral (Meta today; extensible later).
+enum ProviderCredentialPurpose {
+  access_token
+  long_lived_token
+  refresh_token
+}
+
 // One connection record per provider per tenant. Stores ONLY safe status/capability/identity metadata —
 // NEVER a token/secret. `capabilities` is an allow-listed enum array. Not the moderation ConnectedAccount.
 model BusinessPlatformConnection {
@@ -4158,12 +4165,61 @@ model BusinessPlatformConnection {
   createdAt            DateTime                       @default(now())
   updatedAt            DateTime                       @updatedAt
 
+  // BUSINESS-VAULT-V1 — narrow, explicit, OPTIONAL link to the existing Meta moderation ConnectedAccount. Set
+  // ONLY for provider=meta. Same-tenant + provider guarded by a DB trigger; a ConnectedAccount links to at most
+  // one BusinessPlatformConnection (partial unique index in the migration). This is the bridge that lets the
+  // business lead subsystem reuse the existing Meta OAuth account + its vault credential (no second account system).
+  connectedAccountId String?
+
   tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   contacts BusinessContact[]
 
   @@unique([tenantId, provider])
   @@index([tenantId, status])
+  @@index([connectedAccountId])
   @@map("business_platform_connections")
+}
+
+// SECURE PROVIDER CREDENTIAL VAULT (BUSINESS-VAULT-V1) — envelope-encrypted provider tokens. SERVER-ONLY, owner/
+// systemDb ONLY: the RLS-enforcing app role (tamanor_app) has NO privileges (REVOKE ALL in the migration), so the
+// ordinary UI/app repos get a Postgres permission-denied. Access is ONLY through the narrow systemDb-based vault
+// service, which always filters by an explicit tenantId. RLS is ALSO enabled+forced (defence-in-depth).
+//
+// Holds NO plaintext. ciphertext/iv/authTag/wrappedDataKey are AES-256-GCM envelope material (per-record 256-bit
+// data key, wrapped by a key-versioned KEK; AAD binds tenant+provider+connection+purpose+version). `fingerprint`
+// is a NON-reversible sha256 prefix used only for backfill equivalence checks — never the token, never reversible.
+model ProviderCredential {
+  id                   String                    @id @default(cuid())
+  tenantId             String
+  provider             BusinessProvider
+  purpose              ProviderCredentialPurpose
+  // The connection this credential belongs to — EXACTLY ONE is set. Meta moderation → connectedAccountId.
+  connectedAccountId   String?
+  businessConnectionId String?
+  // AES-256-GCM envelope material (base64). NEVER plaintext.
+  ciphertext           String
+  iv                   String
+  authTag              String
+  wrappedDataKey       String
+  keyProvider          String
+  keyVersion           String
+  formatVersion        String
+  // Non-secret metadata.
+  tokenType            String?
+  expiresAt            DateTime?
+  scopes               String[]                  @default([])
+  fingerprint          String
+  rotatedAt            DateTime?
+  revokedAt            DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  // No Prisma relations by design (owner-only table, queried by explicit tenantId). FK constraints
+  // (tenant + connectedAccount + businessConnection, all ON DELETE CASCADE) are declared in the migration.
+  @@index([tenantId, provider, purpose])
+  @@index([connectedAccountId])
+  @@index([businessConnectionId])
+  @@map("provider_credentials")
 }
 
 // A Business contact/lead. Tenant-scoped; distinct from the SaaS's own global marketing `Lead`. Stores only

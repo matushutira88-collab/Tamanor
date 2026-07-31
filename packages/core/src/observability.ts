@@ -146,7 +146,14 @@ export type OpsEvent =
   | "subscription.monitoring_limit_enforced"
   | "report.exported"
   | "limit.concurrent_contention"
-  | "limit.over_limit_detected";
+  | "limit.over_limit_detected"
+  // BUSINESS-VAULT-V1 — provider credential vault + Meta lead-ingestion (only operation/result labels; NEVER a
+  // token, ciphertext, wrapped key, IV, tag, email, phone, name, message, OAuth code, app secret, or raw body).
+  | "connector.vault_write_failed"
+  | "business.meta_lead_ingested"
+  | "business.meta_lead_duplicate"
+  | "business.meta_lead_rejected"
+  | "business.meta_lead_fetch_failed";
 
 /** Low-cardinality label keys allowed on ops events + metrics. Anything else is a cardinality risk. */
 // V1.50F — `plan` + `capability` added for entitlement/route observability (both LOW cardinality:

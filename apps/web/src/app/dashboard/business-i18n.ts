@@ -5,7 +5,7 @@
 import type { Locale } from "@/i18n";
 import {
   BusinessContactStatus, BusinessContactSource, BusinessProvider, BusinessConnectionStatus,
-  BusinessConnectionCapability,
+  BusinessConnectionCapability, type MetaLeadCapabilityState,
 } from "@guardora/core";
 
 export interface BusinessDict {
@@ -32,6 +32,7 @@ export interface BusinessDict {
   provider: Record<BusinessProvider, string>;
   connStatus: Record<BusinessConnectionStatus, string>;
   capability: Record<BusinessConnectionCapability, string>;
+  metaLead: { title: string } & Record<MetaLeadCapabilityState, string>;
 }
 
 const en: BusinessDict = {
@@ -61,6 +62,13 @@ const en: BusinessDict = {
     disconnected: "Disconnected", error: "Error", awaiting_provider_approval: "Awaiting provider approval",
   },
   capability: { lead_ingestion: "Lead ingestion", comment_moderation: "Comment moderation", brand_monitoring: "Brand monitoring" },
+  metaLead: {
+    title: "Lead Ads",
+    available: "Active — leads are ingested automatically", config_missing: "Meta app not configured",
+    entitlement_locked: "Not included in your plan", no_linked_account: "No linked Meta account",
+    connection_inactive: "Connection inactive", credential_unavailable: "Credential unavailable — reconnect required",
+    permission_missing: "Lead permission not granted", awaiting_provider_approval: "Awaiting Meta app review",
+  },
 };
 
 const sk: BusinessDict = {
@@ -90,6 +98,13 @@ const sk: BusinessDict = {
     disconnected: "Odpojené", error: "Chyba", awaiting_provider_approval: "Čaká na schválenie poskytovateľom",
   },
   capability: { lead_ingestion: "Získavanie leadov", comment_moderation: "Moderovanie komentárov", brand_monitoring: "Monitoring značky" },
+  metaLead: {
+    title: "Lead Ads",
+    available: "Aktívne — leady sa získavajú automaticky", config_missing: "Meta aplikácia nie je nakonfigurovaná",
+    entitlement_locked: "Nie je súčasťou vášho plánu", no_linked_account: "Žiadny prepojený Meta účet",
+    connection_inactive: "Pripojenie neaktívne", credential_unavailable: "Poverenie nedostupné — vyžaduje sa opätovné pripojenie",
+    permission_missing: "Oprávnenie na leady neudelené", awaiting_provider_approval: "Čaká na schválenie Meta aplikácie",
+  },
 };
 
 const de: BusinessDict = {
@@ -119,6 +134,13 @@ const de: BusinessDict = {
     disconnected: "Getrennt", error: "Fehler", awaiting_provider_approval: "Warten auf Anbieterfreigabe",
   },
   capability: { lead_ingestion: "Lead-Erfassung", comment_moderation: "Kommentarmoderation", brand_monitoring: "Markenüberwachung" },
+  metaLead: {
+    title: "Lead Ads",
+    available: "Aktiv — Leads werden automatisch erfasst", config_missing: "Meta-App nicht konfiguriert",
+    entitlement_locked: "Nicht in Ihrem Tarif enthalten", no_linked_account: "Kein verknüpftes Meta-Konto",
+    connection_inactive: "Verbindung inaktiv", credential_unavailable: "Anmeldedaten nicht verfügbar — Neuverbindung erforderlich",
+    permission_missing: "Lead-Berechtigung nicht erteilt", awaiting_provider_approval: "Warten auf Meta-App-Prüfung",
+  },
 };
 
 const DICTS: Record<Locale, BusinessDict> = { en, sk, de };

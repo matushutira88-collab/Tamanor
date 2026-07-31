@@ -14,8 +14,9 @@
 import {
   withTenantDb, decryptToken, encryptToken, metaConnectedAccountFields, ActorKind,
   getTenantEntitlements, acquireBrandPlatformLock, assertBrandPlatformCapacity,
+  writeMetaCredentialToVault,
 } from "@guardora/db";
-import { maxPerBrandForPlatform } from "@guardora/core";
+import { maxPerBrandForPlatform, emitOpsEvent } from "@guardora/core";
 import {
   GraphMetaConnectorTransport,
   type MetaConnectorTransport,
@@ -62,8 +63,10 @@ export interface MetaLinkInput {
   connectIg: boolean;
   scopes: string[];
   grantedPermissions: string[];
-  /** Already-encrypted page token (via token-crypto). */
+  /** Already-encrypted page token (via token-crypto) — the LEGACY column write (staged cutover keeps this). */
   encryptedToken: string;
+  /** PLAINTEXT page token — used ONLY to seal the credential into the encrypted vault (never stored plaintext). */
+  pageAccessTokenPlaintext?: string;
   tokenType: string | null;
   tokenExpiresAt: Date | null;
   /** DEPRECATED (V1.59): the legacy bundle connection-limit. IGNORED — the monitored-account limit is
@@ -104,7 +107,7 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
   const fbPerBrand = maxPerBrandForPlatform(ent, "facebook_page");
   const igPerBrand = maxPerBrandForPlatform(ent, "instagram_business");
 
-  return withTenantDb(tenantId, async (db) => {
+  const result = await withTenantDb(tenantId, async (db) => {
     // V1.59 — CONNECT ≠ MONITOR. Connecting an account no longer enforces (or bundles) the tenant-total
     // monitored limit; that is enforced ATOMICALLY when monitoring is activated
     // (enableAccountMonitoringWithinLimit). Reconnect (upsert UPDATE) NEVER changes monitoring state.
@@ -161,6 +164,30 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
 
     return { pageAccountId: pageAcc.id, igAccountId, pageReconnected: Boolean(existingPage), igReconnected };
   });
+
+  // BUSINESS-VAULT-V1 — STAGED CUTOVER (dual-write). AFTER the tenant tx commits, seal the page token into the
+  // owner-only encrypted vault for the Page (and its IG child, which uses the same page token). This is ADDITIVE:
+  // the legacy encrypted columns are still written above (so every existing read path keeps working unchanged),
+  // while the vault becomes the canonical, envelope-encrypted store that the resolver prefers. Best-effort: a
+  // vault-key-not-configured dev machine (or a transient failure) must NEVER break a real connect — the resolver
+  // falls back to the legacy column. Production surfaces the failure via an ops event (never a token in the log).
+  if (input.pageAccessTokenPlaintext) {
+    const targets = [result.pageAccountId, result.igAccountId].filter((id): id is string => Boolean(id));
+    for (const accountId of targets) {
+      try {
+        await writeMetaCredentialToVault({
+          account: { id: accountId, tenantId },
+          token: input.pageAccessTokenPlaintext,
+          tokenType: input.tokenType,
+          expiresAt: input.tokenExpiresAt,
+          scopes: input.scopes,
+        });
+      } catch {
+        emitOpsEvent("connector.vault_write_failed", { operation: "meta_connect" });
+      }
+    }
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

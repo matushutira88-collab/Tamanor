@@ -182,3 +182,57 @@ export function businessContactDedupeSeed(input: {
   ];
   return parts.join("|");
 }
+
+// ---- Meta Lead Ads: truthful capability evaluation ---------------------------------------------------------
+/**
+ * The truthful state of the Meta Lead Ads capability. `available` means EVERY precondition holds (config, plan
+ * entitlement, a linked+active account, an active connection, a decryptable vault credential, the granted
+ * `leads_retrieval` permission, AND live provider approval). Any other value names the FIRST missing precondition
+ * so the UI never claims a capability is available/active when it is not.
+ */
+export type MetaLeadCapabilityState =
+  | "available"
+  | "config_missing"
+  | "entitlement_locked"
+  | "no_linked_account"
+  | "connection_inactive"
+  | "credential_unavailable"
+  | "permission_missing"
+  | "awaiting_provider_approval";
+
+export interface MetaLeadCapabilitySignals {
+  /** Meta app config (id/secret/redirect) is present. */
+  metaConfigured: boolean;
+  /** The plan entitles the business lead-ingestion capability. */
+  entitled: boolean;
+  /** A Meta account is linked AND active for this tenant. */
+  hasLinkedActiveAccount: boolean;
+  /** The business connection itself is in an active state. */
+  connectionActive: boolean;
+  /** The vault credential for the linked account exists AND decrypts (fail-closed if a row exists but is corrupt). */
+  credentialDecryptable: boolean;
+  /** The `leads_retrieval` (lead access) permission was actually granted. */
+  leadsPermissionGranted: boolean;
+  /** Meta App Review / provider approval for lead retrieval is in place. */
+  providerApproved: boolean;
+}
+
+/**
+ * Evaluate the truthful capability state. Checks preconditions in a fixed order and returns the FIRST that fails;
+ * only when all hold is it `available`. Pure + deterministic — the single source of truth the UI renders.
+ */
+export function evaluateMetaLeadCapability(s: MetaLeadCapabilitySignals): MetaLeadCapabilityState {
+  if (!s.metaConfigured) return "config_missing";
+  if (!s.entitled) return "entitlement_locked";
+  if (!s.hasLinkedActiveAccount) return "no_linked_account";
+  if (!s.connectionActive) return "connection_inactive";
+  if (!s.credentialDecryptable) return "credential_unavailable";
+  if (!s.leadsPermissionGranted) return "permission_missing";
+  if (!s.providerApproved) return "awaiting_provider_approval";
+  return "available";
+}
+
+/** True only for the fully-available state — the only state that may present as active/live. */
+export function isMetaLeadCapabilityAvailable(state: MetaLeadCapabilityState): boolean {
+  return state === "available";
+}

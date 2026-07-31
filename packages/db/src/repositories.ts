@@ -189,6 +189,24 @@ export function findMetaAccountsByExternalIds(externalIds: string[]): Promise<Ar
   });
 }
 
+/**
+ * BUSINESS-VAULT-V1 — resolve the TRUSTED facebook_page accounts for a set of page ids carried by a
+ * signature-verified leadgen webhook. Leadgen is Page-scoped, so only facebook_page accounts are returned.
+ * Returns the token columns too so the caller can resolve a usable token (vault-first, legacy fallback). Tenant
+ * is ALWAYS taken from the matched active account here (never the payload). Deleting tenants never match.
+ */
+export function findMetaLeadAccountsByPageIds(pageIds: string[]): Promise<Array<{ id: string; tenantId: string; brandId: string; externalId: string; longLivedToken: string | null; accessToken: string | null }>> {
+  return systemDb.connectedAccount.findMany({
+    where: { externalId: { in: pageIds }, platform: "facebook_page" as never, status: "active" as never, tenant: { deletionState: "active" } },
+    select: { id: true, tenantId: true, brandId: true, externalId: true, longLivedToken: true, accessToken: true },
+  });
+}
+
+/** The tenant's linked BusinessPlatformConnection for a ConnectedAccount, if any (for lead attribution). */
+export function findBusinessConnectionForAccount(tenantId: string, connectedAccountId: string): Promise<{ id: string } | null> {
+  return systemDb.businessPlatformConnection.findFirst({ where: { tenantId, connectedAccountId }, select: { id: true } });
+}
+
 // ----------------------- V1.45C1 tenant-deletion system helpers -----------------------
 // Trusted CLEANUP path: unlike the discovery queries above, these DO reach a `deleting` tenant — they
 // are the only queries permitted to, and are used solely by the deletion orchestrator + webhook link.

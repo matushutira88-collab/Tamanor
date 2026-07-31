@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import {
   can, Permission, ALL_BUSINESS_PROVIDERS, BUSINESS_PROVIDER_CATALOGUE, BusinessConnectionStatus,
-  isBusinessConnectionActive,
+  BusinessProvider, isBusinessConnectionActive, isMetaLeadCapabilityAvailable,
 } from "@guardora/core";
 import { listBusinessConnections } from "@guardora/db";
+import { getMetaLeadCapabilityState } from "@/server/meta-lead-capability";
 import { requireDashboardCapability } from "@/server/route-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
@@ -36,6 +37,9 @@ export default async function PlatformsPage() {
   const rows = await listBusinessConnections(session.tenantId);
   const byProvider = new Map(rows.map((r) => [r.provider, r]));
   const dtf = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
+  // TRUTHFUL Meta Lead Ads capability — resolved from real signals (config + linked account + decryptable vault
+  // credential + granted permission + provider approval). The tenant passed the plan gate above, so `entitled=true`.
+  const metaLeadState = await getMetaLeadCapabilityState(session.tenantId, true);
 
   return (
     <div className="space-y-6">
@@ -74,6 +78,17 @@ export default async function PlatformsPage() {
                   ))}
                 </ul>
               </div>
+
+              {provider === BusinessProvider.Meta ? (
+                // TRUTHFUL Lead Ads state — presents as active ONLY when every precondition holds; otherwise it
+                // names the missing precondition (never a false "active"). Conveyed by text + badge shape.
+                <div className="mt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{t.metaLead.title}</p>
+                  <div className="mt-1">
+                    <Badge tone={isMetaLeadCapabilityAvailable(metaLeadState) ? "success" : "muted"}>{t.metaLead[metaLeadState]}</Badge>
+                  </div>
+                </div>
+              ) : null}
 
               <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--color-muted)]">
                 <div><dt className="font-semibold">{t.platforms.lastVerified}</dt><dd>{row?.lastVerifiedAt ? dtf.format(row.lastVerifiedAt) : t.platforms.never}</dd></div>

@@ -64,7 +64,8 @@ export async function confirmMetaSelection(
       link = await linkMetaAssets({
         tenantId: session.tenantId, brandId: row.brandId, page, connectIg: igChosen,
         scopes: row.grantedScopes, grantedPermissions: row.grantedScopes,
-        encryptedToken: encryptToken(page.pageAccessToken), tokenType: row.tokenType, tokenExpiresAt: row.tokenExpiresAt,
+        encryptedToken: encryptToken(page.pageAccessToken), pageAccessTokenPlaintext: page.pageAccessToken,
+        tokenType: row.tokenType, tokenExpiresAt: row.tokenExpiresAt,
       });
     } catch (e) {
       if (e instanceof EntitlementError && e.reason === "brand_platform_limit_reached") {
