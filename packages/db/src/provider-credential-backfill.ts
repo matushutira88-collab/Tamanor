@@ -213,16 +213,21 @@ export async function providerCredentialInventory(): Promise<ProviderCredentialI
 export interface BackfillVerifyResult { ok: boolean; failures: string[] }
 
 /**
- * Post-run invariant verification (counts only). For an APPLY it fails when: the run reported errors; more
- * columns were cleared than were verified; or a "vault-only" (cleared) account has an unusable vault. For a
- * DRY-RUN it fails if any mutation counter is non-zero (proving nothing was written).
+ * Post-run invariant verification (counts only).
+ *
+ * CORRECTIVE (F-cutover): `errors > 0` is a FAILURE in BOTH dry-run and apply. A dry-run that could not decrypt/
+ * classify a legacy credential (e.g. run without the legacy TOKEN_ENCRYPTION_KEY) previously passed green — it now
+ * fails. A valid dry-run requires errors === 0 AND backfilled === 0 AND legacyCleared === 0 (plus the caller's
+ * before/after `assertNoMutation`). An apply additionally requires legacyCleared <= verified and no unusable
+ * cleared account.
  */
 export function verifyBackfillRun(result: BackfillResult, inventory: ProviderCredentialInventory): BackfillVerifyResult {
   const failures: string[] = [];
+  // Any error is a hard failure regardless of mode — a green run over undecryptable legacy tokens is the defect.
+  if (result.errors > 0) failures.push(`run reported ${result.errors} error(s)`);
   if (result.dryRun) {
     if (result.backfilled !== 0 || result.legacyCleared !== 0) failures.push("dry-run performed a mutation");
   } else {
-    if (result.errors > 0) failures.push(`apply reported ${result.errors} error(s)`);
     if (result.legacyCleared > result.verified) failures.push("legacyCleared exceeds verified");
     if (inventory.vaultOnlyUnusable > 0) failures.push(`${inventory.vaultOnlyUnusable} cleared account(s) have an unusable vault`);
   }
