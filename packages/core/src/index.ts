@@ -79,6 +79,8 @@ export * from "./platform-analytics";
 export * from "./cyberbullying-incident";
 export * from "./usage-policy";
 export * from "./usage-pricing";
+// BUSINESS Connected Platforms & Contacts V1 — pure domain (enums, provider catalogue, status transitions).
+export * from "./business-contacts";
 // Release Provenance V1 — pure resolver: explicit env → sanitized, immutable release metadata (fail-closed gate).
 export * from "./release-provenance";
 // CSP Policy V1 — typed canonical Content-Security-Policy builder (enforced parity + strict Report-Only candidate).

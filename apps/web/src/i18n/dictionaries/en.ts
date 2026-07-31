@@ -352,6 +352,8 @@ export const en = {
     audit: "Audit Log",
     securityCenter: "Security Center",
     leads: "Leads",
+    businessContacts: "Contacts",
+    businessPlatforms: "Connected platforms",
     team: "Team",
     billing: "Subscription",
     settings: "Settings",

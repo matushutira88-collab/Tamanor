@@ -348,6 +348,8 @@ export const de: Dictionary = {
     audit: "Audit-Protokoll",
     securityCenter: "Security Center",
     leads: "Leads",
+    businessContacts: "Kontakte",
+    businessPlatforms: "Verbundene Plattformen",
     team: "Team",
     billing: "Abonnement",
     settings: "Einstellungen",

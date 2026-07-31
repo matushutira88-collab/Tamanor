@@ -131,6 +131,12 @@ export enum Permission {
   // granted only via OWNER_ALL and absent from every other role below. No Viewer/Analyst/Reviewer/
   // Admin billing writes; server authorization is authoritative.
   BillingManage = "billing:manage",
+  // BUSINESS Connected Platforms & Contacts V1 — additive Business capabilities. Contacts hold PII, so read is
+  // limited to Owner/Admin/Analyst and manage to Owner/Admin (conservative; Owner is auto via OWNER_ALL).
+  BusinessContactsRead = "business.contacts.read",
+  BusinessContactsManage = "business.contacts.manage",
+  BusinessPlatformsRead = "business.platforms.read",
+  BusinessPlatformsManage = "business.platforms.manage",
 }
 
 const OWNER_ALL: readonly Permission[] = Object.values(Permission);
@@ -155,6 +161,11 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.SecurityManage,
     Permission.IncidentView,
     Permission.IncidentManage,
+    // Business Connected Platforms & Contacts V1 — Admin gets full read + manage.
+    Permission.BusinessContactsRead,
+    Permission.BusinessContactsManage,
+    Permission.BusinessPlatformsRead,
+    Permission.BusinessPlatformsManage,
     // Cyberbullying — Admin gets the operational set, NOT sensitive-evidence view
     // or export (those stay owner-exclusive via OWNER_ALL).
     Permission.CyberbullyingViewOwn,
@@ -213,6 +224,9 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ReportView,
     Permission.SecurityView,
     Permission.IncidentView,
+    // Business Connected Platforms & Contacts V1 — Analyst gets READ only (no status/assignment/connection mutation).
+    Permission.BusinessContactsRead,
+    Permission.BusinessPlatformsRead,
     // Partner Pilot Operations — Analyst gets AGGREGATED read-only pilot status only. The service withholds
     // sensitive fields (operational contacts, review notes, bounded comments) from a view-only role, so an
     // Analyst can see lifecycle/scope/readiness/alert severity but never notes or contacts, and never mutates.

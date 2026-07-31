@@ -348,6 +348,8 @@ export const sk: Dictionary = {
     audit: "Audit",
     securityCenter: "Bezpečnostné centrum",
     leads: "Leady",
+    businessContacts: "Kontakty",
+    businessPlatforms: "Pripojené platformy",
     team: "Tím",
     billing: "Predplatné",
     settings: "Nastavenia",

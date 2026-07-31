@@ -176,3 +176,6 @@ export * from "./tenant-lifecycle";
 export * from "./tenant-deletion";
 export * from "./user-deletion";
 export * from "./webhook-retention";
+// BUSINESS Connected Platforms & Contacts V1 — tenant-scoped repo + provider lead-ingestion adapter contract.
+export * from "./business-contacts-repo";
+export * from "./business-lead-adapter";

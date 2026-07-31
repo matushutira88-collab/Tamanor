@@ -511,6 +511,10 @@ model Tenant {
   workspaceOnboardingState        WorkspaceOnboardingState?
   // CS-C8 — Family guardian invitations.
   familyGuardianInvitations       FamilyGuardianInvitation[]
+  // BUSINESS Connected Platforms & Contacts V1 — additive, Business-only, strictly separate from Family/CS.
+  businessPlatformConnections     BusinessPlatformConnection[]
+  businessContacts                BusinessContact[]
+  businessContactIngestionEvents  BusinessContactIngestionEvent[]
 
   @@map("tenants")
 }
@@ -2650,7 +2654,7 @@ enum FamilyNotificationOutboxStatus {
 }
 
 model FamilyNotificationOutboxEvent {
-  id               String                          @id @default(cuid())
+  id               String                         @id @default(cuid())
   tenantId         String
   notificationType NotificationType
   // Bounded routing only — the canonical source kind + its id (e.g. "safety_signal_delivery" + deliveryId).
@@ -2662,8 +2666,8 @@ model FamilyNotificationOutboxEvent {
   // the FINAL dedupe authority (insertion uses skip-duplicates / ON CONFLICT DO NOTHING — never check-then-insert).
   dedupeKey        String
   occurredAt       DateTime
-  status           FamilyNotificationOutboxStatus  @default(pending)
-  attemptCount     Int                             @default(0)
+  status           FamilyNotificationOutboxStatus @default(pending)
+  attemptCount     Int                            @default(0)
   nextAttemptAt    DateTime
   lockedAt         DateTime?
   lockExpiresAt    DateTime?
@@ -2671,8 +2675,8 @@ model FamilyNotificationOutboxEvent {
   // Bounded enum/catalogue codes only — NEVER raw exception/Prisma/SQL text or embedded ids.
   lastErrorCode    String?
   safeReasonCode   String?
-  createdAt        DateTime                        @default(now())
-  updatedAt        DateTime                        @updatedAt
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
 
   @@unique([tenantId, dedupeKey])
   @@index([status, nextAttemptAt, createdAt, id])
@@ -4075,4 +4079,162 @@ model WebsiteAnalyticsRetentionRun {
 
   @@index([runType, createdAt])
   @@map("website_analytics_retention_runs")
+}
+
+// ===========================================================================================
+// BUSINESS — CONNECTED PLATFORMS & CONTACTS FOUNDATION V1 (additive, Business-only)
+// Strictly separate from Family / Child-Safety / protected-profile data. All three tables are
+// tenant-scoped + RLS-enforced (enable/force/policy/grant in the migration). NO tokens, refresh
+// tokens, client secrets, webhook secrets, or raw provider payloads are stored anywhere here — no
+// secure credential store exists yet, so connections stay in truthful non-active states. Enums are
+// hand-mirrored in @guardora/core (packages/core/src/business-contacts.ts), matching string values.
+// ===========================================================================================
+
+enum BusinessProvider {
+  meta
+  google
+  tiktok
+  linkedin
+}
+
+enum BusinessConnectionStatus {
+  not_configured
+  pending
+  active
+  reauth_required
+  disconnected
+  error
+  awaiting_provider_approval
+}
+
+enum BusinessConnectionCapability {
+  lead_ingestion
+  comment_moderation
+  brand_monitoring
+}
+
+enum BusinessContactSource {
+  facebook
+  instagram
+  google_ads
+  youtube
+  tiktok
+  linkedin
+  web_form
+}
+
+enum BusinessContactStatus {
+  new
+  contacted
+  handled
+  customer
+  rejected
+}
+
+enum BusinessIngestionResult {
+  accepted
+  duplicate
+  rejected
+  invalid_signature
+  invalid_payload
+  unmapped_connection
+}
+
+// One connection record per provider per tenant. Stores ONLY safe status/capability/identity metadata —
+// NEVER a token/secret. `capabilities` is an allow-listed enum array. Not the moderation ConnectedAccount.
+model BusinessPlatformConnection {
+  id                   String                         @id @default(cuid())
+  tenantId             String
+  provider             BusinessProvider
+  // Verified provider account id — null until a live connection is genuinely established.
+  externalAccountId    String?
+  displayName          String?
+  status               BusinessConnectionStatus       @default(not_configured)
+  capabilities         BusinessConnectionCapability[] @default([])
+  lastVerifiedAt       DateTime?
+  lastSuccessfulSyncAt DateTime?
+  // Bounded, sanitized, non-secret catalogue code only — never a raw exception/provider body.
+  lastErrorCode        String?
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts BusinessContact[]
+
+  @@unique([tenantId, provider])
+  @@index([tenantId, status])
+  @@map("business_platform_connections")
+}
+
+// A Business contact/lead. Tenant-scoped; distinct from the SaaS's own global marketing `Lead`. Stores only
+// the bounded fields needed for contact handling — never a full raw provider payload. Consent is stored ONLY
+// when the source supplies it (never inferred). `dedupeKey` is the deterministic idempotency key (unique/tenant).
+model BusinessContact {
+  id               String                @id @default(cuid())
+  tenantId         String
+  // The connection this contact was ingested through (null for manual/web-form/test fixtures).
+  connectionId     String?
+  provider         BusinessProvider
+  sourcePlatform   BusinessContactSource
+  // Stable provider lead id when the provider exposes one.
+  externalLeadId   String?
+  // Deterministic identity: hash of (tenant, provider, source, externalLeadId | content). Unique per tenant is
+  // the FINAL dedupe authority (insertion uses ON CONFLICT DO NOTHING — never check-then-insert).
+  dedupeKey        String
+  fullName         String?
+  email            String?
+  phone            String?
+  company          String?
+  // Bounded, sanitized summary of the lead's message/answers — never the full raw payload.
+  messageSummary   String?
+  campaignId       String?
+  campaignName     String?
+  adId             String?
+  adName           String?
+  formId           String?
+  formName         String?
+  receivedAt       DateTime
+  status           BusinessContactStatus @default(new)
+  // The assigned team member (a tenant user id); null = unassigned.
+  assignedUserId   String?
+  // Consent captured ONLY when the source explicitly supplied it. Null = unknown (never treated as granted).
+  consentValue     Boolean?
+  consentReference String?
+  consentVersion   String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  tenant     Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connection BusinessPlatformConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, status, receivedAt])
+  @@index([tenantId, sourcePlatform, receivedAt])
+  @@index([tenantId, assignedUserId])
+  @@map("business_contacts")
+}
+
+// Append-only ingestion/audit ledger. Stores ONLY operational evidence — NEVER the raw webhook body, PII, or a
+// secret. `payloadHash` is a one-way hash for correlation. App role gets SELECT/INSERT only (no UPDATE/DELETE).
+model BusinessContactIngestionEvent {
+  id                String                  @id @default(cuid())
+  tenantId          String
+  provider          BusinessProvider
+  providerEventId   String?
+  payloadHash       String
+  signatureVerified Boolean                 @default(false)
+  result            BusinessIngestionResult
+  // Bounded, sanitized code only — never raw exception/provider text.
+  errorCode         String?
+  receivedAt        DateTime
+  processedAt       DateTime?
+  // The resulting contact id when result = accepted; null otherwise.
+  contactId         String?
+  createdAt         DateTime                @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, receivedAt])
+  @@index([tenantId, provider, providerEventId])
+  @@map("business_contact_ingestion_events")
 }

@@ -16,6 +16,7 @@ const CAPABILITY_LABEL: Record<string, Record<Locale, string>> = {
   advancedRules: { en: "Advanced rules", sk: "Pokročilé pravidlá", de: "Erweiterte Regeln" },
   securitySuite: { en: "Security Suite", sk: "Bezpečnostný balík", de: "Security Suite" },
   cyberbullyingProtection: { en: "Cyberbullying Protection", sk: "Ochrana pred kyberšikanou", de: "Cybermobbing-Schutz" },
+  businessConnectedPlatforms: { en: "Connected Platforms & Contacts", sk: "Pripojené platformy a kontakty", de: "Verbundene Plattformen & Kontakte" },
 };
 
 const T: Record<Locale, { title: string; body: (cap: string, plan: string) => string; cta: string; note: string; planName: Record<string, string> }> = {

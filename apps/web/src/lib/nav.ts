@@ -175,6 +175,23 @@ export const DASHBOARD_NAV: NavItem[] = [
     group: "Security",
     requiredPermission: "security:view" as Permission,
   },
+  // --- Business Connected Platforms & Contacts V1 (additive; RBAC-gated in the sidebar) ---
+  {
+    href: "/dashboard/contacts",
+    label: "Contacts",
+    description: "Business leads captured from your connected platforms.",
+    icon: "leads",
+    navKey: "businessContacts",
+    requiredPermission: "business.contacts.read" as Permission,
+  },
+  {
+    href: "/dashboard/platforms",
+    label: "Connected platforms",
+    description: "Connect Meta, Google, TikTok and LinkedIn for lead ingestion.",
+    icon: "accounts",
+    navKey: "businessPlatforms",
+    requiredPermission: "business.platforms.read" as Permission,
+  },
   // --- Hidden from the sidebar (routes stay available) ---
   { href: "/dashboard/inbox", label: "Inbox", description: "Triage comments, reviews, and mentions in one unified place.", icon: "inbox", hidden: true },
   { href: "/dashboard/approvals", label: "Approvals", description: "Review proposed actions. Nothing runs until approved and executed.", icon: "approvals", hidden: true },
