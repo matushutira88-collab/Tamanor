@@ -62,6 +62,10 @@ export default defineConfig({
     // V1.67 — landing overflow gate. The spec drives its own viewport matrix (320→430px × en/sk/de),
     // so this project only needs a browser; the per-test setViewportSize calls do the rest.
     { name: "public-landing-overflow", testMatch: /landing-overflow\.spec\.ts/, use: { browserName: "chromium", isMobile: true, hasTouch: true } },
+    // Auto-download regression gate — the public landing page must never trigger a browser download, register a
+    // service worker, or serve an attachment for its assets. Runs unauthenticated (also externally via E2E_BASE_URL).
+    { name: "public-auto-download", testMatch: /auto-download\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+    { name: "public-auto-download-mobile", testMatch: /auto-download\.spec\.ts/, use: mobile(390, 844) },
     // Authenticated flows — reuse the bootstrapped storageState.
     { name: "auth-desktop", testMatch: /(authed|inbox|usage|danger-zone|account-danger-zone)(\.scale)?\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STORAGE } },
     // Platform owner-entry render proof (desktop only) — promotes/restores the fixture role within the spec.

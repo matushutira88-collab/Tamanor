@@ -24,6 +24,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ incidentId
         "content-disposition": `attachment; filename="${filename}"`,
         "content-length": String(bytes.length),
         "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
       },
     });
   } catch (e) { const { status, code } = mapEvidenceError(e); return NextResponse.json({ ok: false, error: code }, { status }); }

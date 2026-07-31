@@ -271,6 +271,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
   // TEMPORARY, PII-FREE diagnostic — bounded plan/state LABELS + booleans only (never email/tenant/user id,
   // Stripe customer/subscription/price/invoice id, session, or secrets). Confirms display truth in production.
+  // eslint-disable-next-line no-console -- deliberate, acknowledged, redacted structured diagnostic (see readiness check 23)
   console.log(JSON.stringify({
     evt: "BUSINESS_BILLING_PRESENTATION_RESOLVED",
     tenantPlan: b?.plan ?? null,

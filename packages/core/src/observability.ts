@@ -169,6 +169,87 @@ export function redact(meta: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+/**
+ * Recursive privacy-safe redaction for STRUCTURED diagnostics (deeper than the single-level `redact`). Walks
+ * nested objects/arrays with hard bounds (depth, breadth, string length, key count), reuses the same
+ * SECRET_KEY/SECRET_VALUE rules, handles circular references, and never throws. This is ADDITIVE — it does not
+ * replace `redact` (the ops-event path + its tests rely on `redact` collapsing objects to "[object]").
+ */
+export interface RedactDeepOptions { maxDepth?: number; maxArray?: number; maxString?: number; maxKeys?: number }
+const RD_DEFAULTS = { maxDepth: 6, maxArray: 100, maxString: 2048, maxKeys: 100 };
+// Extra PII shapes redacted ONLY by the deep redactor (not the shared `redact`): phone-like runs + IPv4.
+const PII_VALUE = /(\+?\d[\d\s().-]{9,}\d|\b\d{1,3}(?:\.\d{1,3}){3}\b)/;
+export function redactDeep(value: unknown, options: RedactDeepOptions = {}): unknown {
+  const o = { ...RD_DEFAULTS, ...options };
+  const seen = new WeakSet<object>();
+  const walk = (v: unknown, depth: number, keyHint?: string): unknown => {
+    if (keyHint !== undefined && SECRET_KEY.test(keyHint)) return "[redacted]";
+    if (v === null || v === undefined) return v;
+    const t = typeof v;
+    if (t === "string") {
+      const s = v as string;
+      if (SECRET_VALUE.test(s) || PII_VALUE.test(s)) return "[redacted]";
+      return s.length > o.maxString ? `${s.slice(0, o.maxString)}…[truncated]` : s;
+    }
+    if (t === "number" || t === "boolean") return v;
+    if (t === "bigint") return `${(v as bigint).toString()}n`;
+    if (t === "function" || t === "symbol") return `[${t}]`;
+    if (v instanceof Error) return { name: v.name, message: walk(v.message, depth + 1, "message") };
+    if (t === "object") {
+      if (seen.has(v as object)) return "[circular]";
+      seen.add(v as object);
+      if (depth >= o.maxDepth) return "[depth-limited]";
+      if (Array.isArray(v)) {
+        const arr: unknown[] = v.slice(0, o.maxArray).map((item) => walk(item, depth + 1));
+        if (v.length > o.maxArray) arr.push(`…+${v.length - o.maxArray} more`);
+        return arr;
+      }
+      const out: Record<string, unknown> = {};
+      let n = 0;
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        if (n++ >= o.maxKeys) { out["…"] = "[keys-limited]"; break; }
+        out[k] = walk(val, depth + 1, k);
+      }
+      return out;
+    }
+    return "[unknown]";
+  };
+  try { return walk(value, 0); } catch { return "[redaction-error]"; }
+}
+
+/**
+ * Emit a privacy-safe STRUCTURED diagnostic line (one JSON object) for critical operational events — release/
+ * provenance failures, an authenticated deployment/readiness probe, an audited file-response, or a scheduler
+ * aggregate result. Top-level fields are bounded; `detail` passes through `redactDeep`. Fail-safe: never throws.
+ */
+export interface SafeLogRecord {
+  event: string;
+  severity?: "info" | "warn" | "error";
+  releaseSha?: string | null;
+  deploymentId?: string | null;
+  correlationId?: string | null;
+  routeTemplate?: string | null;
+  outcome?: string | null;
+  detail?: Record<string, unknown>;
+}
+export function emitSafeLog(record: SafeLogRecord): void {
+  try {
+    const line = {
+      ts: new Date().toISOString(),
+      log: String(record.event).slice(0, 120),
+      severity: record.severity ?? "info",
+      ...(record.releaseSha ? { releaseSha: String(record.releaseSha).slice(0, 64) } : {}),
+      ...(record.deploymentId ? { deploymentId: String(record.deploymentId).slice(0, 128) } : {}),
+      ...(record.correlationId ? { correlationId: String(record.correlationId).slice(0, 64) } : {}),
+      ...(record.routeTemplate ? { route: String(record.routeTemplate).slice(0, 200) } : {}),
+      ...(record.outcome ? { outcome: String(record.outcome).slice(0, 120) } : {}),
+      ...(record.detail ? { detail: redactDeep(record.detail) } : {}),
+    };
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(line));
+  } catch { /* diagnostics must never break a request/job */ }
+}
+
 export interface OpsSink {
   emit(event: OpsEvent, meta: Record<string, unknown>): void;
 }

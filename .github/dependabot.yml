@@ -1,0 +1,30 @@
+# Dependabot — automated, reviewable dependency + GitHub Actions updates.
+# Grouped + rate-limited so updates are scoped and easy to review; lockfile/action changes are code-owned.
+version: 2
+updates:
+  # GitHub Actions — keep pinned SHAs current (Dependabot updates the SHA and the trailing "# vX" comment).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(actions)"
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # pnpm workspace (Dependabot reads pnpm-lock.yaml via the npm ecosystem). Security updates prioritized.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    versioning-strategy: "increase-if-necessary"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Batch low-risk dev tooling; keep runtime/framework bumps as individual, reviewable PRs.
+      dev-tooling:
+        dependency-type: "development"
+        patterns: ["*"]

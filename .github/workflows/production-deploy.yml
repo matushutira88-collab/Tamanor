@@ -1,0 +1,154 @@
+name: production-deploy
+
+# MANUAL, audited, approval-gated PRODUCTION deploy of an EXACT commit SHA to Vercel. Never triggers on push/PR.
+# Gated behind the GitHub `Production` Environment (protection rules + required reviewers). It builds a prebuilt
+# artifact and deploys it; it does NOT run database migrations, cron calls, or canary writes (those are separate,
+# individually-gated workflows). Secrets are referenced by NAME only and never printed.
+#
+# Human approval: configure the `Production` Environment with required reviewers so this job pauses for approval.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "EXACT 40-char commit SHA to deploy (must exist and be an ancestor of origin/main)"
+        required: true
+        type: string
+      confirmation:
+        description: "Type DEPLOY_APPROVED_PRODUCTION_RELEASE to arm"
+        required: true
+        type: string
+
+# Never allow two production deploys to run at once.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+# Least privilege: this workflow only reads the repo.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: Production
+    timeout-minutes: 20
+    env:
+      # Secret NAMES only — configured on the `Production` Environment; never printed.
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      INPUT_SHA: ${{ inputs.commit_sha }}
+      INPUT_CONFIRM: ${{ inputs.confirmation }}
+    steps:
+      - name: Validate arming inputs (fail-closed)
+        run: |
+          if [ "${INPUT_CONFIRM}" != "DEPLOY_APPROVED_PRODUCTION_RELEASE" ]; then
+            echo "✗ confirmation phrase mismatch"; exit 1; fi
+          if ! printf '%s' "${INPUT_SHA}" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "✗ commit_sha must be exactly 40 lowercase hex chars"; exit 1; fi
+          for n in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            v=$(eval echo \$$n); if [ -z "$v" ]; then echo "✗ missing Environment secret: $n"; exit 1; fi; done
+          echo "✓ inputs valid; required secrets present (values hidden)"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Verify SHA exists and is an ancestor of origin/main (hard-stop on mismatch)
+        run: |
+          git fetch --no-tags origin main
+          if ! git cat-file -e "${INPUT_SHA}^{commit}" 2>/dev/null; then
+            echo "✗ commit ${INPUT_SHA} not found in the repository"; exit 1; fi
+          if ! git merge-base --is-ancestor "${INPUT_SHA}" origin/main; then
+            echo "✗ commit ${INPUT_SHA} is NOT an ancestor of origin/main — refusing to deploy untrusted ref"; exit 1; fi
+          echo "✓ ${INPUT_SHA} exists and is an ancestor of origin/main"
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma client
+        run: pnpm db:generate
+
+      - name: Mandatory gates — typecheck / lint / build / readiness / security
+        run: |
+          pnpm -r typecheck
+          pnpm lint
+          pnpm production-readiness:test
+          pnpm release-provenance:test
+          pnpm release-provenance-gate:test
+          pnpm log-redaction:test
+          pnpm cron-auth:test
+          pnpm -r build
+
+      - name: Vercel build (prebuilt) — arm approved-CI provenance for THIS build only
+        env:
+          APPROVED_CI_RELEASE: "true"
+          APPROVED_CI_COMMIT_SHA: ${{ inputs.commit_sha }}
+          APPROVED_CI_COMMIT_REF: main
+          APPROVED_CI_REPO_SLUG: Tamanor
+        run: |
+          npx vercel@latest pull --yes --environment=production --token="${VERCEL_TOKEN}"
+          npx vercel@latest build --prod --token="${VERCEL_TOKEN}"
+
+      - name: Deploy prebuilt to production
+        id: deploy
+        run: |
+          URL=$(npx vercel@latest deploy --prebuilt --prod --token="${VERCEL_TOKEN}")
+          # URL is the deployment hostname — not a secret; strip scheme just in case.
+          HOST=$(printf '%s' "$URL" | sed -E 's#^https?://##')
+          echo "host=$HOST" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployment is Ready (hard-stop otherwise)
+        run: |
+          HOST="${{ steps.deploy.outputs.host }}"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${HOST}/api/health" || true)
+            if [ "$code" = "200" ]; then echo "✓ deployment healthy"; ok=1; break; fi
+            sleep 6
+          done
+          [ "${ok:-0}" = "1" ] || { echo "✗ deployment did not become Ready/healthy"; exit 1; }
+
+      - name: Write non-secret release attestation (step summary + artifact)
+        if: always()
+        run: |
+          cat > release-attestation.json <<EOF
+          {
+            "repository": "${GITHUB_REPOSITORY}",
+            "commitSha": "${INPUT_SHA}",
+            "ref": "main",
+            "workflowRunId": "${GITHUB_RUN_ID}",
+            "workflowRunAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "actor": "${GITHUB_ACTOR}",
+            "deploymentHost": "${{ steps.deploy.outputs.host }}",
+            "result": "${{ job.status }}"
+          }
+          EOF
+          {
+            echo "### Production deploy attestation"
+            echo '```json'
+            cat release-attestation.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload attestation artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-attestation
+          path: release-attestation.json
+          retention-days: 90
+
+# NOTE: This workflow does NOT natively sign the attestation (no Sigstore/actions attestation configured). The
+# JSON above is a run-scoped, non-secret record only — not a cryptographic provenance attestation. Enabling
+# `actions/attest-build-provenance` is a documented follow-up (see the hardening runbook).

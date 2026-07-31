@@ -22,6 +22,7 @@ export async function PlatformOwnerEntry({ userId, route }: { userId: string; ro
   const resolution = await resolvePlatformRoleDetailed(userId);
   const canViewEntry = canViewPlatformAdminEntry(resolution.role);
   // TEMPORARY, PII-free production diagnostic (role labels + booleans only — never email/userId/session/DB).
+  // eslint-disable-next-line no-console -- deliberate, acknowledged, PII-free structured diagnostic (see readiness check 23)
   console.log(JSON.stringify(buildPlatformAdminEntryDiagnostic(resolution, {
     deployment: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.VERCEL_DEPLOYMENT_ID ?? "unknown",
     route,

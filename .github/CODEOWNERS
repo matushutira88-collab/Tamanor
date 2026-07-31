@@ -1,0 +1,50 @@
+# CODEOWNERS — critical-path review ownership.
+#
+# Only a PROVEN existing owner is used: @matushutira88-collab (the repository owner). No GitHub team is invented.
+# When a security/operations team account exists, replace the owner on the security-critical paths below with
+# that team handle. Ownership only takes effect once "Require review from Code Owners" branch protection is on
+# for `main` (see docs/security/production-security-hardening-v1.md).
+
+# Default owner for everything.
+*                                           @matushutira88-collab
+
+# --- CI/CD, deployment scripts, release provenance ---------------------------------------------------------
+/.github/                                   @matushutira88-collab
+/.github/workflows/                         @matushutira88-collab
+/apps/web/scripts/assert-production-release-provenance.ts   @matushutira88-collab
+/packages/core/src/release-provenance.ts    @matushutira88-collab
+
+# --- Database migrations -----------------------------------------------------------------------------------
+/packages/db/prisma/migrations/             @matushutira88-collab
+/packages/db/prisma/schema.prisma           @matushutira88-collab
+
+# --- Auth / session / authorization --------------------------------------------------------------------------
+/apps/web/src/server/auth.ts                @matushutira88-collab
+/apps/web/src/server/auth-security.ts       @matushutira88-collab
+/apps/web/src/server/session.ts             @matushutira88-collab
+/apps/web/src/server/session-core.ts        @matushutira88-collab
+/apps/web/src/server/csrf.ts                @matushutira88-collab
+/apps/web/src/middleware.ts                 @matushutira88-collab
+/apps/web/src/lib/cron-auth.ts              @matushutira88-collab
+/packages/db/src/platform-repo.ts           @matushutira88-collab
+/packages/db/src/platform-admin.ts          @matushutira88-collab
+
+# --- Child-safety core + partner signatures/ingestion -------------------------------------------------------
+/packages/core/src/child-safety-signal.ts   @matushutira88-collab
+/packages/core/src/child-safety-family.ts    @matushutira88-collab
+/packages/core/src/child-safety-integration.ts @matushutira88-collab
+/packages/core/src/child-safety-policy.ts    @matushutira88-collab
+/packages/child-safety-sdk/                  @matushutira88-collab
+/apps/web/src/app/api/v1/child-safety/       @matushutira88-collab
+
+# --- Cron / scheduler --------------------------------------------------------------------------------------
+/apps/web/src/app/api/internal/             @matushutira88-collab
+/apps/web/vercel.json                       @matushutira88-collab
+/packages/db/src/internal/                  @matushutira88-collab
+
+# --- Observability / logging / redaction -------------------------------------------------------------------
+/packages/core/src/observability.ts         @matushutira88-collab
+
+# --- Security documentation --------------------------------------------------------------------------------
+/docs/security/                             @matushutira88-collab
+/SECURITY.md                                @matushutira88-collab
