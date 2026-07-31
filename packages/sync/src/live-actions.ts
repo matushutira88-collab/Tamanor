@@ -1,4 +1,4 @@
-import { withTenantDb, ActorKind, decryptToken } from "@guardora/db";
+import { withTenantDb, ActorKind, resolveMetaAccessTokenSafe } from "@guardora/db";
 import { getLiveActionsConfig } from "@guardora/config";
 import {
   hideComment,
@@ -525,7 +525,8 @@ export async function getCommentLifecycle(
 ): Promise<{ status: CommentLifecycle }> {
   if (!input.commentId) return { status: "unknown" };
   const acct = await withTenantDb(input.tenantId, (db) => db.connectedAccount.findFirst({ where: { id: input.accountId }, select: { accessToken: true, longLivedToken: true } }));
-  const token = decryptToken(acct?.longLivedToken ?? acct?.accessToken);
+  // VAULT-FIRST (fail-closed): vault credential, else legacy column; unusable → null (status stays unknown).
+  const token = await resolveMetaAccessTokenSafe({ id: input.accountId, tenantId: input.tenantId, longLivedToken: acct?.longLivedToken ?? null, accessToken: acct?.accessToken ?? null });
   const transport = opts?.transport ?? new GraphFacebookHideTransport();
   if (!token || !transport.getCommentState) return { status: "unknown" };
   const st = await transport.getCommentState(input.commentId, token);

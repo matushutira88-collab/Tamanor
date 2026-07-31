@@ -14,7 +14,7 @@
  * in-flight sync lease is invalidated so a stale sync completion writes zero rows.
  * Tokens are never logged or returned.
  */
-import { withTenantDb, decryptToken, type TenantTx } from "@guardora/db";
+import { withTenantDb, resolveMetaAccessTokenSafe, type TenantTx } from "@guardora/db";
 import { revokeProviderCredentials, type RevokeResult, type RevokeTransport } from "./provider-revoke";
 
 export type DisconnectStatus = "disconnected_local" | "revoked_provider" | "revoke_failed" | "revoke_unsupported";
@@ -155,12 +155,10 @@ export async function disconnectAccount(
   // ciphertext must NOT reach the provider — treat as no usable token (revoke reports
   // already_invalid) while local cluster removal still proceeds. The whole cluster shares
   // one Page token, so a single revoke attempt covers it.
-  let token: string | null = null;
-  try {
-    token = decryptToken(acct.longLivedToken ?? acct.accessToken) ?? null;
-  } catch {
-    token = null;
-  }
+  // VAULT-FIRST (fail-closed): resolve the usable Page token to revoke — vault, else legacy column; a
+  // corrupt/revoked vault row (or a malformed ciphertext) resolves to null → revoke reports already_invalid while
+  // local cluster removal still proceeds. Never logged, never returned.
+  const token = await resolveMetaAccessTokenSafe({ id: acct.id, tenantId, longLivedToken: acct.longLivedToken, accessToken: acct.accessToken });
 
   // Phase 2 — provider HTTP (NO open DB transaction). Best-effort. Meta per-account
   // revocation is unsupported (Meta exposes no single-Page/IG token revoke endpoint) → the

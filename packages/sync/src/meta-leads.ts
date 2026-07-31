@@ -15,7 +15,7 @@
 import { createHash } from "node:crypto";
 import {
   ingestBusinessContact, recordBusinessIngestionEvent, resolveMetaAccessToken,
-  findMetaLeadAccountsByPageIds, findBusinessConnectionForAccount, VaultDecryptError,
+  findMetaLeadAccountsByPageIds, findBusinessConnectionForAccount, VaultDecryptError, VaultCredentialUnusableError,
   type BusinessContactInput,
 } from "@guardora/db";
 import { MetaGraphClient } from "@guardora/connectors";
@@ -169,8 +169,9 @@ export async function ingestMetaLeadgenChanges(changes: MetaLeadgenChange[], opt
       if (outcome.result === BusinessIngestionResult.Accepted) { res.ingested++; emitOpsEvent("business.meta_lead_ingested", { operation: "meta_leadgen", result: "accepted" }); }
       else { res.duplicates++; emitOpsEvent("business.meta_lead_duplicate", { operation: "meta_leadgen", result: "duplicate" }); }
     } catch (e) {
-      // A corrupt vault row (VaultDecryptError) or any unexpected error → reject this lead safely (never plaintext).
-      const errorCode = e instanceof VaultDecryptError ? "vault_decrypt_failed" : "error";
+      // A corrupt/revoked/expired vault row → reject this lead safely (never plaintext, never a legacy fetch).
+      const errorCode = e instanceof VaultDecryptError ? "vault_decrypt_failed"
+        : e instanceof VaultCredentialUnusableError ? `vault_${e.reason}` : "error";
       await recordBusinessIngestionEvent(account.tenantId, { provider: BusinessProvider.Meta, providerEventId: change.leadgenId, payloadHash, signatureVerified: true, result: BusinessIngestionResult.Rejected, errorCode, receivedAt: new Date() });
       emitOpsEvent("business.meta_lead_rejected", { operation: "meta_leadgen", reason: errorCode });
       res.rejected++;

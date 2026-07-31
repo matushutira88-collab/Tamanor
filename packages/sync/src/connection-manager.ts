@@ -1,4 +1,4 @@
-import { withTenantDb, decryptToken, findActiveFacebookAccounts } from "@guardora/db";
+import { withTenantDb, resolveMetaAccessTokenSafe, findActiveFacebookAccounts } from "@guardora/db";
 import { GraphFacebookHideTransport, type FacebookHideTransport, type PageTokenState } from "@guardora/connectors";
 import { FACEBOOK_HIDE_PERMISSION } from "@guardora/ai";
 
@@ -55,7 +55,9 @@ export async function checkAccountToken(
     return { accountId, connectionStatus: "disconnected", tokenHealth: "unknown", result: "not_applicable" };
   }
 
-  const token = decryptToken(acct.longLivedToken ?? acct.accessToken);
+  // VAULT-FIRST (fail-closed): resolves the encrypted vault credential, falling back to the legacy column only
+  // when no vault row exists; a corrupt/revoked vault row degrades to no-token → needs_reconnect below.
+  const token = await resolveMetaAccessTokenSafe(acct);
   if (!token) {
     await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({ where: { id: accountId, status: { not: "disconnected" as never } }, data: { connectionStatus: "needs_reconnect", tokenHealth: "invalid", health: "error", lastError: "no_token", lastErrorAt: now, lastTokenCheckAt: now, lastTokenCheckResult: "no_token", requiresReconnectReason: "no_token" } }));
     return { accountId, connectionStatus: "needs_reconnect", tokenHealth: "invalid", result: "no_token" };

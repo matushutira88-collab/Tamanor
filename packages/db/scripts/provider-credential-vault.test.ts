@@ -12,9 +12,9 @@ process.env.PROVIDER_VAULT_KEK = createHash("sha256").update("vault-db-test-kek"
 
 import {
   systemDb, encryptToken,
-  storeProviderCredential, resolveProviderCredential, revokeProviderCredential, getProviderCredentialStatus,
-  VaultDecryptError, ProviderCredentialPurpose,
-  resolveMetaAccessToken, writeMetaCredentialToVault, hasVaultCredential,
+  storeProviderCredential, resolveProviderCredential, resolveProviderCredentialOutcome, revokeProviderCredential, getProviderCredentialStatus,
+  VaultDecryptError, VaultCredentialUnusableError, ProviderCredentialPurpose,
+  resolveMetaAccessToken, resolveMetaAccessTokenSafe, writeMetaCredentialToVault, hasVaultCredential,
 } from "../src/index";
 import { BusinessProvider } from "@prisma/client";
 
@@ -111,6 +111,32 @@ async function main() {
   check("link: cross-tenant account rejected by trigger", await throwsAny(() => systemDb.businessPlatformConnection.create({ data: { tenantId: B.tenantId, provider: BusinessProvider.meta, connectedAccountId: A.accountId } })));
   check("link: non-meta provider with an account link rejected", await throwsAny(() => systemDb.businessPlatformConnection.create({ data: { tenantId: A.tenantId, provider: BusinessProvider.google, connectedAccountId: A.accountId } })));
   check("link: a second connection linking the SAME account rejected (unique)", await throwsAny(() => systemDb.businessPlatformConnection.create({ data: { tenantId: A.tenantId, provider: BusinessProvider.tiktok, connectedAccountId: A.accountId } })));
+
+  // ---- resolver outcome states + REVOKED fail-closed (no legacy fallback past a bad vault row) --------------
+  const C = await seed();
+  const qC = { tenantId: C.tenantId, provider: BusinessProvider.meta, purpose: ProviderCredentialPurpose.long_lived_token, connection: { connectedAccountId: C.accountId } };
+  check("outcome: absent when no row ever", (await resolveProviderCredentialOutcome(qC)).state === "absent");
+  await storeProviderCredential({ ...qC, secret: "C-TOKEN" });
+  const oPresent = await resolveProviderCredentialOutcome(qC);
+  check("outcome: present + plaintext when active", oPresent.state === "present" && oPresent.state === "present" && oPresent.plaintext === "C-TOKEN");
+  // An existing account that also has a LEGACY column value, then its vault credential is REVOKED.
+  const cAcctLegacy = { id: C.accountId, tenantId: C.tenantId, longLivedToken: encryptToken("C-LEGACY"), accessToken: null };
+  check("resolver: active vault present → source vault (legacy ignored)", (await resolveMetaAccessToken(cAcctLegacy))?.source === "vault");
+  await revokeProviderCredential(qC);
+  check("outcome: revoked when the only row is revoked", (await resolveProviderCredentialOutcome(qC)).state === "revoked");
+  // FAIL-CLOSED: a revoked vault row must NOT fall back to the legacy column.
+  let threwRevoked = false;
+  try { await resolveMetaAccessToken(cAcctLegacy); } catch (e) { threwRevoked = e instanceof VaultCredentialUnusableError && e.reason === "revoked"; }
+  check("resolver: REVOKED vault row → fail-closed (VaultCredentialUnusableError, no legacy fallback)", threwRevoked);
+  check("resolveMetaAccessTokenSafe: revoked → null (never plaintext, never throws)", (await resolveMetaAccessTokenSafe(cAcctLegacy)) === null);
+
+  // ---- existing account with ONLY a legacy credential (no vault row) resolves via fallback ------------------
+  const D = await seed();
+  const dLegacy = { id: D.accountId, tenantId: D.tenantId, longLivedToken: encryptToken("D-LEGACY-ONLY"), accessToken: null };
+  check("legacy-only account: outcome absent (no vault row)", (await resolveProviderCredentialOutcome({ tenantId: D.tenantId, provider: BusinessProvider.meta, purpose: ProviderCredentialPurpose.long_lived_token, connection: { connectedAccountId: D.accountId } })).state === "absent");
+  check("legacy-only account: resolver falls back to legacy column (source legacy)", (await resolveMetaAccessToken(dLegacy))?.source === "legacy");
+  check("legacy-only account: safe resolver returns the legacy token", (await resolveMetaAccessTokenSafe(dLegacy)) === "D-LEGACY-ONLY");
+  await systemDb.tenant.deleteMany({ where: { id: { in: [C.tenantId, D.tenantId] } } });
 
   // ---- cleanup (cascade deletes vault rows via FK) ---------------------------------------------------------
   const beforeDel = await systemDb.providerCredential.count({ where: { tenantId: A.tenantId } });

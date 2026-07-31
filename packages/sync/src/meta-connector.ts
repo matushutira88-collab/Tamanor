@@ -12,9 +12,9 @@
  * A provider failure is classified as transient and never corrupts local state.
  */
 import {
-  withTenantDb, decryptToken, encryptToken, metaConnectedAccountFields, ActorKind,
+  withTenantDb, encryptToken, metaConnectedAccountFields, ActorKind,
   getTenantEntitlements, acquireBrandPlatformLock, assertBrandPlatformCapacity,
-  writeMetaCredentialToVault,
+  writeMetaCredentialToVault, resolveMetaAccessToken, resolveMetaAccessTokenSafe,
 } from "@guardora/db";
 import { maxPerBrandForPlatform, emitOpsEvent } from "@guardora/core";
 import {
@@ -63,10 +63,9 @@ export interface MetaLinkInput {
   connectIg: boolean;
   scopes: string[];
   grantedPermissions: string[];
-  /** Already-encrypted page token (via token-crypto) — the LEGACY column write (staged cutover keeps this). */
-  encryptedToken: string;
-  /** PLAINTEXT page token — used ONLY to seal the credential into the encrypted vault (never stored plaintext). */
-  pageAccessTokenPlaintext?: string;
+  /** PLAINTEXT page token — sealed ONLY into the encrypted ProviderCredential vault. NEVER written to a legacy
+   *  ConnectedAccount token column. Required: a connect with no credential to persist is not a valid connect. */
+  pageAccessToken: string;
   tokenType: string | null;
   tokenExpiresAt: Date | null;
   /** DEPRECATED (V1.59): the legacy bundle connection-limit. IGNORED — the monitored-account limit is
@@ -82,6 +81,14 @@ export interface MetaLinkResult {
   igReconnected: boolean;
 }
 
+/** Generic, secret-free error raised when the vault credential could not be persisted/verified for a connect. */
+export class MetaCredentialPersistError extends Error {
+  constructor() {
+    super("meta_credential_persist_failed");
+    this.name = "MetaCredentialPersistError";
+  }
+}
+
 /**
  * Persist a discovered Page (+ optionally its linked IG account) as canonical
  * ConnectedAccounts. Idempotent upsert → a reconnect refreshes tokens/scopes on the
@@ -95,7 +102,6 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
     igBusinessId: page.igBusinessId ?? null,
     scopes: input.scopes,
     grantedPermissions: input.grantedPermissions,
-    encryptedToken: input.encryptedToken,
     tokenType: input.tokenType,
     tokenExpiresAt: input.tokenExpiresAt,
   });
@@ -165,27 +171,42 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
     return { pageAccountId: pageAcc.id, igAccountId, pageReconnected: Boolean(existingPage), igReconnected };
   });
 
-  // BUSINESS-VAULT-V1 — STAGED CUTOVER (dual-write). AFTER the tenant tx commits, seal the page token into the
-  // owner-only encrypted vault for the Page (and its IG child, which uses the same page token). This is ADDITIVE:
-  // the legacy encrypted columns are still written above (so every existing read path keeps working unchanged),
-  // while the vault becomes the canonical, envelope-encrypted store that the resolver prefers. Best-effort: a
-  // vault-key-not-configured dev machine (or a transient failure) must NEVER break a real connect — the resolver
-  // falls back to the legacy column. Production surfaces the failure via an ops event (never a token in the log).
-  if (input.pageAccessTokenPlaintext) {
-    const targets = [result.pageAccountId, result.igAccountId].filter((id): id is string => Boolean(id));
-    for (const accountId of targets) {
-      try {
-        await writeMetaCredentialToVault({
-          account: { id: accountId, tenantId },
-          token: input.pageAccessTokenPlaintext,
-          tokenType: input.tokenType,
-          expiresAt: input.tokenExpiresAt,
-          scopes: input.scopes,
-        });
-      } catch {
-        emitOpsEvent("connector.vault_write_failed", { operation: "meta_connect" });
-      }
+  // BUSINESS-VAULT-V1 — VAULT-ONLY credential persistence. The token was NOT written to any legacy column above.
+  // Seal it into the owner-only encrypted vault for the Page (and its IG child, which uses the same page token),
+  // then VERIFY it decrypts back to the exact plaintext. Fail-closed: on any write/verify failure we NEVER write
+  // plaintext and NEVER leave a NEW account "active" without a usable credential — such accounts are downgraded to
+  // needs_reconnect and a generic (secret-free) error is raised for the caller to surface. Prior valid state of a
+  // RECONNECT is preserved (its existing vault credential is untouched unless a fresh one verifiably replaces it).
+  const page_new = !result.pageReconnected;
+  const ig_new = result.igAccountId ? !result.igReconnected : false;
+  const targets: Array<{ id: string; isNew: boolean }> = [
+    { id: result.pageAccountId, isNew: page_new },
+    ...(result.igAccountId ? [{ id: result.igAccountId, isNew: ig_new }] : []),
+  ];
+  try {
+    for (const t of targets) {
+      await writeMetaCredentialToVault({
+        account: { id: t.id, tenantId },
+        token: input.pageAccessToken,
+        tokenType: input.tokenType,
+        expiresAt: input.tokenExpiresAt,
+        scopes: input.scopes,
+      });
+      const verified = await resolveMetaAccessToken({ id: t.id, tenantId, longLivedToken: null, accessToken: null });
+      if (verified?.token !== input.pageAccessToken) throw new Error("vault_verify_failed");
     }
+  } catch {
+    // Fail-closed. Downgrade only the accounts CREATED by this call (never leave a tokenless "active" new account);
+    // a reconnect keeps its prior state. No plaintext is ever written. Emit a secret-free ops signal + raise generic.
+    const newIds = targets.filter((t) => t.isNew).map((t) => t.id);
+    if (newIds.length) {
+      await withTenantDb(tenantId, (db) => db.connectedAccount.updateMany({
+        where: { id: { in: newIds } },
+        data: { connectionStatus: "needs_reconnect", tokenHealth: "invalid", requiresReconnectReason: "credential_persist_failed" },
+      })).catch(() => { /* best-effort downgrade; the generic error below is the primary signal */ });
+    }
+    emitOpsEvent("connector.vault_write_failed", { operation: "meta_connect" });
+    throw new MetaCredentialPersistError();
   }
   return result;
 }
@@ -216,7 +237,7 @@ export async function syncMetaAccountState(
     return { accountId, platform: acct?.platform ?? "unknown", status: "not_applicable", connectionStatus: acct?.connectionStatus ?? "disconnected", tokenHealth: acct?.tokenHealth ?? "unknown", changed: false };
   }
   const platform = acct.platform;
-  const token = decryptToken(acct.longLivedToken ?? acct.accessToken) ?? null;
+  const token = await resolveMetaAccessTokenSafe(acct);
 
   const finish = async (
     status: MetaAccountStatus,

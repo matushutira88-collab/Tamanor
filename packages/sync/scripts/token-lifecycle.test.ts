@@ -105,7 +105,7 @@ async function run() {
     check("3) needsReconnect + failed revalidation → blocked, no hide POST", rNr.status === "blocked" && rNr.reason === "reconnect_required" && tNr.calls.length === 0, `${rNr.status}/${rNr.reason}`);
 
     // 6) reconnect clears token_expired (metaConnectedAccountFields resets health + lastError).
-    const fields = metaConnectedAccountFields({ externalName: "Konfigurátor", pageId: "TOK_PAGE", igBusinessId: null, scopes: [], grantedPermissions: ["pages_manage_engagement"], encryptedToken: "newtoken", tokenType: "page", tokenExpiresAt: null });
+    const fields = metaConnectedAccountFields({ externalName: "Konfigurátor", pageId: "TOK_PAGE", igBusinessId: null, scopes: [], grantedPermissions: ["pages_manage_engagement"], tokenType: "page", tokenExpiresAt: null });
     check("6) reconnect clears token_expired (health healthy, lastError null)", fields.health === "healthy" && fields.lastError === null && fields.lastErrorAt === null);
 
     // 7) no token leak in any execution row.

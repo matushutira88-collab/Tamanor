@@ -9,7 +9,12 @@
  *
  * Run: pnpm meta-connector:test
  */
-import { systemDb, withTenant, encryptToken, findMetaAccountsByExternalIds } from "@guardora/db";
+import { createHash } from "node:crypto";
+// VAULT-ONLY: linkMetaAssets now seals the page token into the encrypted ProviderCredential vault. Set a
+// deterministic vault key BEFORE importing so the connect path can persist + verify the credential.
+process.env.PROVIDER_VAULT_KEK = createHash("sha256").update("meta-connector-test-kek").digest("base64");
+
+import { systemDb, withTenant, findMetaAccountsByExternalIds } from "@guardora/db";
 import { MockMetaConnectorTransport, type MetaDiscoveredPage } from "../../connectors/src/index";
 import { linkMetaAssets, syncMetaAccountState } from "../../sync/src/index";
 
@@ -36,7 +41,7 @@ async function run() {
     tenantId, brandId, page: p, connectIg,
     scopes: ["pages_manage_engagement", "pages_read_engagement", "instagram_basic"],
     grantedPermissions: ["pages_manage_engagement"],
-    encryptedToken: encryptToken(p.pageAccessToken), tokenType: "bearer", tokenExpiresAt: null,
+    pageAccessToken: p.pageAccessToken, tokenType: "bearer", tokenExpiresAt: null,
   });
 
   try {

@@ -19,7 +19,7 @@ import {
   SyncRunStatus,
   ConnectorStatus,
   ContentKind,
-  decryptToken,
+  resolveMetaAccessTokenSafe,
   findMetaAccountsByExternalIds,
   listUnprocessedMetaWebhooks,
   markWebhookProcessed,
@@ -558,7 +558,8 @@ async function fetchContent(
       "token_expired",
     );
   }
-  const token = decryptToken(account.longLivedToken ?? account.accessToken);
+  // VAULT-FIRST (fail-closed): a corrupt/revoked vault row resolves to null → reconnect required (never plaintext).
+  const token = await resolveMetaAccessTokenSafe(account);
   if (!token) {
     throw new ReconnectRequiredError(
       "No usable access token is stored — reconnect required.",
@@ -927,6 +928,8 @@ async function persistNewItem(
       const safety = await loadProductionSafetyContext({
         tenantId: account.tenantId, brandId: account.brandId, connectedAccountId: account.id, category: decision.matchedCategory,
       });
+      // VAULT-FIRST (fail-closed): resolve the usable page token from the vault (legacy fallback), null if unusable.
+      const pageToken = await resolveMetaAccessTokenSafe(account);
       const res = await attemptFacebookHide({
         tenantId: account.tenantId, brandId: account.brandId, itemId: repItem.id,
         queueItemId: queued.id, policyId: matchedPolicy.id,
@@ -936,7 +939,7 @@ async function persistNewItem(
         mode: matchedPolicy.mode, trigger: "autonomous",
         account: {
           status: account.status as unknown as string, health: account.health as unknown as string,
-          grantedPermissions: account.grantedPermissions, accessToken: decryptToken(account.longLivedToken ?? account.accessToken) ?? null,
+          grantedPermissions: account.grantedPermissions, accessToken: pageToken,
           pageId: account.pageId, externalId: account.externalId,
           tokenExpiresAt: account.tokenExpiresAt, needsReconnect: account.connectionStatus === "needs_reconnect" || account.tokenHealth === "expired" || account.tokenHealth === "invalid" || account.tokenHealth === "revoked" || account.lastError === "token_expired",
           connectionStatus: account.connectionStatus, tokenHealth: account.tokenHealth,

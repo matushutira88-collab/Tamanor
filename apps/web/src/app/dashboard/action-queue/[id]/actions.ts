@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { attemptFacebookHide, findPreflightDryRun } from "@guardora/sync";
-import { decryptToken, withTenant, tenantAllowsOperations } from "@guardora/db";
+import { resolveMetaAccessTokenSafe, withTenant, tenantAllowsOperations } from "@guardora/db";
 import { emitOpsEvent } from "@guardora/core";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
@@ -44,10 +44,9 @@ async function runHideForQueueItem(
   const acct = item?.contentItem.connectedAccount;
   if (!acct) return { note: "Approved. No live action was executed (live execution is disabled).", kind: "ok" };
 
-  // CRITICAL: decrypt the stored Page token before the Graph call. The DB value is
-  // tagged/encrypted (e.g. "plain:v1:…"); sending it raw makes Graph reject it as an
-  // invalid OAuth token (code 190) → false token_expired / reconnect_required.
-  const pageToken = decryptToken(acct.longLivedToken ?? acct.accessToken) ?? null;
+  // VAULT-FIRST (fail-closed): resolve the usable Page token from the encrypted vault (legacy column fallback);
+  // a corrupt/revoked vault row resolves to null → no live Graph call (never sends a raw/legacy value).
+  const pageToken = await resolveMetaAccessTokenSafe({ id: acct.id, tenantId: session.tenantId, longLivedToken: acct.longLivedToken, accessToken: acct.accessToken });
 
   // Phase 2 — provider HTTP (NO open transaction). attemptFacebookHide manages its
   // own short tenant transactions for the execution record + audit.

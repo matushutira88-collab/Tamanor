@@ -5,7 +5,10 @@
  * activation counts FB=1 and IG=1 (FB+IG = TWO) via the atomic enableAccountMonitoringWithinLimit.
  * Run: pnpm meta-finalize:test
  */
-import { systemDb, withTenant, encryptToken, enableAccountMonitoringWithinLimit, countMonitoredAccounts } from "@guardora/db";
+import { createHash } from "node:crypto";
+// VAULT-ONLY: linkMetaAssets seals the page token into the encrypted vault — set a deterministic key first.
+process.env.PROVIDER_VAULT_KEK = createHash("sha256").update("meta-finalize-test-kek").digest("base64");
+import { systemDb, withTenant, enableAccountMonitoringWithinLimit, countMonitoredAccounts } from "@guardora/db";
 import { linkMetaAssets } from "../../sync/src/index";
 
 let failures = 0;
@@ -27,7 +30,7 @@ async function run() {
   const b = await systemDb.brand.create({ data: { tenantId: t.id, name: "MfB" } });
   const link = (page: never, connectIg: boolean) => linkMetaAssets({
     tenantId: t.id, brandId: b.id, page, connectIg, scopes: [], grantedPermissions: [],
-    encryptedToken: encryptToken("fake-token"), tokenType: null, tokenExpiresAt: null,
+    pageAccessToken: "fake-token", tokenType: null, tokenExpiresAt: null,
   });
 
   try {
@@ -47,7 +50,7 @@ async function run() {
     const b3 = await systemDb.brand.create({ data: { tenantId: t.id, name: "MfB3" } });
     const linkTo = (brandId: string, page: never, connectIg: boolean) => linkMetaAssets({
       tenantId: t.id, brandId, page, connectIg, scopes: [], grantedPermissions: [],
-      encryptedToken: encryptToken("fake-token"), tokenType: null, tokenExpiresAt: null,
+      pageAccessToken: "fake-token", tokenType: null, tokenExpiresAt: null,
     });
     let connectThrew = false;
     try { await linkTo(b2.id, mkPage("b", sfx, true), true); await linkTo(b3.id, mkPage("c", sfx, true), true); } catch { connectThrew = true; }

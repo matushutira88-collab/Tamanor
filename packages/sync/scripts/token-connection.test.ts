@@ -88,7 +88,7 @@ async function run() {
     check("2) watchdog marks invalid token needs_reconnect", r2.connectionStatus === "needs_reconnect" && r2.tokenHealth === "invalid" && a2?.connectionStatus === "needs_reconnect" && a2?.lastError === "token_invalid", JSON.stringify(r2));
 
     // 3) reconnect stores connected + then validates page object → tokenHealth ok.
-    const fields = metaConnectedAccountFields({ externalName: "Konfigurátor", pageId: "TOK_PAGE", igBusinessId: null, scopes: [], grantedPermissions: ["pages_manage_engagement"], encryptedToken: "x", tokenType: "page", tokenExpiresAt: null });
+    const fields = metaConnectedAccountFields({ externalName: "Konfigurátor", pageId: "TOK_PAGE", igBusinessId: null, scopes: [], grantedPermissions: ["pages_manage_engagement"], tokenType: "page", tokenExpiresAt: null });
     check("3) reconnect resets connectionStatus=connected", fields.connectionStatus === "connected" && fields.tokenHealth === "unknown");
     await prisma.connectedAccount.update({ where: { id: acct.id }, data: fields });
     const r3 = await checkAccountToken(T, acct.id, { transport: okT });
@@ -183,9 +183,9 @@ async function run() {
     const aq = readSrc("apps/web/src/app/dashboard/action-queue/[id]/page.tsx");
     check("UI2) page self-heals via checkAccountToken and passes it to predict", aq.includes("checkAccountToken") && aq.includes("connectionStatus: effConn"));
     const actionsSrc = readSrc("apps/web/src/app/dashboard/action-queue/[id]/actions.ts");
-    check("ENC3) web hide action decrypts the token before the Graph call", /decryptToken\(acct\.longLivedToken \?\? acct\.accessToken\)/.test(actionsSrc) && actionsSrc.includes("accessToken: pageToken"));
+    check("ENC3) web hide action resolves the token VAULT-FIRST before the Graph call", /resolveMetaAccessTokenSafe\(/.test(actionsSrc) && actionsSrc.includes("accessToken: pageToken"));
     const syncSrc = readSrc("packages/sync/src/index.ts");
-    check("ENC4) autonomous path decrypts the token before the Graph call", /accessToken: decryptToken\(account\.longLivedToken \?\? account\.accessToken\)/.test(syncSrc));
+    check("ENC4) autonomous path resolves the token VAULT-FIRST before the Graph call", /resolveMetaAccessTokenSafe\(account\)/.test(syncSrc) && syncSrc.includes("accessToken: pageToken"));
     check("9) can_hide=false hides the live button", aq.includes("canHideFalse") && /liveMode = decision\.primary === "live_hide" && !canHideFalse/.test(aq));
     const diag = readSrc("packages/sync/scripts/facebook-token-diagnose.ts");
     check("11) page token diagnosis does not rely on /me/accounts", diag.includes("getPageTokenState") && diag.includes("page_token_ok") && /\/me\/accounts.*secondary|secondary.*\/me\/accounts|user token check/i.test(diag));

@@ -33,13 +33,13 @@ async function main() {
     igBusinessId: null,
     scopes: ["public_profile", "email", "pages_show_list", "pages_read_engagement"],
     grantedPermissions: ["public_profile", "email", "pages_show_list", "pages_read_engagement"],
-    encryptedToken: "aesgcm:v1:x",
     tokenType: "bearer",
     tokenExpiresAt: new Date(Date.now() + 60 * 86_400_000),
   });
   assert(Array.isArray(fields.scopes) && fields.scopes.includes("pages_read_engagement"), "builder writes scopes");
   assert(Array.isArray(fields.grantedPermissions) && fields.grantedPermissions.includes("pages_read_engagement"), "builder writes grantedPermissions");
-  assert(Boolean(fields.accessToken) && Boolean(fields.longLivedToken), "builder writes both token fields");
+  // VAULT-ONLY: the shared builder must NOT carry any legacy token column (the credential lives only in the vault).
+  assert(!("accessToken" in fields) && !("longLivedToken" in fields) && !("refreshToken" in fields), "builder writes NO legacy token column (vault-only)");
   assert(fields.tokenType === "bearer" && fields.tokenExpiresAt != null, "builder writes tokenType + expiry");
   assert(fields.health === "healthy" && fields.nextRetryAt === null && fields.syncAttempts === 0, "builder resets health/backoff");
 
@@ -77,7 +77,6 @@ async function main() {
       igBusinessId: null,
       scopes: ["public_profile", "email", "pages_show_list", "pages_read_engagement"],
       grantedPermissions: ["public_profile", "email", "pages_show_list", "pages_read_engagement"],
-      encryptedToken: "aesgcm:v1:NEW",
       tokenType: "bearer",
       tokenExpiresAt: new Date(Date.now() + 60 * 86_400_000),
     });
@@ -92,7 +91,9 @@ async function main() {
     const acct = after[0]!;
     assert(acct.scopes.includes("pages_read_engagement"), "reconnect overwrote scopes with pages_read_engagement");
     assert(acct.grantedPermissions.includes("pages_read_engagement"), "reconnect overwrote grantedPermissions");
-    assert(acct.accessToken === "aesgcm:v1:NEW" && acct.longLivedToken === "aesgcm:v1:NEW", "reconnect overwrote tokens");
+    // VAULT-ONLY: the builder-based reconnect must NOT touch the legacy token columns (the fixture-seeded OLD value
+    // is left untouched — the real credential is rotated in the vault by linkMetaAssets, not here).
+    assert(acct.accessToken === "aesgcm:v1:OLD" && acct.longLivedToken === "aesgcm:v1:OLD", "reconnect does NOT write legacy token columns");
     assert(acct.health === "healthy" && acct.nextRetryAt === null, "reconnect reset health/backoff");
     assert(acct.mode === "read_only", "mode stayed read_only");
   } finally {

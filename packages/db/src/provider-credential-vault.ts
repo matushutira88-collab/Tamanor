@@ -30,6 +30,21 @@ export class VaultDecryptError extends Error {
   }
 }
 
+/** Thrown when a vault row EXISTS but is unusable (revoked, or policy-disallowed expired). Fail-closed: the caller
+ *  MUST NOT fall back to any legacy plaintext — the credential was explicitly retired/expired, not merely absent. */
+export class VaultCredentialUnusableError extends Error {
+  constructor(readonly reason: "revoked" | "expired") {
+    super(`vault_credential_${reason}`);
+    this.name = "VaultCredentialUnusableError";
+  }
+}
+
+/** The outcome of probing the vault for a credential — distinguishes "no row" from "row exists but unusable". */
+export type CredentialOutcome =
+  | { state: "present"; plaintext: string; expired: boolean }
+  | { state: "revoked" }
+  | { state: "absent" };
+
 /** Identifies the connection a credential belongs to — exactly one of the two is set. */
 export type CredentialConnection =
   | { connectedAccountId: string; businessConnectionId?: undefined }
@@ -145,6 +160,32 @@ export async function resolveProviderCredential(q: CredentialQuery, key?: Provid
   } catch {
     throw new VaultDecryptError(row.id);
   }
+}
+
+/**
+ * Probe the vault and return a precise outcome that distinguishes an ABSENT credential (no row ever) from one that
+ * EXISTS but is unusable (revoked). An active row is decrypted (fail-closed → `VaultDecryptError` on corruption)
+ * and its expiry is reported. This is what lets the canonical resolver fail closed on a revoked/expired row rather
+ * than silently falling back to a legacy plaintext column.
+ */
+export async function resolveProviderCredentialOutcome(q: CredentialQuery, key?: ProviderCredentialKeyProvider, now: Date = new Date()): Promise<CredentialOutcome> {
+  const active = await systemDb.providerCredential.findFirst({ where: activeWhere(q) });
+  if (active) {
+    let plaintext: string;
+    try {
+      plaintext = await decryptCredential(
+        { ciphertext: active.ciphertext, iv: active.iv, authTag: active.authTag, wrappedDataKey: active.wrappedDataKey, keyProvider: active.keyProvider, keyVersion: active.keyVersion, formatVersion: active.formatVersion, fingerprint: active.fingerprint },
+        aadFor(q), keyProvider(key),
+      );
+    } catch {
+      throw new VaultDecryptError(active.id);
+    }
+    return { state: "present", plaintext, expired: Boolean(active.expiresAt && active.expiresAt.getTime() < now.getTime()) };
+  }
+  // No ACTIVE row — is there a revoked one? (A revoked credential must fail closed, never fall back.)
+  const conn = q.connection.connectedAccountId ? { connectedAccountId: q.connection.connectedAccountId } : { businessConnectionId: q.connection.businessConnectionId };
+  const revoked = await systemDb.providerCredential.findFirst({ where: { tenantId: q.tenantId, provider: q.provider, purpose: q.purpose, revokedAt: { not: null }, ...conn }, select: { id: true } });
+  return revoked ? { state: "revoked" } : { state: "absent" };
 }
 
 /** Non-secret status of the active credential (for truthful UI + audit). Never decrypts. */

@@ -81,12 +81,13 @@ async function run() {
       (await revokeProviderCredentials({ platform: "facebook_page", accessToken: null, externalAccountId: "x" })) === "already_invalid"
       && (await revokeProviderCredentials({ platform: "tiktok", accessToken: "t", externalAccountId: "x" })) === "unsupported");
 
-    // ===== 30) rollbackExecution decrypts before the provider call (bug fix, source). =====
+    // ===== 30) rollbackExecution resolves the token VAULT-FIRST before the provider call (no raw envelope). =====
     const rollbackSrc = readSrc("apps/web/src/app/dashboard/safety-actions.ts");
-    check("30) rollbackExecution decrypts token before rollbackHide (no raw envelope)",
-      rollbackSrc.includes("decryptToken(acct?.longLivedToken ?? acct?.accessToken)")
-      && rollbackSrc.includes("accessToken: pageToken")
-      && !rollbackSrc.includes("accessToken: acct?.accessToken ?? null"));
+    check("30) rollbackExecution resolves token vault-first before rollbackHide (no raw envelope)",
+      rollbackSrc.includes("resolveMetaAccessTokenSafe(")
+      // the provider (rollbackHide) receives the RESOLVED token, never a raw column/envelope.
+      && /account:\s*\{[^}]*accessToken:\s*pageToken/.test(rollbackSrc)
+      && !/account:\s*\{[^}]*accessToken:\s*acct[?.]/.test(rollbackSrc));
   } finally {
     await systemDb.connectedAccount.deleteMany({ where: { tenantId: t.id } });
     await systemDb.brand.deleteMany({ where: { tenantId: t.id } });

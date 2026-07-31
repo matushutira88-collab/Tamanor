@@ -5,8 +5,8 @@ import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { Permission, assertCan, EntitlementError, emitOpsEvent } from "@guardora/core";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
-import { checkAccountToken, linkMetaAssets, runReadOnlySync } from "@guardora/sync";
-import { encryptToken, withTenant, assertTenantActive, enableAccountMonitoringWithinLimit, enforceMonitoringLimits } from "@guardora/db";
+import { checkAccountToken, linkMetaAssets, runReadOnlySync, MetaCredentialPersistError } from "@guardora/sync";
+import { withTenant, assertTenantActive, enableAccountMonitoringWithinLimit, enforceMonitoringLimits } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
 
@@ -44,7 +44,7 @@ export async function confirmMetaSelection(
     redirect("/dashboard/accounts/meta/select?flow=none_selected");
   }
 
-  let connected = 0, monitored = 0, limited = 0, slotTaken = 0;
+  let connected = 0, monitored = 0, limited = 0, slotTaken = 0, credFailed = 0;
   const monitoredIds: string[] = [];
   const activate = async (id: string) => {
     try { await enableAccountMonitoringWithinLimit(session.tenantId, id); emitOpsEvent("account.monitoring_enabled", { operation: "connect" }); monitored++; monitoredIds.push(id); }
@@ -64,13 +64,22 @@ export async function confirmMetaSelection(
       link = await linkMetaAssets({
         tenantId: session.tenantId, brandId: row.brandId, page, connectIg: igChosen,
         scopes: row.grantedScopes, grantedPermissions: row.grantedScopes,
-        encryptedToken: encryptToken(page.pageAccessToken), pageAccessTokenPlaintext: page.pageAccessToken,
+        // VAULT-ONLY: the plaintext page token is sealed into the encrypted ProviderCredential vault by
+        // linkMetaAssets and NEVER written to a legacy ConnectedAccount token column.
+        pageAccessToken: page.pageAccessToken,
         tokenType: row.tokenType, tokenExpiresAt: row.tokenExpiresAt,
       });
     } catch (e) {
       if (e instanceof EntitlementError && e.reason === "brand_platform_limit_reached") {
         emitOpsEvent("subscription.account_limit_reached", { operation: "connect_brand_slot" });
         slotTaken++;
+        continue;
+      }
+      // Fail-closed vault persistence: the credential could not be sealed/verified. No plaintext was written and a
+      // new account was left needing reconnect. Skip this page (don't 500) and surface a generic notice.
+      if (e instanceof MetaCredentialPersistError) {
+        emitOpsEvent("connector.vault_write_failed", { operation: "connect_confirm" });
+        credFailed++;
         continue;
       }
       throw e;
@@ -107,7 +116,7 @@ export async function confirmMetaSelection(
 
   await clearOnboarding(session, onboardingId);
   revalidatePath("/dashboard/accounts");
-  redirect(`/dashboard/accounts?connected=${connected}&mon=${monitored}&lim=${limited}${slotTaken ? `&slot=${slotTaken}` : ""}`);
+  redirect(`/dashboard/accounts?connected=${connected}&mon=${monitored}&lim=${limited}${slotTaken ? `&slot=${slotTaken}` : ""}${credFailed ? `&credfail=${credFailed}` : ""}`);
 }
 
 /** Abandon the onboarding flow without connecting anything. */

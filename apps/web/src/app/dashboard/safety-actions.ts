@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { getLiveActionsConfig, metaCommentHideFeatureEnabled } from "@guardora/config";
 import { rollbackHide } from "@guardora/sync";
-import { withTenant, decryptToken } from "@guardora/db";
+import { withTenant, resolveMetaAccessTokenSafe } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 
@@ -106,10 +106,9 @@ export async function rollbackExecution(formData: FormData): Promise<void> {
   });
   if (!exec) redirect(`${backTo}?kind=error&notice=${encodeURIComponent("Nothing to roll back.")}`);
 
-  // V1.37.4 FIX (N) — decrypt the stored token via the centralized helper BEFORE it
-  // reaches the provider transport. The DB value is an encrypted/tagged envelope
-  // (plain:/aesgcm:) and must NEVER be sent to Graph as-is. Decrypt failure → no HTTP.
-  const pageToken = decryptToken(acct?.longLivedToken ?? acct?.accessToken) ?? null;
+  // VAULT-FIRST (fail-closed): resolve the usable Page token from the encrypted vault (legacy column fallback);
+  // a corrupt/revoked vault row resolves to null → no HTTP. The DB value is never sent to Graph raw.
+  const pageToken = await resolveMetaAccessTokenSafe({ id: exec.connectedAccountId, tenantId: session.tenantId, longLivedToken: acct?.longLivedToken ?? null, accessToken: acct?.accessToken ?? null });
 
   // Phase 2 — provider HTTP (rollbackHide manages its own short tenant transactions).
   const live = getLiveActionsConfig();

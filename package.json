@@ -160,6 +160,8 @@
     "provider-credential-crypto:test": "pnpm --filter @guardora/db exec tsx scripts/provider-credential-crypto.test.ts",
     "provider-credential-vault:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/provider-credential-vault.test.ts",
     "provider-credential-backfill:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/provider-credential-backfill.test.ts",
+    "provider-credential-backfill-arming:test": "pnpm --filter @guardora/db exec tsx scripts/provider-credential-backfill-arming.test.ts",
+    "vault-token-write-invariant:test": "pnpm --filter @guardora/db exec tsx scripts/vault-token-write-invariant.test.ts",
     "meta-leads:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/meta-leads.test.ts",
     "meta-lead-capability:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/meta-lead-capability.test.ts",
     "business-contacts-source:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-source.test.ts",

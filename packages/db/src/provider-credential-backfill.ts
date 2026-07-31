@@ -26,25 +26,44 @@ export interface BackfillResult {
   errors: number;
   /** true when NOTHING was mutated (dry-run). */
   dryRun: boolean;
+  /** Resume checkpoint: the last account id scanned this batch, or null when the batch drained the table. */
+  nextCursor: string | null;
 }
 
 const META_PLATFORMS = ["facebook_page", "instagram_business"] as const;
+const DEFAULT_BATCH = 100;
+const MAX_BATCH = 1000;
+
+/** Stable 63-bit advisory-lock key from an account id (per-account concurrency guard). */
+function lockKeyFor(accountId: string): bigint {
+  let h = 0n;
+  for (const ch of accountId) h = (h * 131n + BigInt(ch.charCodeAt(0))) % 9223372036854775783n;
+  return h;
+}
 
 /**
  * Backfill legacy Meta token columns into the vault. `apply=false` (default) mutates nothing. `apply=true` stores
- * missing vault credentials and, ONLY after verifying the vault decrypts + fingerprint-matches, nulls the legacy
- * columns. Bounded by `limit`.
+ * missing vault credentials and, ONLY after re-verifying (inside a per-account transaction under an advisory lock)
+ * that the vault decrypts + fingerprint-matches the legacy plaintext, nulls the legacy columns. Bounded batch +
+ * resume cursor (order by id). Idempotent; preserves legacy plaintext on ANY failure.
  */
-export async function backfillProviderCredentials(opts: { apply?: boolean; limit?: number } = {}): Promise<BackfillResult> {
+export async function backfillProviderCredentials(opts: { apply?: boolean; batchSize?: number; cursor?: string | null } = {}): Promise<BackfillResult> {
   const apply = opts.apply === true;
-  const take = Math.max(1, Math.min(opts.limit ?? 500, 5000));
-  const r: BackfillResult = { scanned: 0, skippedNoToken: 0, alreadyVaulted: 0, backfilled: 0, verified: 0, legacyCleared: 0, errors: 0, dryRun: !apply };
+  const take = Math.max(1, Math.min(opts.batchSize ?? DEFAULT_BATCH, MAX_BATCH));
+  const r: BackfillResult = { scanned: 0, skippedNoToken: 0, alreadyVaulted: 0, backfilled: 0, verified: 0, legacyCleared: 0, errors: 0, dryRun: !apply, nextCursor: null };
 
   const accounts = await systemDb.connectedAccount.findMany({
-    where: { platform: { in: META_PLATFORMS as unknown as never[] }, OR: [{ accessToken: { not: null } }, { longLivedToken: { not: null } }] },
+    where: {
+      platform: { in: META_PLATFORMS as unknown as never[] },
+      OR: [{ accessToken: { not: null } }, { longLivedToken: { not: null } }],
+      ...(opts.cursor ? { id: { gt: opts.cursor } } : {}),
+    },
     select: { id: true, tenantId: true, accessToken: true, longLivedToken: true },
+    orderBy: { id: "asc" },
     take,
   });
+  // A full batch means there may be more — hand back a resume cursor. A short batch drained the table.
+  r.nextCursor = accounts.length === take ? (accounts[accounts.length - 1]?.id ?? null) : null;
 
   for (const acct of accounts) {
     r.scanned++;
@@ -72,8 +91,21 @@ export async function backfillProviderCredentials(opts: { apply?: boolean; limit
       r.verified++;
 
       if (apply) {
-        await systemDb.connectedAccount.update({ where: { id: acct.id }, data: { accessToken: null, longLivedToken: null } });
-        r.legacyCleared++;
+        // Per-account ATOMIC boundary under an advisory lock: re-read the legacy value inside the tx, re-verify the
+        // vault still fingerprint-matches, and only then null the legacy columns. Prevents a racing writer/backfill
+        // from clobbering a freshly-rotated token, and preserves legacy on any mid-flight change.
+        const cleared = await systemDb.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1)", lockKeyFor(acct.id));
+          const fresh = await tx.connectedAccount.findUnique({ where: { id: acct.id }, select: { accessToken: true, longLivedToken: true } });
+          const freshPlain = decryptToken(fresh?.longLivedToken ?? fresh?.accessToken);
+          if (!freshPlain) return false; // already cleared by a concurrent run — nothing to do
+          if (credentialFingerprint(freshPlain) !== fp) return false; // legacy changed under us — do NOT clear
+          const vaultNow = await resolveProviderCredential(q);
+          if (vaultNow === null || credentialFingerprint(vaultNow) !== fp) return false; // vault no longer matches — preserve
+          await tx.connectedAccount.update({ where: { id: acct.id }, data: { accessToken: null, longLivedToken: null } });
+          return true;
+        });
+        if (cleared) r.legacyCleared++;
       }
     } catch {
       r.errors++; // any unexpected error → leave legacy intact
