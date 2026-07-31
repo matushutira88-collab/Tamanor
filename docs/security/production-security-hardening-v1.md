@@ -106,6 +106,52 @@ the security suite); **require conversation resolution**; **no force-push / no d
 deploy via the `Production` Environment (required reviewers); minimal admin-bypass; enable **signed commits only
 after** bot/CI identities can sign (see signing plan).
 
+## V1.2 checkpoint (third commit) — Preview provenance fix + Node runtime pin
+
+**First Vercel Preview build failure (exact evidence):**
+```
+VERCEL_ENV=preview  source=vercel_git
+sha=4ecf48a561e46a02f97bb37e9a103b8176b48fa0  ref=security/production-hardening-v1
+errors=[preview_deployment, ref_not_allowed]
+```
+Vercel cloned the correct trusted repository, branch and exact full SHA — the gate wrongly failed it.
+
+**Root cause:** the gate/route always built `allowedRefs: ["main"]`, and the resolver applied that
+**production-only** ref restriction to **every** trusted deployment, including a Vercel Preview. A legitimate
+review-branch preview therefore failed `ref_not_allowed`.
+
+**Fix (environment-aware policy, no weakening of production):** new pure, unit-tested helpers in
+`@guardora/core` — `isProductionRefPolicy(env)` (true only for production or an armed approved-CI release) and
+`environmentAwarePolicy(env, defaults)`. Repository owner/slug pinning still applies in **both** production and
+preview; the `main`-only **ref** restriction applies **only** to production / armed approved-CI. The gate and
+the `/api/platform/release` route both consume it. Semantics now:
+- **Production Vercel:** fail-closed unless `VERCEL_ENV=production` + trusted source + valid 40-char SHA +
+  matching repo (when metadata present) + ref in the allow-list (default `main`). A production deploy from a
+  feature branch still fails `ref_not_allowed`.
+- **Preview Vercel:** still provenance-validated (trusted source, valid SHA, valid ref, matching repo) but
+  WITHOUT the `main`-only restriction. `preview_deployment` remains an informational, non-blocking code.
+- **Approved-CI:** keeps the production ref restriction (a feature-branch armed-CI deploy does not bypass it).
+- **Local/dev:** unchanged safe no-op.
+
+The misleading gate message `REFUSING production build` is now environment-accurate
+(`REFUSING <environment> deployment build`).
+
+**Regression test (reproduces the exact failure):** the gate matrix asserts the precise env
+(`VERCEL_ENV=preview`, `sha=4ecf48a…`, `ref=security/production-hardening-v1`, owner `matushutira88-collab`,
+slug `Tamanor`) returns **exit 0**, alongside the full production/preview/approved-CI/local matrix (see
+`release-provenance:test` + `release-provenance-gate:test`).
+
+**Node runtime pin:** the Preview log showed wanted `node >=22 <23` but actual `Node v24.15.0`. Because the
+Vercel Root Directory is `apps/web`, Vercel reads `apps/web/package.json` — which had **no** `engines`. Added
+`"engines": { "node": "22.x" }` there (the smallest correct change; root + worker keep `>=22 <23`; `.nvmrc`
+stays `22`; pnpm 9.15.9 and all dependencies unchanged; lockfile untouched). **Operator note:** if Vercel still
+selects a newer Node, an authorized operator must set the project's **Node.js Version = 22.x** in the Vercel
+dashboard — not mutated from this session.
+
+**Not activated:** no production deployment, promotion, alias, DNS, secret, or provider change. This fix is
+verified locally; it must not be reported as "Preview fixed" until the exact failed environment case passes
+locally (it does) AND a fresh Vercel Preview deployment of the pushed branch is observed green by an operator.
+
 ## Rollback
 
 - Repo changes: revert the single hardening commit (docs + tests + gate) — no runtime behavior of shipped product

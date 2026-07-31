@@ -5,6 +5,7 @@
  */
 import {
   resolveReleaseMetadata, normalizeCommitSha, normalizeRef, normalizeDeploymentHost, classifyEnvironment,
+  environmentAwarePolicy, isProductionRefPolicy,
   type ProvenanceEnv, type ProvenancePolicy,
 } from "../src/release-provenance";
 
@@ -154,6 +155,39 @@ check("classifyEnvironment empty → unknown", classifyEnvironment({}) === "unkn
 {
   const m = resolveReleaseMetadata({ VERCEL_ENV: "production", VERCEL_GIT_COMMIT_SHA: SHA, VERCEL_GIT_COMMIT_REF: "any-branch" });
   check("no-policy: valid with any ref/repo", m.provenanceValid === true, JSON.stringify(m.errors));
+}
+
+// ---- environment-aware policy (V1.2 preview fix) -----------------------------------------------------------
+const DEFAULTS = { expectedOwner: "acme-org", expectedSlug: "Tamanor", allowedRefs: ["main"] };
+check("isProductionRefPolicy: production true", isProductionRefPolicy({ VERCEL_ENV: "production" }) === true);
+check("isProductionRefPolicy: preview false", isProductionRefPolicy({ VERCEL_ENV: "preview" }) === false);
+check("isProductionRefPolicy: armed CI true", isProductionRefPolicy({ APPROVED_CI_RELEASE: "true" }) === true);
+check("isProductionRefPolicy: local false", isProductionRefPolicy({ NODE_ENV: "development" }) === false);
+{
+  const prodP = environmentAwarePolicy({ VERCEL_ENV: "production" }, DEFAULTS);
+  check("env-policy prod: allowedRefs applied", JSON.stringify(prodP.allowedRefs) === JSON.stringify(["main"]));
+  check("env-policy prod: repo pinning applied", prodP.expectedOwner === "acme-org" && prodP.expectedSlug === "Tamanor");
+  const prevP = environmentAwarePolicy({ VERCEL_ENV: "preview" }, DEFAULTS);
+  check("env-policy preview: allowedRefs OMITTED", prevP.allowedRefs === undefined);
+  check("env-policy preview: repo pinning STILL applied", prevP.expectedOwner === "acme-org" && prevP.expectedSlug === "Tamanor");
+  const ciP = environmentAwarePolicy({ APPROVED_CI_RELEASE: "true" }, DEFAULTS);
+  check("env-policy armed-CI: allowedRefs applied", JSON.stringify(ciP.allowedRefs) === JSON.stringify(["main"]));
+  const localP = environmentAwarePolicy({ NODE_ENV: "development" }, DEFAULTS);
+  check("env-policy local: allowedRefs OMITTED", localP.allowedRefs === undefined);
+}
+// preview + feature branch, resolved under the env-aware policy → valid, with informational preview_deployment
+{
+  const env: ProvenanceEnv = { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_SHA: SHA, VERCEL_GIT_COMMIT_REF: "security/production-hardening-v1", VERCEL_GIT_REPO_OWNER: "acme-org", VERCEL_GIT_REPO_SLUG: "Tamanor" };
+  const m = resolveReleaseMetadata(env, environmentAwarePolicy(env, DEFAULTS));
+  check("preview feature-branch: provenanceValid=true", m.provenanceValid === true, JSON.stringify(m.errors));
+  check("preview feature-branch: preview_deployment informational present", m.errors.includes("preview_deployment"));
+  check("preview feature-branch: NO ref_not_allowed", !m.errors.includes("ref_not_allowed"));
+}
+// production + feature branch, env-aware policy → still ref_not_allowed
+{
+  const env: ProvenanceEnv = { VERCEL_ENV: "production", VERCEL_GIT_COMMIT_SHA: SHA, VERCEL_GIT_COMMIT_REF: "security/x", VERCEL_GIT_REPO_OWNER: "acme-org", VERCEL_GIT_REPO_SLUG: "Tamanor" };
+  const m = resolveReleaseMetadata(env, environmentAwarePolicy(env, DEFAULTS));
+  check("production feature-branch: ref_not_allowed (env-aware)", m.errors.includes("ref_not_allowed") && m.provenanceValid === false);
 }
 
 console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — release provenance (V1)`);

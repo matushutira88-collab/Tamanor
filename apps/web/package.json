@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "dotenv -e ../../.env -- next dev",
     "build": "tsx scripts/assert-production-release-provenance.ts && pnpm --filter @guardora/db generate && NODE_ENV=production next build",

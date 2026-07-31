@@ -16,18 +16,23 @@
  *   EXPECTED_RELEASE_SLUG   — required slug  (default "Tamanor"); set to "" to disable
  *   EXPECTED_RELEASE_REFS   — comma list of allowed refs (default "main"); set to "" to disable
  */
-import { resolveReleaseMetadata, type ProvenancePolicy, type ProvenanceEnv } from "@guardora/core";
+import { resolveReleaseMetadata, environmentAwarePolicy, type ProvenancePolicy, type ProvenanceEnv } from "@guardora/core";
 
+/**
+ * Tamanor defaults (slug "Tamanor", allowed ref "main", owner opt-in via env) fed into the ENVIRONMENT-AWARE
+ * policy builder: repo pinning applies to production + preview, but the `main`-only ref restriction applies
+ * ONLY to production / armed approved-CI — a Vercel Preview from a feature branch is validated without it.
+ */
 function buildPolicy(env: ProvenanceEnv): ProvenancePolicy {
   const slugRaw = env.EXPECTED_RELEASE_SLUG;
   const refsRaw = env.EXPECTED_RELEASE_REFS;
   const slug = slugRaw === undefined ? "Tamanor" : slugRaw.trim();
   const refs = refsRaw === undefined ? ["main"] : refsRaw.split(",").map((r) => r.trim()).filter(Boolean);
-  const policy: ProvenancePolicy = {};
-  if (env.EXPECTED_RELEASE_OWNER && env.EXPECTED_RELEASE_OWNER.trim()) policy.expectedOwner = env.EXPECTED_RELEASE_OWNER.trim();
-  if (slug) policy.expectedSlug = slug;
-  if (refs.length) policy.allowedRefs = refs;
-  return policy;
+  return environmentAwarePolicy(env, {
+    expectedOwner: env.EXPECTED_RELEASE_OWNER?.trim() || undefined,
+    expectedSlug: slug || undefined,
+    allowedRefs: refs,
+  });
 }
 
 /** True when this build must carry valid provenance (a real deploy), regardless of NODE_ENV. */
@@ -49,10 +54,10 @@ export function evaluateGate(env: ProvenanceEnv): { code: 0 | 1; lines: string[]
     return {
       code: 1,
       lines: [
-        "✗ release-provenance gate: REFUSING production build — invalid/missing release provenance.",
+        `✗ release-provenance gate: REFUSING ${m.environment} deployment build — invalid/missing release provenance.`,
         `  environment=${m.environment} source=${m.source} sha=${shaShown} ref=${refShown}`,
         `  errors=[${m.errors.join(", ")}]`,
-        "  A production/preview build must carry a Vercel Git commit SHA, or an armed approved-CI SHA.",
+        "  A production/preview deployment must carry a trusted Vercel Git commit SHA (or an armed approved-CI SHA).",
       ],
     };
   }

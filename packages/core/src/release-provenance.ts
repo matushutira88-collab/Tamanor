@@ -113,6 +113,35 @@ export function classifyEnvironment(env: ProvenanceEnv): ReleaseEnvironment {
   return "unknown";
 }
 
+/**
+ * True when the PRODUCTION allowed-ref restriction should apply: a real production environment, or an explicitly
+ * armed approved-CI release. It must NOT be true for a Vercel Preview — a legitimate feature/review-branch
+ * preview must still be provenance-validated (trusted source, valid SHA, matching repo) WITHOUT the production
+ * main-only ref restriction.
+ */
+export function isProductionRefPolicy(env: ProvenanceEnv): boolean {
+  return classifyEnvironment(env) === "production" || (env.APPROVED_CI_RELEASE ?? "").trim().toLowerCase() === "true";
+}
+
+/**
+ * Build an environment-aware provenance policy from Tamanor-supplied defaults. Repository owner/slug pinning
+ * applies in ALL enforced environments (production + preview); the allowed-ref restriction applies ONLY where
+ * `isProductionRefPolicy(env)` holds (production or armed approved-CI), so Preview validates provenance without
+ * requiring `main`.
+ */
+export function environmentAwarePolicy(
+  env: ProvenanceEnv,
+  defaults: { expectedOwner?: string; expectedSlug?: string; allowedRefs?: readonly string[] },
+): ProvenancePolicy {
+  const p: ProvenancePolicy = {};
+  if (defaults.expectedOwner) p.expectedOwner = defaults.expectedOwner;
+  if (defaults.expectedSlug) p.expectedSlug = defaults.expectedSlug;
+  if (defaults.allowedRefs && defaults.allowedRefs.length > 0 && isProductionRefPolicy(env)) {
+    p.allowedRefs = [...defaults.allowedRefs];
+  }
+  return p;
+}
+
 function refAllowed(ref: string | null, allowed: string[] | undefined): boolean {
   if (!allowed || allowed.length === 0) return true; // no policy → not enforced
   if (!ref) return false;
