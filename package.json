@@ -84,6 +84,7 @@
     "csp-policy:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/csp-policy.test.ts",
     "file-response-inventory:test": "pnpm --filter @guardora/web exec tsx scripts/file-response-inventory.test.ts",
     "workflow-safety:test": "pnpm --filter @guardora/web exec tsx scripts/workflow-safety.test.ts",
+    "e2e-global-setup-selection:test": "pnpm --filter @guardora/web exec tsx scripts/e2e-global-setup-selection.test.ts",
     "child-safety-detector:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/child-safety-detector.test.ts",
     "child-safety-gateway:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/web exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-gateway.test.ts",
     "child-safety-intervention:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/child-safety-intervention.test.ts",
@@ -306,5 +307,12 @@
     "eslint": "^10.7.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.64.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss@<8.5.18": ">=8.5.18",
+      "sharp@<0.35.0": ">=0.35.0",
+      "brace-expansion@5.0.7": ">=5.0.8"
+    }
   }
 }

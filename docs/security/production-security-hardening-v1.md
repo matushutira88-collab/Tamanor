@@ -44,8 +44,17 @@ Modified: `packages/core/src/{index.ts,observability.ts}`; `apps/web/package.jso
 
 `release-provenance:test`, `release-provenance-gate:test`, `log-redaction:test`, `csp-policy:test`,
 `file-response-inventory:test`, `workflow-safety:test`, `production-readiness:test` (rc=0), plus regression on
-`observability:test`, `cron-auth:test`. Exact commands + counts are in the final report. **Deferred:** the full
-Playwright e2e RUN (`pnpm e2e` — needs the `.next-e2e` production build + server) is not executed in this change.
+`observability:test`, `cron-auth:test`. Exact commands + counts are in the final report.
+
+**V1.1 checkpoint (second commit) — browser gate EXECUTED + Next.js patched.** The auto-download Playwright
+suite is now **run**, not merely authored: **12/12 passed** (`public-auto-download` desktop + `public-auto-download-mobile`),
+on a fresh production build with **Next.js 15.5.21**. Proven at runtime: zero download events on landing load, no
+service worker registered, `/sw.js` + `/service-worker.js` return 404, no `a[download]`/meta-refresh/iframe,
+core assets (`/`, manifest, robots, sitemap, favicon) correct MIME + never `Content-Disposition: attachment`,
+and consent-banner interaction triggers no download — desktop and mobile. E2E-harness fix: `global-setup` now
+**skips the DB-backed auth bootstrap for public-only runs** (pure, unit-tested `runNeedsAuthBootstrap` +
+`e2e-global-setup-selection:test`), so the public gates run deterministically without a seeded fixture tenant;
+authenticated projects still bootstrap.
 
 ## CSP status (honest)
 
@@ -73,11 +82,21 @@ integrity](./commit-signing-and-release-integrity.md).
 
 ## Supply chain
 
-Frozen lockfile OK; **no install lifecycle scripts; no non-registry deps.** `pnpm audit --prod` reports **12
-advisories (6 high / 6 moderate)** against `next@15.5.20` and its transitive `postcss`/`sharp` (GHSA-955p-x3mx-jcvp
-et al.). **Not bumped in this change** (a framework update needs the full e2e + regression pass — "update only
-scoped, tested packages"). Recommended follow-up: a scoped Next.js patch update in its own PR, gated by
-`dependency-review.yml` + Dependabot (both added here). **Residual risk until then.**
+Frozen lockfile OK; **no install lifecycle scripts; no non-registry deps.**
+
+**V1.1 checkpoint (second commit) — advisories closed.** `pnpm audit --prod` went from **12 advisories (6 high /
+6 moderate)** to **0**, and the full `pnpm audit` (incl. dev) is also **0**. Actions taken:
+- **Next.js `15.5.20 → 15.5.21`** (exact patched 15.5 line; no major upgrade). Closed 8 of the 12; the lockfile
+  delta is `next` + `@next/env` + the `@next/swc-*` binaries only.
+- Remaining transitive highs bundled by Next were closed with the **smallest compatible patched overrides**
+  (registry versions, not unsafe silencing): `postcss@<8.5.18 → >=8.5.18` (resolved 8.5.25 — closes
+  GHSA-6g55-p6wh-862q, GHSA-r28c-9q8g-f849, GHSA-qx2v-qp2m-jg93; postcss is a build-time CSS tool over the
+  project's own trusted CSS), `sharp@<0.35.0 → >=0.35.0` (resolved 0.35.3 — closes GHSA-f88m-g3jw-g9cj).
+- A dev-only `brace-expansion@5.0.7` high (GHSA-mh99-v99m-4gvg, via eslint) closed with `→ >=5.0.8` (resolved
+  5.0.9).
+Every lockfile change is a legitimate transitive of these (nanoid via postcss; `@img/sharp-*` binaries); no
+git/tarball deps, no new lifecycle scripts, no mass upgrade. `dependency-review.yml` + Dependabot keep these
+current going forward. **No residual known critical/high/moderate in prod or dev.**
 
 ## Branch-protection operator instructions (repo settings — not in code)
 
