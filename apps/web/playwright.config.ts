@@ -75,6 +75,8 @@ export default defineConfig({
     { name: "auth-mobile", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { ...mobile(390, 844), storageState: STORAGE } },
     { name: "auth-mobile-small", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { ...mobile(375, 812), storageState: STORAGE } },
     { name: "auth-tablet", testMatch: /(authed|inbox|usage)(\.scale)?\.spec\.ts/, use: { browserName: "chromium", viewport: { width: 768, height: 1024 }, hasTouch: true, storageState: STORAGE } },
+    // Business regression smoke — all Business console routes load through the auth boundary (owner session).
+    { name: "auth-business-smoke", testMatch: /business-regression-smoke\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STORAGE } },
   ],
   // Production build served by the `next` binary directly (Playwright prepends node_modules/.bin
   // to PATH, so `next` resolves to apps/web's copy). NODE_ENV stays "production" and the
