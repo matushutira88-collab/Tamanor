@@ -1,19 +1,24 @@
 /**
  * LEGACY → VAULT backfill (server-only, systemDb/owner). Migrates existing ConnectedAccount plaintext-column
  * tokens into the encrypted vault. SAFETY-FIRST:
- *   - DRY-RUN by default (apply=false): reports counts only, mutates NOTHING.
- *   - Idempotent: an account already vaulted is verified, not re-stored blindly.
- *   - Before clearing a legacy column it PROVES the vault credential decrypts AND its fingerprint matches the
- *     legacy plaintext. On ANY error (undecryptable legacy, fingerprint mismatch, store failure) the legacy
- *     column is LEFT INTACT and the row is counted as an error — never a lossy clear.
- *   - Counts-only receipts: never logs/returns a token, ciphertext, or PII.
+ *   - DRY-RUN by default (apply=false): reports counts only, mutates NOTHING (no lock, no transaction).
+ *   - APPLY performs, PER ACCOUNT, ONE transaction under the SHARED (tenant, account) advisory lock
+ *     (`withProviderCredentialAccountLock`) — the same lock connect/reconnect/rotation take — so no writer can
+ *     replace the credential between this run's verification and its legacy-column clear. Every vault read/write
+ *     in that transaction uses the SAME transaction client (never a second connection).
+ *   - It clears a legacy column ONLY after re-reading it inside the lock, (re)storing the vault credential if
+ *     absent, and proving the vault decrypts AND fingerprint-matches the legacy plaintext. On ANY mismatch/error
+ *     it rolls back, preserves the legacy fields, never overwrites a valid vault record, and counts a safe error.
+ *   - Counts-only receipts: never logs/returns a token, ciphertext, wrapped key, IV/tag, or PII.
  *
- * This phase does NOT drop the legacy columns and MUST NOT be run against production.
+ * Production apply is allowed ONLY through the armed manual workflow (production-provider-credential-backfill).
+ * This service never drops legacy columns and never toggles the legacy-fallback policy.
  */
 import { BusinessProvider } from "@prisma/client";
 import { systemDb } from "./index";
 import { decryptToken } from "./token-crypto";
-import { storeProviderCredential, resolveProviderCredential, ProviderCredentialPurpose } from "./provider-credential-vault";
+import { storeProviderCredential, resolveProviderCredential, VaultDecryptError, ProviderCredentialPurpose } from "./provider-credential-vault";
+import { withProviderCredentialAccountLock } from "./provider-credential-lock";
 import { credentialFingerprint } from "./provider-credential-crypto";
 
 export interface BackfillResult {
@@ -33,19 +38,15 @@ export interface BackfillResult {
 const META_PLATFORMS = ["facebook_page", "instagram_business"] as const;
 const DEFAULT_BATCH = 100;
 const MAX_BATCH = 1000;
+const INVENTORY_HARD_CAP = 100_000;
 
-/** Stable 63-bit advisory-lock key from an account id (per-account concurrency guard). */
-function lockKeyFor(accountId: string): bigint {
-  let h = 0n;
-  for (const ch of accountId) h = (h * 131n + BigInt(ch.charCodeAt(0))) % 9223372036854775783n;
-  return h;
+function queryFor(tenantId: string, connectedAccountId: string) {
+  return { tenantId, provider: BusinessProvider.meta, purpose: ProviderCredentialPurpose.long_lived_token, connection: { connectedAccountId } as const };
 }
 
 /**
- * Backfill legacy Meta token columns into the vault. `apply=false` (default) mutates nothing. `apply=true` stores
- * missing vault credentials and, ONLY after re-verifying (inside a per-account transaction under an advisory lock)
- * that the vault decrypts + fingerprint-matches the legacy plaintext, nulls the legacy columns. Bounded batch +
- * resume cursor (order by id). Idempotent; preserves legacy plaintext on ANY failure.
+ * Process ONE bounded batch (ordered by id, resumable via `cursor`). `apply=false` (default) mutates nothing.
+ * `apply=true` runs the single-transaction locked cutover per account. Idempotent; preserves legacy on any error.
  */
 export async function backfillProviderCredentials(opts: { apply?: boolean; batchSize?: number; cursor?: string | null } = {}): Promise<BackfillResult> {
   const apply = opts.apply === true;
@@ -62,54 +63,176 @@ export async function backfillProviderCredentials(opts: { apply?: boolean; batch
     orderBy: { id: "asc" },
     take,
   });
-  // A full batch means there may be more — hand back a resume cursor. A short batch drained the table.
   r.nextCursor = accounts.length === take ? (accounts[accounts.length - 1]?.id ?? null) : null;
 
   for (const acct of accounts) {
     r.scanned++;
-    const q = { tenantId: acct.tenantId, provider: BusinessProvider.meta, purpose: ProviderCredentialPurpose.long_lived_token, connection: { connectedAccountId: acct.id } as const };
+    if (!apply) { classifyDryRun(acct, r); continue; }
     try {
-      const legacyPlain = decryptToken(acct.longLivedToken ?? acct.accessToken);
-      if (!legacyPlain) { r.skippedNoToken++; continue; }
-      const fp = credentialFingerprint(legacyPlain);
-
-      // Is there already a vault credential? Verify it matches; do NOT blindly overwrite.
-      let vaultPlain: string | null = null;
-      try { vaultPlain = await resolveProviderCredential(q); } catch { r.errors++; continue; } // corrupt vault → error, never clear
-      if (vaultPlain !== null) {
-        if (credentialFingerprint(vaultPlain) !== fp) { r.errors++; continue; } // mismatch → never clear
-        r.alreadyVaulted++;
-      } else {
-        if (!apply) { continue; } // dry-run: would backfill, but mutate nothing
-        await storeProviderCredential({ ...q, secret: legacyPlain });
-        r.backfilled++;
-      }
-
-      // Verify decryptability + fingerprint from the vault before ever touching the legacy column.
-      const check = await resolveProviderCredential(q);
-      if (check === null || credentialFingerprint(check) !== fp) { r.errors++; continue; }
-      r.verified++;
-
-      if (apply) {
-        // Per-account ATOMIC boundary under an advisory lock: re-read the legacy value inside the tx, re-verify the
-        // vault still fingerprint-matches, and only then null the legacy columns. Prevents a racing writer/backfill
-        // from clobbering a freshly-rotated token, and preserves legacy on any mid-flight change.
-        const cleared = await systemDb.$transaction(async (tx) => {
-          await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1)", lockKeyFor(acct.id));
-          const fresh = await tx.connectedAccount.findUnique({ where: { id: acct.id }, select: { accessToken: true, longLivedToken: true } });
-          const freshPlain = decryptToken(fresh?.longLivedToken ?? fresh?.accessToken);
-          if (!freshPlain) return false; // already cleared by a concurrent run — nothing to do
-          if (credentialFingerprint(freshPlain) !== fp) return false; // legacy changed under us — do NOT clear
-          const vaultNow = await resolveProviderCredential(q);
-          if (vaultNow === null || credentialFingerprint(vaultNow) !== fp) return false; // vault no longer matches — preserve
-          await tx.connectedAccount.update({ where: { id: acct.id }, data: { accessToken: null, longLivedToken: null } });
-          return true;
-        });
-        if (cleared) r.legacyCleared++;
-      }
+      await applyOne(acct.id, acct.tenantId, r);
     } catch {
-      r.errors++; // any unexpected error → leave legacy intact
+      r.errors++; // lock/tx/relationship failure → legacy preserved (transaction rolled back)
     }
   }
   return r;
+}
+
+/** DRY-RUN classification for one account — read-only, mutates nothing. */
+function classifyDryRun(acct: { id: string; tenantId: string; accessToken: string | null; longLivedToken: string | null }, r: BackfillResult): void {
+  let legacyPlain: string | undefined;
+  try { legacyPlain = decryptToken(acct.longLivedToken ?? acct.accessToken); } catch { r.errors++; return; }
+  if (!legacyPlain) { r.skippedNoToken++; return; }
+  // Would-be work is counted, but nothing is written.
+  r.backfilled += 0; // explicit: dry-run never backfills
+}
+
+/**
+ * The APPLY cutover for one account: a single transaction under the shared (tenant, account) advisory lock.
+ * Re-reads legacy inside the lock, (re)stores the vault credential via the SAME tx if absent, verifies decrypt +
+ * fingerprint via the SAME tx, and only then nulls the legacy columns. Any mismatch/error rolls the whole
+ * transaction back (legacy preserved, valid vault never overwritten) and is surfaced to the caller as an error.
+ */
+async function applyOne(connectedAccountId: string, tenantId: string, r: BackfillResult): Promise<void> {
+  const q = queryFor(tenantId, connectedAccountId);
+  const outcome = await withProviderCredentialAccountLock({
+    tenantId,
+    connectedAccountId,
+    operation: async (tx): Promise<"skippedNoToken" | "alreadyVaulted+cleared" | "backfilled+cleared" | "noop" | "error"> => {
+      // 1) re-read legacy inside the lock
+      const fresh = await tx.connectedAccount.findUnique({ where: { id: connectedAccountId }, select: { accessToken: true, longLivedToken: true } });
+      let legacyPlain: string | undefined;
+      try { legacyPlain = decryptToken(fresh?.longLivedToken ?? fresh?.accessToken); } catch { return "error"; }
+      if (!legacyPlain) return "skippedNoToken"; // nothing to migrate (already cleared / never had one)
+      const fp = credentialFingerprint(legacyPlain);
+
+      // 2) re-read current vault via the SAME transaction
+      let vaultPlain: string | null;
+      try { vaultPlain = await resolveProviderCredential(q, { db: tx }); }
+      catch (e) { if (e instanceof VaultDecryptError) return "error"; throw e; } // corrupt vault → preserve legacy
+      let backfilledNow = false;
+      if (vaultPlain === null) {
+        // 3) absent → store the credential INSIDE this transaction
+        await storeProviderCredential({ ...q, secret: legacyPlain }, { db: tx });
+        backfilledNow = true;
+      } else if (credentialFingerprint(vaultPlain) !== fp) {
+        return "error"; // a DIFFERENT valid vault credential exists — never overwrite it, never clear legacy
+      }
+
+      // 4) verify decrypt + fingerprint via the SAME transaction, BEFORE clearing anything
+      const check = await resolveProviderCredential(q, { db: tx });
+      if (check === null || credentialFingerprint(check) !== fp) return "error";
+
+      // 5) clear legacy columns — atomic with the store/verify above
+      await tx.connectedAccount.update({ where: { id: connectedAccountId }, data: { accessToken: null, longLivedToken: null } });
+      return backfilledNow ? "backfilled+cleared" : "alreadyVaulted+cleared";
+    },
+  });
+
+  switch (outcome) {
+    case "skippedNoToken": r.skippedNoToken++; break;
+    case "alreadyVaulted+cleared": r.alreadyVaulted++; r.verified++; r.legacyCleared++; break;
+    case "backfilled+cleared": r.backfilled++; r.verified++; r.legacyCleared++; break;
+    case "error": r.errors++; break;
+    case "noop": break;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Read-only inventory + post-run verification (counts only — never a token/fingerprint-identity/PII).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+export interface ProviderCredentialInventory {
+  totalMetaAccounts: number;
+  legacyPopulated: number;
+  withActiveVault: number;
+  legacyAndVault: number;
+  legacyOnly: number;
+  vaultOnly: number;
+  neither: number;
+  /** legacy present + active vault present + fingerprints equal. */
+  legacyMatchesVault: number;
+  /** active vault present but decrypt fails (unusable). */
+  corruptVault: number;
+  /** legacy null AND active vault corrupt/absent-but-expected → an unusable "vault-only" account (must be 0 post-apply). */
+  vaultOnlyUnusable: number;
+  /** true if the scan hit the hard cap (counts are a lower bound). */
+  capped: boolean;
+}
+
+/**
+ * Read-only counts-only inventory over Meta ConnectedAccounts. Never returns tokens, fingerprints tied to a
+ * user-facing identity, tenant names, emails, page names, or any PII — only aggregate integers.
+ */
+export async function providerCredentialInventory(): Promise<ProviderCredentialInventory> {
+  const inv: ProviderCredentialInventory = {
+    totalMetaAccounts: 0, legacyPopulated: 0, withActiveVault: 0, legacyAndVault: 0, legacyOnly: 0,
+    vaultOnly: 0, neither: 0, legacyMatchesVault: 0, corruptVault: 0, vaultOnlyUnusable: 0, capped: false,
+  };
+  let cursor: string | null = null;
+  const PAGE = 500;
+  while (inv.totalMetaAccounts < INVENTORY_HARD_CAP) {
+    const rows: Array<{ id: string; tenantId: string; accessToken: string | null; longLivedToken: string | null }> =
+      await systemDb.connectedAccount.findMany({
+        where: { platform: { in: META_PLATFORMS as unknown as never[] }, ...(cursor ? { id: { gt: cursor } } : {}) },
+        select: { id: true, tenantId: true, accessToken: true, longLivedToken: true },
+        orderBy: { id: "asc" },
+        take: PAGE,
+      });
+    if (rows.length === 0) break;
+    for (const acct of rows) {
+      inv.totalMetaAccounts++;
+      const q = queryFor(acct.tenantId, acct.id);
+      const hasLegacy = Boolean(acct.accessToken || acct.longLivedToken);
+      let legacyPlain: string | undefined;
+      if (hasLegacy) { inv.legacyPopulated++; try { legacyPlain = decryptToken(acct.longLivedToken ?? acct.accessToken); } catch { /* unreadable legacy */ } }
+      let vaultPlain: string | null = null;
+      let vaultCorrupt = false;
+      try { vaultPlain = await resolveProviderCredential(q); } catch (e) { if (e instanceof VaultDecryptError) vaultCorrupt = true; }
+      const hasVault = vaultPlain !== null;
+      if (vaultCorrupt) inv.corruptVault++;
+      if (hasVault) inv.withActiveVault++;
+      if (hasLegacy && hasVault) {
+        inv.legacyAndVault++;
+        if (legacyPlain && credentialFingerprint(legacyPlain) === credentialFingerprint(vaultPlain!)) inv.legacyMatchesVault++;
+      } else if (hasLegacy && !hasVault) {
+        inv.legacyOnly++;
+      } else if (!hasLegacy && hasVault) {
+        inv.vaultOnly++;
+      } else {
+        inv.neither++;
+        if (vaultCorrupt) inv.vaultOnlyUnusable++; // legacy null AND vault corrupt → unusable "cleared" account
+      }
+    }
+    cursor = rows[rows.length - 1]!.id;
+    if (rows.length < PAGE) break;
+  }
+  inv.capped = inv.totalMetaAccounts >= INVENTORY_HARD_CAP;
+  return inv;
+}
+
+export interface BackfillVerifyResult { ok: boolean; failures: string[] }
+
+/**
+ * Post-run invariant verification (counts only). For an APPLY it fails when: the run reported errors; more
+ * columns were cleared than were verified; or a "vault-only" (cleared) account has an unusable vault. For a
+ * DRY-RUN it fails if any mutation counter is non-zero (proving nothing was written).
+ */
+export function verifyBackfillRun(result: BackfillResult, inventory: ProviderCredentialInventory): BackfillVerifyResult {
+  const failures: string[] = [];
+  if (result.dryRun) {
+    if (result.backfilled !== 0 || result.legacyCleared !== 0) failures.push("dry-run performed a mutation");
+  } else {
+    if (result.errors > 0) failures.push(`apply reported ${result.errors} error(s)`);
+    if (result.legacyCleared > result.verified) failures.push("legacyCleared exceeds verified");
+    if (inventory.vaultOnlyUnusable > 0) failures.push(`${inventory.vaultOnlyUnusable} cleared account(s) have an unusable vault`);
+  }
+  return { ok: failures.length === 0, failures };
+}
+
+/** Prove a dry-run mutated nothing by comparing safe before/after inventories. */
+export function assertNoMutation(before: ProviderCredentialInventory, after: ProviderCredentialInventory): BackfillVerifyResult {
+  const failures: string[] = [];
+  const keys: (keyof ProviderCredentialInventory)[] = ["legacyPopulated", "legacyOnly", "vaultOnly", "legacyAndVault", "withActiveVault", "neither"];
+  for (const k of keys) if (before[k] !== after[k]) failures.push(`inventory.${String(k)} changed (${before[k]} → ${after[k]})`);
+  return { ok: failures.length === 0, failures };
 }

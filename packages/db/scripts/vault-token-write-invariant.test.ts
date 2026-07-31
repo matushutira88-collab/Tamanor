@@ -101,7 +101,7 @@ check("no raw token-column write in any ConnectedAccount payload (production)", 
 // ---- 4) vault-only positive proofs -------------------------------------------------------------------------
 const linkSrc = readFileSync(join(ROOT, "packages/sync/src/meta-connector.ts"), "utf8");
 check("connect/reconnect (linkMetaAssets) persists via the vault", /writeMetaCredentialToVault\(/.test(linkSrc));
-check("connect/reconnect verifies the credential resolves before returning", /resolveMetaAccessToken\(/.test(linkSrc));
+check("connect/reconnect persists+verifies under the shared account lock", /withProviderCredentialAccountLock\(/.test(linkSrc) && /resolveProviderCredential\(/.test(linkSrc));
 const callbackSrc = readFileSync(join(ROOT, "apps/web/src/app/api/connectors/meta/callback/route.ts"), "utf8");
 check("OAuth callback does NOT write a ConnectedAccount token column", !/connectedAccount[\s\S]{0,400}(accessToken|longLivedToken)\s*:\s*[^n]/.test(callbackSrc));
 
@@ -111,6 +111,20 @@ for (const f of ["provider-credential-crypto.ts", "provider-credential-vault.ts"
   check(`${f}: no console.* logging`, !/console\.(log|info|warn|error)\s*\(/.test(src));
   check(`${f}: does not stringify a plaintext/ciphertext into a log/throw`, !/(console|throw new Error)[\s\S]{0,60}(plaintext|ciphertext|wrappedDataKey)/.test(src));
 }
+
+// ---- 6) shared-lock + transaction-client invariants --------------------------------------------------------
+const stripComments = (s: string) => s.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+const backfillSrc = readFileSync(join(ROOT, "packages/db/src/provider-credential-backfill.ts"), "utf8");
+const vaultSrc = readFileSync(join(ROOT, "packages/db/src/provider-credential-vault.ts"), "utf8");
+const lockCode = stripComments(readFileSync(join(ROOT, "packages/db/src/provider-credential-lock.ts"), "utf8"));
+const backfillCode = stripComments(backfillSrc);
+check("backfill APPLY runs through the shared account lock", /withProviderCredentialAccountLock\(/.test(backfillSrc));
+check("backfill uses NO $executeRawUnsafe (parameterized lock only)", !/\$executeRawUnsafe\b/.test(backfillCode));
+check("lock primitive uses parameterized $executeRaw (never Unsafe)", /\$executeRaw`/.test(lockCode) && !/\$executeRawUnsafe\b/.test(lockCode));
+// The vault MUTATION functions must thread the exec client (db), never hardcode systemDb for credential writes.
+check("vault store/revoke never hardcode systemDb.providerCredential writes (thread the tx client)",
+  !/systemDb\.providerCredential\.(create|update)\b/.test(vaultSrc));
+check("vault services expose an execOf/db seam for transactions", /execOf\(/.test(vaultSrc) && /opts\?\.db/.test(vaultSrc));
 
 console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — vault token-write source invariant: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

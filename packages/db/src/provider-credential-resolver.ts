@@ -14,7 +14,7 @@ import { BusinessProvider } from "@prisma/client";
 import { decryptToken } from "./token-crypto";
 import {
   resolveProviderCredentialOutcome, storeProviderCredential, getProviderCredentialStatus,
-  VaultCredentialUnusableError, ProviderCredentialPurpose, type CredentialConnection,
+  VaultCredentialUnusableError, ProviderCredentialPurpose, type CredentialConnection, type VaultExecOpts,
 } from "./provider-credential-vault";
 
 /** The minimal ConnectedAccount shape needed to resolve a usable Meta token. */
@@ -115,7 +115,7 @@ export interface WriteMetaCredentialInput {
  * Store a Meta credential in the vault ONLY (no legacy columns). Used by the OAuth confirm/reconnect path so new
  * writes never (re)introduce plaintext provider tokens. Returns the vault row id + non-secret fingerprint.
  */
-export async function writeMetaCredentialToVault(input: WriteMetaCredentialInput): Promise<{ id: string; fingerprint: string }> {
+export async function writeMetaCredentialToVault(input: WriteMetaCredentialInput, opts?: VaultExecOpts): Promise<{ id: string; fingerprint: string }> {
   const res = await storeProviderCredential({
     tenantId: input.account.tenantId,
     provider: BusinessProvider.meta,
@@ -125,6 +125,6 @@ export async function writeMetaCredentialToVault(input: WriteMetaCredentialInput
     tokenType: input.tokenType ?? null,
     expiresAt: input.expiresAt ?? null,
     scopes: input.scopes ?? [],
-  });
+  }, opts);
   return { id: res.id, fingerprint: res.fingerprint };
 }

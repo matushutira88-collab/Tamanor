@@ -14,7 +14,8 @@
 import {
   withTenantDb, encryptToken, metaConnectedAccountFields, ActorKind,
   getTenantEntitlements, acquireBrandPlatformLock, assertBrandPlatformCapacity,
-  writeMetaCredentialToVault, resolveMetaAccessToken, resolveMetaAccessTokenSafe,
+  writeMetaCredentialToVault, resolveProviderCredential, resolveMetaAccessTokenSafe,
+  withProviderCredentialAccountLock, ProviderCredentialPurpose, BusinessProvider,
 } from "@guardora/db";
 import { maxPerBrandForPlatform, emitOpsEvent } from "@guardora/core";
 import {
@@ -185,15 +186,26 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
   ];
   try {
     for (const t of targets) {
-      await writeMetaCredentialToVault({
-        account: { id: t.id, tenantId },
-        token: input.pageAccessToken,
-        tokenType: input.tokenType,
-        expiresAt: input.tokenExpiresAt,
-        scopes: input.scopes,
+      // SHARED LOCK: connect/reconnect takes the SAME (tenant, account) advisory lock as backfill/rotation, so a
+      // backfill can never interleave between our store and verify. Store + verify run in ONE transaction (tx).
+      await withProviderCredentialAccountLock({
+        tenantId,
+        connectedAccountId: t.id,
+        operation: async (tx) => {
+          await writeMetaCredentialToVault({
+            account: { id: t.id, tenantId },
+            token: input.pageAccessToken,
+            tokenType: input.tokenType,
+            expiresAt: input.tokenExpiresAt,
+            scopes: input.scopes,
+          }, { db: tx });
+          const check = await resolveProviderCredential(
+            { tenantId, provider: BusinessProvider.meta, purpose: ProviderCredentialPurpose.long_lived_token, connection: { connectedAccountId: t.id } },
+            { db: tx },
+          );
+          if (check !== input.pageAccessToken) throw new Error("vault_verify_failed");
+        },
       });
-      const verified = await resolveMetaAccessToken({ id: t.id, tenantId, longLivedToken: null, accessToken: null });
-      if (verified?.token !== input.pageAccessToken) throw new Error("vault_verify_failed");
     }
   } catch {
     // Fail-closed. Downgrade only the accounts CREATED by this call (never leave a tokenless "active" new account);

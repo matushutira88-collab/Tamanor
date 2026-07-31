@@ -3,7 +3,10 @@
  * any apply requires the exact confirmation phrase, and that a production (non-local) target additionally requires
  * `environment=production` and a matching host fingerprint. Fail-closed on every missing gate; batch bounded.
  */
-import { armBackfill, BACKFILL_CONFIRMATION_PHRASE, BACKFILL_MAX_BATCH } from "./provider-credential-backfill-arming";
+import {
+  armBackfill, BACKFILL_CONFIRMATION_PHRASE, BACKFILL_MAX_BATCH,
+  BACKFILL_DRYRUN_PHRASE, BACKFILL_APPLY_PHRASE, BACKFILL_DEFAULT_MAX_BATCHES, BACKFILL_MAX_MAX_BATCHES,
+} from "./provider-credential-backfill-arming";
 import { databaseHostFingerprint } from "./family-activation";
 
 let pass = 0, fail = 0;
@@ -36,6 +39,26 @@ check("apply with a missing DATABASE_URL fails closed", armBackfill({ apply: tru
 check("batch size clamps above the max", armBackfill({ apply: false, batchSize: 999999, databaseUrl: LOCAL, vaultKeyConfigured: true }).batchSize === BACKFILL_MAX_BATCH);
 check("batch size defaults when unset", armBackfill({ apply: false, databaseUrl: LOCAL, vaultKeyConfigured: true }).batchSize >= 1);
 check("fingerprint is a non-reversible digest, never the URL", (() => { const fp = armBackfill({ apply: false, databaseUrl: PROD, vaultKeyConfigured: true }).fingerprint; return !!fp && !fp.includes("example.com") && !fp.includes("pw"); })());
+
+// ---- distinct mode-specific phrases ------------------------------------------------------------------------
+check("dry-run and apply phrases are distinct", BACKFILL_DRYRUN_PHRASE !== BACKFILL_APPLY_PHRASE);
+check("apply CANNOT run with the dry-run phrase", armBackfill({ apply: true, environment: "production", confirmation: BACKFILL_DRYRUN_PHRASE, databaseUrl: PROD, vaultKeyConfigured: true }).ok === false);
+check("dry-run with the correct dry-run phrase is ok", armBackfill({ apply: false, confirmation: BACKFILL_DRYRUN_PHRASE, databaseUrl: PROD, vaultKeyConfigured: true }).ok === true);
+check("dry-run CANNOT run with an arbitrary phrase", armBackfill({ apply: false, confirmation: "whatever", databaseUrl: PROD, vaultKeyConfigured: true }).ok === false);
+check("dry-run CANNOT run with the apply phrase", armBackfill({ apply: false, confirmation: BACKFILL_APPLY_PHRASE, databaseUrl: PROD, vaultKeyConfigured: true }).ok === false);
+check("dry-run with NO phrase (local convenience) is ok", armBackfill({ apply: false, databaseUrl: LOCAL, vaultKeyConfigured: true }).ok === true);
+
+// ---- max-batches bound -------------------------------------------------------------------------------------
+check("max-batches defaults to 1", armBackfill({ apply: false, databaseUrl: LOCAL, vaultKeyConfigured: true }).maxBatches === BACKFILL_DEFAULT_MAX_BATCHES && BACKFILL_DEFAULT_MAX_BATCHES === 1);
+check("max-batches clamps above the hard maximum", armBackfill({ apply: false, maxBatches: 9999, databaseUrl: LOCAL, vaultKeyConfigured: true }).maxBatches === BACKFILL_MAX_MAX_BATCHES);
+check("max-batches floors at 1", armBackfill({ apply: false, maxBatches: 0, databaseUrl: LOCAL, vaultKeyConfigured: true }).maxBatches === 1);
+
+// ---- cursor validation -------------------------------------------------------------------------------------
+check("valid cuid-like cursor is accepted", (() => { const r = armBackfill({ apply: false, cursor: "cabc123def456ghi789jkl", databaseUrl: LOCAL, vaultKeyConfigured: true }); return r.ok && r.cursor === "cabc123def456ghi789jkl"; })());
+check("malformed cursor fails closed", armBackfill({ apply: false, cursor: "../etc/passwd", databaseUrl: LOCAL, vaultKeyConfigured: true }).ok === false);
+check("overlong cursor fails closed", armBackfill({ apply: false, cursor: "x".repeat(200), databaseUrl: LOCAL, vaultKeyConfigured: true }).ok === false);
+check("empty cursor is treated as absent (ok, null)", (() => { const r = armBackfill({ apply: false, cursor: "", databaseUrl: LOCAL, vaultKeyConfigured: true }); return r.ok && r.cursor === null; })());
+check("apply phrase alias equals the apply phrase", BACKFILL_CONFIRMATION_PHRASE === BACKFILL_APPLY_PHRASE);
 
 console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — provider-credential backfill arming: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

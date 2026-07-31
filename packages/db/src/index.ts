@@ -182,6 +182,7 @@ export * from "./business-lead-adapter";
 // BUSINESS-VAULT-V1 — envelope-encryption primitives + the owner-only provider credential vault service +
 // the canonical vault-first (fail-closed) Meta token resolver/writer for the staged legacy cutover.
 export * from "./provider-credential-crypto";
+export * from "./provider-credential-lock";
 export * from "./provider-credential-vault";
 export * from "./provider-credential-resolver";
 export * from "./provider-credential-backfill";

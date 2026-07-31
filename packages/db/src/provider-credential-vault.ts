@@ -15,12 +15,27 @@
  */
 import { Prisma, BusinessProvider, ProviderCredentialPurpose } from "@prisma/client";
 import { systemDb } from "./index";
+import type { VaultExecutor } from "./provider-credential-lock";
 import {
   encryptCredential, decryptCredential, credentialFingerprint, resolveVaultKeyProvider,
   type ProviderCredentialKeyProvider, type CredentialAad,
 } from "./provider-credential-crypto";
 
 export { ProviderCredentialPurpose } from "@prisma/client";
+
+/**
+ * Execution options for every vault operation. `db` threads a caller-provided transaction client (from
+ * `withProviderCredentialAccountLock`) so the whole critical section shares ONE connection — the services NEVER
+ * silently fall back to the global `systemDb` when a transaction is supplied. `key` overrides the key provider
+ * (tests only). Absent `db` = the owner `systemDb` (the default single-statement path).
+ */
+export interface VaultExecOpts {
+  db?: VaultExecutor;
+  key?: ProviderCredentialKeyProvider;
+}
+function execOf(opts?: { db?: VaultExecutor }): VaultExecutor {
+  return opts?.db ?? systemDb;
+}
 
 /** Thrown when an active vault row exists but cannot be decrypted (tamper/key mismatch). SECURITY failure. */
 export class VaultDecryptError extends Error {
@@ -102,22 +117,23 @@ function activeWhere(q: CredentialQuery) {
  * (tenant, provider, connection, purpose): an existing active row is rotated in place; otherwise a new row is
  * created. Idempotent under concurrency via the partial unique index (P2002 → re-resolve + update).
  */
-export async function storeProviderCredential(input: StoreCredentialInput, key?: ProviderCredentialKeyProvider): Promise<{ id: string; fingerprint: string; rotated: boolean }> {
+export async function storeProviderCredential(input: StoreCredentialInput, opts?: VaultExecOpts): Promise<{ id: string; fingerprint: string; rotated: boolean }> {
+  const db = execOf(opts);
   const q: CredentialQuery = { tenantId: input.tenantId, provider: input.provider, purpose: input.purpose, connection: input.connection };
-  const enc = await encryptCredential(input.secret, aadFor(q), keyProvider(key));
+  const enc = await encryptCredential(input.secret, aadFor(q), keyProvider(opts?.key));
   const data = {
     ciphertext: enc.ciphertext, iv: enc.iv, authTag: enc.authTag, wrappedDataKey: enc.wrappedDataKey,
     keyProvider: enc.keyProvider, keyVersion: enc.keyVersion, formatVersion: enc.formatVersion,
     tokenType: input.tokenType ?? null, expiresAt: input.expiresAt ?? null, scopes: input.scopes ?? [],
     fingerprint: enc.fingerprint,
   };
-  const existing = await systemDb.providerCredential.findFirst({ where: activeWhere(q), select: { id: true } });
+  const existing = await db.providerCredential.findFirst({ where: activeWhere(q), select: { id: true } });
   if (existing) {
-    await systemDb.providerCredential.update({ where: { id: existing.id }, data: { ...data, rotatedAt: new Date() } });
+    await db.providerCredential.update({ where: { id: existing.id }, data: { ...data, rotatedAt: new Date() } });
     return { id: existing.id, fingerprint: enc.fingerprint, rotated: true };
   }
   try {
-    const created = await systemDb.providerCredential.create({
+    const created = await db.providerCredential.create({
       data: {
         tenantId: input.tenantId, provider: input.provider, purpose: input.purpose,
         connectedAccountId: input.connection.connectedAccountId ?? null,
@@ -130,8 +146,8 @@ export async function storeProviderCredential(input: StoreCredentialInput, key?:
   } catch (e) {
     // Concurrent create lost the race against the partial unique index — rotate the winner instead.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      const winner = await systemDb.providerCredential.findFirstOrThrow({ where: activeWhere(q), select: { id: true } });
-      await systemDb.providerCredential.update({ where: { id: winner.id }, data: { ...data, rotatedAt: new Date() } });
+      const winner = await db.providerCredential.findFirstOrThrow({ where: activeWhere(q), select: { id: true } });
+      await db.providerCredential.update({ where: { id: winner.id }, data: { ...data, rotatedAt: new Date() } });
       return { id: winner.id, fingerprint: enc.fingerprint, rotated: true };
     }
     throw e;
@@ -146,8 +162,9 @@ export const rotateProviderCredential = storeProviderCredential;
  * `VaultDecryptError` if a row exists but cannot be decrypted — callers MUST treat that as a security failure and
  * MUST NOT fall back to any legacy plaintext.
  */
-export async function resolveProviderCredential(q: CredentialQuery, key?: ProviderCredentialKeyProvider): Promise<string | null> {
-  const row = await systemDb.providerCredential.findFirst({ where: activeWhere(q) });
+export async function resolveProviderCredential(q: CredentialQuery, opts?: VaultExecOpts): Promise<string | null> {
+  const db = execOf(opts);
+  const row = await db.providerCredential.findFirst({ where: activeWhere(q) });
   if (!row) return null;
   try {
     return await decryptCredential(
@@ -155,7 +172,7 @@ export async function resolveProviderCredential(q: CredentialQuery, key?: Provid
         ciphertext: row.ciphertext, iv: row.iv, authTag: row.authTag, wrappedDataKey: row.wrappedDataKey,
         keyProvider: row.keyProvider, keyVersion: row.keyVersion, formatVersion: row.formatVersion, fingerprint: row.fingerprint,
       },
-      aadFor(q), keyProvider(key),
+      aadFor(q), keyProvider(opts?.key),
     );
   } catch {
     throw new VaultDecryptError(row.id);
@@ -168,14 +185,16 @@ export async function resolveProviderCredential(q: CredentialQuery, key?: Provid
  * and its expiry is reported. This is what lets the canonical resolver fail closed on a revoked/expired row rather
  * than silently falling back to a legacy plaintext column.
  */
-export async function resolveProviderCredentialOutcome(q: CredentialQuery, key?: ProviderCredentialKeyProvider, now: Date = new Date()): Promise<CredentialOutcome> {
-  const active = await systemDb.providerCredential.findFirst({ where: activeWhere(q) });
+export async function resolveProviderCredentialOutcome(q: CredentialQuery, opts?: VaultExecOpts & { now?: Date }): Promise<CredentialOutcome> {
+  const db = execOf(opts);
+  const now = opts?.now ?? new Date();
+  const active = await db.providerCredential.findFirst({ where: activeWhere(q) });
   if (active) {
     let plaintext: string;
     try {
       plaintext = await decryptCredential(
         { ciphertext: active.ciphertext, iv: active.iv, authTag: active.authTag, wrappedDataKey: active.wrappedDataKey, keyProvider: active.keyProvider, keyVersion: active.keyVersion, formatVersion: active.formatVersion, fingerprint: active.fingerprint },
-        aadFor(q), keyProvider(key),
+        aadFor(q), keyProvider(opts?.key),
       );
     } catch {
       throw new VaultDecryptError(active.id);
@@ -184,13 +203,14 @@ export async function resolveProviderCredentialOutcome(q: CredentialQuery, key?:
   }
   // No ACTIVE row — is there a revoked one? (A revoked credential must fail closed, never fall back.)
   const conn = q.connection.connectedAccountId ? { connectedAccountId: q.connection.connectedAccountId } : { businessConnectionId: q.connection.businessConnectionId };
-  const revoked = await systemDb.providerCredential.findFirst({ where: { tenantId: q.tenantId, provider: q.provider, purpose: q.purpose, revokedAt: { not: null }, ...conn }, select: { id: true } });
+  const revoked = await db.providerCredential.findFirst({ where: { tenantId: q.tenantId, provider: q.provider, purpose: q.purpose, revokedAt: { not: null }, ...conn }, select: { id: true } });
   return revoked ? { state: "revoked" } : { state: "absent" };
 }
 
 /** Non-secret status of the active credential (for truthful UI + audit). Never decrypts. */
-export async function getProviderCredentialStatus(q: CredentialQuery): Promise<CredentialStatus> {
-  const row = await systemDb.providerCredential.findFirst({
+export async function getProviderCredentialStatus(q: CredentialQuery, opts?: { db?: VaultExecutor }): Promise<CredentialStatus> {
+  const db = execOf(opts);
+  const row = await db.providerCredential.findFirst({
     where: activeWhere(q),
     select: { expiresAt: true, keyVersion: true, fingerprint: true, scopes: true, rotatedAt: true },
   });
@@ -199,10 +219,11 @@ export async function getProviderCredentialStatus(q: CredentialQuery): Promise<C
 }
 
 /** Revoke the active credential (sets revokedAt). Idempotent — returns whether a row was revoked. */
-export async function revokeProviderCredential(q: CredentialQuery): Promise<boolean> {
-  const row = await systemDb.providerCredential.findFirst({ where: activeWhere(q), select: { id: true } });
+export async function revokeProviderCredential(q: CredentialQuery, opts?: { db?: VaultExecutor }): Promise<boolean> {
+  const db = execOf(opts);
+  const row = await db.providerCredential.findFirst({ where: activeWhere(q), select: { id: true } });
   if (!row) return false;
-  await systemDb.providerCredential.update({ where: { id: row.id }, data: { revokedAt: new Date() } });
+  await db.providerCredential.update({ where: { id: row.id }, data: { revokedAt: new Date() } });
   return true;
 }
 
