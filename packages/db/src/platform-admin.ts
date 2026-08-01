@@ -17,6 +17,8 @@ export const PLATFORM_AUDIT_ACTIONS = [
   "admin_user.added", "admin_user.role_changed", "admin_user.deactivated", "admin_user.reactivated",
   "bootstrap.owner_assigned", "retention.executed", "aggregation.executed", "analytics.collection_setting_changed",
   "privileged.reauth_required", "privileged.action_rejected", "system_health.viewed", "audit.viewed",
+  // Provider credential cutover (owner-only, Vercel-runtime; counts-only metadata via `summary`/`resultCode`).
+  "provider_credential.cutover_dry_run", "provider_credential.cutover_applied", "provider_credential.cutover_rejected",
 ] as const;
 export type PlatformAuditAction = (typeof PLATFORM_AUDIT_ACTIONS)[number];
 

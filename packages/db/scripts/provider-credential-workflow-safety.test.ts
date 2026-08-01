@@ -57,8 +57,15 @@ check("dedicated PROVIDER_VAULT_KEK secret", /PROVIDER_VAULT_KEK:\s*\$\{\{\s*sec
 check("PROVIDER_VAULT_KEY_VERSION secret", /PROVIDER_VAULT_KEY_VERSION:\s*\$\{\{\s*secrets\.PROVIDER_VAULT_KEY_VERSION\s*\}\}/.test(wf));
 check("host fingerprint secret", /PRODUCTION_DATABASE_HOST_FINGERPRINT:\s*\$\{\{\s*secrets\./.test(wf));
 check("confirmation passed via env (not a shell arg)", /BACKFILL_CONFIRMATION:\s*\$\{\{\s*inputs\.confirmation\s*\}\}/.test(wf));
-check("workflow never echoes DATABASE_URL / KEK", !/echo[^\n]*(DATABASE_URL|PROVIDER_VAULT_KEK)/.test(wf));
-check("preflight requires a DEDICATED 32-byte KEK (no TOKEN_ENCRYPTION_KEY fallback)", /kekIs32Bytes\(env\.PROVIDER_VAULT_KEK\)/.test(preflight) && !/TOKEN_ENCRYPTION_KEY/.test(preflight));
+check("workflow never echoes DATABASE_URL / KEK", !/echo[^\n]*(DATABASE_URL|PROVIDER_VAULT_KEK|TOKEN_ENCRYPTION_KEY)/.test(wf));
+check("preflight validates the VAULT via the DEDICATED PROVIDER_VAULT_KEK (never the legacy key)", /kekIs32Bytes\(env\.PROVIDER_VAULT_KEK\)/.test(preflight));
+
+// ---- legacy-decryption-key fail-closed (incident F-cutover) ------------------------------------------------
+check("workflow maps legacy secrets ONLY from GitHub secrets", /TOKEN_ENCRYPTION_MODE:\s*\$\{\{\s*secrets\.TOKEN_ENCRYPTION_MODE\s*\}\}/.test(wf) && /TOKEN_ENCRYPTION_KEY:\s*\$\{\{\s*secrets\.TOKEN_ENCRYPTION_KEY\s*\}\}/.test(wf));
+check("preflight requires the legacy key (aes-gcm + 32 bytes) for classify/decrypt", /TOKEN_ENCRYPTION_MODE/.test(preflight) && /kekIs32Bytes\(env\.TOKEN_ENCRYPTION_KEY\)/.test(preflight));
+check("preflight emits the precise unavailable diagnostic", /legacy_decryption_key_unavailable_in_github_runtime/.test(preflight));
+check("preflight NEVER decrypts legacy with the vault KEK", !/decrypt[\s\S]{0,40}PROVIDER_VAULT_KEK/.test(preflight));
+check("workflow documents the Vercel-runtime cutover path", /Vercel Production/.test(wf) && /legacy_decryption_key_unavailable_in_github_runtime/.test(wf));
 
 // ---- prohibited operations (checked against COMMENT-STRIPPED YAML) -----------------------------------------
 check("no prisma migrate deploy/dev", !/prisma\s+migrate\s+(deploy|dev)/.test(wfCode));
@@ -79,6 +86,26 @@ check("frozen lockfile install", /pnpm install --frozen-lockfile/.test(wf));
 check("CLI has NO 100000 loop", !/100000/.test(cli));
 check("CLI loop is bounded by maxBatches", /for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*armed\.maxBatches/.test(cli));
 check("CLI documents explicit exit codes + implements them", /Exit codes/.test(cliRaw) && /return 1;/.test(cli) && /return 2;/.test(cli) && /process\.exit\(3\)/.test(cli));
+
+// ---- verifier: dry-run fails on errors (the incident fix, source-asserted) --------------------------------
+const backfillSrc = stripTsComments(readFileSync(join(ROOT, "packages/db/src/provider-credential-backfill.ts"), "utf8"));
+check("verifyBackfillRun fails on errors > 0 BEFORE the dry-run/apply branch", /if\s*\(result\.errors\s*>\s*0\)[\s\S]{0,80}failures\.push/.test(backfillSrc) && backfillSrc.indexOf("result.errors > 0") < backfillSrc.indexOf("if (result.dryRun)"));
+
+// ---- runtime route + dispatch + page source invariants -----------------------------------------------------
+const routeSrc = stripTsComments(readFileSync(join(ROOT, "apps/web/src/app/api/platform/provider-credential-cutover/route.ts"), "utf8"));
+const dispatchSrc = stripTsComments(readFileSync(join(ROOT, "apps/web/src/server/platform/provider-credential-cutover-dispatch.ts"), "utf8"));
+const pageSrc = stripTsComments(readFileSync(join(ROOT, "apps/web/src/app/admin/provider-credential-cutover/page.tsx"), "utf8"));
+check("route forces Node.js runtime + dynamic + no-store", /runtime = "nodejs"/.test(routeSrc) && /dynamic = "force-dynamic"/.test(routeSrc) && /no-store/.test(routeSrc));
+check("route has NO GET handler (no mutation on GET)", !/export\s+async\s+function\s+GET\b/.test(routeSrc));
+check("route enforces same-origin before any work", /isSameOrigin\(\)/.test(routeSrc));
+check("dispatch requires Vercel production readiness (fail-closed)", /evaluateProviderCredentialRuntimeCutoverReadiness/.test(dispatchSrc) && /runtime_not_ready/.test(dispatchSrc));
+check("dispatch is OWNER-only (admin_users.manage) + recent-auth", /requirePlatformCapability\([^)]*"admin_users\.manage"/.test(dispatchSrc) && /requireRecentAuth\(/.test(dispatchSrc));
+check("dispatch compares the apply phrase WITHOUT trim", /body\.confirmation !== CUTOVER_APPLY_PHRASE/.test(dispatchSrc) && !/confirmation[\s\S]{0,20}\.trim\(\)/.test(dispatchSrc));
+check("dispatch NEVER decrypts legacy with the vault KEK", !/PROVIDER_VAULT_KEK/.test(dispatchSrc));
+check("dispatch NEVER copies TOKEN_ENCRYPTION_KEY into another env var", !/process\.env\.\w+\s*=\s*[^\n]*TOKEN_ENCRYPTION_KEY/.test(dispatchSrc));
+check("dispatch never console-logs (counts flow through the audit + result only)", !/console\.(log|info|warn|error)\s*\(/.test(dispatchSrc));
+check("page is owner-only + noindex + Node runtime", /platform\.role !== PlatformRole\.owner/.test(pageSrc) && /robots:\s*\{\s*index:\s*false/.test(pageSrc) && /runtime = "nodejs"/.test(pageSrc));
+check("page marks the route TEMPORARY with a removal checklist", /TEMPORARY/.test(readFileSync(join(ROOT, "apps/web/src/app/admin/provider-credential-cutover/page.tsx"), "utf8")) && /REMOVAL CHECKLIST/.test(readFileSync(join(ROOT, "apps/web/src/app/admin/provider-credential-cutover/page.tsx"), "utf8")));
 
 // ---- Dependabot policy unchanged ---------------------------------------------------------------------------
 check("dependabot: version-updates still disabled (open-pull-requests-limit 0)", (dependabot.match(/open-pull-requests-limit:\s*0/g) || []).length >= 2);

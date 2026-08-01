@@ -51,6 +51,18 @@ async function main(): Promise<number> {
   if (!kekOk) errors.push("PROVIDER_VAULT_KEK missing or not a base64 32-byte key (dedicated KEK required)");
   if (!env.PROVIDER_VAULT_KEY_VERSION) errors.push("PROVIDER_VAULT_KEY_VERSION is not set");
 
+  // 2b) LEGACY DECRYPTION KEY — required to classify/decrypt the old `aesgcm:v1:*` ConnectedAccount columns. This
+  // is the incident root cause: GitHub Actions intentionally does NOT hold the Sensitive legacy key, so the
+  // cutover (whose dry-run + apply both DECRYPT legacy values) fails closed here. Mapped ONLY from the optional
+  // TOKEN_ENCRYPTION_MODE / TOKEN_ENCRYPTION_KEY secrets; NEVER falls back to PROVIDER_VAULT_KEK for legacy.
+  const legacyMode = (env.TOKEN_ENCRYPTION_MODE ?? "").trim();
+  const legacyKeyOk = kekIs32Bytes(env.TOKEN_ENCRYPTION_KEY);
+  const legacyReady = legacyMode === "aes-gcm" && legacyKeyOk;
+  if (!legacyReady) {
+    // Precise, secret-free diagnostic (the real production cutover runs in the Vercel runtime where this key lives).
+    errors.push("legacy_decryption_key_unavailable_in_github_runtime");
+  }
+
   // 3) Production target fingerprint present + matches (never prints the URL).
   if (!env.DATABASE_URL) errors.push("DATABASE_URL (PRODUCTION_DATABASE_URL) is missing");
   const fingerprint = databaseHostFingerprint(env.DATABASE_URL);
@@ -73,7 +85,8 @@ async function main(): Promise<number> {
 
   writeStepSummary("Provider credential backfill — preflight", {
     mode, hostFingerprint: fingerprint ?? "n/a", armed: armed.ok, kek32Bytes: kekOk,
-    keyVersionSet: Boolean(env.PROVIDER_VAULT_KEY_VERSION), migrationApplied, tableExists,
+    keyVersionSet: Boolean(env.PROVIDER_VAULT_KEY_VERSION), legacyDecryptionKeyAvailable: legacyReady,
+    migrationApplied, tableExists,
     batchSize: armed.batchSize, maxBatches: armed.maxBatches, cursor: armed.cursor ?? null, ok: errors.length === 0,
   });
 
