@@ -776,6 +776,15 @@ model ConnectedAccount {
   // pattern as the V1.37.5B history group. IG survives a Page removal with a null link.
   parentAccountId String?
 
+  // BUSINESS-LEADGEN-SUBSCRIPTION-V1 — truthful Page-level `leadgen` webhook subscription state for the
+  // CURRENT Meta app. A Page only delivers Lead Ads webhooks once it is subscribed to the app via
+  // /{page-id}/subscribed_apps. `verified` is written ONLY after a post-write read proved the app is
+  // present AND carries `leadgen`. Facebook Pages only — never set for an Instagram account. Contains no
+  // secret: a status label + the time the check ran.
+  // One of: verified | not_subscribed | unavailable (a provider failure — state unknown, never assumed OK).
+  leadgenSubscriptionStatus    String?
+  leadgenSubscriptionCheckedAt DateTime?
+
   // V1.38.1 — last truthful Instagram content permission/availability state. One of
   // healthy|permission_missing|app_review_pending|business_verification_required|
   // token_expired|instagram_not_linked|professional_account_required|

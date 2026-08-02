@@ -26,6 +26,8 @@ export interface BusinessDict {
     connect: string; reconnect: string; disconnect: string;
     configRequired: string; approvalRequired: string; notAvailable: string;
     disconnected: string; denied: string;
+    /** BUSINESS-LEADGEN-SUBSCRIPTION-V1 — one-click Page↔app `leadgen` webhook repair. */
+    connectLeadWebhook: string; leadWebhookConnected: string; leadWebhookFailed: string;
   };
   status: Record<BusinessContactStatus, string>;
   source: Record<BusinessContactSource, string>;
@@ -53,6 +55,9 @@ const en: BusinessDict = {
     connect: "Connect", reconnect: "Reconnect", disconnect: "Disconnect",
     configRequired: "Configuration required", approvalRequired: "Provider approval required", notAvailable: "Not available in this checkpoint",
     disconnected: "Disconnected.", denied: "You don't have permission to manage platforms.",
+    connectLeadWebhook: "Connect Lead Ads webhook",
+    leadWebhookConnected: "Lead Ads webhook connected.",
+    leadWebhookFailed: "Could not connect the Lead Ads webhook. Please try again.",
   },
   status: { new: "New", contacted: "Contacted", handled: "Handled", customer: "Customer", rejected: "Rejected" },
   source: { facebook: "Facebook", instagram: "Instagram", google_ads: "Google Ads", youtube: "YouTube", tiktok: "TikTok", linkedin: "LinkedIn", web_form: "Web form" },
@@ -67,7 +72,9 @@ const en: BusinessDict = {
     available: "Active — leads are ingested automatically", config_missing: "Meta app not configured",
     entitlement_locked: "Not included in your plan", no_linked_account: "No linked Meta account",
     connection_inactive: "Connection inactive", credential_unavailable: "Credential unavailable — reconnect required",
-    permission_missing: "Lead permission not granted", awaiting_provider_approval: "Awaiting Meta app review",
+    permission_missing: "Lead permission not granted",
+    webhook_subscription_missing: "Lead Ads webhook is not connected",
+    awaiting_provider_approval: "Awaiting Meta app review",
   },
 };
 
@@ -89,6 +96,9 @@ const sk: BusinessDict = {
     connect: "Pripojiť", reconnect: "Znovu pripojiť", disconnect: "Odpojiť",
     configRequired: "Vyžaduje sa konfigurácia", approvalRequired: "Vyžaduje sa schválenie poskytovateľom", notAvailable: "V tomto kroku nedostupné",
     disconnected: "Odpojené.", denied: "Nemáte oprávnenie spravovať platformy.",
+    connectLeadWebhook: "Pripojiť webhook Lead Ads",
+    leadWebhookConnected: "Webhook Lead Ads bol pripojený.",
+    leadWebhookFailed: "Webhook Lead Ads sa nepodarilo pripojiť. Skúste to znova.",
   },
   status: { new: "Nový", contacted: "Kontaktovaný", handled: "Vybavený", customer: "Zákazník", rejected: "Zamietnutý" },
   source: { facebook: "Facebook", instagram: "Instagram", google_ads: "Google Ads", youtube: "YouTube", tiktok: "TikTok", linkedin: "LinkedIn", web_form: "Web formulár" },
@@ -103,7 +113,9 @@ const sk: BusinessDict = {
     available: "Aktívne — leady sa získavajú automaticky", config_missing: "Meta aplikácia nie je nakonfigurovaná",
     entitlement_locked: "Nie je súčasťou vášho plánu", no_linked_account: "Žiadny prepojený Meta účet",
     connection_inactive: "Pripojenie neaktívne", credential_unavailable: "Poverenie nedostupné — vyžaduje sa opätovné pripojenie",
-    permission_missing: "Oprávnenie na leady neudelené", awaiting_provider_approval: "Čaká na schválenie Meta aplikácie",
+    permission_missing: "Oprávnenie na leady neudelené",
+    webhook_subscription_missing: "Webhook Lead Ads nie je pripojený",
+    awaiting_provider_approval: "Čaká na schválenie Meta aplikácie",
   },
 };
 
@@ -125,6 +137,9 @@ const de: BusinessDict = {
     connect: "Verbinden", reconnect: "Neu verbinden", disconnect: "Trennen",
     configRequired: "Konfiguration erforderlich", approvalRequired: "Freigabe des Anbieters erforderlich", notAvailable: "In diesem Schritt nicht verfügbar",
     disconnected: "Getrennt.", denied: "Sie haben keine Berechtigung, Plattformen zu verwalten.",
+    connectLeadWebhook: "Lead-Ads-Webhook verbinden",
+    leadWebhookConnected: "Lead-Ads-Webhook wurde verbunden.",
+    leadWebhookFailed: "Der Lead-Ads-Webhook konnte nicht verbunden werden. Bitte erneut versuchen.",
   },
   status: { new: "Neu", contacted: "Kontaktiert", handled: "Bearbeitet", customer: "Kunde", rejected: "Abgelehnt" },
   source: { facebook: "Facebook", instagram: "Instagram", google_ads: "Google Ads", youtube: "YouTube", tiktok: "TikTok", linkedin: "LinkedIn", web_form: "Webformular" },
@@ -139,7 +154,9 @@ const de: BusinessDict = {
     available: "Aktiv — Leads werden automatisch erfasst", config_missing: "Meta-App nicht konfiguriert",
     entitlement_locked: "Nicht in Ihrem Tarif enthalten", no_linked_account: "Kein verknüpftes Meta-Konto",
     connection_inactive: "Verbindung inaktiv", credential_unavailable: "Anmeldedaten nicht verfügbar — Neuverbindung erforderlich",
-    permission_missing: "Lead-Berechtigung nicht erteilt", awaiting_provider_approval: "Warten auf Meta-App-Prüfung",
+    permission_missing: "Lead-Berechtigung nicht erteilt",
+    webhook_subscription_missing: "Lead-Ads-Webhook ist nicht verbunden",
+    awaiting_provider_approval: "Warten auf Meta-App-Prüfung",
   },
 };
 

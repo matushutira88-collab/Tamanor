@@ -4,14 +4,14 @@ import {
   BusinessProvider, isBusinessConnectionActive, isMetaLeadCapabilityAvailable,
 } from "@guardora/core";
 import { listBusinessConnections } from "@guardora/db";
-import { getMetaLeadCapabilityState } from "@/server/meta-lead-capability";
+import { getMetaLeadCapability } from "@/server/meta-lead-capability";
 import { requireDashboardCapability } from "@/server/route-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { CapabilityLockedState } from "@/components/dashboard/capability-locked";
 import { businessDict, bizLabel } from "../business-i18n";
-import { disconnectPlatformAction } from "./actions";
+import { disconnectPlatformAction, repairMetaLeadgenSubscriptionAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Connected platforms", robots: { index: false, follow: false } };
@@ -25,7 +25,12 @@ const DISCONNECTABLE: BusinessConnectionStatus[] = [
   BusinessConnectionStatus.Active, BusinessConnectionStatus.Pending, BusinessConnectionStatus.ReauthRequired, BusinessConnectionStatus.Error,
 ];
 
-export default async function PlatformsPage() {
+export default async function PlatformsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  const sp = await searchParams;
   const locale = await getLocale();
   const cap = await requireDashboardCapability("businessConnectedPlatforms");
   if (!cap.allowed) return <CapabilityLockedState capability={cap.locked.capability} plan={cap.locked.plan} locale={locale} />;
@@ -38,12 +43,28 @@ export default async function PlatformsPage() {
   const byProvider = new Map(rows.map((r) => [r.provider, r]));
   const dtf = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
   // TRUTHFUL Meta Lead Ads capability — resolved from real signals (config + linked account + decryptable vault
-  // credential + granted permission + provider approval). The tenant passed the plan gate above, so `entitled=true`.
-  const metaLeadState = await getMetaLeadCapabilityState(session.tenantId, true);
+  // credential + granted permission + VERIFIED Page-level `leadgen` webhook subscription + provider approval).
+  // The tenant passed the plan gate above, so `entitled=true`.
+  const metaLead = await getMetaLeadCapability(session.tenantId, true);
+  const metaLeadState = metaLead.state;
+  // BUSINESS-LEADGEN-SUBSCRIPTION-V1 — the one-click repair is offered ONLY when the Page subscription is not
+  // verified, a Page account actually exists, and the actor holds the connector-management permission.
+  const showLeadWebhookRepair =
+    metaLeadState === "webhook_subscription_missing" &&
+    metaLead.pageAccountId !== null &&
+    can(session.role, Permission.ConnectorManage);
 
   return (
     <div className="space-y-6">
       <PageHeader title={t.platforms.title} description={t.platforms.desc} />
+
+      {sp.saved === "lead_webhook" || sp.e === "lead_webhook" ? (
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2" role="status">
+          <span className="text-sm text-[var(--color-muted)]">
+            {sp.saved === "lead_webhook" ? t.platforms.leadWebhookConnected : t.platforms.leadWebhookFailed}
+          </span>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {ALL_BUSINESS_PROVIDERS.map((provider) => {
@@ -87,6 +108,15 @@ export default async function PlatformsPage() {
                   <div className="mt-1">
                     <Badge tone={isMetaLeadCapabilityAvailable(metaLeadState) ? "success" : "muted"}>{t.metaLead[metaLeadState]}</Badge>
                   </div>
+                  {/* Repair the missing Page↔app `leadgen` subscription in place — no disconnect/reconnect. */}
+                  {showLeadWebhookRepair ? (
+                    <form action={repairMetaLeadgenSubscriptionAction} className="mt-2">
+                      <input type="hidden" name="accountId" value={metaLead.pageAccountId ?? ""} />
+                      <button type="submit" className="rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface-2)]">
+                        {t.platforms.connectLeadWebhook}
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
               ) : null}
 

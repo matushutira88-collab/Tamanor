@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { Permission, assertCan, EntitlementError, emitOpsEvent } from "@guardora/core";
 import type { MetaDiscoveredPage } from "@guardora/connectors";
-import { checkAccountToken, linkMetaAssets, runReadOnlySync, MetaCredentialPersistError } from "@guardora/sync";
+import { checkAccountToken, linkMetaAssets, runReadOnlySync, MetaCredentialPersistError, ensureLeadgenSubscriptionOnConnect } from "@guardora/sync";
 import { withTenant, assertTenantActive, enableAccountMonitoringWithinLimit, enforceMonitoringLimits } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { loadOnboardingRaw, clearOnboarding } from "@/server/meta-onboarding";
@@ -44,7 +44,7 @@ export async function confirmMetaSelection(
     redirect("/dashboard/accounts/meta/select?flow=none_selected");
   }
 
-  let connected = 0, monitored = 0, limited = 0, slotTaken = 0, credFailed = 0;
+  let connected = 0, monitored = 0, limited = 0, slotTaken = 0, credFailed = 0, leadWebhookFailed = 0;
   const monitoredIds: string[] = [];
   const activate = async (id: string) => {
     try { await enableAccountMonitoringWithinLimit(session.tenantId, id); emitOpsEvent("account.monitoring_enabled", { operation: "connect" }); monitored++; monitoredIds.push(id); }
@@ -90,6 +90,14 @@ export async function confirmMetaSelection(
     if (igChosen && link.igAccountId) await activate(link.igAccountId);
     // Best-effort token verification on the Page.
     try { await checkAccountToken(session.tenantId, link.pageAccountId); } catch { /* best-effort */ }
+
+    // BUSINESS-LEADGEN-SUBSCRIPTION-V1 — with the vault credential stored AND verified above, subscribe the
+    // PAGE (never the Instagram account) to this Meta app for the `leadgen` webhook field, then verify it.
+    // Runs OUTSIDE any DB transaction, only when `leads_retrieval` was actually granted, and is strictly
+    // best-effort: a failure leaves the Facebook account, its credential, comment sync and monitoring exactly
+    // as they are and surfaces a Lead-Ads-only notice.
+    const leadSub = await ensureLeadgenSubscriptionOnConnect(session.tenantId, link.pageAccountId, row.grantedScopes);
+    if (leadSub.attempted && !leadSub.verified) leadWebhookFailed++;
   }
 
   // V1.68 (Release A / A2) — reconnect must NEVER bypass the limit. linkMetaAssets re-activates a
@@ -116,7 +124,7 @@ export async function confirmMetaSelection(
 
   await clearOnboarding(session, onboardingId);
   revalidatePath("/dashboard/accounts");
-  redirect(`/dashboard/accounts?connected=${connected}&mon=${monitored}&lim=${limited}${slotTaken ? `&slot=${slotTaken}` : ""}${credFailed ? `&credfail=${credFailed}` : ""}`);
+  redirect(`/dashboard/accounts?connected=${connected}&mon=${monitored}&lim=${limited}${slotTaken ? `&slot=${slotTaken}` : ""}${credFailed ? `&credfail=${credFailed}` : ""}${leadWebhookFailed ? `&leadhook=${leadWebhookFailed}` : ""}`);
 }
 
 /** Abandon the onboarding flow without connecting anything. */

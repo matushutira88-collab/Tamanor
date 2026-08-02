@@ -187,8 +187,9 @@ export function businessContactDedupeSeed(input: {
 /**
  * The truthful state of the Meta Lead Ads capability. `available` means EVERY precondition holds (config, plan
  * entitlement, a linked+active account, an active connection, a decryptable vault credential, the granted
- * `leads_retrieval` permission, AND live provider approval). Any other value names the FIRST missing precondition
- * so the UI never claims a capability is available/active when it is not.
+ * `leads_retrieval` permission, a VERIFIED Page-level `leadgen` webhook subscription, AND live provider
+ * approval). Any other value names the FIRST missing precondition so the UI never claims a capability is
+ * available/active when it is not.
  */
 export type MetaLeadCapabilityState =
   | "available"
@@ -198,6 +199,9 @@ export type MetaLeadCapabilityState =
   | "connection_inactive"
   | "credential_unavailable"
   | "permission_missing"
+  // BUSINESS-LEADGEN-SUBSCRIPTION-V1 — the Page is not subscribed to this app for the `leadgen` field, so Meta
+  // delivers NO lead webhooks for it. Everything else can be in place and leads still never arrive.
+  | "webhook_subscription_missing"
   | "awaiting_provider_approval";
 
 export interface MetaLeadCapabilitySignals {
@@ -213,6 +217,12 @@ export interface MetaLeadCapabilitySignals {
   credentialDecryptable: boolean;
   /** The `leads_retrieval` (lead access) permission was actually granted. */
   leadsPermissionGranted: boolean;
+  /**
+   * The Facebook Page is VERIFIED as subscribed to this Meta app for the `leadgen` webhook field
+   * (`/{page-id}/subscribed_apps`). Without it Meta delivers no lead webhooks at all, no matter what else is
+   * configured — so provider approval must never stand in for this check.
+   */
+  pageSubscriptionVerified: boolean;
   /** Meta App Review / provider approval for lead retrieval is in place. */
   providerApproved: boolean;
 }
@@ -228,6 +238,9 @@ export function evaluateMetaLeadCapability(s: MetaLeadCapabilitySignals): MetaLe
   if (!s.connectionActive) return "connection_inactive";
   if (!s.credentialDecryptable) return "credential_unavailable";
   if (!s.leadsPermissionGranted) return "permission_missing";
+  // Checked BEFORE provider approval: the Page subscription is the concrete, tenant-fixable precondition, and
+  // an approved app still receives nothing without it. `providerApproved` can never substitute for it.
+  if (!s.pageSubscriptionVerified) return "webhook_subscription_missing";
   if (!s.providerApproved) return "awaiting_provider_approval";
   return "available";
 }

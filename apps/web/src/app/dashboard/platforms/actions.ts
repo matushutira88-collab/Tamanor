@@ -10,10 +10,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { can, Permission, BusinessProvider, ALL_BUSINESS_PROVIDERS } from "@guardora/core";
 import { disconnectBusinessConnection } from "@guardora/db";
+import { ensureAccountLeadgenSubscription } from "@guardora/sync";
 import { requireDashboardCapability } from "@/server/route-guard";
 import { writeAudit } from "@/server/audit";
+import { isSameOrigin } from "@/server/csrf";
+import { leadgenSubscriptionRepairLimiter } from "@/lib/rate-limit";
 
 const PLATFORMS = "/dashboard/platforms";
+const ACCOUNTS = "/dashboard/accounts";
 
 async function manageGate() {
   const cap = await requireDashboardCapability("businessConnectedPlatforms");
@@ -37,4 +41,46 @@ export async function disconnectPlatformAction(fd: FormData): Promise<void> {
   }
   revalidatePath(PLATFORMS);
   redirect(`${PLATFORMS}?${ok ? "saved=disconnect" : "e=noop"}`);
+}
+
+/**
+ * BUSINESS-LEADGEN-SUBSCRIPTION-V1 — repair an EXISTING connected Facebook Page whose Page↔app `leadgen`
+ * webhook subscription was never established (the reason Lead Ads produced no contacts). Subscribes the Page
+ * to this Meta app via `/{page-id}/subscribed_apps`, preserving every field it is already subscribed to, and
+ * verifies the result with a second read before recording success.
+ *
+ * No disconnect/reconnect is required. Idempotent: an already-subscribed Page performs no provider write.
+ * Authorization is the existing connector-management permission on top of the Business platforms feature gate;
+ * the account lookup is tenant-scoped (RLS) so a foreign account id simply does not resolve. Rate-limited per
+ * account. Surfaces a safe result code only — never a token, proof, provider body, or identifier.
+ */
+export async function repairMetaLeadgenSubscriptionAction(fd: FormData): Promise<void> {
+  const cap = await requireDashboardCapability("businessConnectedPlatforms");
+  if (!cap.allowed) throw new Error("feature_locked");
+  const session = cap.session;
+  // The existing connector-management permission governs provider-side connector changes.
+  if (!can(session.role, Permission.ConnectorManage)) redirect(`${PLATFORMS}?e=denied`);
+  if (!(await isSameOrigin())) redirect(`${PLATFORMS}?e=csrf`);
+
+  const accountId = String(fd.get("accountId") ?? "").trim();
+  if (!accountId) redirect(`${PLATFORMS}?e=input`);
+
+  // Provider-touching action — bounded per account so a repeated click cannot hammer Graph.
+  const limit = await leadgenSubscriptionRepairLimiter.check(accountId);
+  if (!limit.allowed) redirect(`${PLATFORMS}?e=rate_limited`);
+
+  // Tenant-scoped lookup + Facebook-Page/active guards + provider HTTP (outside any transaction) + verify.
+  const res = await ensureAccountLeadgenSubscription(session.tenantId, accountId);
+  await writeAudit({
+    session,
+    event: res.verified ? "meta.leadgen.subscription_repaired" : "meta.leadgen.subscription_repair_failed",
+    targetType: "connected_account",
+    targetId: accountId,
+    // Classified fields only — no token, secret, proof, provider body, or Page id.
+    metadata: { provider: BusinessProvider.Meta, status: res.status, alreadySubscribed: res.alreadySubscribed },
+  });
+
+  revalidatePath(ACCOUNTS);
+  revalidatePath(PLATFORMS);
+  redirect(`${PLATFORMS}?${res.verified ? "saved=lead_webhook" : "e=lead_webhook"}`);
 }

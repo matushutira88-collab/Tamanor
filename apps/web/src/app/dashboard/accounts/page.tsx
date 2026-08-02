@@ -71,6 +71,9 @@ const ERROR_NOTICES: Record<string, { tone: string; text: string }> = {
   brand_platform_limit_reached: { tone: "warn", text: "This brand already has a connected account of that type. Create another brand or disconnect the existing account first." },
   billing_restricted: { tone: "warn", text: "Your workspace is currently restricted. Resolve billing to connect accounts." },
   csrf: { tone: "danger", text: "Your request could not be verified. Please try again." },
+  // BUSINESS-LEADGEN-SUBSCRIPTION-V1 — the connection itself succeeded; only the Lead Ads webhook subscription
+  // did not. Truthful and scoped: comment monitoring is unaffected, and the repair is one click on Platforms.
+  lead_webhook_failed: { tone: "warn", text: "The account is connected, but the Lead Ads webhook could not be connected. Comment monitoring is unaffected — retry from Connected platforms." },
 };
 
 export default async function AccountsPage({
@@ -91,7 +94,9 @@ export default async function AccountsPage({
     ? ERROR_NOTICES[sp.error]
     : sp.slot
       ? ERROR_NOTICES.brand_platform_limit_reached
-      : undefined;
+      : sp.leadhook
+        ? ERROR_NOTICES.lead_webhook_failed
+        : undefined;
 
   const brands = await withTenant(session.tenantId, (db) => db.brand.findMany({
     where: { tenantId: session.tenantId },

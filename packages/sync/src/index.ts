@@ -1160,6 +1160,7 @@ export * from "./live-actions";
 export * from "./facebook-connector";
 export * from "./instagram-connector";
 export * from "./meta-leads";
+export * from "./meta-leadgen-subscription";
 export * from "./instagram-moderation";
 export * from "./google-business-connector";
 export * from "./google-business-api-client";

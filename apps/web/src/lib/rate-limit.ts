@@ -51,6 +51,13 @@ export const authLimiter = new CentralLimiter("auth", { limit: 10, windowMs: 5 *
 /** Outbound-email auth flows (resend verification, forgot-password) — per-IP AND per-email. Fail closed. */
 export const emailSendLimiter = new CentralLimiter("email", { limit: 5, windowMs: 60 * 60_000, failClosed: true });
 
+/**
+ * BUSINESS-LEADGEN-SUBSCRIPTION-V1 — the authenticated "repair the Lead Ads webhook subscription" action makes
+ * a provider (Graph) call, so it is capped per connected account. Degrade-to-allow (a store blip must not block
+ * a legitimate one-click repair); permission + tenant scoping remain the authoritative controls.
+ */
+export const leadgenSubscriptionRepairLimiter = new CentralLimiter("leadgen_repair", { limit: 5, windowMs: 10 * 60_000, failClosed: false });
+
 // V1.63 — client diagnostics sink abuse guard. Low-stakes (fail-OPEN so a store blip never drops reports),
 // but tightly capped per key so it can't be used to flood logs.
 export const diagnosticsLimiter = new CentralLimiter("diagnostics", { limit: 20, windowMs: 60_000, failClosed: false });
