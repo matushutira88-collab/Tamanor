@@ -38,7 +38,8 @@ const leadgenBody = (pageId: string, leadgenId: string) => ({
 });
 
 const graphLead = (leadgenId: string): MetaGraphLead => ({
-  id: leadgenId, created_time: "2026-06-01T10:00:00Z", ad_id: "ad-9", ad_name: "Spring Ad", form_id: "form-9", form_name: "Contact",
+  // No `form_name`: the Meta Lead node does not expose one, so it is neither requested nor normalized.
+  id: leadgenId, created_time: "2026-06-01T10:00:00Z", ad_id: "ad-9", ad_name: "Spring Ad", form_id: "form-9",
   campaign_id: "camp-9", campaign_name: "Spring", field_data: [
     { name: "full_name", values: ["Jane Doe"] }, { name: "email", values: ["jane@lead.test"] },
     { name: "phone_number", values: ["+421900111222"] }, { name: "company_name", values: ["Acme"] },

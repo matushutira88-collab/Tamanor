@@ -62,14 +62,18 @@ export function parseMetaLeadgenChanges(payload: unknown): MetaLeadgenChange[] {
   return out;
 }
 
-/** The allow-listed Graph lead detail shape (only fields we request/normalize). */
+/**
+ * The allow-listed Graph lead detail shape (only fields we request/normalize).
+ *
+ * NOTE: `form_name` is deliberately ABSENT. The Meta Lead node exposes `form_id` but NOT `form_name`, so
+ * requesting it made Graph reject the whole read with HTTP 400 / code 100 and no lead was ever fetched.
+ */
 export interface MetaGraphLead {
   id?: string;
   created_time?: string;
   ad_id?: string;
   ad_name?: string;
   form_id?: string;
-  form_name?: string;
   campaign_id?: string;
   campaign_name?: string;
   field_data?: Array<{ name?: string; values?: string[] }>;
@@ -107,8 +111,11 @@ export function normalizeMetaLead(lead: MetaGraphLead, change: MetaLeadgenChange
     campaignName: str(lead.campaign_name, 200),
     adId: str(lead.ad_id, 200) ?? change.adId,
     adName: str(lead.ad_name, 200),
+    // formId stays fully ingested (Graph value first, then the trusted webhook change).
     formId: str(lead.form_id, 200) ?? change.formId,
-    formName: str(lead.form_name, 200),
+    // The Meta Lead node exposes no form NAME, and the leadgen webhook change carries none either — so there is
+    // no trusted source for it on this path. Stored as null rather than guessed or back-filled from an id.
+    formName: null,
     receivedAt: Number.isNaN(receivedAt.getTime()) ? new Date() : receivedAt,
     // Consent captured ONLY if a real, explicit signal exists — Meta lead forms don't expose one here, so null.
     consentValue: null,
@@ -118,9 +125,19 @@ export function normalizeMetaLead(lead: MetaGraphLead, change: MetaLeadgenChange
 /** Injectable lead fetcher (real = Meta Graph GET; tests inject a deterministic lead — no real HTTP). */
 export type MetaLeadFetcher = (leadgenId: string, token: string) => Promise<MetaGraphLead>;
 
+/**
+ * The EXACT `fields` allow-list requested from `GET /{leadgen_id}`. Every entry must be a field the Meta Lead
+ * node actually supports — Graph rejects the ENTIRE read with HTTP 400 / code 100 if any one of them is not,
+ * so an unsupported entry silently costs every lead. `form_name` is intentionally excluded: the Lead node
+ * exposes `form_id` only.
+ */
+export const META_LEAD_DETAIL_FIELDS: readonly string[] = [
+  "id", "created_time", "field_data", "ad_id", "ad_name", "form_id", "campaign_id", "campaign_name",
+];
+
 export const graphLeadFetcher: MetaLeadFetcher = (leadgenId, token) =>
   new MetaGraphClient(token).get<MetaGraphLead>(leadgenId, {
-    fields: "id,created_time,field_data,ad_id,ad_name,form_id,form_name,campaign_id,campaign_name",
+    fields: META_LEAD_DETAIL_FIELDS.join(","),
   });
 
 export interface MetaLeadgenIngestResult { ingested: number; duplicates: number; rejected: number; fetchFailures: number }
