@@ -157,7 +157,12 @@ export type OpsEvent =
   // BUSINESS-LEADGEN-SUBSCRIPTION-V1 — Page↔app `leadgen` webhook subscription (only operation/result/reason
   // labels; NEVER a token, app secret, appsecret proof, raw Meta body, or a tenant/account/Page id).
   | "business.meta_leadgen_subscription_verified"
-  | "business.meta_leadgen_subscription_failed";
+  | "business.meta_leadgen_subscription_failed"
+  // BUSINESS-LEADGEN-ONBOARDING-V1 — one event per Facebook Page processed by a connect/reconnect. Carries the
+  // bounded outcome enum in `result` and nothing else: never a Page/account/tenant id, token or Graph message.
+  | "business.meta_page_onboarded"
+  // A submitted asset that did not match the server-side OAuth asset list (count only, never the value).
+  | "business.meta_asset_selection_rejected";
 
 /** Low-cardinality label keys allowed on ops events + metrics. Anything else is a cardinality risk. */
 // V1.50F — `plan` + `capability` added for entitlement/route observability (both LOW cardinality:

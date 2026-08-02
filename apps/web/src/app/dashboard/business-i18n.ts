@@ -5,7 +5,7 @@
 import type { Locale } from "@/i18n";
 import {
   BusinessContactStatus, BusinessContactSource, BusinessProvider, BusinessConnectionStatus,
-  BusinessConnectionCapability, type MetaLeadCapabilityState,
+  BusinessConnectionCapability, type MetaLeadCapabilityState, type MetaPageOnboardingOutcome,
 } from "@guardora/core";
 
 export interface BusinessDict {
@@ -38,6 +38,8 @@ export interface BusinessDict {
   connStatus: Record<BusinessConnectionStatus, string>;
   capability: Record<BusinessConnectionCapability, string>;
   metaLead: { title: string } & Record<MetaLeadCapabilityState, string>;
+  /** BUSINESS-LEADGEN-ONBOARDING-V1 — post-connect, per-Page result summary. */
+  onboarding: { title: string; detailCta: string; pages: string } & Record<MetaPageOnboardingOutcome, string>;
 }
 
 const en: BusinessDict = {
@@ -82,6 +84,15 @@ const en: BusinessDict = {
     permission_missing: "Lead permission not granted",
     webhook_subscription_missing: "Lead Ads webhook is not connected",
     awaiting_provider_approval: "Awaiting Meta app review",
+  },
+  onboarding: {
+    title: "Meta connection result", detailCta: "See each Page", pages: "Pages",
+    lead_ads_ready: "Connected and Lead Ads ready",
+    leads_permission_missing: "Connected, but lead access was not granted",
+    webhook_not_verified: "Connected, but the Lead Ads webhook is not verified yet",
+    provider_approval_required: "Connected, but Meta app review is still required",
+    comments_only: "Connected for comment monitoring",
+    verification_unavailable: "Connected — Lead Ads check temporarily unavailable",
   },
 };
 
@@ -128,6 +139,15 @@ const sk: BusinessDict = {
     webhook_subscription_missing: "Webhook Lead Ads nie je pripojený",
     awaiting_provider_approval: "Čaká na schválenie Meta aplikácie",
   },
+  onboarding: {
+    title: "Výsledok pripojenia Meta", detailCta: "Zobraziť jednotlivé stránky", pages: "Stránky",
+    lead_ads_ready: "Pripojené a Lead Ads je pripravené",
+    leads_permission_missing: "Pripojené, ale prístup k leadom nebol udelený",
+    webhook_not_verified: "Pripojené, ale webhook Lead Ads zatiaľ nie je overený",
+    provider_approval_required: "Pripojené, ale stále sa vyžaduje schválenie Meta aplikácie",
+    comments_only: "Pripojené na monitorovanie komentárov",
+    verification_unavailable: "Pripojené — kontrola Lead Ads je dočasne nedostupná",
+  },
 };
 
 const de: BusinessDict = {
@@ -172,6 +192,15 @@ const de: BusinessDict = {
     permission_missing: "Lead-Berechtigung nicht erteilt",
     webhook_subscription_missing: "Lead-Ads-Webhook ist nicht verbunden",
     awaiting_provider_approval: "Warten auf Meta-App-Prüfung",
+  },
+  onboarding: {
+    title: "Ergebnis der Meta-Verbindung", detailCta: "Einzelne Seiten ansehen", pages: "Seiten",
+    lead_ads_ready: "Verbunden und Lead Ads bereit",
+    leads_permission_missing: "Verbunden, aber Lead-Zugriff wurde nicht erteilt",
+    webhook_not_verified: "Verbunden, aber der Lead-Ads-Webhook ist noch nicht verifiziert",
+    provider_approval_required: "Verbunden, aber die Meta-App-Prüfung steht noch aus",
+    comments_only: "Für Kommentarüberwachung verbunden",
+    verification_unavailable: "Verbunden — Lead-Ads-Prüfung vorübergehend nicht verfügbar",
   },
 };
 

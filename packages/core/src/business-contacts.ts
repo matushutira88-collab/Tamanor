@@ -250,6 +250,156 @@ export function isMetaLeadCapabilityAvailable(state: MetaLeadCapabilityState): b
   return state === "available";
 }
 
+// ---- Meta connect: server-side asset selection validation -------------------------------------------------
+/**
+ * BUSINESS-LEADGEN-ONBOARDING-V1 — the assets discovered for THIS authenticated OAuth flow, as persisted
+ * server-side. The selection form is validated against this list; a client may only ever narrow it.
+ */
+export interface MetaSelectableAsset {
+  pageId: string;
+  igBusinessId?: string | null;
+}
+
+/** The validated selection. Ids present here are guaranteed to come from the SERVER asset list. */
+export interface MetaAssetSelection {
+  /** Facebook Page ids the user selected, all present in the server asset list. */
+  pages: ReadonlySet<string>;
+  /** Instagram business ids the user selected, all linked to a server-listed Page. */
+  instagram: ReadonlySet<string>;
+  /** How many submitted values did NOT match any server-side asset (ignored, never acted on). */
+  rejected: number;
+}
+
+/**
+ * Validate the raw `select` values (`facebook:<id>` / `instagram:<id>`) against the SERVER-side asset list
+ * discovered during the authenticated OAuth flow. Anything that does not match a discovered asset — an
+ * unowned Page id, another tenant's id, a malformed value, an unknown prefix — is counted as rejected and
+ * NEVER acted on. Pure: no I/O, no provider call, no credential access.
+ */
+export function resolveMetaAssetSelection(
+  serverAssets: readonly MetaSelectableAsset[],
+  rawSelected: readonly string[],
+): MetaAssetSelection {
+  const knownPages = new Set(serverAssets.map((a) => a.pageId).filter(Boolean));
+  const knownIg = new Set(serverAssets.map((a) => a.igBusinessId).filter((v): v is string => Boolean(v)));
+  const pages = new Set<string>();
+  const instagram = new Set<string>();
+  let rejected = 0;
+  for (const raw of rawSelected) {
+    const value = typeof raw === "string" ? raw : "";
+    const sep = value.indexOf(":");
+    const kind = sep > 0 ? value.slice(0, sep) : "";
+    const id = sep > 0 ? value.slice(sep + 1) : "";
+    if (kind === "facebook" && knownPages.has(id)) pages.add(id);
+    else if (kind === "instagram" && knownIg.has(id)) instagram.add(id);
+    else rejected++;
+  }
+  return { pages, instagram, rejected };
+}
+
+// ---- Meta connect: per-Page onboarding outcome ------------------------------------------------------------
+/**
+ * The truthful result of onboarding ONE Facebook Page. Bounded enum — safe for ops labels and for a redirect
+ * summary. Carries no identifier of any kind.
+ */
+export type MetaPageOnboardingOutcome =
+  /** Connected AND the Lead Ads webhook subscription is verified AND every other precondition holds. */
+  | "lead_ads_ready"
+  /** Connected; the deployment asks for lead access but this Page does not carry `leads_retrieval`. */
+  | "leads_permission_missing"
+  /** Connected; the Page-level `leadgen` subscription could not be verified. RECOVERABLE via the repair action. */
+  | "webhook_not_verified"
+  /** Connected + subscribed, but live Meta App Review for lead retrieval is not in place. */
+  | "provider_approval_required"
+  /** Connected for comment monitoring only — this deployment does not request lead access at all. */
+  | "comments_only"
+  /** The provider check failed transiently; the real subscription state is UNKNOWN, never assumed OK. */
+  | "verification_unavailable";
+
+/** Fixed order — also the encoding order of the onboarding summary. */
+export const ALL_META_PAGE_ONBOARDING_OUTCOMES: readonly MetaPageOnboardingOutcome[] = [
+  "lead_ads_ready",
+  "leads_permission_missing",
+  "webhook_not_verified",
+  "provider_approval_required",
+  "comments_only",
+  "verification_unavailable",
+];
+
+export interface MetaPageOnboardingSignals {
+  /**
+   * This deployment requests lead access in its OAuth scopes. When false the Page is a comment-monitoring
+   * connection and Lead Ads simply does not apply.
+   */
+  leadsScopeRequested: boolean;
+  /** `leads_retrieval` is present on the Page account's stored permissions. */
+  leadsPermissionGranted: boolean;
+  /** The persisted Page-level subscription status after the connect attempt (null = never checked). */
+  subscriptionStatus: "verified" | "not_subscribed" | "unavailable" | null;
+  /** Live Meta App Review / provider approval for lead retrieval is in place. */
+  providerApproved: boolean;
+}
+
+/**
+ * Classify one Page's onboarding result. Fail-closed and ordered so the FIRST genuine gap is reported:
+ * a Page is only `lead_ads_ready` when lead access is requested, granted, the subscription is VERIFIED, and
+ * provider approval is in place. An `unavailable` provider check is never reported as ready or as a definite
+ * failure — it is reported as unknown.
+ */
+export function classifyMetaPageOnboarding(s: MetaPageOnboardingSignals): MetaPageOnboardingOutcome {
+  if (!s.leadsScopeRequested) return "comments_only";
+  if (!s.leadsPermissionGranted) return "leads_permission_missing";
+  if (s.subscriptionStatus === "unavailable") return "verification_unavailable";
+  if (s.subscriptionStatus !== "verified") return "webhook_not_verified";
+  if (!s.providerApproved) return "provider_approval_required";
+  return "lead_ads_ready";
+}
+
+/** Counts per outcome across every Page processed by one connect/reconnect. */
+export interface MetaOnboardingSummary {
+  total: number;
+  counts: Record<MetaPageOnboardingOutcome, number>;
+}
+
+export function summarizeMetaPageOnboarding(outcomes: readonly MetaPageOnboardingOutcome[]): MetaOnboardingSummary {
+  const counts = Object.fromEntries(ALL_META_PAGE_ONBOARDING_OUTCOMES.map((o) => [o, 0])) as Record<MetaPageOnboardingOutcome, number>;
+  for (const o of outcomes) if (o in counts) counts[o]++;
+  return { total: outcomes.length, counts };
+}
+
+/** Per-outcome count cap — keeps the encoded summary bounded and the URL short. */
+const ONBOARDING_COUNT_MAX = 999;
+
+/**
+ * Encode the summary for a redirect. Fixed-order, dot-separated COUNTS ONLY — no Page name, provider id,
+ * account id, tenant id, token or any other identifier ever enters the URL.
+ */
+export function encodeMetaOnboardingSummary(summary: MetaOnboardingSummary): string {
+  return ALL_META_PAGE_ONBOARDING_OUTCOMES
+    .map((o) => Math.max(0, Math.min(ONBOARDING_COUNT_MAX, Math.trunc(summary.counts[o] ?? 0))))
+    .join(".");
+}
+
+/**
+ * Decode a redirect summary defensively. Any malformed, negative, non-numeric, over-long or over-large input
+ * yields null (the notice is simply not rendered) — a hostile query string can never inject content.
+ */
+export function decodeMetaOnboardingSummary(raw: string | null | undefined): MetaOnboardingSummary | null {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 32) return null;
+  const parts = raw.split(".");
+  if (parts.length !== ALL_META_PAGE_ONBOARDING_OUTCOMES.length) return null;
+  const counts = Object.fromEntries(ALL_META_PAGE_ONBOARDING_OUTCOMES.map((o) => [o, 0])) as Record<MetaPageOnboardingOutcome, number>;
+  let total = 0;
+  for (let i = 0; i < parts.length; i++) {
+    if (!/^\d{1,3}$/.test(parts[i]!)) return null;
+    const n = Number(parts[i]);
+    if (!Number.isInteger(n) || n < 0 || n > ONBOARDING_COUNT_MAX) return null;
+    counts[ALL_META_PAGE_ONBOARDING_OUTCOMES[i]!] = n;
+    total += n;
+  }
+  return total === 0 ? null : { total, counts };
+}
+
 // ---- Meta Lead Ads: PER-PAGE readiness --------------------------------------------------------------------
 /**
  * BUSINESS-LEADGEN-MULTIPAGE-V1 — Lead Ads readiness is a property of ONE Facebook Page, not of a tenant. A

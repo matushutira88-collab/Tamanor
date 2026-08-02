@@ -29,6 +29,8 @@ import { tEnum } from "@/i18n/labels";
 import { formatDateTime } from "@/lib/format";
 import { CONNECTOR_TONE } from "@/lib/ui-maps";
 import { connectMock, disconnect, retryFirstSync } from "./actions";
+import { businessDict } from "../business-i18n";
+import { decodeMetaOnboardingSummary, ALL_META_PAGE_ONBOARDING_OUTCOMES } from "@guardora/core";
 
 export const dynamic = "force-dynamic";
 const nav = navItem("/dashboard/accounts");
@@ -83,6 +85,8 @@ export default async function AccountsPage({
 }) {
   const session = await requireSession();
   const hdrT = await getT();
+  const locale = await getLocale();
+  const bizT = businessDict(locale);
   const manage = can(session.role, Permission.ConnectorManage);
   const meta = getMetaConfig();
   const gbp = getGoogleBusinessConfig();
@@ -169,10 +173,36 @@ export default async function AccountsPage({
         </div>
       ) : null}
 
+      {/* BUSINESS-LEADGEN-ONBOARDING-V1 — per-Page connect result. Rendered from bounded COUNTS in the query
+          string (defensively decoded; malformed input renders nothing). The per-Page detail, with names and
+          the one-click repair, lives on Connected platforms. */}
+      {(() => {
+        const summary = decodeMetaOnboardingSummary(sp.lead);
+        if (!summary) return null;
+        return (
+          <div className="mb-5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2" role="status" data-testid="meta-onboarding-summary">
+            <p className="text-sm font-medium">{bizT.onboarding.title}</p>
+            <ul className="mt-1 space-y-0.5">
+              {ALL_META_PAGE_ONBOARDING_OUTCOMES.filter((o) => summary.counts[o] > 0).map((o) => (
+                <li key={o} className="text-sm text-[var(--color-muted)]">
+                  <Badge tone={o === "lead_ads_ready" ? "ok" : o === "comments_only" ? "neutral" : "warn"}>
+                    {summary.counts[o]} {bizT.onboarding.pages}
+                  </Badge>{" "}
+                  {bizT.onboarding[o]}
+                </li>
+              ))}
+            </ul>
+            <Link href="/dashboard/platforms" className="mt-1 inline-block text-xs font-medium text-[var(--color-brand)] hover:underline">
+              {bizT.onboarding.detailCta} →
+            </Link>
+          </div>
+        );
+      })()}
+
       {/* V1.59 2b — Watched Accounts PRODUCT TABLE (each FB Page + each IG its own row), real today
           metrics, connection status separate from monitoring, row actions. Desktop table + mobile cards. */}
       <div className="mb-6">
-        <AccountsTable tenantId={session.tenantId} locale={await getLocale()} />
+        <AccountsTable tenantId={session.tenantId} locale={locale} />
       </div>
 
       {/* V1.45B — truthful post-disconnect notice: local credential removal is done; for Meta

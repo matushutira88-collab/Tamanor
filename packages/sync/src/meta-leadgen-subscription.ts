@@ -64,6 +64,8 @@ export interface LeadgenSubscriptionAccount {
   pageId: string | null;
   longLivedToken: string | null;
   accessToken: string | null;
+  /** Last persisted Page-level subscription status. Absent/null = never checked (treated as NOT verified). */
+  leadgenSubscriptionStatus?: string | null;
 }
 
 /**
@@ -85,7 +87,7 @@ export const defaultLeadgenSubscriptionPorts: LeadgenSubscriptionPorts = {
     // Tenant-scoped (RLS): an account belonging to another tenant simply does not resolve.
     withTenantDb(tenantId, (db) => db.connectedAccount.findFirst({
       where: { id: accountId, tenantId },
-      select: { id: true, tenantId: true, brandId: true, platform: true, status: true, externalId: true, pageId: true, longLivedToken: true, accessToken: true },
+      select: { id: true, tenantId: true, brandId: true, platform: true, status: true, externalId: true, pageId: true, longLivedToken: true, accessToken: true, leadgenSubscriptionStatus: true },
     })),
   resolveToken: (account) => resolveMetaAccessTokenSafe(account),
   persist: async (account, status, checkedAt, verified) => {
@@ -124,7 +126,15 @@ function failure(reason: LeadgenEnsureReason, status: LeadgenSubscriptionStatus)
 export async function ensureAccountLeadgenSubscription(
   tenantId: string,
   accountId: string,
-  opts?: { transport?: LeadgenSubscriptionTransport; ports?: LeadgenSubscriptionPorts; appId?: string; now?: Date },
+  opts?: {
+    transport?: LeadgenSubscriptionTransport; ports?: LeadgenSubscriptionPorts; appId?: string; now?: Date;
+    /**
+     * Connect/reconnect only: when the account ALREADY carries a verified subscription, skip the provider
+     * round-trip entirely (a Page↔app subscription is not token-bound, so a reconnect cannot invalidate it).
+     * The explicit repair action never sets this — it must always re-read and re-verify.
+     */
+    skipWhenVerified?: boolean;
+  },
 ): Promise<EnsureAccountLeadgenSubscriptionResult> {
   const ports = opts?.ports ?? defaultLeadgenSubscriptionPorts;
   const now = opts?.now ?? new Date();
@@ -136,6 +146,11 @@ export async function ensureAccountLeadgenSubscription(
   // /{id}/subscribed_apps — nothing below this line can be reached with a non-Page account.
   if (account.platform !== FACEBOOK_PAGE) return failure("not_a_facebook_page", LEADGEN_SUBSCRIPTION_UNAVAILABLE);
   if (account.status !== ACTIVE) return failure("account_inactive", LEADGEN_SUBSCRIPTION_UNAVAILABLE);
+
+  // Reconnect fast-path: an already-verified Page needs no provider call and no write.
+  if (opts?.skipWhenVerified && account.leadgenSubscriptionStatus === LEADGEN_SUBSCRIPTION_VERIFIED) {
+    return { verified: true, status: LEADGEN_SUBSCRIPTION_VERIFIED, alreadySubscribed: true, wrote: false };
+  }
 
   const pageId = account.pageId ?? account.externalId;
   if (!pageId) return failure("no_page_id", LEADGEN_SUBSCRIPTION_UNAVAILABLE);
@@ -187,14 +202,16 @@ export async function ensureLeadgenSubscriptionOnConnect(
   pageAccountId: string,
   grantedPermissions: readonly string[],
   opts?: { transport?: LeadgenSubscriptionTransport; ports?: LeadgenSubscriptionPorts; appId?: string; now?: Date },
-): Promise<{ attempted: boolean; verified: boolean }> {
-  if (!grantedPermissions.includes(LEADS_RETRIEVAL_PERMISSION)) return { attempted: false, verified: false };
+): Promise<{ attempted: boolean; verified: boolean; status: LeadgenSubscriptionStatus | null }> {
+  if (!grantedPermissions.includes(LEADS_RETRIEVAL_PERMISSION)) return { attempted: false, verified: false, status: null };
   try {
-    const res = await ensureAccountLeadgenSubscription(tenantId, pageAccountId, opts);
-    return { attempted: true, verified: res.verified };
+    // Reconnect retries ONLY Pages that are not already verified — an already-verified Page costs no Graph call.
+    const res = await ensureAccountLeadgenSubscription(tenantId, pageAccountId, { ...opts, skipWhenVerified: true });
+    return { attempted: true, verified: res.verified, status: res.status };
   } catch {
-    // Lead Ads setup is strictly best-effort: it must never break an otherwise-successful connect.
+    // Lead Ads setup is strictly best-effort: it must never break an otherwise-successful connect. The Page
+    // stays connected, its vault credential stays, comment sync and monitoring are untouched.
     emitOpsEvent("business.meta_leadgen_subscription_failed", { operation: "meta_leadgen_subscribe", reason: "error" });
-    return { attempted: true, verified: false };
+    return { attempted: true, verified: false, status: LEADGEN_SUBSCRIPTION_UNAVAILABLE };
   }
 }
