@@ -45,14 +45,13 @@ export default async function PlatformsPage({
   // TRUTHFUL Meta Lead Ads capability — resolved from real signals (config + linked account + decryptable vault
   // credential + granted permission + VERIFIED Page-level `leadgen` webhook subscription + provider approval).
   // The tenant passed the plan gate above, so `entitled=true`.
+  // BUSINESS-LEADGEN-MULTIPAGE-V1 — one readiness record PER active Facebook Page plus a truthful rollup. No
+  // single "latest" Page speaks for the rest, and Instagram is never a Lead Ads subject.
   const metaLead = await getMetaLeadCapability(session.tenantId, true);
-  const metaLeadState = metaLead.state;
-  // BUSINESS-LEADGEN-SUBSCRIPTION-V1 — the one-click repair is offered ONLY when the Page subscription is not
-  // verified, a Page account actually exists, and the actor holds the connector-management permission.
-  const showLeadWebhookRepair =
-    metaLeadState === "webhook_subscription_missing" &&
-    metaLead.pageAccountId !== null &&
-    can(session.role, Permission.ConnectorManage);
+  const metaLeadState = metaLead.overall;
+  // The one-click repair is offered per Page, only for a Page whose subscription is not verified, and only to
+  // an actor holding the connector-management permission.
+  const canRepairLeadWebhook = can(session.role, Permission.ConnectorManage);
 
   return (
     <div className="space-y-6">
@@ -101,22 +100,49 @@ export default async function PlatformsPage({
               </div>
 
               {provider === BusinessProvider.Meta ? (
-                // TRUTHFUL Lead Ads state — presents as active ONLY when every precondition holds; otherwise it
-                // names the missing precondition (never a false "active"). Conveyed by text + badge shape.
+                // TRUTHFUL Lead Ads state — PER Facebook Page. The headline names the most severe unmet
+                // precondition across all Pages and can never over-claim; each Page then states its own status.
+                // Conveyed by text + badge shape, never colour alone.
                 <div className="mt-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{t.metaLead.title}</p>
-                  <div className="mt-1">
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <Badge tone={isMetaLeadCapabilityAvailable(metaLeadState) ? "success" : "muted"}>{t.metaLead[metaLeadState]}</Badge>
+                    {metaLead.totalCount > 0 ? (
+                      <span className="text-xs text-[var(--color-muted)]" data-testid="lead-pages-summary">
+                        {t.platforms.leadPagesSummary(metaLead.readyCount, metaLead.totalCount)}
+                      </span>
+                    ) : null}
                   </div>
-                  {/* Repair the missing Page↔app `leadgen` subscription in place — no disconnect/reconnect. */}
-                  {showLeadWebhookRepair ? (
-                    <form action={repairMetaLeadgenSubscriptionAction} className="mt-2">
-                      <input type="hidden" name="accountId" value={metaLead.pageAccountId ?? ""} />
-                      <button type="submit" className="rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface-2)]">
-                        {t.platforms.connectLeadWebhook}
-                      </button>
-                    </form>
-                  ) : null}
+
+                  {metaLead.totalCount === 0 ? (
+                    <p className="mt-2 text-xs text-[var(--color-muted)]">{t.platforms.leadPagesNone}</p>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {metaLead.pages.map((page) => (
+                        <li key={page.connectedAccountId} className="rounded-lg border border-[var(--color-border)] px-2.5 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-medium">{page.displayName ?? t.platforms.unnamedPage}</span>
+                            <Badge tone={page.ready ? "success" : "muted"}>{t.metaLead[page.state]}</Badge>
+                          </div>
+                          <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                            {t.platforms.lastVerified}: {page.subscriptionCheckedAt ? dtf.format(page.subscriptionCheckedAt) : t.platforms.never}
+                          </p>
+                          {/* Repair the missing Page↔app `leadgen` subscription for THIS Page only — no
+                              disconnect/reconnect, and never offered for a Page that is already verified. */}
+                          {canRepairLeadWebhook && page.state === "webhook_subscription_missing" ? (
+                            <form action={repairMetaLeadgenSubscriptionAction} className="mt-2">
+                              <input type="hidden" name="accountId" value={page.connectedAccountId} />
+                              <button type="submit" className="rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface-2)]">
+                                {t.platforms.connectLeadWebhook}
+                              </button>
+                            </form>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {/* Instagram stays a separate capability of the same connection — never a Lead Ads subject. */}
+                  <p className="mt-2 text-[11px] text-[var(--color-muted)]">{t.platforms.leadPagesScopeNote}</p>
                 </div>
               ) : null}
 

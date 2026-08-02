@@ -173,6 +173,7 @@
     "meta-leadgen-subscription:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-leadgen-subscription.test.ts",
     "meta-lead-fetch-classification:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-lead-fetch-classification.test.ts",
     "meta-lead-detail-fields:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-lead-detail-fields.test.ts",
+    "meta-lead-multi-page:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-lead-multi-page-readiness.test.ts",
     "business-contacts-source:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-source.test.ts",
     "business-contacts-i18n:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-i18n.test.ts",
     "business-billing-source:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-billing-source.test.ts",

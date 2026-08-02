@@ -249,3 +249,149 @@ export function evaluateMetaLeadCapability(s: MetaLeadCapabilitySignals): MetaLe
 export function isMetaLeadCapabilityAvailable(state: MetaLeadCapabilityState): boolean {
   return state === "available";
 }
+
+// ---- Meta Lead Ads: PER-PAGE readiness --------------------------------------------------------------------
+/**
+ * BUSINESS-LEADGEN-MULTIPAGE-V1 — Lead Ads readiness is a property of ONE Facebook Page, not of a tenant. A
+ * tenant may connect several Pages, each with its own granted permissions, vault credential and Page-level
+ * `leadgen` webhook subscription. Collapsing them onto a single "latest" account makes the UI claim a state
+ * that is false for every other Page.
+ *
+ * The canonical precedence order, most severe first. `evaluateMetaLeadCapability` returns the FIRST unmet
+ * precondition, and this array is the same order — it is used to fold many Pages into one truthful headline
+ * without re-implementing the decision.
+ */
+export const META_LEAD_STATE_PRECEDENCE: readonly MetaLeadCapabilityState[] = [
+  "config_missing",
+  "entitlement_locked",
+  "no_linked_account",
+  "connection_inactive",
+  "credential_unavailable",
+  "permission_missing",
+  "webhook_subscription_missing",
+  "awaiting_provider_approval",
+  "available",
+];
+
+/** Signals shared by every Page of a tenant (deployment config + plan + provider approval). */
+export interface MetaLeadTenantSignals {
+  metaConfigured: boolean;
+  entitled: boolean;
+  providerApproved: boolean;
+}
+
+/**
+ * The per-Page signals. One record per ACTIVE `facebook_page` connected account — an Instagram account is
+ * never a Lead Ads subject and must never appear here.
+ */
+export interface MetaLeadPageSignals {
+  /** Internal connected-account id (never a provider/Page id). */
+  connectedAccountId: string;
+  /** The display name already stored for the account. */
+  displayName: string | null;
+  connectionActive: boolean;
+  credentialDecryptable: boolean;
+  leadsPermissionGranted: boolean;
+  pageSubscriptionVerified: boolean;
+  /** When the Page-level subscription was last checked. Null when never checked. */
+  subscriptionCheckedAt: Date | null;
+}
+
+/** The safe readiness record rendered per Page. Carries NO provider id, token, secret or PII. */
+export interface MetaLeadPageReadiness {
+  connectedAccountId: string;
+  displayName: string | null;
+  leadsPermissionGranted: boolean;
+  credentialAvailable: boolean;
+  subscriptionVerified: boolean;
+  subscriptionCheckedAt: Date | null;
+  state: MetaLeadCapabilityState;
+  /** True only when `state === "available"` — the only state that may present as active/live. */
+  ready: boolean;
+}
+
+/**
+ * Evaluate ONE Page against the tenant-wide signals. Delegates to {@link evaluateMetaLeadCapability} so the
+ * fail-closed precedence is preserved by construction rather than duplicated.
+ */
+export function evaluateMetaLeadPageReadiness(
+  tenant: MetaLeadTenantSignals,
+  page: MetaLeadPageSignals,
+): MetaLeadPageReadiness {
+  const state = evaluateMetaLeadCapability({
+    metaConfigured: tenant.metaConfigured,
+    entitled: tenant.entitled,
+    // This record exists only because an active Page account was found.
+    hasLinkedActiveAccount: true,
+    connectionActive: page.connectionActive,
+    credentialDecryptable: page.credentialDecryptable,
+    leadsPermissionGranted: page.leadsPermissionGranted,
+    pageSubscriptionVerified: page.pageSubscriptionVerified,
+    providerApproved: tenant.providerApproved,
+  });
+  return {
+    connectedAccountId: page.connectedAccountId,
+    displayName: page.displayName,
+    leadsPermissionGranted: page.leadsPermissionGranted,
+    credentialAvailable: page.credentialDecryptable,
+    subscriptionVerified: page.pageSubscriptionVerified,
+    subscriptionCheckedAt: page.subscriptionCheckedAt,
+    state,
+    ready: isMetaLeadCapabilityAvailable(state),
+  };
+}
+
+/** The truthful multi-Page rollup rendered above the per-Page list. */
+export interface MetaLeadReadinessSummary {
+  /** One record per active Facebook Page, in the order supplied by the caller. */
+  pages: MetaLeadPageReadiness[];
+  /** Pages whose state is `available`. */
+  readyCount: number;
+  /** Total active Facebook Pages. */
+  totalCount: number;
+  /**
+   * The single headline state. `available` ONLY when every Page is ready; otherwise the MOST SEVERE unmet
+   * precondition across all Pages (lowest precedence index), so the headline can never over-claim. With no
+   * Pages at all it falls back to the tenant-level evaluation (config / entitlement / no_linked_account).
+   */
+  overall: MetaLeadCapabilityState;
+}
+
+/**
+ * Fold per-Page readiness into a truthful summary. Deterministic and ORDER-INDEPENDENT: the headline is chosen
+ * by precedence rank, never by array position, so re-sorting the accounts cannot change the reported state.
+ */
+export function summarizeMetaLeadReadiness(
+  tenant: MetaLeadTenantSignals,
+  pages: readonly MetaLeadPageSignals[],
+): MetaLeadReadinessSummary {
+  const evaluated = pages.map((p) => evaluateMetaLeadPageReadiness(tenant, p));
+  if (evaluated.length === 0) {
+    return {
+      pages: [],
+      readyCount: 0,
+      totalCount: 0,
+      overall: evaluateMetaLeadCapability({
+        metaConfigured: tenant.metaConfigured,
+        entitled: tenant.entitled,
+        hasLinkedActiveAccount: false,
+        connectionActive: false,
+        credentialDecryptable: false,
+        leadsPermissionGranted: false,
+        pageSubscriptionVerified: false,
+        providerApproved: tenant.providerApproved,
+      }),
+    };
+  }
+  const rank = (s: MetaLeadCapabilityState) => META_LEAD_STATE_PRECEDENCE.indexOf(s);
+  const overall = evaluated.reduce<MetaLeadCapabilityState>(
+    (worst, p) => (rank(p.state) < rank(worst) ? p.state : worst),
+    "available",
+  );
+  return {
+    pages: evaluated,
+    readyCount: evaluated.filter((p) => p.ready).length,
+    totalCount: evaluated.length,
+    overall,
+  };
+}

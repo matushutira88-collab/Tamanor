@@ -28,6 +28,9 @@ export interface BusinessDict {
     disconnected: string; denied: string;
     /** BUSINESS-LEADGEN-SUBSCRIPTION-V1 — one-click Page↔app `leadgen` webhook repair. */
     connectLeadWebhook: string; leadWebhookConnected: string; leadWebhookFailed: string;
+    /** BUSINESS-LEADGEN-MULTIPAGE-V1 — per-Facebook-Page Lead Ads readiness. */
+    leadPagesSummary: (ready: number, total: number) => string;
+    leadPagesNone: string; leadPagesScopeNote: string; unnamedPage: string;
   };
   status: Record<BusinessContactStatus, string>;
   source: Record<BusinessContactSource, string>;
@@ -58,6 +61,10 @@ const en: BusinessDict = {
     connectLeadWebhook: "Connect Lead Ads webhook",
     leadWebhookConnected: "Lead Ads webhook connected.",
     leadWebhookFailed: "Could not connect the Lead Ads webhook. Please try again.",
+    leadPagesSummary: (ready, total) => `${ready} of ${total} Facebook Pages ready`,
+    leadPagesNone: "No Facebook Page connected yet.",
+    leadPagesScopeNote: "Lead Ads applies to Facebook Pages only. Instagram accounts are not lead sources.",
+    unnamedPage: "Unnamed Page",
   },
   status: { new: "New", contacted: "Contacted", handled: "Handled", customer: "Customer", rejected: "Rejected" },
   source: { facebook: "Facebook", instagram: "Instagram", google_ads: "Google Ads", youtube: "YouTube", tiktok: "TikTok", linkedin: "LinkedIn", web_form: "Web form" },
@@ -99,6 +106,10 @@ const sk: BusinessDict = {
     connectLeadWebhook: "Pripojiť webhook Lead Ads",
     leadWebhookConnected: "Webhook Lead Ads bol pripojený.",
     leadWebhookFailed: "Webhook Lead Ads sa nepodarilo pripojiť. Skúste to znova.",
+    leadPagesSummary: (ready, total) => `Pripravených ${ready} z ${total} Facebook stránok`,
+    leadPagesNone: "Zatiaľ nie je pripojená žiadna Facebook stránka.",
+    leadPagesScopeNote: "Lead Ads sa vzťahuje len na Facebook stránky. Instagram účty nie sú zdrojom leadov.",
+    unnamedPage: "Stránka bez názvu",
   },
   status: { new: "Nový", contacted: "Kontaktovaný", handled: "Vybavený", customer: "Zákazník", rejected: "Zamietnutý" },
   source: { facebook: "Facebook", instagram: "Instagram", google_ads: "Google Ads", youtube: "YouTube", tiktok: "TikTok", linkedin: "LinkedIn", web_form: "Web formulár" },
@@ -140,6 +151,10 @@ const de: BusinessDict = {
     connectLeadWebhook: "Lead-Ads-Webhook verbinden",
     leadWebhookConnected: "Lead-Ads-Webhook wurde verbunden.",
     leadWebhookFailed: "Der Lead-Ads-Webhook konnte nicht verbunden werden. Bitte erneut versuchen.",
+    leadPagesSummary: (ready, total) => `${ready} von ${total} Facebook-Seiten bereit`,
+    leadPagesNone: "Noch keine Facebook-Seite verbunden.",
+    leadPagesScopeNote: "Lead Ads gilt nur für Facebook-Seiten. Instagram-Konten sind keine Lead-Quellen.",
+    unnamedPage: "Seite ohne Namen",
   },
   status: { new: "Neu", contacted: "Kontaktiert", handled: "Bearbeitet", customer: "Kunde", rejected: "Abgelehnt" },
   source: { facebook: "Facebook", instagram: "Instagram", google_ads: "Google Ads", youtube: "YouTube", tiktok: "TikTok", linkedin: "LinkedIn", web_form: "Webformular" },

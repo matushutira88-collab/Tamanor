@@ -69,7 +69,9 @@ export async function repairMetaLeadgenSubscriptionAction(fd: FormData): Promise
   const limit = await leadgenSubscriptionRepairLimiter.check(accountId);
   if (!limit.allowed) redirect(`${PLATFORMS}?e=rate_limited`);
 
-  // Tenant-scoped lookup + Facebook-Page/active guards + provider HTTP (outside any transaction) + verify.
+  // Tenant-scoped lookup + Facebook-Page-only / active-only guards + provider HTTP (outside any transaction) +
+  // post-write verification, all for THIS account alone. The tenant comes from the session and the Page id and
+  // token are resolved server-side — the client supplies nothing but the connected-account id.
   const res = await ensureAccountLeadgenSubscription(session.tenantId, accountId);
   await writeAudit({
     session,
@@ -77,7 +79,7 @@ export async function repairMetaLeadgenSubscriptionAction(fd: FormData): Promise
     targetType: "connected_account",
     targetId: accountId,
     // Classified fields only — no token, secret, proof, provider body, or Page id.
-    metadata: { provider: BusinessProvider.Meta, status: res.status, alreadySubscribed: res.alreadySubscribed },
+    metadata: { provider: BusinessProvider.Meta, status: res.status, alreadySubscribed: res.alreadySubscribed, ...(res.reason ? { reason: res.reason } : {}) },
   });
 
   revalidatePath(ACCOUNTS);
