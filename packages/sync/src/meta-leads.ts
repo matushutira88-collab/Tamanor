@@ -18,7 +18,7 @@ import {
   findMetaLeadAccountsByPageIds, findBusinessConnectionForAccount, VaultDecryptError, VaultCredentialUnusableError,
   type BusinessContactInput,
 } from "@guardora/db";
-import { MetaGraphClient } from "@guardora/connectors";
+import { MetaGraphClient, MetaGraphError } from "@guardora/connectors";
 import { emitOpsEvent, BusinessProvider, BusinessContactSource, BusinessIngestionResult } from "@guardora/core";
 
 /** Max leadgen changes processed from a single webhook event (bounded fan-out). */
@@ -125,6 +125,61 @@ export const graphLeadFetcher: MetaLeadFetcher = (leadgenId, token) =>
 
 export interface MetaLeadgenIngestResult { ingested: number; duplicates: number; rejected: number; fetchFailures: number }
 
+// ---- Lead-fetch failure classification (observability only) ------------------------------------------------
+/**
+ * The SAFE, classified shape of a failed lead-detail fetch. Every field here is provider-supplied failure
+ * METADATA that is already carried on the typed {@link MetaGraphError} — nothing is derived from the request,
+ * the response body, or the lead itself.
+ *
+ * DELIBERATELY ABSENT (never classified, never emitted): the error message, Meta's `message` text, the raw
+ * response body, the access token, the app secret, the appsecret proof, the `leadgen_id`, and any tenant /
+ * account / Page identifier or form/PII value.
+ */
+export interface MetaLeadFetchClassification {
+  /** Stable failure kind from the typed Graph error; `unknown` for any non-Graph/untyped error. */
+  reason: string;
+  /** HTTP status Meta responded with, when the typed error carries one. */
+  status?: number;
+  /** Meta Graph error code (e.g. 100 = unsupported get request / object not visible to this token). */
+  code?: number;
+  /** Meta Graph error subcode. */
+  subcode?: number;
+  /** Whether the failure is transport-transient and therefore safe to retry. */
+  transient?: boolean;
+  /**
+   * Meta support trace id. Token-free provider metadata; permitted by the SAME existing logging policy the
+   * Meta OAuth callback diagnostics already apply to `fbtraceId`. Omitted when Meta did not supply one.
+   */
+  fbtraceId?: string;
+}
+
+/**
+ * Classify a caught lead-fetch error into safe, low-detail fields. A typed {@link MetaGraphError} yields its
+ * already-safe classification; ANY other error (including a plain `Error` whose message could contain
+ * arbitrary text) collapses to `{ reason: "unknown" }` — the message is never read.
+ */
+export function classifyMetaLeadFetchError(err: unknown): MetaLeadFetchClassification {
+  if (!(err instanceof MetaGraphError)) return { reason: "unknown" };
+  const d = err.detail;
+  return {
+    reason: d.kind,
+    status: d.status,
+    // Only include the provider codes Meta actually supplied.
+    ...(typeof d.code === "number" ? { code: d.code } : {}),
+    ...(typeof d.subcode === "number" ? { subcode: d.subcode } : {}),
+    transient: d.retryable,
+    ...(d.fbtraceId ? { fbtraceId: d.fbtraceId } : {}),
+  };
+}
+
+/**
+ * Emit the EXISTING `business.meta_lead_fetch_failed` ops event, now carrying the safe classification above so a
+ * production failure is diagnosable without a code change. Observability only — it changes no control flow.
+ */
+export function emitMetaLeadFetchFailed(err: unknown): void {
+  emitOpsEvent("business.meta_lead_fetch_failed", { operation: "meta_leadgen", ...classifyMetaLeadFetchError(err) });
+}
+
 /**
  * Ingest all leadgen changes carried by ONE trusted webhook event. Resolves each change's page account from the
  * TRUSTED page id, fetches the lead via the vault credential, normalizes, and idempotently ingests. A per-lead
@@ -157,9 +212,12 @@ export async function ingestMetaLeadgenChanges(changes: MetaLeadgenChange[], opt
       let lead: MetaGraphLead;
       try {
         lead = await fetchLead(change.leadgenId, resolved.token);
-      } catch {
+      } catch (fetchErr) {
+        // FAIL-CLOSED, UNCHANGED: the lead is still rejected with the same `fetch_failed` code, the batch still
+        // continues, and nothing about the contact is persisted. The ONLY change is observability — the ops
+        // event now carries the typed Graph error's safe classification instead of discarding it entirely.
         await recordBusinessIngestionEvent(account.tenantId, { provider: BusinessProvider.Meta, providerEventId: change.leadgenId, payloadHash, signatureVerified: true, result: BusinessIngestionResult.Rejected, errorCode: "fetch_failed", receivedAt: new Date() });
-        emitOpsEvent("business.meta_lead_fetch_failed", { operation: "meta_leadgen" });
+        emitMetaLeadFetchFailed(fetchErr);
         res.fetchFailures++;
         continue;
       }

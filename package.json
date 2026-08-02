@@ -171,6 +171,7 @@
     "meta-leads:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/meta-leads.test.ts",
     "meta-lead-capability:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/meta-lead-capability.test.ts",
     "meta-leadgen-subscription:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-leadgen-subscription.test.ts",
+    "meta-lead-fetch-classification:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-lead-fetch-classification.test.ts",
     "business-contacts-source:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-source.test.ts",
     "business-contacts-i18n:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-i18n.test.ts",
     "business-billing-source:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-billing-source.test.ts",
