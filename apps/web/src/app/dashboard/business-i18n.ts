@@ -26,6 +26,13 @@ export interface BusinessDict {
     noteEmpty: string; noteTooLong: string; noteError: string;
     activity: string; activityReceived: string; activityStatusChanged: string; activityAssigned: string;
     activityUnassigned: string; activityNote: string; activityBy: string; activityEmpty: string;
+    /** BUSINESS-CRM-V2 Phase B — bulk selection + CSV export. */
+    selectRow: string; selectPage: string; selectedCount: (n: number) => string; clearSelection: string;
+    bulkStatus: string; bulkAssign: string; bulkUnassign: string; apply: string;
+    exportCsv: string; exportLimited: (n: number) => string;
+    bulkAffected: (n: number) => string; bulkFailed: (n: number) => string;
+    bulkNoneSelected: string; bulkTooMany: string; bulkInvalid: string; bulkAssigneeInvalid: string;
+    bulkDenied: string; bulkFailedGeneric: string; rateLimited: string;
   };
   platforms: {
     title: string; desc: string;
@@ -70,6 +77,18 @@ const en: BusinessDict = {
     activity: "Activity", activityReceived: "Contact received", activityStatusChanged: "Status changed",
     activityAssigned: "Assigned", activityUnassigned: "Unassigned", activityNote: "Note added",
     activityBy: "by", activityEmpty: "No activity yet.",
+    selectRow: "Select contact", selectPage: "Select all on this page", selectedCount: (n) => `${n} selected`,
+    clearSelection: "Clear selection",
+    bulkStatus: "Set status", bulkAssign: "Assign to", bulkUnassign: "Unassign", apply: "Apply",
+    exportCsv: "Export CSV", exportLimited: (n) => `Export limited to the first ${n} contacts.`,
+    bulkAffected: (n) => `${n} contacts updated`, bulkFailed: (n) => `${n} contacts could not be updated`,
+    bulkNoneSelected: "Select at least one contact first.",
+    bulkTooMany: "You can update at most 100 contacts at a time.",
+    bulkInvalid: "The selection was not valid. Please reselect and try again.",
+    bulkAssigneeInvalid: "That team member is not available in this workspace.",
+    bulkDenied: "You don't have permission to perform this action.",
+    bulkFailedGeneric: "The operation could not be completed.",
+    rateLimited: "Too many requests. Please wait a moment and try again.",
   },
   platforms: {
     title: "Connected platforms", desc: "Connect your ad and social platforms to ingest leads. Comment moderation stays a separate capability of the same connection.",
@@ -134,6 +153,18 @@ const sk: BusinessDict = {
     activity: "Aktivita", activityReceived: "Kontakt prijatý", activityStatusChanged: "Stav zmenený",
     activityAssigned: "Priradené", activityUnassigned: "Priradenie zrušené", activityNote: "Poznámka pridaná",
     activityBy: "od", activityEmpty: "Zatiaľ žiadna aktivita.",
+    selectRow: "Vybrať kontakt", selectPage: "Vybrať všetky na tejto strane", selectedCount: (n) => `Vybraných: ${n}`,
+    clearSelection: "Zrušiť výber",
+    bulkStatus: "Nastaviť stav", bulkAssign: "Priradiť", bulkUnassign: "Zrušiť priradenie", apply: "Použiť",
+    exportCsv: "Exportovať CSV", exportLimited: (n) => `Export je obmedzený na prvých ${n} kontaktov.`,
+    bulkAffected: (n) => `Aktualizovaných kontaktov: ${n}`, bulkFailed: (n) => `Neaktualizovaných kontaktov: ${n}`,
+    bulkNoneSelected: "Najprv vyberte aspoň jeden kontakt.",
+    bulkTooMany: "Naraz môžete aktualizovať najviac 100 kontaktov.",
+    bulkInvalid: "Výber nebol platný. Vyberte kontakty znova a skúste to opäť.",
+    bulkAssigneeInvalid: "Tento člen tímu nie je v tomto pracovnom priestore dostupný.",
+    bulkDenied: "Nemáte oprávnenie vykonať túto akciu.",
+    bulkFailedGeneric: "Operáciu sa nepodarilo dokončiť.",
+    rateLimited: "Príliš veľa požiadaviek. Chvíľu počkajte a skúste to znova.",
   },
   platforms: {
     title: "Pripojené platformy", desc: "Pripojte reklamné a sociálne platformy na získavanie leadov. Moderovanie komentárov je samostatná funkcia toho istého pripojenia.",
@@ -198,6 +229,18 @@ const de: BusinessDict = {
     activity: "Aktivität", activityReceived: "Kontakt erhalten", activityStatusChanged: "Status geändert",
     activityAssigned: "Zugewiesen", activityUnassigned: "Zuweisung aufgehoben", activityNote: "Notiz hinzugefügt",
     activityBy: "von", activityEmpty: "Noch keine Aktivität.",
+    selectRow: "Kontakt auswählen", selectPage: "Alle auf dieser Seite auswählen", selectedCount: (n) => `${n} ausgewählt`,
+    clearSelection: "Auswahl aufheben",
+    bulkStatus: "Status setzen", bulkAssign: "Zuweisen an", bulkUnassign: "Zuweisung aufheben", apply: "Anwenden",
+    exportCsv: "CSV exportieren", exportLimited: (n) => `Export auf die ersten ${n} Kontakte begrenzt.`,
+    bulkAffected: (n) => `${n} Kontakte aktualisiert`, bulkFailed: (n) => `${n} Kontakte konnten nicht aktualisiert werden`,
+    bulkNoneSelected: "Wählen Sie zuerst mindestens einen Kontakt aus.",
+    bulkTooMany: "Sie können höchstens 100 Kontakte gleichzeitig aktualisieren.",
+    bulkInvalid: "Die Auswahl war ungültig. Bitte erneut auswählen und nochmals versuchen.",
+    bulkAssigneeInvalid: "Dieses Teammitglied ist in diesem Arbeitsbereich nicht verfügbar.",
+    bulkDenied: "Sie haben keine Berechtigung für diese Aktion.",
+    bulkFailedGeneric: "Der Vorgang konnte nicht abgeschlossen werden.",
+    rateLimited: "Zu viele Anfragen. Bitte kurz warten und erneut versuchen.",
   },
   platforms: {
     title: "Verbundene Plattformen", desc: "Verbinden Sie Werbe- und Social-Plattformen für die Lead-Erfassung. Kommentarmoderation ist eine separate Funktion derselben Verbindung.",

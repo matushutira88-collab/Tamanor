@@ -58,6 +58,15 @@ export const emailSendLimiter = new CentralLimiter("email", { limit: 5, windowMs
  */
 export const leadgenSubscriptionRepairLimiter = new CentralLimiter("leadgen_repair", { limit: 5, windowMs: 10 * 60_000, failClosed: false });
 
+/**
+ * BUSINESS-CRM-V2 (Phase B) — bulk contact mutations and CSV export. Both are authenticated, permission-gated
+ * and same-origin, but both are also amplification-shaped (up to 100 contacts, or up to 10,000 exported rows
+ * of PII per request), so they are capped per tenant. Degrade-to-allow: a store outage must not block a
+ * legitimate team, and permission + tenant scoping remain the authoritative controls.
+ */
+export const businessBulkLimiter = new CentralLimiter("business_bulk", { limit: 30, windowMs: 5 * 60_000, failClosed: false });
+export const businessExportLimiter = new CentralLimiter("business_export", { limit: 10, windowMs: 60 * 60_000, failClosed: false });
+
 // V1.63 — client diagnostics sink abuse guard. Low-stakes (fail-OPEN so a store blip never drops reports),
 // but tightly capped per key so it can't be used to flood logs.
 export const diagnosticsLimiter = new CentralLimiter("diagnostics", { limit: 20, windowMs: 60_000, failClosed: false });

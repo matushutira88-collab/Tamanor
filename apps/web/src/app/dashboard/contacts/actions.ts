@@ -8,11 +8,18 @@
  */
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { can, Permission, isValidContactStatus, BusinessContactStatus } from "@guardora/core";
-import { setBusinessContactStatus, assignBusinessContact, addBusinessContactNote } from "@guardora/db";
+import {
+  can, Permission, isValidContactStatus, BusinessContactStatus,
+  normalizeBulkContactIds, summarizeBulkContacts,
+} from "@guardora/core";
+import {
+  setBusinessContactStatus, assignBusinessContact, addBusinessContactNote,
+  bulkSetBusinessContactStatus, bulkAssignBusinessContacts,
+} from "@guardora/db";
 import { requireDashboardCapability } from "@/server/route-guard";
 import { writeAudit } from "@/server/audit";
 import { isSameOrigin } from "@/server/csrf";
+import { businessBulkLimiter } from "@/lib/rate-limit";
 
 const CONTACTS = "/dashboard/contacts";
 
@@ -81,4 +88,79 @@ export async function addContactNoteAction(fd: FormData): Promise<void> {
   // Only a bounded result code reaches the URL.
   const code = r.ok ? "saved=note" : r.reason === "too_long" ? "e=note_long" : r.reason === "not_found" ? "e=not_found" : "e=note_empty";
   redirect(`${CONTACTS}/${contactId}?${code}`);
+}
+
+// ---- CRM V2 Phase B: bulk operations -----------------------------------------------------------------------
+/**
+ * Read the submitted selection. The browser sends ONLY contact ids (`contactIds`) plus the bounded operation
+ * value — never a tenant id, actor, filter or anything else. Ids are shape-validated, de-duplicated and capped
+ * in the domain layer before any database call.
+ */
+function readSelection(fd: FormData) {
+  return normalizeBulkContactIds(fd.getAll("contactIds").map((v) => String(v)));
+}
+
+/** Bounded redirect code for a rejected selection. Never echoes an id or any submitted value. */
+function selectionErrorCode(reason: "empty" | "too_many" | "invalid"): string {
+  return reason === "too_many" ? "e=bulk_too_many" : reason === "invalid" ? "e=bulk_invalid" : "e=bulk_empty";
+}
+
+/**
+ * Bulk status change over the explicitly selected contacts.
+ *
+ * Server-authoritative: tenant and actor come only from the session, and the manage permission plus the
+ * Business entitlement are enforced by `manageGate()`. The repository applies the EXISTING transition rule per
+ * contact under RLS, so a foreign id is simply `not_found` — indistinguishable from a deleted one, which is
+ * what stops the operation confirming another tenant's contact exists.
+ *
+ * Only COUNTS reach the redirect and the bulk audit event; contact ids and PII never do. Each contact that
+ * actually changed still receives its own `business_contact.status_changed` audit row inside the same
+ * transaction, so individual timelines stay accurate.
+ */
+export async function bulkChangeStatusAction(fd: FormData): Promise<void> {
+  const session = await manageGate();
+  if (!(await isSameOrigin())) redirect(`${CONTACTS}?e=csrf`);
+  if (!(await businessBulkLimiter.check(session.tenantId)).allowed) redirect(`${CONTACTS}?e=rate_limited`);
+
+  const selection = readSelection(fd);
+  if (!selection.ok) redirect(`${CONTACTS}?${selectionErrorCode(selection.reason)}`);
+  const to = String(fd.get("status") ?? "");
+  if (!isValidContactStatus(to)) redirect(`${CONTACTS}?e=input`);
+
+  const outcome = await bulkSetBusinessContactStatus(session.tenantId, selection.ids, to as BusinessContactStatus, session.userId);
+  const summary = summarizeBulkContacts(outcome);
+  // ONE bounded bulk event: operation, target status and counts. No ids, no names, no e-mails.
+  await writeAudit({
+    session, event: "business_contact.bulk_status_changed", targetType: "business_contact_bulk",
+    metadata: { operation: "status", to, affected: summary.affected, failed: summary.failed },
+  });
+  revalidatePath(CONTACTS);
+  redirect(`${CONTACTS}?bulk=status&n=${summary.affected}&f=${summary.failed}`);
+}
+
+/**
+ * Bulk assign / unassign over the explicitly selected contacts. An empty assignee means unassign. The assignee
+ * is validated against THIS tenant's memberships before any mutation, so a foreign or unknown user id is
+ * rejected rather than written. Counts only in the redirect and the bulk audit event.
+ */
+export async function bulkAssignAction(fd: FormData): Promise<void> {
+  const session = await manageGate();
+  if (!(await isSameOrigin())) redirect(`${CONTACTS}?e=csrf`);
+  if (!(await businessBulkLimiter.check(session.tenantId)).allowed) redirect(`${CONTACTS}?e=rate_limited`);
+
+  const selection = readSelection(fd);
+  if (!selection.ok) redirect(`${CONTACTS}?${selectionErrorCode(selection.reason)}`);
+  const raw = String(fd.get("assigneeUserId") ?? "").trim();
+  const assignee = raw.length > 0 ? raw : null;
+
+  const result = await bulkAssignBusinessContacts(session.tenantId, selection.ids, assignee, session.userId);
+  if ("invalidAssignee" in result) redirect(`${CONTACTS}?e=bulk_assignee`);
+
+  const summary = summarizeBulkContacts(result);
+  await writeAudit({
+    session, event: "business_contact.bulk_assigned", targetType: "business_contact_bulk",
+    metadata: { operation: "assign", assigned: assignee !== null, affected: summary.affected, failed: summary.failed },
+  });
+  revalidatePath(CONTACTS);
+  redirect(`${CONTACTS}?bulk=assign&n=${summary.affected}&f=${summary.failed}`);
 }

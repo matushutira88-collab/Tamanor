@@ -178,6 +178,7 @@
     "meta-external-access:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/meta-external-access.test.ts",
     "meta-lead-onboarding:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-lead-onboarding.test.ts",
     "business-contacts-source:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-source.test.ts",
+    "business-contacts-bulk-export:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-bulk-export.test.ts",
     "business-contacts-crm:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-crm.test.ts",
     "business-contacts-i18n:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-i18n.test.ts",
     "business-billing-source:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-billing-source.test.ts",

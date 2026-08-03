@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   can, Permission, isValidContactStatus, BusinessContactStatus, BusinessContactSource,
-  normalizeContactSearch, CONTACT_SEARCH_MAX_LENGTH,
+  normalizeContactSearch, CONTACT_SEARCH_MAX_LENGTH, CONTACT_EXPORT_MAX_ROWS,
 } from "@guardora/core";
 import { listBusinessContacts, businessContactCounts, listAssignableMembers } from "@guardora/db";
 import { requireDashboardCapability } from "@/server/route-guard";
@@ -11,11 +11,13 @@ import { PageHeader, Card, EmptyState, Badge } from "@/components/dashboard/ui";
 import { AccessDeniedState } from "@/components/dashboard/access-denied";
 import { CapabilityLockedState } from "@/components/dashboard/capability-locked";
 import { businessDict, bizLabel } from "../business-i18n";
+import { ContactsBulkTable } from "@/components/dashboard/contacts-bulk-table";
+import { bulkChangeStatusAction, bulkAssignAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Contacts", robots: { index: false, follow: false } };
 
-type SP = { status?: string; source?: string; cursor?: string; q?: string };
+type SP = { status?: string; source?: string; cursor?: string; q?: string; bulk?: string; n?: string; f?: string; e?: string };
 
 const ALL_SOURCES: BusinessContactSource[] = [
   BusinessContactSource.Facebook, BusinessContactSource.Instagram, BusinessContactSource.GoogleAds,
@@ -52,6 +54,21 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   ]);
   // userId → safe tenant-member display value. An id with no membership renders as "—", never a raw id.
   const memberEmail = new Map(members.map((m) => [m.userId, m.email]));
+  const canManage = can(session.role, Permission.BusinessContactsManage);
+  const canExport = can(session.role, Permission.BusinessContactsExport);
+  // Bounded, non-negative counts parsed defensively from the redirect — never rendered raw.
+  const boundedCount = (raw: string | undefined): number => {
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 && n <= 1000 ? n : 0;
+  };
+  const bulkErrors: Record<string, string> = {
+    bulk_empty: t.contacts.bulkNoneSelected, bulk_too_many: t.contacts.bulkTooMany,
+    bulk_invalid: t.contacts.bulkInvalid, bulk_assignee: t.contacts.bulkAssigneeInvalid,
+    rate_limited: t.contacts.rateLimited, csrf: t.contacts.bulkFailedGeneric,
+    input: t.contacts.bulkInvalid,
+  };
+  // Remounts (and therefore clears selection) whenever search, filters or the page change.
+  const selectionKey = `${sp.q ?? ""}|${sp.status ?? ""}|${sp.source ?? ""}|${sp.cursor ?? ""}`;
 
   // Filter chip href builder — changing a filter resets pagination (drops the cursor).
   const chip = (over: Partial<SP>) => {
@@ -73,6 +90,18 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
 
       <p className="text-sm text-[var(--color-muted)]">{t.contacts.total(counts.total)}</p>
 
+      {sp.bulk ? (
+        <p role="status" aria-live="polite" className="rounded-lg bg-[var(--color-surface-2)] px-3 py-2 text-sm">
+          {t.contacts.bulkAffected(boundedCount(sp.n))}
+          {boundedCount(sp.f) > 0 ? <> · {t.contacts.bulkFailed(boundedCount(sp.f))}</> : null}
+        </p>
+      ) : null}
+      {sp.e ? (
+        <p role="alert" className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm text-[var(--color-muted)]">
+          {bulkErrors[sp.e] ?? t.contacts.bulkFailedGeneric}
+        </p>
+      ) : null}
+
       {/* Server-side search. Submitting resets pagination (no cursor is carried) and preserves the active
           status/source filters as hidden fields. */}
       <form method="get" action="/dashboard/contacts" role="search" className="flex flex-wrap items-center gap-2">
@@ -89,6 +118,22 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           <Link href={chip({ q: "" })} className="text-xs font-medium text-[var(--color-brand)] hover:underline">{t.contacts.searchClear}</Link>
         ) : null}
       </form>
+
+      {/* Export runs server-side over the CURRENT filters, submitted in the request BODY (POST) so the search
+          text never reaches a request path or an access log. */}
+      {canExport ? (
+        <form method="post" action="/api/dashboard/contacts/export">
+          <input type="hidden" name="q" value={search ?? ""} />
+          <input type="hidden" name="status" value={status ?? ""} />
+          <input type="hidden" name="source" value={source ?? ""} />
+          <button type="submit" className="rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface-2)]">
+            {t.contacts.exportCsv}
+          </button>
+          {counts.total > CONTACT_EXPORT_MAX_ROWS ? (
+            <span className="ml-2 text-xs text-[var(--color-muted)]">{t.contacts.exportLimited(CONTACT_EXPORT_MAX_ROWS)}</span>
+          ) : null}
+        </form>
+      ) : null}
 
       {/* Filters */}
       <div className="space-y-3">
@@ -120,42 +165,50 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         <EmptyState title={t.contacts.title} body={search ? t.contacts.noResults : t.contacts.empty} />
       ) : (
         <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-xs uppercase tracking-wide text-[var(--color-muted)]">
-                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colName}</th>
-                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colContact}</th>
-                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colSource}</th>
-                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colCampaign}</th>
-                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colReceived}</th>
-                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colLatestActivity}</th>
-                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colAssignee2}</th>
-                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colStatus}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {page.items.map((c) => (
-                  <tr key={c.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface-2)]">
-                    <td className="px-3 py-2">
-                      <Link href={`/dashboard/contacts/${c.id}`} className="font-medium hover:underline">
-                        {c.fullName ?? t.contacts.noName}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2 text-[var(--color-muted)]">{c.email ?? c.phone ?? "—"}</td>
-                    <td className="px-3 py-2">{bizLabel(t.source, c.sourcePlatform)}</td>
-                    <td className="px-3 py-2 text-[var(--color-muted)]">{c.campaignName ?? c.formName ?? "—"}</td>
-                    <td className="px-3 py-2 text-[var(--color-muted)]"><time dateTime={c.receivedAt.toISOString()}>{dtf.format(c.receivedAt)}</time></td>
-                    <td className="px-3 py-2 text-[var(--color-muted)]"><time dateTime={c.latestActivityAt.toISOString()}>{dtf.format(c.latestActivityAt)}</time></td>
-                    <td className="px-3 py-2 text-[var(--color-muted)]">
-                      {c.assignedUserId ? (memberEmail.get(c.assignedUserId) ?? "—") : t.contacts.unassignedShort}
-                    </td>
-                    <td className="px-3 py-2"><Badge tone={STATUS_TONE[c.status]}>{bizLabel(t.status, c.status)}</Badge></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ContactsBulkTable
+            key={selectionKey}
+            pageIds={page.items.map((c) => c.id)}
+            canManage={canManage}
+            statusAction={bulkChangeStatusAction}
+            assignAction={bulkAssignAction}
+            statusOptions={ALL_STATUSES.map((st) => ({ value: st, label: bizLabel(t.status, st) }))}
+            assigneeOptions={members.map((m) => ({ value: m.userId, label: m.email }))}
+            labels={{
+              selectRow: t.contacts.selectRow, selectPage: t.contacts.selectPage,
+              selectedCount: t.contacts.selectedCount, clearSelection: t.contacts.clearSelection,
+              bulkStatus: t.contacts.bulkStatus, bulkAssign: t.contacts.bulkAssign,
+              bulkUnassign: t.contacts.bulkUnassign, apply: t.contacts.apply,
+            }}
+            header={<>
+              <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colName}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colContact}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colSource}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colCampaign}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colReceived}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colLatestActivity}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colAssignee2}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colStatus}</th>
+            </>}
+            renderRow={(id) => {
+              const c = page.items.find((x) => x.id === id)!;
+              return (<>
+                <td className="px-3 py-2">
+                  <Link href={`/dashboard/contacts/${c.id}`} className="font-medium hover:underline">
+                    {c.fullName ?? t.contacts.noName}
+                  </Link>
+                </td>
+                <td className="px-3 py-2 text-[var(--color-muted)]">{c.email ?? c.phone ?? "—"}</td>
+                <td className="px-3 py-2">{bizLabel(t.source, c.sourcePlatform)}</td>
+                <td className="px-3 py-2 text-[var(--color-muted)]">{c.campaignName ?? c.formName ?? "—"}</td>
+                <td className="px-3 py-2 text-[var(--color-muted)]"><time dateTime={c.receivedAt.toISOString()}>{dtf.format(c.receivedAt)}</time></td>
+                <td className="px-3 py-2 text-[var(--color-muted)]"><time dateTime={c.latestActivityAt.toISOString()}>{dtf.format(c.latestActivityAt)}</time></td>
+                <td className="px-3 py-2 text-[var(--color-muted)]">
+                  {c.assignedUserId ? (memberEmail.get(c.assignedUserId) ?? "—") : t.contacts.unassignedShort}
+                </td>
+                <td className="px-3 py-2"><Badge tone={STATUS_TONE[c.status]}>{bizLabel(t.status, c.status)}</Badge></td>
+              </>);
+            }}
+          />
         </Card>
       )}
 

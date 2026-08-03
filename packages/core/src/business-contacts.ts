@@ -676,3 +676,133 @@ export function buildContactTimeline(input: {
   const limit = input.limit;
   return typeof limit === "number" && limit > 0 && entries.length > limit ? entries.slice(entries.length - limit) : entries;
 }
+
+// ---- CRM V2 Phase B: bulk selection + bounded CSV export --------------------------------------------------
+/** Hard cap on contacts in one bulk request. The browser submits ids; anything beyond this is rejected. */
+export const MAX_BULK_CONTACT_IDS = 100;
+
+export type BulkSelectionRejection = "empty" | "too_many" | "invalid";
+
+export type BulkSelectionResult =
+  | { ok: true; ids: string[]; duplicatesDropped: number }
+  | { ok: false; reason: BulkSelectionRejection };
+
+/**
+ * Normalize a raw list of submitted contact ids into a bounded, de-duplicated selection.
+ *
+ * Deterministic and fail-closed: ids are trimmed, shape-validated (cuid-like — the only id form this system
+ * mints), de-duplicated preserving first-seen order, and the result must be non-empty and within
+ * {@link MAX_BULK_CONTACT_IDS}. De-duplication happens BEFORE the cap so re-sending the same id cannot consume
+ * the budget. A malformed id rejects the whole request rather than being silently dropped — a client that
+ * submits garbage should be told, not partially obeyed.
+ *
+ * This validates SHAPE only. Whether an id belongs to the caller's tenant is decided later, under RLS.
+ */
+export function normalizeBulkContactIds(raw: readonly unknown[] | null | undefined): BulkSelectionResult {
+  if (!Array.isArray(raw) || raw.length === 0) return { ok: false, reason: "empty" };
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  let duplicatesDropped = 0;
+  for (const value of raw) {
+    const id = typeof value === "string" ? value.trim() : "";
+    if (!id) return { ok: false, reason: "invalid" };
+    // The only id shape this system mints (cuid): lowercase alphanumeric, bounded.
+    if (!/^[a-z0-9]{16,40}$/.test(id)) return { ok: false, reason: "invalid" };
+    if (seen.has(id)) { duplicatesDropped++; continue; }
+    seen.add(id);
+    ids.push(id);
+  }
+  if (ids.length === 0) return { ok: false, reason: "empty" };
+  if (ids.length > MAX_BULK_CONTACT_IDS) return { ok: false, reason: "too_many" };
+  return { ok: true, ids, duplicatesDropped };
+}
+
+/** Bounded reason one contact in a bulk operation did not change. Never carries an id or PII. */
+export type BulkContactFailureReason = "not_found" | "invalid_transition";
+
+export interface BulkContactOutcome {
+  /** Ids that genuinely changed — used only server-side, never surfaced in a redirect or audit. */
+  changed: string[];
+  /** Per-id failures, kept server-side. Counts are what reaches the UI and audit. */
+  failed: Array<{ id: string; reason: BulkContactFailureReason }>;
+}
+
+/** The bounded, id-free summary of a bulk operation — the only shape allowed in a redirect, UI or audit. */
+export interface BulkContactSummary {
+  affected: number;
+  failed: number;
+}
+export function summarizeBulkContacts(outcome: BulkContactOutcome): BulkContactSummary {
+  return { affected: outcome.changed.length, failed: outcome.failed.length };
+}
+
+/** Maximum rows one CSV export may contain. A larger result set is truncated and reported as limited. */
+export const CONTACT_EXPORT_MAX_ROWS = 10_000;
+
+/**
+ * The STABLE export column order. Changing this is a breaking change for anyone with a saved spreadsheet, so
+ * columns are appended, never reordered or removed.
+ *
+ * Deliberately ABSENT: the internal contact id, tenant id, connection id, provider ids, external lead id,
+ * dedupe key, notes, raw audit metadata, consent internals (reference/version) and anything Meta-specific.
+ */
+export const CONTACT_EXPORT_COLUMNS = [
+  "full_name",
+  "email",
+  "phone",
+  "company",
+  "source",
+  "campaign_name",
+  "form_name",
+  "received_at",
+  "status",
+  "assigned_to",
+  "latest_activity_at",
+] as const;
+export type ContactExportColumn = typeof CONTACT_EXPORT_COLUMNS[number];
+
+/** One contact as the exporter sees it. Only already-safe, user-facing values. */
+export interface ContactExportSource {
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  sourcePlatform: BusinessContactSource;
+  campaignName: string | null;
+  formName: string | null;
+  receivedAt: Date;
+  status: BusinessContactStatus;
+  /** Resolved tenant-member display value, or null when unassigned / not resolvable. Never a raw user id. */
+  assignedTo: string | null;
+  latestActivityAt: Date;
+}
+
+/**
+ * Map one contact to its export row, in {@link CONTACT_EXPORT_COLUMNS} order.
+ *
+ * Dates are ISO 8601 UTC — locale-neutral and machine-readable, never a localized string that would differ
+ * per viewer. Empty values become "" rather than "null". This performs NO CSV escaping and NO formula
+ * neutralization: that is `csvEscapeField`'s job, applied uniformly at serialization so a single guard covers
+ * every field. Stored values are never mutated — this only shapes the exported representation.
+ */
+export function contactExportRow(c: ContactExportSource): string[] {
+  const text = (v: string | null): string => v ?? "";
+  return [
+    text(c.fullName),
+    text(c.email),
+    text(c.phone),
+    text(c.company),
+    c.sourcePlatform,
+    text(c.campaignName),
+    text(c.formName),
+    c.receivedAt.toISOString(),
+    c.status,
+    text(c.assignedTo),
+    c.latestActivityAt.toISOString(),
+  ];
+}
+
+/** Generic, PII-free export filename: `tamanor-contacts-YYYY-MM-DD.csv`. */
+export function contactExportFilename(now: Date): string {
+  return `tamanor-contacts-${now.toISOString().slice(0, 10)}.csv`;
+}

@@ -135,6 +135,13 @@ export enum Permission {
   // limited to Owner/Admin/Analyst and manage to Owner/Admin (conservative; Owner is auto via OWNER_ALL).
   BusinessContactsRead = "business.contacts.read",
   BusinessContactsManage = "business.contacts.manage",
+  /**
+   * BUSINESS-CRM-V2 (Phase B) — bulk CSV export of contacts. DELIBERATELY SEPARATE from
+   * {@link BusinessContactsRead}: paginated reading of leads is not the same act as egressing every matching
+   * lead's name, e-mail, phone and company in one file. Granted to Owner (via OWNER_ALL) and Admin only —
+   * Analyst keeps read access WITHOUT export.
+   */
+  BusinessContactsExport = "business.contacts.export",
   BusinessPlatformsRead = "business.platforms.read",
   BusinessPlatformsManage = "business.platforms.manage",
 }
@@ -164,6 +171,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     // Business Connected Platforms & Contacts V1 — Admin gets full read + manage.
     Permission.BusinessContactsRead,
     Permission.BusinessContactsManage,
+    // Bulk PII egress — Admin and Owner only; Analyst deliberately excluded.
+    Permission.BusinessContactsExport,
     Permission.BusinessPlatformsRead,
     Permission.BusinessPlatformsManage,
     // Cyberbullying — Admin gets the operational set, NOT sensitive-evidence view

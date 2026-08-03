@@ -168,7 +168,10 @@ export type OpsEvent =
   | "meta.data_deletion_rejected"
   | "meta.data_deletion_completed"
   | "meta.deauthorize_rejected"
-  | "meta.deauthorize_completed";
+  | "meta.deauthorize_completed"
+  // BUSINESS-CRM-V2 — bulk contact export. Operation + bounded result label ONLY: never a row, filter,
+  // search term, contact id, tenant id or any exported value.
+  | "business.contacts_exported";
 
 /** Low-cardinality label keys allowed on ops events + metrics. Anything else is a cardinality risk. */
 // V1.50F — `plan` + `capability` added for entitlement/route observability (both LOW cardinality:

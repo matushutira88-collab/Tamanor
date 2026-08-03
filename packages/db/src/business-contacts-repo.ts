@@ -13,8 +13,10 @@ import {
   canTransitionContactStatus, businessContactDedupeSeed,
   contactSearchPhoneDigits, validateContactNoteBody,
   CONTACT_STATUS_AUDIT_EVENT, CONTACT_ASSIGNMENT_AUDIT_EVENT,
-  type ContactAuditRecord, type ContactNoteRecord,
+  CONTACT_EXPORT_MAX_ROWS, MAX_BULK_CONTACT_IDS,
+  type ContactAuditRecord, type ContactNoteRecord, type BulkContactOutcome, type ContactExportSource,
 } from "@guardora/core";
+import { ActorKind } from "@prisma/client";
 import type { $Enums } from "@prisma/client";
 import { withTenant } from "./repositories";
 
@@ -485,5 +487,177 @@ export async function listBusinessContactAuditTrail(
       actorUserId: r.actorUserId,
       metadata: (r.metadata ?? null) as ContactAuditRecord["metadata"],
     }));
+  });
+}
+
+
+// =============================== CRM V2 PHASE B: BULK + EXPORT ================================================
+/**
+ * Per-contact audit rows for a bulk change, written INSIDE the same tenant transaction as the mutation so an
+ * individual contact's timeline can never disagree with what actually changed. These carry the contact id as
+ * `targetId` — exactly like the existing single-contact actions — and PII-free metadata. The separate BULK
+ * audit event (written by the caller) carries counts only and no ids.
+ */
+async function writeContactAudits(
+  db: Parameters<Parameters<typeof withTenant>[1]>[0],
+  tenantId: string,
+  actorUserId: string,
+  ids: readonly string[],
+  event: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db.auditLog.createMany({
+    data: ids.map((id) => ({
+      tenantId, event, actorKind: ActorKind.human, actorUserId,
+      targetType: "business_contact", targetId: id, metadata: metadata as never,
+    })),
+  });
+}
+
+/**
+ * Bulk status change over an explicitly selected, bounded set of contacts.
+ *
+ * Tenant-scoped throughout (RLS): only ids visible to THIS tenant are loaded, so a foreign id is
+ * indistinguishable from a deleted one — both report `not_found`, which is what prevents the operation from
+ * leaking whether another tenant's contact exists.
+ *
+ * The existing domain rule (`canTransitionContactStatus`) is applied per contact — it is NOT bypassed — so the
+ * operation cannot be a single blanket UPDATE. It is still ATOMIC for the valid set: the load, the partition
+ * and one `updateMany` for the contacts that may legally transition all run in ONE tenant transaction, together
+ * with their per-contact audit rows. Contacts that cannot transition are reported deterministically rather than
+ * silently skipped.
+ */
+export async function bulkSetBusinessContactStatus(
+  tenantId: string,
+  ids: readonly string[],
+  to: BusinessContactStatus,
+  actorUserId: string,
+): Promise<BulkContactOutcome> {
+  const bounded = ids.slice(0, MAX_BULK_CONTACT_IDS);
+  if (bounded.length === 0) return { changed: [], failed: [] };
+  return withTenant(tenantId, async (db) => {
+    const rows = await db.businessContact.findMany({
+      where: { id: { in: [...bounded] } }, select: { id: true, status: true },
+    });
+    const found = new Map(rows.map((r) => [r.id, r.status as unknown as BusinessContactStatus]));
+    const changed: string[] = [];
+    const failed: BulkContactOutcome["failed"] = [];
+    for (const id of bounded) {
+      const from = found.get(id);
+      // A foreign / unknown id is invisible under RLS — identical outcome, so existence never leaks.
+      if (from === undefined) { failed.push({ id, reason: "not_found" }); continue; }
+      if (from === to) { changed.push(id); continue; } // idempotent, same as the single-contact action
+      if (!canTransitionContactStatus(from, to)) { failed.push({ id, reason: "invalid_transition" }); continue; }
+      changed.push(id);
+    }
+    const toWrite = changed.filter((id) => found.get(id) !== to);
+    if (toWrite.length > 0) {
+      await db.businessContact.updateMany({ where: { id: { in: toWrite } }, data: { status: asContactStatus(to) } });
+      // Individual timeline accuracy — one row per contact that actually changed.
+      await writeContactAudits(db, tenantId, actorUserId, toWrite, CONTACT_STATUS_AUDIT_EVENT, { to });
+    }
+    return { changed, failed };
+  });
+}
+
+/**
+ * Bulk assign / unassign over an explicitly selected, bounded set of contacts.
+ *
+ * The assignee is validated ONCE against this tenant's memberships before any mutation, so a foreign, unknown
+ * or non-member user id can never be written. `null` unassigns. Fully atomic: one `updateMany` plus the
+ * per-contact audit rows in one tenant transaction.
+ */
+export async function bulkAssignBusinessContacts(
+  tenantId: string,
+  ids: readonly string[],
+  assigneeUserId: string | null,
+  actorUserId: string,
+): Promise<BulkContactOutcome | { invalidAssignee: true }> {
+  const bounded = ids.slice(0, MAX_BULK_CONTACT_IDS);
+  if (bounded.length === 0) return { changed: [], failed: [] };
+  return withTenant(tenantId, async (db) => {
+    if (assigneeUserId) {
+      const member = await db.membership.findFirst({ where: { userId: assigneeUserId, tenantId }, select: { userId: true } });
+      if (!member) return { invalidAssignee: true as const };
+    }
+    const rows = await db.businessContact.findMany({ where: { id: { in: [...bounded] } }, select: { id: true } });
+    const found = new Set(rows.map((r) => r.id));
+    const changed = bounded.filter((id) => found.has(id));
+    const failed = bounded.filter((id) => !found.has(id)).map((id) => ({ id, reason: "not_found" as const }));
+    if (changed.length > 0) {
+      await db.businessContact.updateMany({ where: { id: { in: changed } }, data: { assignedUserId: assigneeUserId } });
+      await writeContactAudits(db, tenantId, actorUserId, changed, CONTACT_ASSIGNMENT_AUDIT_EVENT, { assigned: assigneeUserId !== null });
+    }
+    return { changed, failed };
+  });
+}
+
+export interface ContactExportResult {
+  rows: ContactExportSource[];
+  /** True when more contacts matched than the bound allowed — the UI must say so, never imply completeness. */
+  limited: boolean;
+}
+
+/**
+ * Bounded, filtered, tenant-scoped export read.
+ *
+ * Honours exactly the same server-side filters as the list (search + status + source) so what a user exports is
+ * what they were looking at. Ordering is the same deterministic `receivedAt desc, id desc`. Reads at most
+ * {@link CONTACT_EXPORT_MAX_ROWS} + 1 rows — the extra row is how `limited` is detected without a second
+ * COUNT over the whole table.
+ *
+ * No N+1: tenant members are fetched once and the newest note per contact comes from a single `groupBy`.
+ * Notes themselves are never loaded, and no activity/audit rows are read at all.
+ */
+export async function exportBusinessContacts(
+  tenantId: string,
+  filters: BusinessContactFilters,
+  limit: number = CONTACT_EXPORT_MAX_ROWS,
+): Promise<ContactExportResult> {
+  const take = Math.max(1, Math.min(limit, CONTACT_EXPORT_MAX_ROWS));
+  return withTenant(tenantId, async (db) => {
+    const where = {
+      ...(filters.status ? { status: asContactStatus(filters.status) } : {}),
+      ...(filters.sourcePlatform ? { sourcePlatform: asSource(filters.sourcePlatform) } : {}),
+      ...(filters.search ? { AND: [searchWhere(filters.search)] } : {}),
+    };
+    const rows = await db.businessContact.findMany({
+      where, orderBy: [{ receivedAt: "desc" }, { id: "desc" }], take: take + 1,
+      select: {
+        id: true, fullName: true, email: true, phone: true, company: true, sourcePlatform: true,
+        campaignName: true, formName: true, receivedAt: true, status: true, assignedUserId: true, updatedAt: true,
+      },
+    });
+    const limited = rows.length > take;
+    const page = limited ? rows.slice(0, take) : rows;
+
+    // ONE membership read for the whole export (no per-row lookup).
+    const members = await db.membership.findMany({ include: { user: { select: { email: true } } } });
+    const memberEmail = new Map(members.map((m) => [m.userId, m.user?.email ?? null]));
+    // ONE aggregate for the newest note per contact — note bodies are never read.
+    const noteMax = page.length
+      ? await db.businessContactNote.groupBy({
+          by: ["contactId"], where: { contactId: { in: page.map((r) => r.id) } }, _max: { createdAt: true },
+        })
+      : [];
+    const latestNote = new Map(noteMax.map((g) => [g.contactId, g._max.createdAt ?? null]));
+
+    return {
+      limited,
+      rows: page.map((r) => {
+        const noteAt = latestNote.get(r.id) ?? null;
+        const base = r.updatedAt ?? r.receivedAt;
+        return {
+          fullName: r.fullName, email: r.email, phone: r.phone, company: r.company,
+          sourcePlatform: r.sourcePlatform as BusinessContactSource,
+          campaignName: r.campaignName, formName: r.formName,
+          receivedAt: r.receivedAt, status: r.status as BusinessContactStatus,
+          // A safe tenant-member display value, never a raw user id.
+          assignedTo: r.assignedUserId ? memberEmail.get(r.assignedUserId) ?? null : null,
+          latestActivityAt: noteAt && noteAt > base ? noteAt : base,
+        };
+      }),
+    };
   });
 }
