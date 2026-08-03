@@ -10,7 +10,7 @@ import {
   type IncidentListInput, type ReviewerActor,
 } from "@guardora/db";
 import { canViewChildSafetyProtectionPlan } from "@guardora/core";
-import { REVIEWER_COPY } from "./reviewer-i18n";
+import { REVIEWER_COPY, fillCopy } from "./reviewer-i18n";
 import { FilterBar } from "./filter-bar";
 import { Unauthorized } from "./unauthorized";
 import { severityTone, urgencyTone, statusTone, escalationTone, formatDurationMs, fmtDateTime, shortId } from "./reviewer-view";
@@ -96,8 +96,8 @@ export default async function ReviewerConsolePage({ searchParams }: { searchPara
       {/* Incident table */}
       <Card className="overflow-hidden p-0">
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-muted)]">
-          <span>{t.list.results(list.total)}</span>
-          <span>{t.list.page(list.page, totalPages)}</span>
+          <span>{fillCopy(list.total === 1 ? t.list.resultsOne : t.list.resultsMany, { count: list.total })}</span>
+          <span>{fillCopy(t.list.pageTemplate, { page: list.page, total: totalPages })}</span>
         </div>
         {list.items.length === 0 ? (
           <div className="p-8"><EmptyState title={t.list.empty} body={t.list.emptyHint} /></div>

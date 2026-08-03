@@ -183,6 +183,7 @@
     "business-contacts-crm:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-crm.test.ts",
     "business-contacts-i18n:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-i18n.test.ts",
     "business-contacts-rsc-boundary:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-rsc-boundary.test.tsx",
+    "dashboard-rsc-boundary:test": "NODE_OPTIONS=--conditions=react-server pnpm --filter @guardora/worker exec tsx ../web/scripts/dashboard-rsc-boundary.test.ts",
     "business-billing-source:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-billing-source.test.ts",
     "family-notifications:test": "pnpm --filter @guardora/worker exec tsx ../../packages/core/scripts/family-notifications.test.ts",
     "family-notifications-service:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/assert-local-target.cli.ts && pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/family-notifications-service.test.ts",
