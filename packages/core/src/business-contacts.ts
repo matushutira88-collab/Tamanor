@@ -545,3 +545,134 @@ export function summarizeMetaLeadReadiness(
     overall,
   };
 }
+
+// ---- CRM V2 Phase A: contact search, notes, activity timeline ---------------------------------------------
+/** Minimum meaningful search length — a 1-character query matches almost everything and is rejected. */
+export const CONTACT_SEARCH_MIN_LENGTH = 2;
+/** Hard upper bound on a search query. Anything longer is truncated before it reaches the database. */
+export const CONTACT_SEARCH_MAX_LENGTH = 100;
+
+/**
+ * Normalize a raw `q=` search value into a bounded, safe term — or null when it is not meaningful.
+ *
+ * Pure and defensive: strips control characters, collapses whitespace, truncates to
+ * {@link CONTACT_SEARCH_MAX_LENGTH}, and returns null below {@link CONTACT_SEARCH_MIN_LENGTH}. It performs NO
+ * SQL escaping — the repository passes the result to Prisma as a BOUND PARAMETER, never string interpolation —
+ * and it is not an output sanitizer; React escapes what it renders.
+ */
+export function normalizeContactSearch(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  const cleaned = raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  if (cleaned.length < CONTACT_SEARCH_MIN_LENGTH) return null;
+  return cleaned.slice(0, CONTACT_SEARCH_MAX_LENGTH);
+}
+
+/**
+ * The digits-only form of a search term, used for phone matching when the term looks like a phone fragment.
+ * Returns null unless the term is phone-shaped (digits plus the usual separators) and still carries enough
+ * digits to be selective — so a name like "Anna" never becomes a phone probe.
+ */
+export function contactSearchPhoneDigits(term: string): string | null {
+  if (!/^[+\d][\d\s().+-]*$/.test(term)) return null;
+  const digits = term.replace(/\D/g, "");
+  return digits.length >= 3 ? digits : null;
+}
+
+/** Maximum stored length of one internal note body. */
+export const CONTACT_NOTE_MAX_LENGTH = 2000;
+
+export type ContactNoteValidation =
+  | { ok: true; body: string }
+  | { ok: false; reason: "empty" | "too_long" };
+
+/**
+ * Validate + normalize an internal note body. PLAIN TEXT ONLY — no HTML, Markdown, file or attachment is ever
+ * interpreted; the stored string is rendered as text by React, which escapes it. Control characters other than
+ * newline and tab are stripped, CRLF is normalized, surrounding whitespace trimmed. The length bound is applied
+ * AFTER normalization so padding cannot smuggle a longer body past it.
+ */
+export function validateContactNoteBody(raw: string | null | undefined): ContactNoteValidation {
+  if (typeof raw !== "string") return { ok: false, reason: "empty" };
+  const cleaned = raw
+    .replace(/\r\n/g, "\n")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .trim();
+  if (cleaned.length === 0) return { ok: false, reason: "empty" };
+  if (cleaned.length > CONTACT_NOTE_MAX_LENGTH) return { ok: false, reason: "too_long" };
+  return { ok: true, body: cleaned };
+}
+
+/** The kinds of event the contact timeline renders. Bounded — never a free-form audit event name. */
+export type ContactTimelineKind = "received" | "status_changed" | "assignment_changed" | "note";
+
+export interface ContactTimelineEntry {
+  kind: ContactTimelineKind;
+  at: Date;
+  /** Safe display value for the actor (a tenant-member email) or null. Never a raw user id. */
+  actor: string | null;
+  /** Bounded status enum for `status_changed`. */
+  status?: BusinessContactStatus;
+  /** Whether the contact ended up assigned, for `assignment_changed`. Never a user id. */
+  assigned?: boolean;
+  /** The note's own stored body — the ONLY timeline field carrying free text. */
+  body?: string;
+}
+
+/** The audit events this timeline understands. Anything else in the ledger is ignored. */
+export const CONTACT_STATUS_AUDIT_EVENT = "business_contact.status_changed";
+export const CONTACT_ASSIGNMENT_AUDIT_EVENT = "business_contact.assignment_changed";
+export const CONTACT_NOTE_AUDIT_EVENT = "business_contact.note_added";
+
+export interface ContactAuditRecord {
+  event: string;
+  createdAt: Date;
+  actorUserId: string | null;
+  /** Already-PII-free audit metadata: `{ to }` for status, `{ assigned }` for assignment. */
+  metadata?: { to?: unknown; assigned?: unknown } | null;
+}
+export interface ContactNoteRecord {
+  createdAt: Date;
+  authorUserId: string | null;
+  body: string;
+}
+
+/**
+ * Build the chronological contact timeline from the contact's own `receivedAt`, the EXISTING tenant-scoped
+ * audit ledger, and the contact's notes. Pure — no I/O.
+ *
+ * Ordering is ASCENDING (oldest first) and deterministic: equal timestamps break by a fixed kind rank, so the
+ * same inputs always render in the same order. Actor ids resolve through the supplied display map (a
+ * tenant-member email); an id with no mapping renders as null rather than leaking a raw user id. A
+ * `note_added` audit row is skipped — the note itself is the entry, so the audit row would duplicate it.
+ */
+export function buildContactTimeline(input: {
+  receivedAt: Date;
+  audit: readonly ContactAuditRecord[];
+  notes: readonly ContactNoteRecord[];
+  /** userId → safe display value (tenant-member email). Ids absent from the map render as null. */
+  actorDisplay?: Readonly<Record<string, string>>;
+  /** Strict maximum entries returned (most recent kept, still rendered oldest-first). */
+  limit?: number;
+}): ContactTimelineEntry[] {
+  const display = (id: string | null): string | null => (id ? input.actorDisplay?.[id] ?? null : null);
+  const entries: ContactTimelineEntry[] = [{ kind: "received", at: input.receivedAt, actor: null }];
+
+  for (const a of input.audit) {
+    if (a.event === CONTACT_STATUS_AUDIT_EVENT) {
+      const to = typeof a.metadata?.to === "string" && isValidContactStatus(a.metadata.to)
+        ? (a.metadata.to as BusinessContactStatus) : undefined;
+      entries.push({ kind: "status_changed", at: a.createdAt, actor: display(a.actorUserId), ...(to ? { status: to } : {}) });
+    } else if (a.event === CONTACT_ASSIGNMENT_AUDIT_EVENT) {
+      entries.push({ kind: "assignment_changed", at: a.createdAt, actor: display(a.actorUserId), assigned: a.metadata?.assigned === true });
+    }
+    // CONTACT_NOTE_AUDIT_EVENT is intentionally ignored — the note row itself is the entry.
+  }
+  for (const n of input.notes) {
+    entries.push({ kind: "note", at: n.createdAt, actor: display(n.authorUserId), body: n.body });
+  }
+
+  const rank: Record<ContactTimelineKind, number> = { received: 0, status_changed: 1, assignment_changed: 2, note: 3 };
+  entries.sort((a, b) => a.at.getTime() - b.at.getTime() || rank[a.kind] - rank[b.kind]);
+  const limit = input.limit;
+  return typeof limit === "number" && limit > 0 && entries.length > limit ? entries.slice(entries.length - limit) : entries;
+}

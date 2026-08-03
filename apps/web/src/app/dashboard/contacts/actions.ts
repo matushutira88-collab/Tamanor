@@ -9,9 +9,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { can, Permission, isValidContactStatus, BusinessContactStatus } from "@guardora/core";
-import { setBusinessContactStatus, assignBusinessContact } from "@guardora/db";
+import { setBusinessContactStatus, assignBusinessContact, addBusinessContactNote } from "@guardora/db";
 import { requireDashboardCapability } from "@/server/route-guard";
 import { writeAudit } from "@/server/audit";
+import { isSameOrigin } from "@/server/csrf";
 
 const CONTACTS = "/dashboard/contacts";
 
@@ -51,4 +52,33 @@ export async function assignContactAction(fd: FormData): Promise<void> {
   }
   revalidatePath(CONTACTS);
   redirect(`${CONTACTS}/${contactId}?${r.ok ? "saved=assign" : "e=assign"}`);
+}
+
+/**
+ * BUSINESS-CRM-V2 — append one internal note to a contact.
+ *
+ * Server-authoritative: the tenant and the AUTHOR come only from the authenticated session, and the manage
+ * permission is required (a reader can view notes but never create one). The client submits exactly two
+ * values: `contactId` and `body`. A contact id from another tenant fails closed in the repository (RLS) and
+ * returns `not_found` before any write.
+ *
+ * The note text NEVER leaves the database row: it is not placed in audit metadata, ops events, the redirect
+ * URL or any error query parameter. The audit entry is the bounded event `business_contact.note_added` with
+ * the contact target id and no content.
+ */
+export async function addContactNoteAction(fd: FormData): Promise<void> {
+  const session = await manageGate();
+  if (!(await isSameOrigin())) redirect(`${CONTACTS}?e=csrf`);
+  const contactId = id(fd);
+  if (!contactId) redirect(`${CONTACTS}?e=input`);
+
+  const r = await addBusinessContactNote(session.tenantId, contactId, session.userId, String(fd.get("body") ?? ""));
+  if (r.ok) {
+    // Bounded audit: contact target id only — never the note body, never an excerpt, never its length.
+    await writeAudit({ session, event: "business_contact.note_added", targetType: "business_contact", targetId: contactId });
+  }
+  revalidatePath(`${CONTACTS}/${contactId}`);
+  // Only a bounded result code reaches the URL.
+  const code = r.ok ? "saved=note" : r.reason === "too_long" ? "e=note_long" : r.reason === "not_found" ? "e=not_found" : "e=note_empty";
+  redirect(`${CONTACTS}/${contactId}?${code}`);
 }

@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   can, Permission, isValidContactStatus, BusinessContactStatus, BusinessContactSource,
+  normalizeContactSearch, CONTACT_SEARCH_MAX_LENGTH,
 } from "@guardora/core";
-import { listBusinessContacts, businessContactCounts } from "@guardora/db";
+import { listBusinessContacts, businessContactCounts, listAssignableMembers } from "@guardora/db";
 import { requireDashboardCapability } from "@/server/route-guard";
 import { getLocale } from "@/i18n/locale-server";
 import { PageHeader, Card, EmptyState, Badge } from "@/components/dashboard/ui";
@@ -14,7 +15,7 @@ import { businessDict, bizLabel } from "../business-i18n";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Contacts", robots: { index: false, follow: false } };
 
-type SP = { status?: string; source?: string; cursor?: string };
+type SP = { status?: string; source?: string; cursor?: string; q?: string };
 
 const ALL_SOURCES: BusinessContactSource[] = [
   BusinessContactSource.Facebook, BusinessContactSource.Instagram, BusinessContactSource.GoogleAds,
@@ -39,20 +40,28 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const status = isValidContactStatus(sp.status) ? (sp.status as BusinessContactStatus) : undefined;
   const source = ALL_SOURCES.includes(sp.source as BusinessContactSource) ? (sp.source as BusinessContactSource) : undefined;
-  const filters = { status, sourcePlatform: source };
+  // Bounded + normalized server-side; a too-short/empty term is simply not a filter. The raw value is never
+  // interpolated into SQL — the repository binds it as a parameter.
+  const search = normalizeContactSearch(sp.q);
+  const filters = { status, sourcePlatform: source, search: search ?? undefined };
 
-  const [page, counts] = await Promise.all([
+  const [page, counts, members] = await Promise.all([
     listBusinessContacts(session.tenantId, filters, sp.cursor),
     businessContactCounts(session.tenantId, filters),
+    listAssignableMembers(session.tenantId),
   ]);
+  // userId → safe tenant-member display value. An id with no membership renders as "—", never a raw id.
+  const memberEmail = new Map(members.map((m) => [m.userId, m.email]));
 
   // Filter chip href builder — changing a filter resets pagination (drops the cursor).
   const chip = (over: Partial<SP>) => {
     const q = new URLSearchParams();
     const s = over.status !== undefined ? over.status : sp.status;
     const src = over.source !== undefined ? over.source : sp.source;
+    const term = over.q !== undefined ? over.q : (search ?? "");
     if (s) q.set("status", s);
     if (src) q.set("source", src);
+    if (term) q.set("q", term);
     const qs = q.toString();
     return `/dashboard/contacts${qs ? `?${qs}` : ""}`;
   };
@@ -63,6 +72,23 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       <PageHeader title={t.contacts.title} description={t.contacts.desc} />
 
       <p className="text-sm text-[var(--color-muted)]">{t.contacts.total(counts.total)}</p>
+
+      {/* Server-side search. Submitting resets pagination (no cursor is carried) and preserves the active
+          status/source filters as hidden fields. */}
+      <form method="get" action="/dashboard/contacts" role="search" className="flex flex-wrap items-center gap-2">
+        {status ? <input type="hidden" name="status" value={status} /> : null}
+        {source ? <input type="hidden" name="source" value={source} /> : null}
+        <label htmlFor="q" className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{t.contacts.search}</label>
+        <input
+          id="q" name="q" type="search" defaultValue={search ?? ""} maxLength={CONTACT_SEARCH_MAX_LENGTH}
+          placeholder={t.contacts.searchPlaceholder} aria-label={t.contacts.search}
+          className="min-w-56 flex-1 rounded-lg border border-[var(--color-border-strong)] bg-transparent px-3 py-1.5 text-sm"
+        />
+        <button type="submit" className="rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface-2)]">{t.contacts.searchApply}</button>
+        {search ? (
+          <Link href={chip({ q: "" })} className="text-xs font-medium text-[var(--color-brand)] hover:underline">{t.contacts.searchClear}</Link>
+        ) : null}
+      </form>
 
       {/* Filters */}
       <div className="space-y-3">
@@ -91,7 +117,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       </div>
 
       {page.items.length === 0 ? (
-        <EmptyState title={t.contacts.title} body={t.contacts.empty} />
+        <EmptyState title={t.contacts.title} body={search ? t.contacts.noResults : t.contacts.empty} />
       ) : (
         <Card>
           <div className="overflow-x-auto">
@@ -103,6 +129,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colSource}</th>
                   <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colCampaign}</th>
                   <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colReceived}</th>
+                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colLatestActivity}</th>
+                  <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colAssignee2}</th>
                   <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colStatus}</th>
                 </tr>
               </thead>
@@ -118,6 +146,10 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                     <td className="px-3 py-2">{bizLabel(t.source, c.sourcePlatform)}</td>
                     <td className="px-3 py-2 text-[var(--color-muted)]">{c.campaignName ?? c.formName ?? "—"}</td>
                     <td className="px-3 py-2 text-[var(--color-muted)]"><time dateTime={c.receivedAt.toISOString()}>{dtf.format(c.receivedAt)}</time></td>
+                    <td className="px-3 py-2 text-[var(--color-muted)]"><time dateTime={c.latestActivityAt.toISOString()}>{dtf.format(c.latestActivityAt)}</time></td>
+                    <td className="px-3 py-2 text-[var(--color-muted)]">
+                      {c.assignedUserId ? (memberEmail.get(c.assignedUserId) ?? "—") : t.contacts.unassignedShort}
+                    </td>
                     <td className="px-3 py-2"><Badge tone={STATUS_TONE[c.status]}>{bizLabel(t.status, c.status)}</Badge></td>
                   </tr>
                 ))}

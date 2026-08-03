@@ -11,6 +11,9 @@ import {
   BusinessProvider, BusinessContactStatus, BusinessContactSource, BusinessConnectionStatus,
   BusinessConnectionCapability, BusinessIngestionResult,
   canTransitionContactStatus, businessContactDedupeSeed,
+  contactSearchPhoneDigits, validateContactNoteBody,
+  CONTACT_STATUS_AUDIT_EVENT, CONTACT_ASSIGNMENT_AUDIT_EVENT,
+  type ContactAuditRecord, type ContactNoteRecord,
 } from "@guardora/core";
 import type { $Enums } from "@prisma/client";
 import { withTenant } from "./repositories";
@@ -132,11 +135,24 @@ export interface BusinessContactRow {
   assignedUserId: string | null;
   consentValue: boolean | null;
   createdAt: Date;
+  /**
+   * BUSINESS-CRM-V2 — the most recent change we can attribute cheaply: the contact's own `updatedAt` (status /
+   * assignment changes touch it) or its newest note, whichever is later. Never null — it falls back to
+   * `updatedAt`, so the column always renders.
+   */
+  latestActivityAt: Date;
 }
 
 export interface BusinessContactFilters {
   status?: BusinessContactStatus;
   sourcePlatform?: BusinessContactSource;
+  /**
+   * BUSINESS-CRM-V2 — an ALREADY-NORMALIZED search term (see `normalizeContactSearch`). Matched
+   * case-insensitively against full name / email / company, plus a digits-only phone probe when the term is
+   * phone-shaped. Passed to Prisma as a BOUND PARAMETER — never string-interpolated into SQL — and always
+   * combined with the tenant RLS scope and the other filters.
+   */
+  search?: string;
 }
 export interface BusinessContactPage {
   items: BusinessContactRow[];
@@ -148,8 +164,8 @@ const mapContact = (r: {
   id: string; provider: string; sourcePlatform: string; fullName: string | null; email: string | null;
   phone: string | null; company: string | null; messageSummary: string | null; campaignName: string | null;
   formName: string | null; receivedAt: Date; status: string; assignedUserId: string | null;
-  consentValue: boolean | null; createdAt: Date;
-}): BusinessContactRow => ({
+  consentValue: boolean | null; createdAt: Date; updatedAt?: Date;
+}, latestNoteAt?: Date | null): BusinessContactRow => ({
   id: r.id,
   provider: r.provider as BusinessProvider,
   sourcePlatform: r.sourcePlatform as BusinessContactSource,
@@ -157,7 +173,33 @@ const mapContact = (r: {
   messageSummary: r.messageSummary, campaignName: r.campaignName, formName: r.formName,
   receivedAt: r.receivedAt, status: r.status as BusinessContactStatus, assignedUserId: r.assignedUserId,
   consentValue: r.consentValue, createdAt: r.createdAt,
+  latestActivityAt: latestNoteAt && latestNoteAt > (r.updatedAt ?? r.receivedAt)
+    ? latestNoteAt
+    : (r.updatedAt ?? r.receivedAt),
 });
+
+/**
+ * The search WHERE fragment for an already-normalized term. Case-insensitive `contains` across the columns a
+ * user would actually search, plus a digits-only phone probe ONLY when the term is phone-shaped — so a name
+ * never becomes a phone query. Every value is a bound parameter.
+ *
+ * Phone matching is best-effort by design: it matches a digit fragment against the stored value, which finds
+ * fragments of a contiguously-stored number (the form Meta supplies). A number stored with separators may not
+ * match a fragment spanning one; that is documented rather than papered over with a fragile transform.
+ */
+function searchWhere(term: string) {
+  const digits = contactSearchPhoneDigits(term);
+  const mode = "insensitive" as const;
+  return {
+    OR: [
+      { fullName: { contains: term, mode } },
+      { email: { contains: term, mode } },
+      { company: { contains: term, mode } },
+      { phone: { contains: term, mode } },
+      ...(digits ? [{ phone: { contains: digits, mode } }] : []),
+    ],
+  };
+}
 
 /** Opaque keyset cursor `(receivedAtMs, id)` — base64url, strict decode (any malformation → first page). */
 function encodeCursor(receivedAt: Date, id: string): string {
@@ -177,10 +219,15 @@ function decodeCursor(raw: string | null | undefined): { receivedAt: Date; id: s
 export async function listBusinessContacts(tenantId: string, filters: BusinessContactFilters, cursor?: string | null): Promise<BusinessContactPage> {
   const key = decodeCursor(cursor);
   return withTenant(tenantId, async (db) => {
+    // AND-combined so search narrows the filters rather than widening them: the search OR-group and the
+    // keyset OR-group are separate clauses and can never leak rows past either.
+    const and: Record<string, unknown>[] = [];
+    if (filters.search) and.push(searchWhere(filters.search));
+    if (key) and.push({ OR: [{ receivedAt: { lt: key.receivedAt } }, { receivedAt: key.receivedAt, id: { lt: key.id } }] });
     const where = {
       ...(filters.status ? { status: asContactStatus(filters.status) } : {}),
       ...(filters.sourcePlatform ? { sourcePlatform: asSource(filters.sourcePlatform) } : {}),
-      ...(key ? { OR: [{ receivedAt: { lt: key.receivedAt } }, { receivedAt: key.receivedAt, id: { lt: key.id } }] } : {}),
+      ...(and.length ? { AND: and } : {}),
     };
     const rows = await db.businessContact.findMany({
       where, orderBy: [{ receivedAt: "desc" }, { id: "desc" }], take: PAGE_SIZE + 1,
@@ -188,14 +235,27 @@ export async function listBusinessContacts(tenantId: string, filters: BusinessCo
     const hasMore = rows.length > PAGE_SIZE;
     const page = rows.slice(0, PAGE_SIZE);
     const last = hasMore ? page[page.length - 1] : null;
-    return { items: page.map(mapContact), nextCursor: last ? encodeCursor(last.receivedAt, last.id) : null };
+    // One bounded aggregate for the page's ids (<= PAGE_SIZE) — never an N+1 per row.
+    const noteMax = page.length
+      ? await db.businessContactNote.groupBy({
+          by: ["contactId"], where: { contactId: { in: page.map((r) => r.id) } }, _max: { createdAt: true },
+        })
+      : [];
+    const latestNote = new Map(noteMax.map((g) => [g.contactId, g._max.createdAt ?? null]));
+    return {
+      items: page.map((r) => mapContact(r, latestNote.get(r.id) ?? null)),
+      nextCursor: last ? encodeCursor(last.receivedAt, last.id) : null,
+    };
   });
 }
 
 /** Total + per-status counts for the tenant (respecting the sourcePlatform filter, ignoring the status filter). */
 export async function businessContactCounts(tenantId: string, filters: BusinessContactFilters): Promise<{ total: number; byStatus: Record<BusinessContactStatus, number> }> {
   return withTenant(tenantId, async (db) => {
-    const base = filters.sourcePlatform ? { sourcePlatform: asSource(filters.sourcePlatform) } : {};
+    const base = {
+      ...(filters.sourcePlatform ? { sourcePlatform: asSource(filters.sourcePlatform) } : {}),
+      ...(filters.search ? searchWhere(filters.search) : {}),
+    };
     const grouped = await db.businessContact.groupBy({ by: ["status"], where: base, _count: { _all: true } });
     const byStatus: Record<BusinessContactStatus, number> = {
       [BusinessContactStatus.New]: 0, [BusinessContactStatus.Contacted]: 0, [BusinessContactStatus.Handled]: 0,
@@ -336,4 +396,94 @@ export async function ingestBusinessContact(tenantId: string, input: BusinessCon
     contactId: outcome.contactId,
   });
   return { result, contactId: outcome.contactId, duplicate: !outcome.created };
+}
+
+
+// =============================== CRM V2: NOTES + TIMELINE =====================================================
+/** Strict upper bound on notes/audit rows read for one contact timeline. */
+export const CONTACT_TIMELINE_MAX_EVENTS = 50;
+
+export type ContactNoteResult =
+  | { ok: true; noteId: string }
+  | { ok: false; reason: "not_found" | "invalid_input" | "too_long" };
+
+/**
+ * Append one internal note to a contact. APPEND-ONLY: there is no update or delete path, and the app role
+ * holds no UPDATE/DELETE grant on the table.
+ *
+ * Tenant comes from the caller's authenticated session (never the client) and RLS scopes every statement, so a
+ * contact id belonging to another tenant simply does not resolve and returns `not_found` before any write. The
+ * author is likewise server-supplied. The body is validated + normalized to bounded PLAIN TEXT.
+ */
+export async function addBusinessContactNote(
+  tenantId: string,
+  contactId: string,
+  authorUserId: string,
+  rawBody: string,
+): Promise<ContactNoteResult> {
+  const id = typeof contactId === "string" ? contactId.trim() : "";
+  if (!id) return { ok: false, reason: "invalid_input" };
+  const validated = validateContactNoteBody(rawBody);
+  if (!validated.ok) return { ok: false, reason: validated.reason === "too_long" ? "too_long" : "invalid_input" };
+
+  return withTenant(tenantId, async (db) => {
+    // Cross-tenant fails closed here: RLS makes a foreign contact invisible, so this is `not_found`.
+    const contact = await db.businessContact.findFirst({ where: { id }, select: { id: true } });
+    if (!contact) return { ok: false, reason: "not_found" as const };
+    const note = await db.businessContactNote.create({
+      data: { tenantId, contactId: id, authorUserId, body: validated.body },
+      select: { id: true },
+    });
+    return { ok: true as const, noteId: note.id };
+  });
+}
+
+/** One contact's notes, oldest first, bounded. Tenant-scoped (RLS) — a foreign contact id yields []. */
+export async function listBusinessContactNotes(
+  tenantId: string,
+  contactId: string,
+  limit: number = CONTACT_TIMELINE_MAX_EVENTS,
+): Promise<ContactNoteRecord[]> {
+  const take = Math.max(1, Math.min(limit, CONTACT_TIMELINE_MAX_EVENTS));
+  return withTenant(tenantId, async (db) => {
+    const rows = await db.businessContactNote.findMany({
+      where: { contactId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take,
+      select: { createdAt: true, authorUserId: true, body: true },
+    });
+    // Read newest-first (so the bound keeps the most recent), render oldest-first.
+    return rows.reverse();
+  });
+}
+
+/**
+ * The contact's status + assignment history from the EXISTING tenant-scoped audit ledger. No dedicated
+ * activity model exists or is needed: `writeAudit` already records these with
+ * `targetType="business_contact"`, `targetId=<contactId>`, and `audit_logs` is RLS-scoped and indexed on
+ * `(tenantId, targetType, targetId)`.
+ *
+ * Only the two bounded event names are read, and only PII-free columns are selected — metadata is
+ * `{ to }` / `{ assigned }` by construction.
+ */
+export async function listBusinessContactAuditTrail(
+  tenantId: string,
+  contactId: string,
+  limit: number = CONTACT_TIMELINE_MAX_EVENTS,
+): Promise<ContactAuditRecord[]> {
+  const take = Math.max(1, Math.min(limit, CONTACT_TIMELINE_MAX_EVENTS));
+  return withTenant(tenantId, async (db) => {
+    const rows = await db.auditLog.findMany({
+      where: {
+        tenantId, targetType: "business_contact", targetId: contactId,
+        event: { in: [CONTACT_STATUS_AUDIT_EVENT, CONTACT_ASSIGNMENT_AUDIT_EVENT] },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take,
+      select: { event: true, createdAt: true, actorUserId: true, metadata: true },
+    });
+    return rows.reverse().map((r) => ({
+      event: r.event,
+      createdAt: r.createdAt,
+      actorUserId: r.actorUserId,
+      metadata: (r.metadata ?? null) as ContactAuditRecord["metadata"],
+    }));
+  });
 }

@@ -19,6 +19,13 @@ export interface BusinessDict {
     detailTitle: string; email: string; phone: string; company: string; message: string; campaign: string; form: string; received: string; consent: string;
     consentGranted: string; consentDenied: string; consentUnknown: string;
     statusChanged: string; assigned: string;
+    /** BUSINESS-CRM-V2 — search, notes and the activity timeline. */
+    search: string; searchPlaceholder: string; searchApply: string; searchClear: string; noResults: string;
+    colAssignee2: string; colLatestActivity: string; unassignedShort: string;
+    notes: string; addNote: string; notePlaceholder: string; noteAdded: string; noNotes: string;
+    noteEmpty: string; noteTooLong: string; noteError: string;
+    activity: string; activityReceived: string; activityStatusChanged: string; activityAssigned: string;
+    activityUnassigned: string; activityNote: string; activityBy: string; activityEmpty: string;
   };
   platforms: {
     title: string; desc: string;
@@ -53,6 +60,16 @@ const en: BusinessDict = {
     detailTitle: "Contact detail", email: "Email", phone: "Phone", company: "Company", message: "Message", campaign: "Campaign", form: "Form", received: "Received", consent: "Consent",
     consentGranted: "Granted", consentDenied: "Not granted", consentUnknown: "Not provided",
     statusChanged: "Status updated.", assigned: "Assignment updated.",
+    search: "Search", searchPlaceholder: "Name, email, phone or company", searchApply: "Search", searchClear: "Clear",
+    noResults: "No contacts match your search.",
+    colAssignee2: "Assigned to", colLatestActivity: "Last activity", unassignedShort: "Unassigned",
+    notes: "Internal notes", addNote: "Add note", notePlaceholder: "Write an internal note (visible to your team only)",
+    noteAdded: "Note added.", noNotes: "No notes yet.",
+    noteEmpty: "A note cannot be empty.", noteTooLong: "A note can be at most 2,000 characters.",
+    noteError: "The note could not be saved.",
+    activity: "Activity", activityReceived: "Contact received", activityStatusChanged: "Status changed",
+    activityAssigned: "Assigned", activityUnassigned: "Unassigned", activityNote: "Note added",
+    activityBy: "by", activityEmpty: "No activity yet.",
   },
   platforms: {
     title: "Connected platforms", desc: "Connect your ad and social platforms to ingest leads. Comment moderation stays a separate capability of the same connection.",
@@ -107,6 +124,16 @@ const sk: BusinessDict = {
     detailTitle: "Detail kontaktu", email: "E-mail", phone: "Telefón", company: "Spoločnosť", message: "Správa", campaign: "Kampaň", form: "Formulár", received: "Prijaté", consent: "Súhlas",
     consentGranted: "Udelený", consentDenied: "Neudelený", consentUnknown: "Neuvedený",
     statusChanged: "Stav aktualizovaný.", assigned: "Priradenie aktualizované.",
+    search: "Hľadať", searchPlaceholder: "Meno, e-mail, telefón alebo spoločnosť", searchApply: "Hľadať", searchClear: "Zrušiť",
+    noResults: "Vášmu hľadaniu nezodpovedá žiadny kontakt.",
+    colAssignee2: "Priradené", colLatestActivity: "Posledná aktivita", unassignedShort: "Nepriradené",
+    notes: "Interné poznámky", addNote: "Pridať poznámku", notePlaceholder: "Napíšte internú poznámku (viditeľnú len pre váš tím)",
+    noteAdded: "Poznámka bola pridaná.", noNotes: "Zatiaľ žiadne poznámky.",
+    noteEmpty: "Poznámka nemôže byť prázdna.", noteTooLong: "Poznámka môže mať najviac 2 000 znakov.",
+    noteError: "Poznámku sa nepodarilo uložiť.",
+    activity: "Aktivita", activityReceived: "Kontakt prijatý", activityStatusChanged: "Stav zmenený",
+    activityAssigned: "Priradené", activityUnassigned: "Priradenie zrušené", activityNote: "Poznámka pridaná",
+    activityBy: "od", activityEmpty: "Zatiaľ žiadna aktivita.",
   },
   platforms: {
     title: "Pripojené platformy", desc: "Pripojte reklamné a sociálne platformy na získavanie leadov. Moderovanie komentárov je samostatná funkcia toho istého pripojenia.",
@@ -161,6 +188,16 @@ const de: BusinessDict = {
     detailTitle: "Kontaktdetails", email: "E-Mail", phone: "Telefon", company: "Unternehmen", message: "Nachricht", campaign: "Kampagne", form: "Formular", received: "Erhalten", consent: "Einwilligung",
     consentGranted: "Erteilt", consentDenied: "Nicht erteilt", consentUnknown: "Nicht angegeben",
     statusChanged: "Status aktualisiert.", assigned: "Zuweisung aktualisiert.",
+    search: "Suchen", searchPlaceholder: "Name, E-Mail, Telefon oder Unternehmen", searchApply: "Suchen", searchClear: "Zurücksetzen",
+    noResults: "Keine Kontakte entsprechen Ihrer Suche.",
+    colAssignee2: "Zugewiesen an", colLatestActivity: "Letzte Aktivität", unassignedShort: "Nicht zugewiesen",
+    notes: "Interne Notizen", addNote: "Notiz hinzufügen", notePlaceholder: "Interne Notiz schreiben (nur für Ihr Team sichtbar)",
+    noteAdded: "Notiz hinzugefügt.", noNotes: "Noch keine Notizen.",
+    noteEmpty: "Eine Notiz darf nicht leer sein.", noteTooLong: "Eine Notiz darf höchstens 2.000 Zeichen haben.",
+    noteError: "Die Notiz konnte nicht gespeichert werden.",
+    activity: "Aktivität", activityReceived: "Kontakt erhalten", activityStatusChanged: "Status geändert",
+    activityAssigned: "Zugewiesen", activityUnassigned: "Zuweisung aufgehoben", activityNote: "Notiz hinzugefügt",
+    activityBy: "von", activityEmpty: "Noch keine Aktivität.",
   },
   platforms: {
     title: "Verbundene Plattformen", desc: "Verbinden Sie Werbe- und Social-Plattformen für die Lead-Erfassung. Kommentarmoderation ist eine separate Funktion derselben Verbindung.",

@@ -267,6 +267,7 @@ model User {
   // V1.42 — inbox assignment + note authorship (both SetNull on user delete).
   assignedInboxItems                ReputationItem[]           @relation("InboxAssignee")
   inboxNotes                        InboxNote[]                @relation("InboxNoteAuthor")
+  businessContactNotes              BusinessContactNote[]      @relation("BusinessContactNoteAuthor")
   // CS-C8 — Family guardian invitations this user accepted (SetNull on user delete).
   familyGuardianInvitationsAccepted FamilyGuardianInvitation[]
 
@@ -514,6 +515,7 @@ model Tenant {
   // BUSINESS Connected Platforms & Contacts V1 — additive, Business-only, strictly separate from Family/CS.
   businessPlatformConnections     BusinessPlatformConnection[]
   businessContacts                BusinessContact[]
+  businessContactNotes            BusinessContactNote[]
   businessContactIngestionEvents  BusinessContactIngestionEvent[]
 
   @@map("tenants")
@@ -4247,6 +4249,30 @@ model ProviderCredential {
 // A Business contact/lead. Tenant-scoped; distinct from the SaaS's own global marketing `Lead`. Stores only
 // the bounded fields needed for contact handling — never a full raw provider payload. Consent is stored ONLY
 // when the source supplies it (never inferred). `dedupeKey` is the deterministic idempotency key (unique/tenant).
+// BUSINESS-CRM-V2 — an internal, APPEND-ONLY note on a contact. Phase A has no edit and no delete: the app
+// role is granted SELECT + INSERT only (see the migration), so immutability is enforced by the database, not
+// merely by convention. Plain text only — no HTML, Markdown, file or attachment is stored or interpreted.
+// Tenant-scoped via its own tenantId (RLS) AND reachable only through a contact in the same tenant.
+model BusinessContactNote {
+  id           String   @id @default(cuid())
+  tenantId     String
+  contactId    String
+  // The tenant member who wrote it. SetNull on user deletion so the note survives with an unknown author
+  // rather than being destroyed (append-only), and the UI then renders no actor instead of a raw id.
+  authorUserId String?
+  // Bounded plain text, validated + normalized by validateContactNoteBody before it ever reaches here.
+  body         String
+  createdAt    DateTime @default(now())
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact BusinessContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  author  User?           @relation("BusinessContactNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  // The timeline read: one contact's notes in creation order, tenant-scoped.
+  @@index([tenantId, contactId, createdAt])
+  @@map("business_contact_notes")
+}
+
 model BusinessContact {
   id               String                @id @default(cuid())
   tenantId         String
@@ -4284,6 +4310,8 @@ model BusinessContact {
 
   tenant     Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   connection BusinessPlatformConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  notes BusinessContactNote[]
 
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, status, receivedAt])
