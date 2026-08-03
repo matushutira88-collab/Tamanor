@@ -12,8 +12,11 @@ import {
   BusinessConnectionCapability, BusinessIngestionResult,
   canTransitionContactStatus, businessContactDedupeSeed,
   contactSearchPhoneDigits, validateContactNoteBody,
-  CONTACT_STATUS_AUDIT_EVENT, CONTACT_ASSIGNMENT_AUDIT_EVENT,
+  CONTACT_STATUS_AUDIT_EVENT, CONTACT_ASSIGNMENT_AUDIT_EVENT, CONTACT_LIFECYCLE_AUDIT_EVENTS,
   CONTACT_EXPORT_MAX_ROWS, MAX_BULK_CONTACT_IDS,
+  BusinessContactLifecycle, canTransitionContactLifecycle, contactReviewCutoff,
+  CONTACT_REVIEW_DEFAULT_DAYS, DEFAULT_HIDDEN_LIFECYCLES,
+  type ContactAnonymizationReason,
   type ContactAuditRecord, type ContactNoteRecord, type BulkContactOutcome, type ContactExportSource,
 } from "@guardora/core";
 import { ActorKind } from "@prisma/client";
@@ -137,6 +140,10 @@ export interface BusinessContactRow {
   assignedUserId: string | null;
   consentValue: boolean | null;
   createdAt: Date;
+  /** BUSINESS-CRM-V2 (Phase C) — privacy lifecycle, orthogonal to `status`. */
+  lifecycleState: BusinessContactLifecycle;
+  anonymizedAt: Date | null;
+  anonymizationReason: string | null;
   /**
    * BUSINESS-CRM-V2 — the most recent change we can attribute cheaply: the contact's own `updatedAt` (status /
    * assignment changes touch it) or its newest note, whichever is later. Never null — it falls back to
@@ -155,6 +162,19 @@ export interface BusinessContactFilters {
    * combined with the tenant RLS scope and the other filters.
    */
   search?: string;
+  /**
+   * BUSINESS-CRM-V2 (Phase C) — explicit lifecycle view. When omitted the list shows ACTIVE only: spam,
+   * archived and anonymized are opt-in, so a default view never silently mixes junk or tombstones into a
+   * working queue, and never silently exports them either.
+   */
+  lifecycle?: BusinessContactLifecycle;
+  /**
+   * "Review recommended" — the contact's most recent signal is older than the operator's review threshold.
+   * An operational reminder ONLY: nothing is ever anonymized or deleted because of it.
+   */
+  needsReview?: boolean;
+  /** Threshold in days for `needsReview`. Normalized by the caller; defaults to the safe default. */
+  reviewThresholdDays?: number;
 }
 export interface BusinessContactPage {
   items: BusinessContactRow[];
@@ -167,6 +187,7 @@ const mapContact = (r: {
   phone: string | null; company: string | null; messageSummary: string | null; campaignName: string | null;
   formName: string | null; receivedAt: Date; status: string; assignedUserId: string | null;
   consentValue: boolean | null; createdAt: Date; updatedAt?: Date;
+  lifecycleState?: string; anonymizedAt?: Date | null; anonymizationReason?: string | null;
 }, latestNoteAt?: Date | null): BusinessContactRow => ({
   id: r.id,
   provider: r.provider as BusinessProvider,
@@ -175,6 +196,9 @@ const mapContact = (r: {
   messageSummary: r.messageSummary, campaignName: r.campaignName, formName: r.formName,
   receivedAt: r.receivedAt, status: r.status as BusinessContactStatus, assignedUserId: r.assignedUserId,
   consentValue: r.consentValue, createdAt: r.createdAt,
+  lifecycleState: (r.lifecycleState as BusinessContactLifecycle) ?? BusinessContactLifecycle.Active,
+  anonymizedAt: r.anonymizedAt ?? null,
+  anonymizationReason: r.anonymizationReason ?? null,
   latestActivityAt: latestNoteAt && latestNoteAt > (r.updatedAt ?? r.receivedAt)
     ? latestNoteAt
     : (r.updatedAt ?? r.receivedAt),
@@ -189,6 +213,30 @@ const mapContact = (r: {
  * fragments of a contiguously-stored number (the form Meta supplies). A number stored with separators may not
  * match a fragment spanning one; that is documented rather than papered over with a fragile transform.
  */
+/**
+ * The lifecycle clause. An explicit lifecycle selects exactly that state; otherwise the default view shows only
+ * ACTIVE contacts (spam / archived / anonymized are hidden until asked for).
+ */
+function lifecycleWhere(filters: BusinessContactFilters) {
+  if (filters.lifecycle) return { lifecycleState: filters.lifecycle as never };
+  return { lifecycleState: { notIn: [...DEFAULT_HIDDEN_LIFECYCLES] as never } };
+}
+
+/**
+ * "Review recommended": the latest signal is older than the cutoff. Uses `receivedAt` and `updatedAt` (which
+ * status, assignment and lifecycle changes all touch) so the newest of the two is what ages. Anonymized rows
+ * are excluded — there is nothing left to review.
+ */
+function reviewWhere(filters: BusinessContactFilters) {
+  if (!filters.needsReview) return {};
+  const cutoff = contactReviewCutoff(filters.reviewThresholdDays ?? CONTACT_REVIEW_DEFAULT_DAYS);
+  return {
+    lifecycleState: { not: BusinessContactLifecycle.Anonymized as never },
+    receivedAt: { lt: cutoff },
+    updatedAt: { lt: cutoff },
+  };
+}
+
 function searchWhere(term: string) {
   const digits = contactSearchPhoneDigits(term);
   const mode = "insensitive" as const;
@@ -229,6 +277,8 @@ export async function listBusinessContacts(tenantId: string, filters: BusinessCo
     const where = {
       ...(filters.status ? { status: asContactStatus(filters.status) } : {}),
       ...(filters.sourcePlatform ? { sourcePlatform: asSource(filters.sourcePlatform) } : {}),
+      ...lifecycleWhere(filters),
+      ...reviewWhere(filters),
       ...(and.length ? { AND: and } : {}),
     };
     const rows = await db.businessContact.findMany({
@@ -256,6 +306,8 @@ export async function businessContactCounts(tenantId: string, filters: BusinessC
   return withTenant(tenantId, async (db) => {
     const base = {
       ...(filters.sourcePlatform ? { sourcePlatform: asSource(filters.sourcePlatform) } : {}),
+      ...lifecycleWhere(filters),
+      ...reviewWhere(filters),
       ...(filters.search ? searchWhere(filters.search) : {}),
     };
     const grouped = await db.businessContact.groupBy({ by: ["status"], where: base, _count: { _all: true } });
@@ -450,7 +502,7 @@ export async function listBusinessContactNotes(
   return withTenant(tenantId, async (db) => {
     const rows = await db.businessContactNote.findMany({
       where: { contactId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take,
-      select: { createdAt: true, authorUserId: true, body: true },
+      select: { createdAt: true, authorUserId: true, body: true, redactedAt: true },
     });
     // Read newest-first (so the bound keeps the most recent), render oldest-first.
     return rows.reverse();
@@ -476,7 +528,7 @@ export async function listBusinessContactAuditTrail(
     const rows = await db.auditLog.findMany({
       where: {
         tenantId, targetType: "business_contact", targetId: contactId,
-        event: { in: [CONTACT_STATUS_AUDIT_EVENT, CONTACT_ASSIGNMENT_AUDIT_EVENT] },
+        event: { in: [CONTACT_STATUS_AUDIT_EVENT, CONTACT_ASSIGNMENT_AUDIT_EVENT, ...Object.keys(CONTACT_LIFECYCLE_AUDIT_EVENTS)] },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }], take,
       select: { event: true, createdAt: true, actorUserId: true, metadata: true },
@@ -620,6 +672,10 @@ export async function exportBusinessContacts(
     const where = {
       ...(filters.status ? { status: asContactStatus(filters.status) } : {}),
       ...(filters.sourcePlatform ? { sourcePlatform: asSource(filters.sourcePlatform) } : {}),
+      // Lifecycle is honoured here exactly as in the list: anonymized, spam and archived contacts are NEVER in
+      // a default export — they only appear when that lifecycle was explicitly selected.
+      ...lifecycleWhere(filters),
+      ...reviewWhere(filters),
       ...(filters.search ? { AND: [searchWhere(filters.search)] } : {}),
     };
     const rows = await db.businessContact.findMany({
@@ -627,6 +683,7 @@ export async function exportBusinessContacts(
       select: {
         id: true, fullName: true, email: true, phone: true, company: true, sourcePlatform: true,
         campaignName: true, formName: true, receivedAt: true, status: true, assignedUserId: true, updatedAt: true,
+        lifecycleState: true,
       },
     });
     const limited = rows.length > take;
@@ -649,6 +706,7 @@ export async function exportBusinessContacts(
         const noteAt = latestNote.get(r.id) ?? null;
         const base = r.updatedAt ?? r.receivedAt;
         return {
+          lifecycleState: r.lifecycleState as BusinessContactLifecycle,
           fullName: r.fullName, email: r.email, phone: r.phone, company: r.company,
           sourcePlatform: r.sourcePlatform as BusinessContactSource,
           campaignName: r.campaignName, formName: r.formName,
@@ -659,5 +717,114 @@ export async function exportBusinessContacts(
         };
       }),
     };
+  });
+}
+
+
+// =============================== CRM V2 PHASE C: PRIVACY LIFECYCLE ===========================================
+export type LifecycleMutationResult =
+  | { ok: true; from: BusinessContactLifecycle }
+  | { ok: false; reason: "not_found" | "invalid_transition" };
+
+/**
+ * Move ONE tenant-scoped contact to a new privacy lifecycle state (archive / unarchive / spam / restore).
+ *
+ * Tenant-scoped throughout (RLS): a foreign contact id is invisible and returns `not_found`, identical to a
+ * deleted one, so the action never confirms another tenant's contact exists. The transition rule is the shared
+ * domain function — `anonymized` has no outgoing edge, so this can never un-anonymize anything, and this
+ * function is deliberately NOT the anonymization path (that is `anonymizeBusinessContact`).
+ */
+export async function setBusinessContactLifecycle(
+  tenantId: string,
+  id: string,
+  to: BusinessContactLifecycle,
+): Promise<LifecycleMutationResult> {
+  if (to === BusinessContactLifecycle.Anonymized) return { ok: false, reason: "invalid_transition" };
+  return withTenant(tenantId, async (db) => {
+    const row = await db.businessContact.findFirst({ where: { id }, select: { lifecycleState: true } });
+    if (!row) return { ok: false, reason: "not_found" as const };
+    const from = row.lifecycleState as BusinessContactLifecycle;
+    if (from === to) return { ok: true as const, from };
+    if (!canTransitionContactLifecycle(from, to)) return { ok: false, reason: "invalid_transition" as const };
+    await db.businessContact.update({ where: { id }, data: { lifecycleState: to as never } });
+    return { ok: true as const, from };
+  });
+}
+
+export type AnonymizationResult =
+  | { ok: true; previousLifecycle: BusinessContactLifecycle; notesRedacted: number; source: BusinessContactSource; alreadyAnonymized: boolean }
+  | { ok: false; reason: "not_found" };
+
+/**
+ * IRREVERSIBLY anonymize one contact and redact every one of its note bodies — in ONE transaction.
+ *
+ * CONCURRENCY. The row is locked with `SELECT … FOR UPDATE` before anything is read or written, so two
+ * simultaneous requests serialize: the first performs the transition, the second observes `anonymized` and
+ * returns idempotently. There is no lost update and no interleaving that could leave contact fields cleared
+ * while note bodies remain readable — both happen inside the same transaction or neither does.
+ *
+ * INGESTION RACE. Ingestion inserts with `createMany(skipDuplicates)` keyed on `(tenantId, dedupeKey)` and
+ * NEVER updates an existing row, so a provider replay arriving during or after this transaction cannot write
+ * personal fields back. `dedupeKey` is deliberately retained for exactly that reason.
+ *
+ * WHAT IS CLEARED: the direct personal fields, plus `externalLeadId` — a pseudonymous provider identifier that
+ * would otherwise let anyone holding the lead id re-link the tombstone to the person. Assignment is cleared.
+ * The previous values are written nowhere: no archive table, no audit metadata, no event, no log.
+ *
+ * WHAT IS KEPT: the row itself as a non-identifying tombstone (so audit references, operational counts and
+ * replay protection stay valid), `dedupeKey`, the operational provider/campaign/form metadata, `receivedAt`,
+ * and the two new non-identifying facts — `anonymizedAt` and a bounded reason category.
+ *
+ * NOTE REDACTION uses the column-scoped UPDATE grant added by the Phase C migration: the app role may write
+ * only `body` and `redactedAt`, and still cannot delete a note or rewrite its author or timestamps, so the
+ * append-only guarantee survives for every ordinary path.
+ */
+export async function anonymizeBusinessContact(
+  tenantId: string,
+  id: string,
+  reason: ContactAnonymizationReason | null,
+  now: Date = new Date(),
+): Promise<AnonymizationResult> {
+  return withTenant(tenantId, async (db) => {
+    // Row lock FIRST — everything below observes a serialized view of this contact. RLS still applies, so a
+    // foreign id locks nothing and yields an empty result.
+    const locked = await db.$queryRaw<Array<{ id: string; lifecycleState: string; sourcePlatform: string }>>`
+      SELECT "id", "lifecycleState"::text AS "lifecycleState", "sourcePlatform"::text AS "sourcePlatform"
+      FROM "business_contacts" WHERE "id" = ${id} FOR UPDATE
+    `;
+    const row = locked[0];
+    if (!row) return { ok: false, reason: "not_found" as const };
+
+    const previousLifecycle = row.lifecycleState as BusinessContactLifecycle;
+    const source = row.sourcePlatform as BusinessContactSource;
+    if (previousLifecycle === BusinessContactLifecycle.Anonymized) {
+      // Idempotent: a repeat (or the loser of a concurrent race) changes nothing further.
+      return { ok: true as const, previousLifecycle, notesRedacted: 0, source, alreadyAnonymized: true };
+    }
+
+    // Redact note bodies FIRST, so a failure anywhere aborts the whole transaction rather than leaving contact
+    // fields cleared while note text is still readable.
+    const redacted = await db.businessContactNote.updateMany({
+      where: { contactId: id, body: { not: null } },
+      data: { body: null, redactedAt: now },
+    });
+
+    await db.businessContact.update({
+      where: { id },
+      data: {
+        // Direct personal data — cleared, never copied anywhere.
+        fullName: null, email: null, phone: null, company: null, messageSummary: null,
+        consentReference: null, consentVersion: null,
+        // Assignment no longer means anything for a tombstone.
+        assignedUserId: null,
+        // Pseudonymous provider identifier that would re-link the tombstone to the person. `dedupeKey` is
+        // KEPT — it is what stops a provider replay re-creating this contact.
+        externalLeadId: null,
+        lifecycleState: BusinessContactLifecycle.Anonymized as never,
+        anonymizedAt: now,
+        anonymizationReason: reason ?? null,
+      },
+    });
+    return { ok: true as const, previousLifecycle, notesRedacted: redacted.count, source, alreadyAnonymized: false };
   });
 }

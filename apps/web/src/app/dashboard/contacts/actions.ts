@@ -11,10 +11,13 @@ import { redirect } from "next/navigation";
 import {
   can, Permission, isValidContactStatus, BusinessContactStatus,
   normalizeBulkContactIds, summarizeBulkContacts,
+  BusinessContactLifecycle, isValidContactLifecycle, isAnonymizationConfirmed,
+  isValidAnonymizationReason, type ContactAnonymizationReason,
 } from "@guardora/core";
 import {
   setBusinessContactStatus, assignBusinessContact, addBusinessContactNote,
   bulkSetBusinessContactStatus, bulkAssignBusinessContacts,
+  setBusinessContactLifecycle, anonymizeBusinessContact,
 } from "@guardora/db";
 import { requireDashboardCapability } from "@/server/route-guard";
 import { writeAudit } from "@/server/audit";
@@ -163,4 +166,89 @@ export async function bulkAssignAction(fd: FormData): Promise<void> {
   });
   revalidatePath(CONTACTS);
   redirect(`${CONTACTS}?bulk=assign&n=${summary.affected}&f=${summary.failed}`);
+}
+
+// ---- CRM V2 Phase C: privacy lifecycle -----------------------------------------------------------------------
+/** Audit event per lifecycle transition. Bounded — never a free-form name. */
+const LIFECYCLE_EVENT: Record<string, string> = {
+  [`${BusinessContactLifecycle.Active}->${BusinessContactLifecycle.Archived}`]: "business_contact.archived",
+  [`${BusinessContactLifecycle.Archived}->${BusinessContactLifecycle.Active}`]: "business_contact.unarchived",
+  [`${BusinessContactLifecycle.Active}->${BusinessContactLifecycle.Spam}`]: "business_contact.marked_spam",
+  [`${BusinessContactLifecycle.Spam}->${BusinessContactLifecycle.Active}`]: "business_contact.spam_restored",
+};
+
+/**
+ * Archive / unarchive / mark-spam / restore-from-spam. One manager-only action for all four, because they are
+ * the same operation on the same bounded enum — only the audit event name differs.
+ *
+ * Server-authoritative: tenant and actor come from the session; the client submits a contact id and a bounded
+ * lifecycle value and nothing else. `anonymized` is rejected here — anonymization has its own confirmed flow,
+ * so this path can neither anonymize nor un-anonymize anything.
+ */
+export async function changeContactLifecycleAction(fd: FormData): Promise<void> {
+  const session = await manageGate();
+  if (!(await isSameOrigin())) redirect(`${CONTACTS}?e=csrf`);
+  const contactId = id(fd);
+  const to = String(fd.get("lifecycle") ?? "");
+  if (!contactId || !isValidContactLifecycle(to) || to === BusinessContactLifecycle.Anonymized) {
+    redirect(`${CONTACTS}?e=input`);
+  }
+
+  const r = await setBusinessContactLifecycle(session.tenantId, contactId, to as BusinessContactLifecycle);
+  if (r.ok) {
+    const event = LIFECYCLE_EVENT[`${r.from}->${to}`];
+    if (event) {
+      // Bounded enums only — no name, e-mail, phone or note text.
+      await writeAudit({
+        session, event, targetType: "business_contact", targetId: contactId,
+        metadata: { from: r.from, to },
+      });
+    }
+  }
+  revalidatePath(CONTACTS);
+  revalidatePath(`${CONTACTS}/${contactId}`);
+  redirect(`${CONTACTS}/${contactId}?${r.ok ? `saved=lifecycle_${to}` : "e=lifecycle"}`);
+}
+
+/**
+ * IRREVERSIBLY anonymize a contact and redact its notes.
+ *
+ * Friction is deliberate: the manager must submit the exact bounded confirmation value, which is compared
+ * against a non-localized constant so no translation can weaken it. The server then re-validates permission,
+ * tenant and current state before the repository's single locked transaction runs.
+ *
+ * The optional reason is a FIXED category — free text is not accepted, because a free-text reason is the most
+ * likely place for someone to paste the very personal data this action exists to remove.
+ *
+ * The audit event carries the previous lifecycle, the number of note bodies redacted, the source category and
+ * the reason category. It carries no name, e-mail, phone, company, note text, provider id or external lead id.
+ * Nothing personal reaches the redirect either — only a bounded result code.
+ */
+export async function anonymizeContactAction(fd: FormData): Promise<void> {
+  const session = await manageGate();
+  if (!(await isSameOrigin())) redirect(`${CONTACTS}?e=csrf`);
+  const contactId = id(fd);
+  if (!contactId) redirect(`${CONTACTS}?e=input`);
+  if (!isAnonymizationConfirmed(fd.get("confirm"))) redirect(`${CONTACTS}/${contactId}?e=confirm`);
+
+  const rawReason = String(fd.get("reason") ?? "");
+  const reason: ContactAnonymizationReason | null = isValidAnonymizationReason(rawReason) ? rawReason : null;
+
+  const r = await anonymizeBusinessContact(session.tenantId, contactId, reason);
+  if (!r.ok) redirect(`${CONTACTS}?e=not_found`);
+
+  if (!r.alreadyAnonymized) {
+    await writeAudit({
+      session, event: "business_contact.anonymized", targetType: "business_contact", targetId: contactId,
+      metadata: {
+        previousLifecycle: r.previousLifecycle,
+        notesRedacted: r.notesRedacted,
+        source: r.source,
+        ...(reason ? { reason } : {}),
+      },
+    });
+  }
+  revalidatePath(CONTACTS);
+  revalidatePath(`${CONTACTS}/${contactId}`);
+  redirect(`${CONTACTS}/${contactId}?saved=anonymized`);
 }

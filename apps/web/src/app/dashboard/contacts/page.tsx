@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   can, Permission, isValidContactStatus, BusinessContactStatus, BusinessContactSource,
   normalizeContactSearch, CONTACT_SEARCH_MAX_LENGTH, CONTACT_EXPORT_MAX_ROWS,
+  BusinessContactLifecycle, ALL_BUSINESS_CONTACT_LIFECYCLES, isValidContactLifecycle,
 } from "@guardora/core";
 import { listBusinessContacts, businessContactCounts, listAssignableMembers } from "@guardora/db";
 import { requireDashboardCapability } from "@/server/route-guard";
@@ -17,7 +18,7 @@ import { bulkChangeStatusAction, bulkAssignAction } from "./actions";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Contacts", robots: { index: false, follow: false } };
 
-type SP = { status?: string; source?: string; cursor?: string; q?: string; bulk?: string; n?: string; f?: string; e?: string };
+type SP = { status?: string; source?: string; cursor?: string; q?: string; bulk?: string; n?: string; f?: string; e?: string; life?: string; review?: string };
 
 const ALL_SOURCES: BusinessContactSource[] = [
   BusinessContactSource.Facebook, BusinessContactSource.Instagram, BusinessContactSource.GoogleAds,
@@ -45,7 +46,11 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   // Bounded + normalized server-side; a too-short/empty term is simply not a filter. The raw value is never
   // interpolated into SQL — the repository binds it as a parameter.
   const search = normalizeContactSearch(sp.q);
-  const filters = { status, sourcePlatform: source, search: search ?? undefined };
+  // Phase C — explicit lifecycle view. Omitted = ACTIVE only: spam, archived and anonymized are opt-in, so the
+  // default queue never silently mixes junk or tombstones in (and never exports them either).
+  const lifecycle = isValidContactLifecycle(sp.life) ? (sp.life as BusinessContactLifecycle) : undefined;
+  const needsReview = sp.review === "1";
+  const filters = { status, sourcePlatform: source, search: search ?? undefined, lifecycle, needsReview };
 
   const [page, counts, members] = await Promise.all([
     listBusinessContacts(session.tenantId, filters, sp.cursor),
@@ -68,7 +73,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     input: t.contacts.bulkInvalid,
   };
   // Remounts (and therefore clears selection) whenever search, filters or the page change.
-  const selectionKey = `${sp.q ?? ""}|${sp.status ?? ""}|${sp.source ?? ""}|${sp.cursor ?? ""}`;
+  const selectionKey = `${sp.q ?? ""}|${sp.status ?? ""}|${sp.source ?? ""}|${sp.life ?? ""}|${sp.review ?? ""}|${sp.cursor ?? ""}`;
 
   // Filter chip href builder — changing a filter resets pagination (drops the cursor).
   const chip = (over: Partial<SP>) => {
@@ -76,9 +81,13 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     const s = over.status !== undefined ? over.status : sp.status;
     const src = over.source !== undefined ? over.source : sp.source;
     const term = over.q !== undefined ? over.q : (search ?? "");
+    const life = over.life !== undefined ? over.life : (lifecycle ?? "");
+    const rev = over.review !== undefined ? over.review : (needsReview ? "1" : "");
     if (s) q.set("status", s);
     if (src) q.set("source", src);
     if (term) q.set("q", term);
+    if (life) q.set("life", life);
+    if (rev) q.set("review", rev);
     const qs = q.toString();
     return `/dashboard/contacts${qs ? `?${qs}` : ""}`;
   };
@@ -159,6 +168,24 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             </Link>
           ))}
         </div>
+        {/* Phase C — lifecycle view + the retention REVIEW recommendation (never an assertion that data must
+            be deleted). Default (no chip) shows active contacts only. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{t.contacts.filterLifecycle}:</span>
+          <Link scroll={false} href={chip({ life: "" })} aria-current={!lifecycle ? "page" : undefined}
+            className={`rounded-full border px-3 py-1 text-xs ${!lifecycle ? "border-[var(--color-brand)] font-semibold" : "border-[var(--color-border)]"}`}>{t.contacts.life_active}</Link>
+          {ALL_BUSINESS_CONTACT_LIFECYCLES.filter((l) => l !== BusinessContactLifecycle.Active).map((l) => (
+            <Link key={l} scroll={false} href={chip({ life: l })} aria-current={lifecycle === l ? "page" : undefined}
+              className={`rounded-full border px-3 py-1 text-xs ${lifecycle === l ? "border-[var(--color-brand)] font-semibold" : "border-[var(--color-border)]"}`}>
+              {t.contacts[`life_${l}` as const]}
+            </Link>
+          ))}
+          <Link scroll={false} href={chip({ review: needsReview ? "" : "1" })} aria-current={needsReview ? "page" : undefined}
+            title={t.contacts.retentionNote}
+            className={`rounded-full border px-3 py-1 text-xs ${needsReview ? "border-[var(--color-brand)] font-semibold" : "border-[var(--color-border)]"}`}>
+            {t.contacts.reviewRecommended}
+          </Link>
+        </div>
       </div>
 
       {page.items.length === 0 ? (
@@ -194,12 +221,18 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               return (<>
                 <td className="px-3 py-2">
                   <Link href={`/dashboard/contacts/${c.id}`} className="font-medium hover:underline">
-                    {c.fullName ?? t.contacts.noName}
+                    {c.lifecycleState === BusinessContactLifecycle.Anonymized
+                      ? t.contacts.anonymizedContact
+                      : (c.fullName ?? t.contacts.noName)}
                   </Link>
+                  {c.lifecycleState !== BusinessContactLifecycle.Active ? (
+                    <> <Badge tone={c.lifecycleState === BusinessContactLifecycle.Spam ? "warning" : "muted"}>{t.contacts[`life_${c.lifecycleState}` as const]}</Badge></>
+                  ) : null}
                 </td>
-                <td className="px-3 py-2 text-[var(--color-muted)]">{c.email ?? c.phone ?? "—"}</td>
-                <td className="px-3 py-2">{bizLabel(t.source, c.sourcePlatform)}</td>
-                <td className="px-3 py-2 text-[var(--color-muted)]">{c.campaignName ?? c.formName ?? "—"}</td>
+                {/* An anonymized row shows nothing identifying and no provider/campaign linkability. */}
+                <td className="px-3 py-2 text-[var(--color-muted)]">{c.lifecycleState === BusinessContactLifecycle.Anonymized ? "—" : (c.email ?? c.phone ?? "—")}</td>
+                <td className="px-3 py-2">{c.lifecycleState === BusinessContactLifecycle.Anonymized ? "—" : bizLabel(t.source, c.sourcePlatform)}</td>
+                <td className="px-3 py-2 text-[var(--color-muted)]">{c.lifecycleState === BusinessContactLifecycle.Anonymized ? "—" : (c.campaignName ?? c.formName ?? "—")}</td>
                 <td className="px-3 py-2 text-[var(--color-muted)]"><time dateTime={c.receivedAt.toISOString()}>{dtf.format(c.receivedAt)}</time></td>
                 <td className="px-3 py-2 text-[var(--color-muted)]"><time dateTime={c.latestActivityAt.toISOString()}>{dtf.format(c.latestActivityAt)}</time></td>
                 <td className="px-3 py-2 text-[var(--color-muted)]">

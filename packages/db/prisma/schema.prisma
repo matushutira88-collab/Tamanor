@@ -4261,8 +4261,13 @@ model BusinessContactNote {
   // rather than being destroyed (append-only), and the UI then renders no actor instead of a raw id.
   authorUserId String?
   // Bounded plain text, validated + normalized by validateContactNoteBody before it ever reaches here.
-  body         String
+  // NULLABLE since Phase C: the anonymization transaction irreversibly clears the body. Null therefore means
+  // "content removed by anonymization" — there is no other path that can null it (see the column-scoped grant
+  // in the migration), and the previous text is never copied anywhere.
+  body         String?
   createdAt    DateTime @default(now())
+  // Set when the body was cleared by the parent contact's anonymization. Non-identifying.
+  redactedAt   DateTime?
 
   tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   contact BusinessContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -4271,6 +4276,16 @@ model BusinessContactNote {
   // The timeline read: one contact's notes in creation order, tenant-scoped.
   @@index([tenantId, contactId, createdAt])
   @@map("business_contact_notes")
+}
+
+/// BUSINESS-CRM-V2 (Phase C) — the contact's PRIVACY lifecycle, deliberately orthogonal to the sales
+/// `BusinessContactStatus`. Overloading `rejected` to also mean spam or anonymized would destroy the pipeline's
+/// meaning. `anonymized` is TERMINAL: there is no transition out of it because the identifying data is gone.
+enum BusinessContactLifecycle {
+  active
+  spam
+  archived
+  anonymized
 }
 
 model BusinessContact {
@@ -4299,6 +4314,14 @@ model BusinessContact {
   formName         String?
   receivedAt       DateTime
   status           BusinessContactStatus @default(new)
+  // BUSINESS-CRM-V2 (Phase C) — privacy lifecycle, separate from the sales status above. Existing rows default
+  // to `active`, so nothing is hidden or reclassified by the migration.
+  lifecycleState   BusinessContactLifecycle @default(active)
+  // Set once, when the contact is anonymized. Non-identifying: a timestamp and a bounded operational category.
+  anonymizedAt     DateTime?
+  // One of the fixed ContactAnonymizationReason values. NEVER free text — a free-text reason is the most likely
+  // place for someone to paste the very personal data the action exists to remove.
+  anonymizationReason String?
   // The assigned team member (a tenant user id); null = unassigned.
   assignedUserId   String?
   // Consent captured ONLY when the source explicitly supplied it. Null = unknown (never treated as granted).
@@ -4317,6 +4340,8 @@ model BusinessContact {
   @@index([tenantId, status, receivedAt])
   @@index([tenantId, sourcePlatform, receivedAt])
   @@index([tenantId, assignedUserId])
+  // Default list (lifecycle-filtered, newest first) and the retention-review scan.
+  @@index([tenantId, lifecycleState, receivedAt])
   @@map("business_contacts")
 }
 

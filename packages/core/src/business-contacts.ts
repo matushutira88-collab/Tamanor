@@ -603,7 +603,10 @@ export function validateContactNoteBody(raw: string | null | undefined): Contact
 }
 
 /** The kinds of event the contact timeline renders. Bounded — never a free-form audit event name. */
-export type ContactTimelineKind = "received" | "status_changed" | "assignment_changed" | "note";
+export type ContactTimelineKind =
+  | "received" | "status_changed" | "assignment_changed" | "note"
+  // Phase C — privacy lifecycle events, sourced from the SAME existing audit ledger.
+  | "archived" | "unarchived" | "marked_spam" | "spam_restored" | "anonymized";
 
 export interface ContactTimelineEntry {
   kind: ContactTimelineKind;
@@ -614,14 +617,24 @@ export interface ContactTimelineEntry {
   status?: BusinessContactStatus;
   /** Whether the contact ended up assigned, for `assignment_changed`. Never a user id. */
   assigned?: boolean;
-  /** The note's own stored body — the ONLY timeline field carrying free text. */
+  /** The note's own stored body — the ONLY timeline field carrying free text. Absent once redacted. */
   body?: string;
+  /** True for a note whose body was irreversibly cleared by anonymization. */
+  redacted?: boolean;
 }
 
 /** The audit events this timeline understands. Anything else in the ledger is ignored. */
 export const CONTACT_STATUS_AUDIT_EVENT = "business_contact.status_changed";
 export const CONTACT_ASSIGNMENT_AUDIT_EVENT = "business_contact.assignment_changed";
 export const CONTACT_NOTE_AUDIT_EVENT = "business_contact.note_added";
+/** Phase C privacy events → timeline kinds. Bounded; anything else in the ledger is ignored. */
+export const CONTACT_LIFECYCLE_AUDIT_EVENTS: Readonly<Record<string, ContactTimelineKind>> = {
+  "business_contact.archived": "archived",
+  "business_contact.unarchived": "unarchived",
+  "business_contact.marked_spam": "marked_spam",
+  "business_contact.spam_restored": "spam_restored",
+  "business_contact.anonymized": "anonymized",
+};
 
 export interface ContactAuditRecord {
   event: string;
@@ -633,7 +646,9 @@ export interface ContactAuditRecord {
 export interface ContactNoteRecord {
   createdAt: Date;
   authorUserId: string | null;
-  body: string;
+  /** Null once the parent contact was anonymized — the body was irreversibly cleared, not moved. */
+  body: string | null;
+  redactedAt?: Date | null;
 }
 
 /**
@@ -665,13 +680,24 @@ export function buildContactTimeline(input: {
     } else if (a.event === CONTACT_ASSIGNMENT_AUDIT_EVENT) {
       entries.push({ kind: "assignment_changed", at: a.createdAt, actor: display(a.actorUserId), assigned: a.metadata?.assigned === true });
     }
+    else if (CONTACT_LIFECYCLE_AUDIT_EVENTS[a.event]) {
+      entries.push({ kind: CONTACT_LIFECYCLE_AUDIT_EVENTS[a.event]!, at: a.createdAt, actor: display(a.actorUserId) });
+    }
     // CONTACT_NOTE_AUDIT_EVENT is intentionally ignored — the note row itself is the entry.
   }
   for (const n of input.notes) {
-    entries.push({ kind: "note", at: n.createdAt, actor: display(n.authorUserId), body: n.body });
+    // A redacted note keeps its place in the history (who wrote one, and when) but carries no text: the body
+    // was cleared by anonymization and exists nowhere else.
+    entries.push({
+      kind: "note", at: n.createdAt, actor: display(n.authorUserId),
+      ...(typeof n.body === "string" ? { body: n.body } : { redacted: true }),
+    });
   }
 
-  const rank: Record<ContactTimelineKind, number> = { received: 0, status_changed: 1, assignment_changed: 2, note: 3 };
+  const rank: Record<ContactTimelineKind, number> = {
+    received: 0, status_changed: 1, assignment_changed: 2, note: 3,
+    archived: 4, unarchived: 5, marked_spam: 6, spam_restored: 7, anonymized: 8,
+  };
   entries.sort((a, b) => a.at.getTime() - b.at.getTime() || rank[a.kind] - rank[b.kind]);
   const limit = input.limit;
   return typeof limit === "number" && limit > 0 && entries.length > limit ? entries.slice(entries.length - limit) : entries;
@@ -775,6 +801,11 @@ export interface ContactExportSource {
   /** Resolved tenant-member display value, or null when unassigned / not resolvable. Never a raw user id. */
   assignedTo: string | null;
   latestActivityAt: Date;
+  /**
+   * Phase C — privacy lifecycle. An `anonymized` row is exported as a generic tombstone instead of this record,
+   * so no personal or provider value can reach the file.
+   */
+  lifecycleState?: BusinessContactLifecycle;
 }
 
 /**
@@ -805,4 +836,207 @@ export function contactExportRow(c: ContactExportSource): string[] {
 /** Generic, PII-free export filename: `tamanor-contacts-YYYY-MM-DD.csv`. */
 export function contactExportFilename(now: Date): string {
   return `tamanor-contacts-${now.toISOString().slice(0, 10)}.csv`;
+}
+
+// ---- CRM V2 Phase C: privacy lifecycle, anonymization, retention review -----------------------------------
+/**
+ * The contact's PRIVACY LIFECYCLE — deliberately separate from the sales `BusinessContactStatus`.
+ *
+ * Overloading `Rejected` to also mean "spam" or "anonymized" would destroy the sales pipeline's meaning: a
+ * rejected lead is a commercial outcome a handler can reopen, whereas spam is junk and anonymization is an
+ * irreversible privacy act. They are orthogonal axes and are modelled as such.
+ */
+export enum BusinessContactLifecycle {
+  Active = "active",
+  Spam = "spam",
+  Archived = "archived",
+  Anonymized = "anonymized",
+}
+export const ALL_BUSINESS_CONTACT_LIFECYCLES: readonly BusinessContactLifecycle[] = [
+  BusinessContactLifecycle.Active, BusinessContactLifecycle.Spam,
+  BusinessContactLifecycle.Archived, BusinessContactLifecycle.Anonymized,
+];
+export function isValidContactLifecycle(v: unknown): v is BusinessContactLifecycle {
+  return typeof v === "string" && (ALL_BUSINESS_CONTACT_LIFECYCLES as string[]).includes(v);
+}
+
+/** Lifecycle states hidden from the default contact list. Spam and archive are opt-in views. */
+export const DEFAULT_HIDDEN_LIFECYCLES: readonly BusinessContactLifecycle[] = [
+  BusinessContactLifecycle.Spam, BusinessContactLifecycle.Archived, BusinessContactLifecycle.Anonymized,
+];
+
+/**
+ * Allowed lifecycle transitions. `anonymized` is TERMINAL and has no outgoing edge — an anonymized contact can
+ * never return to an identified state, because the identifying data no longer exists to return to. Spam and
+ * archive are reversible, but only through their own explicit, audited actions.
+ */
+const LIFECYCLE_TRANSITIONS: Record<BusinessContactLifecycle, readonly BusinessContactLifecycle[]> = {
+  [BusinessContactLifecycle.Active]: [BusinessContactLifecycle.Spam, BusinessContactLifecycle.Archived, BusinessContactLifecycle.Anonymized],
+  [BusinessContactLifecycle.Spam]: [BusinessContactLifecycle.Active, BusinessContactLifecycle.Anonymized],
+  [BusinessContactLifecycle.Archived]: [BusinessContactLifecycle.Active, BusinessContactLifecycle.Anonymized],
+  [BusinessContactLifecycle.Anonymized]: [],
+};
+export function canTransitionContactLifecycle(from: BusinessContactLifecycle, to: BusinessContactLifecycle): boolean {
+  if (from === to) return true; // idempotent no-op at the repository
+  return (LIFECYCLE_TRANSITIONS[from] ?? []).includes(to);
+}
+
+/**
+ * OPTIONAL internal reason categories for an anonymization. A FIXED enum — free text is deliberately not
+ * accepted in this phase, because a free-text reason is the most likely place for someone to paste the very
+ * personal data the action exists to remove.
+ *
+ * These are OPERATIONAL bookkeeping labels chosen by the operator. They are NOT legal conclusions, they do not
+ * assert a legal basis, and Tamanor does not determine from them whether any deletion is legally required.
+ */
+export enum ContactAnonymizationReason {
+  UserRequest = "user_request",
+  RetentionPolicy = "retention_policy",
+  TestData = "test_data",
+  DuplicateRecord = "duplicate_record",
+  OtherInternal = "other_internal",
+}
+export const ALL_ANONYMIZATION_REASONS: readonly ContactAnonymizationReason[] = [
+  ContactAnonymizationReason.UserRequest, ContactAnonymizationReason.RetentionPolicy,
+  ContactAnonymizationReason.TestData, ContactAnonymizationReason.DuplicateRecord,
+  ContactAnonymizationReason.OtherInternal,
+];
+export function isValidAnonymizationReason(v: unknown): v is ContactAnonymizationReason {
+  return typeof v === "string" && (ALL_ANONYMIZATION_REASONS as string[]).includes(v);
+}
+
+/**
+ * The bounded confirmation value a manager must type. A deliberate friction step so an irreversible action can
+ * never be a single stray click. Compared exactly — never localized, so a translation can never weaken it.
+ */
+export const CONTACT_ANONYMIZATION_CONFIRMATION = "ANONYMIZE";
+export function isAnonymizationConfirmed(raw: unknown): boolean {
+  return typeof raw === "string" && raw.trim().toUpperCase() === CONTACT_ANONYMIZATION_CONFIRMATION;
+}
+
+/** What a contact in a given lifecycle state may still have done to it. Pure — the UI and the server share it. */
+export interface ContactActionAvailability {
+  canAddNote: boolean;
+  canAssign: boolean;
+  canChangeStatus: boolean;
+  canArchive: boolean;
+  canUnarchive: boolean;
+  canMarkSpam: boolean;
+  canRestoreSpam: boolean;
+  canAnonymize: boolean;
+  canExportIdentifying: boolean;
+}
+
+/**
+ * An ANONYMIZED contact is a tombstone: notes, assignment, sales status and identifying export are all closed,
+ * and there is no restoration path. Spam and archived remain fully workable — hiding a contact from the default
+ * view is an organisational act, not a privacy act.
+ */
+export function contactActionAvailability(lifecycle: BusinessContactLifecycle): ContactActionAvailability {
+  const anonymized = lifecycle === BusinessContactLifecycle.Anonymized;
+  return {
+    canAddNote: !anonymized,
+    canAssign: !anonymized,
+    canChangeStatus: !anonymized,
+    canArchive: lifecycle === BusinessContactLifecycle.Active,
+    canUnarchive: lifecycle === BusinessContactLifecycle.Archived,
+    canMarkSpam: lifecycle === BusinessContactLifecycle.Active,
+    canRestoreSpam: lifecycle === BusinessContactLifecycle.Spam,
+    canAnonymize: !anonymized,
+    canExportIdentifying: !anonymized,
+  };
+}
+
+// ---- Retention REVIEW (operational recommendation only — never an automatic decision) ---------------------
+/**
+ * Bounds for the retention REVIEW threshold. This is an operational reminder window chosen by the operator; it
+ * is NOT a legal retention period, Tamanor does not assert that the chosen value is correct for any
+ * jurisdiction, and nothing is ever anonymized or deleted automatically because of it.
+ */
+export const CONTACT_REVIEW_MIN_DAYS = 30;
+export const CONTACT_REVIEW_MAX_DAYS = 3650;
+/** Safe default when the operator has configured nothing. Two years — a conservative reminder cadence. */
+export const CONTACT_REVIEW_DEFAULT_DAYS = 730;
+
+/** Clamp an operator-supplied threshold into the supported range. Non-numeric input falls back to the default. */
+export function normalizeReviewThresholdDays(raw: unknown): number {
+  // A MISSING value is not "zero days": null, undefined and "" must fall back to the default rather than
+  // silently clamping to the 30-day minimum, which would recommend review for almost everything.
+  if (raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "")) {
+    return CONTACT_REVIEW_DEFAULT_DAYS;
+  }
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return CONTACT_REVIEW_DEFAULT_DAYS;
+  return Math.min(CONTACT_REVIEW_MAX_DAYS, Math.max(CONTACT_REVIEW_MIN_DAYS, Math.trunc(n)));
+}
+
+/**
+ * Whether a contact is RECOMMENDED FOR REVIEW — nothing stronger. The wording matters: this says a human may
+ * want to look, never that the record must be deleted.
+ *
+ * A contact qualifies when it is not already anonymized and its most recent signal (the later of `receivedAt`
+ * and any later activity) is older than the threshold. Pure and deterministic.
+ */
+export function contactNeedsPrivacyReview(input: {
+  receivedAt: Date;
+  latestActivityAt?: Date | null;
+  lifecycle: BusinessContactLifecycle;
+  thresholdDays?: number;
+  now?: Date;
+}): boolean {
+  if (input.lifecycle === BusinessContactLifecycle.Anonymized) return false;
+  const days = normalizeReviewThresholdDays(input.thresholdDays ?? CONTACT_REVIEW_DEFAULT_DAYS);
+  const now = input.now ?? new Date();
+  const latest = input.latestActivityAt && input.latestActivityAt > input.receivedAt ? input.latestActivityAt : input.receivedAt;
+  return now.getTime() - latest.getTime() > days * 24 * 60 * 60 * 1000;
+}
+
+/** The cutoff instant for a review threshold — anything with latest activity strictly before this qualifies. */
+export function contactReviewCutoff(thresholdDays: number, now: Date = new Date()): Date {
+  return new Date(now.getTime() - normalizeReviewThresholdDays(thresholdDays) * 24 * 60 * 60 * 1000);
+}
+
+// ---- Anonymization field policy (the single source of truth for WHAT is cleared) --------------------------
+/**
+ * Direct personal fields cleared to NULL by anonymization. Named explicitly so the policy is reviewable in one
+ * place rather than scattered through an update statement.
+ */
+export const CONTACT_ANONYMIZED_FIELDS = [
+  "fullName", "email", "phone", "company", "messageSummary",
+  "consentReference", "consentVersion", "assignedUserId",
+  // A pseudonymous provider identifier that would let anyone holding the lead id re-link the tombstone to the
+  // person's provider record. NOT needed for replay protection — `dedupeKey` carries that.
+  "externalLeadId",
+] as const;
+
+/**
+ * Fields RETAINED on the tombstone, with the reason each is kept. Retained values are operational metadata
+ * about the advertisement or the delivery, not about the person.
+ */
+export const CONTACT_TOMBSTONE_RETAINED = {
+  dedupeKey: "required for replay/idempotency — dropping it would let a provider replay re-create the contact",
+  sourcePlatform: "operational category, used for aggregate counts and the safe audit `source` label",
+  provider: "operational category",
+  connectionId: "operational link to the connection, not to the person",
+  campaignId: "advertiser-authored campaign metadata, not lead-entered",
+  formId: "advertiser-authored form metadata, not lead-entered",
+  adId: "advertiser-authored ad metadata, not lead-entered",
+  receivedAt: "non-identifying timestamp needed for retention arithmetic and audit ordering",
+  consentValue: "a lone boolean; non-identifying once the subject is unidentifiable",
+} as const;
+
+/** The generic marker stored in place of a redacted note body. Never localized — the UI renders its own label. */
+export const REDACTED_NOTE_MARKER = null;
+
+/** The single export row emitted for an anonymized contact when explicitly filtered. No personal or provider value. */
+export function contactTombstoneExportRow(receivedAt: Date, latestActivityAt: Date): string[] {
+  return [
+    "", "", "", "",                                   // full_name, email, phone, company
+    "",                                                // source — withheld: narrows re-identification
+    "", "",                                            // campaign_name, form_name
+    receivedAt.toISOString(),
+    BusinessContactLifecycle.Anonymized,               // status column carries the tombstone marker
+    "",                                                // assigned_to
+    latestActivityAt.toISOString(),
+  ];
 }

@@ -195,7 +195,12 @@ console.log("\n7) server actions: gates, bounded results, PII-free audit");
   const bulk = a.slice(a.indexOf("export async function bulkChangeStatusAction"));
   check("7a) both bulk actions go through the manage gate",
     /bulkChangeStatusAction[\s\S]*?await manageGate\(\)/.test(a) && /bulkAssignAction[\s\S]*?await manageGate\(\)/.test(a));
-  check("7b) both enforce same-origin", (bulk.match(/isSameOrigin\(\)/g) ?? []).length === 2);
+  check("7b) both bulk actions enforce same-origin", (() => {
+    // Scope to each action rather than counting across the file — Phase C added more actions that also check.
+    const status = a.slice(a.indexOf("export async function bulkChangeStatusAction"), a.indexOf("export async function bulkAssignAction"));
+    const assign = a.slice(a.indexOf("export async function bulkAssignAction"), a.indexOf("export async function changeContactLifecycleAction"));
+    return /isSameOrigin\(\)/.test(status) && /isSameOrigin\(\)/.test(assign);
+  })());
   check("7c) both are rate limited per tenant", (bulk.match(/businessBulkLimiter\.check\(session\.tenantId\)/g) ?? []).length === 2);
   check("7d) the browser submits only ids + a bounded operation value",
     /fd\.getAll\("contactIds"\)/.test(a) && /fd\.get\("status"\)/.test(a) && /fd\.get\("assigneeUserId"\)/.test(a)
@@ -230,7 +235,8 @@ console.log("\n8) export route: method, gates, audit");
   // Compare against the CALL SITE, not the import at the top of the file.
   check("8i) malformed input is rejected before any database read",
     r.indexOf('error: "bad_request"') < r.indexOf("await exportBusinessContacts("));
-  check("8j) the CSV is generated server-side with the shared injection-safe serializer", /toCsv\(CONTACT_EXPORT_COLUMNS/.test(r));
+  check("8j) the CSV is generated server-side with the shared injection-safe serializer",
+    /toCsv\(\s*CONTACT_EXPORT_COLUMNS/.test(r));
   check("8k) a UTF-8 BOM is emitted for spreadsheet compatibility", /UTF8_BOM \+ toCsv/.test(r));
   check("8l) the audit metadata is exactly the allowed PII-free set",
     /format: "csv"/.test(r) && /rows: result\.rows\.length/.test(r) && /filtersPresent: Boolean/.test(r) && /limited: result\.limited/.test(r));
@@ -263,9 +269,12 @@ console.log("\n9) UI: selection scope, clearing, permission gating, pagination")
   const page = read("apps/web/src/app/dashboard/contacts/page.tsx");
   const table = read("apps/web/src/components/dashboard/contacts-bulk-table.tsx");
   check("9a) only the CURRENT page's ids reach the browser component", /pageIds=\{page\.items\.map\(\(c\) => c\.id\)\}/.test(page));
-  check("9b) selection clears when search, filters or the page change (remount key)",
-    /const selectionKey = `\$\{sp\.q \?\? ""\}\|\$\{sp\.status \?\? ""\}\|\$\{sp\.source \?\? ""\}\|\$\{sp\.cursor \?\? ""\}`/.test(page)
-    && /key=\{selectionKey\}/.test(page));
+  check("9b) selection clears when search, filters, lifecycle, review or the page change (remount key)", (() => {
+    const line = (page.match(/const selectionKey = `[^`]*`/) ?? [""])[0];
+    // Every dimension that changes the rendered rows must be in the key, or stale ids could survive a view change.
+    return ["sp.q", "sp.status", "sp.source", "sp.life", "sp.review", "sp.cursor"].every((k) => line.includes(k))
+      && /key=\{selectionKey\}/.test(page);
+  })());
   check("9c) selection state is never written to the URL",
     !/contactIds/.test(page) && !/searchParams\.set\("selected"/.test(page));
   check("9d) selected ids are submitted as hidden fields, not a query string", /type="hidden" name="contactIds"/.test(table));

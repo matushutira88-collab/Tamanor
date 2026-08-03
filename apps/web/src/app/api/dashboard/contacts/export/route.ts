@@ -18,6 +18,7 @@ import {
   can, Permission, toCsv, isValidContactStatus, normalizeContactSearch, contactExportRow,
   contactExportFilename, CONTACT_EXPORT_COLUMNS, CONTACT_EXPORT_MAX_ROWS,
   BusinessContactStatus, BusinessContactSource, emitOpsEvent,
+  BusinessContactLifecycle, isValidContactLifecycle, contactTombstoneExportRow,
 } from "@guardora/core";
 import { exportBusinessContacts } from "@guardora/db";
 import { requireDashboardCapability } from "@/server/route-guard";
@@ -54,16 +55,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
   const rawStatus = String(form.get("status") ?? "");
+  const rawLifecycle = String(form.get("life") ?? "");
   const rawSource = String(form.get("source") ?? "");
   const filters = {
     status: isValidContactStatus(rawStatus) ? (rawStatus as BusinessContactStatus) : undefined,
     sourcePlatform: ALL_SOURCES.includes(rawSource) ? (rawSource as BusinessContactSource) : undefined,
     search: normalizeContactSearch(String(form.get("q") ?? "")) ?? undefined,
+    // Phase C — the export honours the SAME lifecycle view as the list. Omitted means active only: archived,
+    // spam and anonymized contacts are never in a default export.
+    lifecycle: isValidContactLifecycle(rawLifecycle) ? (rawLifecycle as BusinessContactLifecycle) : undefined,
   };
 
   const result = await exportBusinessContacts(session.tenantId, filters, CONTACT_EXPORT_MAX_ROWS);
   // One uniform pass: `toCsv` RFC-4180-quotes every field AND neutralizes formula triggers (= + - @ tab CR).
-  const csv = UTF8_BOM + toCsv(CONTACT_EXPORT_COLUMNS, result.rows.map(contactExportRow));
+  // An anonymized contact exports as a GENERIC TOMBSTONE row — no personal value and no provider/campaign
+  // identifier — so even an explicit anonymized export cannot re-identify or re-link anyone.
+  const csv = UTF8_BOM + toCsv(
+    CONTACT_EXPORT_COLUMNS,
+    result.rows.map((r) => r.lifecycleState === BusinessContactLifecycle.Anonymized
+      ? contactTombstoneExportRow(r.receivedAt, r.latestActivityAt)
+      : contactExportRow(r)),
+  );
 
   // PII-FREE audit: counts and booleans only — never the search text, a filter value, an id or CSV content.
   await writeAudit({

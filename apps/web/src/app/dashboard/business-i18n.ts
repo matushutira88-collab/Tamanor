@@ -5,7 +5,8 @@
 import type { Locale } from "@/i18n";
 import {
   BusinessContactStatus, BusinessContactSource, BusinessProvider, BusinessConnectionStatus,
-  BusinessConnectionCapability, type MetaLeadCapabilityState, type MetaPageOnboardingOutcome,
+  BusinessConnectionCapability, BusinessContactLifecycle, ContactAnonymizationReason,
+  type MetaLeadCapabilityState, type MetaPageOnboardingOutcome,
 } from "@guardora/core";
 
 export interface BusinessDict {
@@ -33,7 +34,18 @@ export interface BusinessDict {
     bulkAffected: (n: number) => string; bulkFailed: (n: number) => string;
     bulkNoneSelected: string; bulkTooMany: string; bulkInvalid: string; bulkAssigneeInvalid: string;
     bulkDenied: string; bulkFailedGeneric: string; rateLimited: string;
-  };
+    /** BUSINESS-CRM-V2 Phase C — privacy lifecycle, anonymization, retention review. */
+    lifecycle: string; filterLifecycle: string;
+    archive: string; unarchive: string; markSpam: string; restoreSpam: string;
+    anonymize: string; anonymizeTitle: string; irreversible: string; confirmLabel: string; confirmHint: string;
+    anonymizeReason: string; anonymizeReasonNone: string;
+    anonymized: string; anonymizedOn: string; anonymizedContact: string; notesRemoved: string; noteRedacted: string;
+    reviewRecommended: string; retentionReview: string; retentionNote: string;
+    actionUnavailable: string; lifecycleFailed: string; confirmFailed: string;
+    activityArchived: string; activityUnarchived: string; activitySpam: string; activitySpamRestored: string;
+    activityAnonymized: string;
+  } & Record<`life_${BusinessContactLifecycle}`, string>
+    & Record<`reason_${ContactAnonymizationReason}`, string>;
   platforms: {
     title: string; desc: string;
     capabilities: string; lastVerified: string; lastSync: string; never: string;
@@ -89,6 +101,25 @@ const en: BusinessDict = {
     bulkDenied: "You don't have permission to perform this action.",
     bulkFailedGeneric: "The operation could not be completed.",
     rateLimited: "Too many requests. Please wait a moment and try again.",
+    lifecycle: "Lifecycle", filterLifecycle: "Lifecycle",
+    archive: "Archive", unarchive: "Restore from archive", markSpam: "Mark as spam", restoreSpam: "Restore from spam",
+    anonymize: "Anonymize contact", anonymizeTitle: "Anonymize this contact",
+    irreversible: "This action is irreversible. Personal data on this contact and the text of all its notes are permanently removed. The record is kept as a non-identifying entry so history and counts stay valid.",
+    confirmLabel: "Type ANONYMIZE to confirm", confirmHint: "Enter the word ANONYMIZE exactly.",
+    anonymizeReason: "Internal reason (optional)", anonymizeReasonNone: "No reason given",
+    anonymized: "Anonymized", anonymizedOn: "Anonymized on", anonymizedContact: "Anonymized contact",
+    notesRemoved: "Note contents were removed.", noteRedacted: "Content removed",
+    reviewRecommended: "Review recommended", retentionReview: "Retention review",
+    retentionNote: "An operational reminder based on your configured review period. Tamanor does not decide whether data must be deleted.",
+    actionUnavailable: "This action is not available for an anonymized contact.",
+    lifecycleFailed: "The lifecycle change could not be applied.",
+    confirmFailed: "Confirmation did not match. Nothing was changed.",
+    activityArchived: "Archived", activityUnarchived: "Restored from archive",
+    activitySpam: "Marked as spam", activitySpamRestored: "Restored from spam",
+    activityAnonymized: "Contact anonymized",
+    life_active: "Active", life_spam: "Spam", life_archived: "Archived", life_anonymized: "Anonymized",
+    reason_user_request: "Requested by the person", reason_retention_policy: "Internal retention period",
+    reason_test_data: "Test data", reason_duplicate_record: "Duplicate record", reason_other_internal: "Other internal reason",
   },
   platforms: {
     title: "Connected platforms", desc: "Connect your ad and social platforms to ingest leads. Comment moderation stays a separate capability of the same connection.",
@@ -165,6 +196,25 @@ const sk: BusinessDict = {
     bulkDenied: "Nemáte oprávnenie vykonať túto akciu.",
     bulkFailedGeneric: "Operáciu sa nepodarilo dokončiť.",
     rateLimited: "Príliš veľa požiadaviek. Chvíľu počkajte a skúste to znova.",
+    lifecycle: "Životný cyklus", filterLifecycle: "Životný cyklus",
+    archive: "Archivovať", unarchive: "Obnoviť z archívu", markSpam: "Označiť ako spam", restoreSpam: "Obnoviť zo spamu",
+    anonymize: "Anonymizovať kontakt", anonymizeTitle: "Anonymizovať tento kontakt",
+    irreversible: "Táto akcia je nezvratná. Osobné údaje tohto kontaktu a text všetkých jeho poznámok sa natrvalo odstránia. Záznam zostane zachovaný ako neidentifikujúci, aby história a počty zostali platné.",
+    confirmLabel: "Na potvrdenie napíšte ANONYMIZE", confirmHint: "Zadajte presne slovo ANONYMIZE.",
+    anonymizeReason: "Interný dôvod (voliteľné)", anonymizeReasonNone: "Bez uvedenia dôvodu",
+    anonymized: "Anonymizované", anonymizedOn: "Anonymizované dňa", anonymizedContact: "Anonymizovaný kontakt",
+    notesRemoved: "Obsah poznámok bol odstránený.", noteRedacted: "Obsah odstránený",
+    reviewRecommended: "Odporúča sa revízia", retentionReview: "Revízia uchovávania",
+    retentionNote: "Prevádzková pripomienka podľa vami nastaveného obdobia revízie. Tamanor nerozhoduje o tom, či sa údaje musia vymazať.",
+    actionUnavailable: "Táto akcia nie je pri anonymizovanom kontakte dostupná.",
+    lifecycleFailed: "Zmenu životného cyklu sa nepodarilo použiť.",
+    confirmFailed: "Potvrdenie sa nezhoduje. Nič sa nezmenilo.",
+    activityArchived: "Archivované", activityUnarchived: "Obnovené z archívu",
+    activitySpam: "Označené ako spam", activitySpamRestored: "Obnovené zo spamu",
+    activityAnonymized: "Kontakt anonymizovaný",
+    life_active: "Aktívne", life_spam: "Spam", life_archived: "Archivované", life_anonymized: "Anonymizované",
+    reason_user_request: "Na žiadosť osoby", reason_retention_policy: "Interné obdobie uchovávania",
+    reason_test_data: "Testovacie údaje", reason_duplicate_record: "Duplicitný záznam", reason_other_internal: "Iný interný dôvod",
   },
   platforms: {
     title: "Pripojené platformy", desc: "Pripojte reklamné a sociálne platformy na získavanie leadov. Moderovanie komentárov je samostatná funkcia toho istého pripojenia.",
@@ -241,6 +291,25 @@ const de: BusinessDict = {
     bulkDenied: "Sie haben keine Berechtigung für diese Aktion.",
     bulkFailedGeneric: "Der Vorgang konnte nicht abgeschlossen werden.",
     rateLimited: "Zu viele Anfragen. Bitte kurz warten und erneut versuchen.",
+    lifecycle: "Lebenszyklus", filterLifecycle: "Lebenszyklus",
+    archive: "Archivieren", unarchive: "Aus Archiv wiederherstellen", markSpam: "Als Spam markieren", restoreSpam: "Aus Spam wiederherstellen",
+    anonymize: "Kontakt anonymisieren", anonymizeTitle: "Diesen Kontakt anonymisieren",
+    irreversible: "Diese Aktion ist unumkehrbar. Personenbezogene Daten dieses Kontakts und der Text aller zugehörigen Notizen werden dauerhaft entfernt. Der Datensatz bleibt als nicht identifizierender Eintrag erhalten, damit Verlauf und Zählungen gültig bleiben.",
+    confirmLabel: "Zur Bestätigung ANONYMIZE eingeben", confirmHint: "Geben Sie genau das Wort ANONYMIZE ein.",
+    anonymizeReason: "Interner Grund (optional)", anonymizeReasonNone: "Kein Grund angegeben",
+    anonymized: "Anonymisiert", anonymizedOn: "Anonymisiert am", anonymizedContact: "Anonymisierter Kontakt",
+    notesRemoved: "Notizinhalte wurden entfernt.", noteRedacted: "Inhalt entfernt",
+    reviewRecommended: "Prüfung empfohlen", retentionReview: "Aufbewahrungsprüfung",
+    retentionNote: "Eine betriebliche Erinnerung auf Basis Ihres konfigurierten Prüfzeitraums. Tamanor entscheidet nicht, ob Daten gelöscht werden müssen.",
+    actionUnavailable: "Diese Aktion ist für einen anonymisierten Kontakt nicht verfügbar.",
+    lifecycleFailed: "Die Lebenszyklus-Änderung konnte nicht angewendet werden.",
+    confirmFailed: "Die Bestätigung stimmte nicht überein. Es wurde nichts geändert.",
+    activityArchived: "Archiviert", activityUnarchived: "Aus Archiv wiederhergestellt",
+    activitySpam: "Als Spam markiert", activitySpamRestored: "Aus Spam wiederhergestellt",
+    activityAnonymized: "Kontakt anonymisiert",
+    life_active: "Aktiv", life_spam: "Spam", life_archived: "Archiviert", life_anonymized: "Anonymisiert",
+    reason_user_request: "Auf Wunsch der Person", reason_retention_policy: "Interne Aufbewahrungsfrist",
+    reason_test_data: "Testdaten", reason_duplicate_record: "Doppelter Datensatz", reason_other_internal: "Anderer interner Grund",
   },
   platforms: {
     title: "Verbundene Plattformen", desc: "Verbinden Sie Werbe- und Social-Plattformen für die Lead-Erfassung. Kommentarmoderation ist eine separate Funktion derselben Verbindung.",
