@@ -834,3 +834,71 @@ export function getWebhookRetentionConfig(source: NodeJS.ProcessEnv = process.en
   }
   return { maxPayloadAgeDays, rowTtlDays, purgeBatch, fellBack };
 }
+
+// ---- META-EXTERNAL-ACCESS-V1 — App Review readiness (booleans + public scope names ONLY) ------------------
+/** Public paths this deployment implements for Meta. Not secrets — they are published to Meta by hand. */
+export const META_OAUTH_CALLBACK_PATH = "/api/connectors/meta/callback";
+export const META_WEBHOOK_CALLBACK_PATH = "/api/webhooks/meta";
+export const META_DATA_DELETION_CALLBACK_PATH = "/api/meta/data-deletion";
+export const META_DEAUTHORIZE_CALLBACK_PATH = "/api/meta/deauthorize";
+export const META_PRIVACY_POLICY_PATH = "/privacy";
+export const META_DELETION_INSTRUCTIONS_PATH = "/data-subject-rights";
+
+/**
+ * The Meta permissions this deployment's features require. Scope NAMES are public API identifiers, not
+ * secrets. Presence is checked against the CONFIGURED OAuth scopes — never against a Meta approval state,
+ * which this system cannot observe.
+ */
+export const META_REQUIRED_SCOPES: readonly string[] = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_manage_engagement",
+  "pages_manage_metadata",
+  "leads_retrieval",
+  "instagram_basic",
+  "instagram_manage_comments",
+];
+
+export interface MetaReviewReadiness {
+  /** App id + secret + redirect URI all present. */
+  appCredentialsConfigured: boolean;
+  /** A redirect URI is configured for the OAuth callback. */
+  oauthCallbackConfigured: boolean;
+  /** A webhook verify token is configured (required for Meta's GET handshake). */
+  webhookVerifyTokenConfigured: boolean;
+  /** Webhook draining is enabled, so a delivered leadgen event is actually processed. */
+  webhookSyncEnabled: boolean;
+  /** Per required scope: is it present in the configured OAuth scope list? */
+  scopes: Array<{ scope: string; configured: boolean }>;
+  /** Every required scope is configured. */
+  allRequiredScopesConfigured: boolean;
+  /**
+   * OPERATOR ATTESTATIONS. These are claims the operator makes in configuration; this system cannot verify
+   * them against Meta and NEVER infers approval. Default false.
+   */
+  businessVerificationAttested: boolean;
+  advancedAccessAttested: boolean;
+}
+
+const flagOn = (raw: string | undefined): boolean => (raw ?? "").trim().toLowerCase() === "true" || (raw ?? "").trim() === "1";
+
+/**
+ * Report Meta App Review readiness as BOOLEANS and public scope names only. It never returns an environment
+ * value, URL containing a secret, app id, token or verify token, and it never claims Meta approval — the two
+ * attestation flags are operator statements, not observed facts.
+ */
+export function getMetaReviewReadiness(source: NodeJS.ProcessEnv = process.env): MetaReviewReadiness {
+  const meta = getMetaConfig(source);
+  const configured = new Set(getMetaOAuthScopes(source));
+  const scopes = META_REQUIRED_SCOPES.map((scope) => ({ scope, configured: configured.has(scope) }));
+  return {
+    appCredentialsConfigured: meta.configured,
+    oauthCallbackConfigured: Boolean(meta.redirectUri),
+    webhookVerifyTokenConfigured: Boolean(meta.webhookVerifyToken),
+    webhookSyncEnabled: meta.webhookSync,
+    scopes,
+    allRequiredScopesConfigured: scopes.every((s) => s.configured),
+    businessVerificationAttested: flagOn(source.META_BUSINESS_VERIFICATION_ATTESTED),
+    advancedAccessAttested: flagOn(source.META_ADVANCED_ACCESS_ATTESTED),
+  };
+}

@@ -22,6 +22,8 @@ export * from "./meta/http";
 export * from "./meta/discovery";
 // BUSINESS-LEADGEN-SUBSCRIPTION-V1 — Page-level `leadgen` webhook subscription (read + ensure + verify)
 export * from "./meta/leadgen-subscription";
+// META-EXTERNAL-ACCESS-V1 — signed_request verification for the deletion / deauthorize callbacks
+export * from "./meta/signed-request";
 export * from "./meta/connector-transport";
 export * from "./meta/content-transport";
 // Controlled Facebook comment hide (the only live action; default off)

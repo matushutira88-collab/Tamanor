@@ -162,7 +162,13 @@ export type OpsEvent =
   // bounded outcome enum in `result` and nothing else: never a Page/account/tenant id, token or Graph message.
   | "business.meta_page_onboarded"
   // A submitted asset that did not match the server-side OAuth asset list (count only, never the value).
-  | "business.meta_asset_selection_rejected";
+  | "business.meta_asset_selection_rejected"
+  // META-EXTERNAL-ACCESS-V1 — Meta data-deletion / deauthorize callbacks. Bounded reason/result labels ONLY:
+  // never the signed request, payload, app secret, app-scoped user id, email or confirmation code.
+  | "meta.data_deletion_rejected"
+  | "meta.data_deletion_completed"
+  | "meta.deauthorize_rejected"
+  | "meta.deauthorize_completed";
 
 /** Low-cardinality label keys allowed on ops events + metrics. Anything else is a cardinality risk. */
 // V1.50F — `plan` + `capability` added for entitlement/route observability (both LOW cardinality:

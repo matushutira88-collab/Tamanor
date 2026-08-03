@@ -23,6 +23,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/analytics", label: t.nav.analytics, show: caps.analyticsView },
     { href: "/admin/administrators", label: t.nav.administrators, show: caps.adminUsersView },
     { href: "/admin/audit", label: t.nav.audit, show: caps.auditView },
+    { href: "/admin/meta-review", label: t.metaReview.title, show: caps.systemHealth },
   ].filter((n) => n.show);
 
   return (

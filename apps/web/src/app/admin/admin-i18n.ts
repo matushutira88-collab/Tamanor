@@ -15,6 +15,14 @@ export interface AdminCopy {
   dateFilters: { today: string; last7: string; last30: string; last90: string; custom: string; from: string; to: string; apply: string; includeBots: string };
   fields: { metric: string; value: string; page: string; count: string; sessions: string; conversions: string; suppressed: string; approxNote: string; started: string; completed: string; completionRate: string; empty: string; loading: string; export: string; when: string; actor: string; action: string; target: string; result: string; role: string; status: string; email: string; name: string; lastAccess: string; lastChange: string; active: string; inactive: string };
   roleLabel: Dict; auditActionLabel: Dict; referrerLabel: Dict; deviceLabel: Dict; browserLabel: Dict; osLabel: Dict; botLabel: Dict; consentLabel: Dict; conversionLabel: Dict;
+  metaReview: {
+    title: string; desc: string; note: string;
+    appCredentials: string; oauthCallback: string; webhookVerifyToken: string; webhookSync: string;
+    privacyRoute: string; deletionRoute: string; deauthRoute: string; deletionInstructions: string;
+    scopes: string; scopesAll: string;
+    businessVerification: string; advancedAccess: string; attestationNote: string;
+    yes: string; no: string;
+  };
   admin: { addExisting: string; changeRole: string; deactivate: string; reactivate: string; addEmail: string; addRole: string; add: string; confirmDeactivate: string; confirmChange: string; reauthWarning: string; lastOwnerNote: string; mfaReadiness: string; confirm: string; cancel: string; working: string };
   errorRef: Dict;
 }
@@ -92,6 +100,16 @@ export const ADMIN_COPY: Record<Locale, AdminCopy> = {
     sections: { summary: "Summary", overTime: "Traffic over time", topPages: "Top pages", landingPages: "Landing pages", exitPages: "Exit pages", acquisition: "Acquisition channels", campaigns: "Campaigns", countries: "Countries", languages: "Languages", devices: "Devices", browsers: "Browsers", operatingSystems: "Operating systems", conversions: "Conversions", funnels: "Funnels", errors: "Error pages", botTraffic: "Bot traffic", collection: "Collection & consent", recentAudit: "Recent activity", retention: "Retention & aggregation" },
     dateFilters: DATE_EN,
     fields: { metric: "Metric", value: "Value", page: "Page", count: "Views", sessions: "Sessions", conversions: "Conversions", suppressed: "low-count groups hidden", approxNote: "Approximate — rotating identifiers", started: "Started", completed: "Completed", completionRate: "Completion", empty: "No data yet.", loading: "Loading…", export: "Export CSV", when: "When", actor: "Actor", action: "Action", target: "Target", result: "Result", role: "Role", status: "Status", email: "Email", name: "Name", lastAccess: "Last access", lastChange: "Last role change", active: "Active", inactive: "Deactivated" },
+    metaReview: {
+      title: "Meta App Review readiness", desc: "Configuration facts for external-customer access. Booleans only — no values are shown.",
+      note: "This page never claims Meta approval. Approval and access levels are granted in the Meta dashboard and cannot be observed from here.",
+      appCredentials: "App credentials configured", oauthCallback: "OAuth callback configured", webhookVerifyToken: "Webhook verify token configured", webhookSync: "Webhook processing enabled",
+      privacyRoute: "Privacy policy route", deletionRoute: "Data deletion callback", deauthRoute: "Deauthorize callback", deletionInstructions: "Deletion instructions route",
+      scopes: "Required permissions configured", scopesAll: "All required permissions configured",
+      businessVerification: "Business verification (operator attestation)", advancedAccess: "Advanced Access (operator attestation)",
+      attestationNote: "Attestations are operator-set configuration flags, not verified Meta states.",
+      yes: "Yes", no: "No",
+    },
     admin: { addExisting: "Add existing user", changeRole: "Change role", deactivate: "Deactivate", reactivate: "Reactivate", addEmail: "User email", addRole: "Platform role", add: "Add administrator", confirmDeactivate: "Deactivate this administrator's platform access?", confirmChange: "Change this administrator's platform role?", reauthWarning: "Sensitive changes require a recent sign-in.", lastOwnerNote: "The last active owner cannot be removed.", mfaReadiness: "MFA / passkey", confirm: "Confirm", cancel: "Cancel", working: "Working…" },
   }),
   sk: build("sk", {
@@ -108,6 +126,16 @@ export const ADMIN_COPY: Record<Locale, AdminCopy> = {
     sections: { summary: "Súhrn", overTime: "Návštevnosť v čase", topPages: "Najlepšie stránky", landingPages: "Vstupné stránky", exitPages: "Výstupné stránky", acquisition: "Akvizičné kanály", campaigns: "Kampane", countries: "Krajiny", languages: "Jazyky", devices: "Zariadenia", browsers: "Prehliadače", operatingSystems: "Operačné systémy", conversions: "Konverzie", funnels: "Lieviky", errors: "Chybové stránky", botTraffic: "Botová prevádzka", collection: "Zber a súhlas", recentAudit: "Nedávna aktivita", retention: "Uchovávanie a agregácia" },
     dateFilters: { today: "Dnes", last7: "Posledných 7 dní", last30: "Posledných 30 dní", last90: "Posledných 90 dní", custom: "Vlastné", from: "Od", to: "Do", apply: "Použiť", includeBots: "Zahrnúť boty" },
     fields: { metric: "Metrika", value: "Hodnota", page: "Stránka", count: "Zobrazenia", sessions: "Relácie", conversions: "Konverzie", suppressed: "skryté skupiny s nízkym počtom", approxNote: "Približné — rotujúce identifikátory", started: "Začaté", completed: "Dokončené", completionRate: "Dokončenie", empty: "Zatiaľ žiadne dáta.", loading: "Načítava sa…", export: "Exportovať CSV", when: "Kedy", actor: "Aktér", action: "Akcia", target: "Cieľ", result: "Výsledok", role: "Rola", status: "Stav", email: "E-mail", name: "Meno", lastAccess: "Posledný prístup", lastChange: "Posledná zmena roly", active: "Aktívny", inactive: "Deaktivovaný" },
+    metaReview: {
+      title: "Pripravenosť na Meta App Review", desc: "Konfiguračné fakty pre prístup externých zákazníkov. Len logické hodnoty — žiadne hodnoty sa nezobrazujú.",
+      note: "Táto stránka nikdy netvrdí, že Meta udelila schválenie. Schválenie a úrovne prístupu sa udeľujú v paneli Meta a odtiaľto ich nemožno overiť.",
+      appCredentials: "Poverenia aplikácie nakonfigurované", oauthCallback: "OAuth callback nakonfigurovaný", webhookVerifyToken: "Overovací token webhooku nakonfigurovaný", webhookSync: "Spracovanie webhookov zapnuté",
+      privacyRoute: "Trasa zásad ochrany osobných údajov", deletionRoute: "Callback na vymazanie údajov", deauthRoute: "Callback na zrušenie autorizácie", deletionInstructions: "Trasa s pokynmi na vymazanie",
+      scopes: "Požadované oprávnenia nakonfigurované", scopesAll: "Všetky požadované oprávnenia nakonfigurované",
+      businessVerification: "Overenie firmy (vyhlásenie prevádzkovateľa)", advancedAccess: "Rozšírený prístup (vyhlásenie prevádzkovateľa)",
+      attestationNote: "Vyhlásenia sú konfiguračné príznaky nastavené prevádzkovateľom, nie overené stavy zo strany Meta.",
+      yes: "Áno", no: "Nie",
+    },
     admin: { addExisting: "Pridať existujúceho používateľa", changeRole: "Zmeniť rolu", deactivate: "Deaktivovať", reactivate: "Reaktivovať", addEmail: "E-mail používateľa", addRole: "Rola platformy", add: "Pridať administrátora", confirmDeactivate: "Deaktivovať prístup tohto administrátora k platforme?", confirmChange: "Zmeniť rolu tohto administrátora na platforme?", reauthWarning: "Citlivé zmeny vyžadujú nedávne prihlásenie.", lastOwnerNote: "Posledného aktívneho vlastníka nemožno odstrániť.", mfaReadiness: "MFA / passkey", confirm: "Potvrdiť", cancel: "Zrušiť", working: "Pracuje sa…" },
   }),
   de: build("de", {
@@ -124,6 +152,16 @@ export const ADMIN_COPY: Record<Locale, AdminCopy> = {
     sections: { summary: "Zusammenfassung", overTime: "Traffic im Zeitverlauf", topPages: "Top-Seiten", landingPages: "Landingpages", exitPages: "Ausstiegsseiten", acquisition: "Akquisekanäle", campaigns: "Kampagnen", countries: "Länder", languages: "Sprachen", devices: "Geräte", browsers: "Browser", operatingSystems: "Betriebssysteme", conversions: "Conversions", funnels: "Trichter", errors: "Fehlerseiten", botTraffic: "Bot-Traffic", collection: "Erfassung & Einwilligung", recentAudit: "Letzte Aktivität", retention: "Aufbewahrung & Aggregation" },
     dateFilters: { today: "Heute", last7: "Letzte 7 Tage", last30: "Letzte 30 Tage", last90: "Letzte 90 Tage", custom: "Benutzerdefiniert", from: "Von", to: "Bis", apply: "Anwenden", includeBots: "Bots einbeziehen" },
     fields: { metric: "Metrik", value: "Wert", page: "Seite", count: "Aufrufe", sessions: "Sitzungen", conversions: "Conversions", suppressed: "Gruppen mit geringer Anzahl ausgeblendet", approxNote: "Ungefähr — rotierende Kennungen", started: "Begonnen", completed: "Abgeschlossen", completionRate: "Abschluss", empty: "Noch keine Daten.", loading: "Wird geladen…", export: "CSV exportieren", when: "Wann", actor: "Akteur", action: "Aktion", target: "Ziel", result: "Ergebnis", role: "Rolle", status: "Status", email: "E-Mail", name: "Name", lastAccess: "Letzter Zugriff", lastChange: "Letzte Rollenänderung", active: "Aktiv", inactive: "Deaktiviert" },
+    metaReview: {
+      title: "Bereitschaft für Meta App Review", desc: "Konfigurationsfakten für den Zugang externer Kunden. Nur Wahrheitswerte — es werden keine Werte angezeigt.",
+      note: "Diese Seite behauptet niemals eine Meta-Freigabe. Freigabe und Zugriffsstufen werden im Meta-Dashboard erteilt und sind von hier aus nicht überprüfbar.",
+      appCredentials: "App-Zugangsdaten konfiguriert", oauthCallback: "OAuth-Callback konfiguriert", webhookVerifyToken: "Webhook-Verifizierungstoken konfiguriert", webhookSync: "Webhook-Verarbeitung aktiviert",
+      privacyRoute: "Route der Datenschutzerklärung", deletionRoute: "Callback zur Datenlöschung", deauthRoute: "Callback zur Deautorisierung", deletionInstructions: "Route mit Löschanweisungen",
+      scopes: "Erforderliche Berechtigungen konfiguriert", scopesAll: "Alle erforderlichen Berechtigungen konfiguriert",
+      businessVerification: "Unternehmensverifizierung (Betreiberzusicherung)", advancedAccess: "Erweiterter Zugriff (Betreiberzusicherung)",
+      attestationNote: "Zusicherungen sind vom Betreiber gesetzte Konfigurationsflags, keine verifizierten Meta-Zustände.",
+      yes: "Ja", no: "Nein",
+    },
     admin: { addExisting: "Bestehenden Benutzer hinzufügen", changeRole: "Rolle ändern", deactivate: "Deaktivieren", reactivate: "Reaktivieren", addEmail: "Benutzer-E-Mail", addRole: "Plattformrolle", add: "Administrator hinzufügen", confirmDeactivate: "Plattformzugriff dieses Administrators deaktivieren?", confirmChange: "Plattformrolle dieses Administrators ändern?", reauthWarning: "Sensible Änderungen erfordern eine kürzliche Anmeldung.", lastOwnerNote: "Der letzte aktive Eigentümer kann nicht entfernt werden.", mfaReadiness: "MFA / Passkey", confirm: "Bestätigen", cancel: "Abbrechen", working: "Wird ausgeführt…" },
   }),
 };

@@ -187,3 +187,4 @@ export * from "./provider-credential-vault";
 export * from "./provider-credential-resolver";
 export * from "./provider-credential-backfill";
 export * from "./provider-credential-runtime-readiness";
+export * from "./meta-identity-deletion";
