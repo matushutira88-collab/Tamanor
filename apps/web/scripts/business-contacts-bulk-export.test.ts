@@ -268,7 +268,10 @@ console.log("\n9) UI: selection scope, clearing, permission gating, pagination")
 {
   const page = read("apps/web/src/app/dashboard/contacts/page.tsx");
   const table = read("apps/web/src/components/dashboard/contacts-bulk-table.tsx");
-  check("9a) only the CURRENT page's ids reach the browser component", /pageIds=\{page\.items\.map\(\(c\) => c\.id\)\}/.test(page));
+  // Rows cross the boundary as DATA (`{ id, cells }`), never as a render callback — see
+  // business-contacts-rsc-boundary.test.tsx for the full serialization contract.
+  check("9a) only the CURRENT page's rows reach the browser component",
+    /rows=\{page\.items\.map\(\(c\) => \(\{/.test(page) && /id: c\.id,/.test(page) && !/renderRow/.test(page));
   check("9b) selection clears when search, filters, lifecycle, review or the page change (remount key)", (() => {
     const line = (page.match(/const selectionKey = `[^`]*`/) ?? [""])[0];
     // Every dimension that changes the rendered rows must be in the key, or stale ids could survive a view change.
@@ -302,8 +305,10 @@ console.log("\n10) SK/EN/DE parity for the new copy");
     "selectRow", "selectPage", "clearSelection", "bulkStatus", "bulkAssign", "bulkUnassign", "apply",
     "exportCsv", "bulkNoneSelected", "bulkTooMany", "bulkInvalid", "bulkAssigneeInvalid",
     "bulkDenied", "bulkFailedGeneric", "rateLimited",
+    // A TEMPLATE, not a formatter: this one crosses the RSC boundary into a Client Component.
+    "selectedCountTemplate",
   ] as const;
-  const fns = ["selectedCount", "exportLimited", "bulkAffected", "bulkFailed"] as const;
+  const fns = ["exportLimited", "bulkAffected", "bulkFailed"] as const;
   for (const loc of ["en", "sk", "de"] as const) {
     const c = dicts[loc].contacts as unknown as Record<string, unknown>;
     check(`10a) ${loc}: every new string key is non-empty`,
@@ -315,7 +320,9 @@ console.log("\n10) SK/EN/DE parity for the new copy");
   check("10c) the three locales are genuinely distinct",
     dicts.en.contacts.exportCsv !== dicts.sk.contacts.exportCsv && dicts.en.contacts.exportCsv !== dicts.de.contacts.exportCsv
     && dicts.sk.contacts.exportCsv !== dicts.de.contacts.exportCsv);
-  check("10d) formatters interpolate the count", dicts.en.contacts.selectedCount(7).includes("7") && dicts.sk.contacts.bulkAffected(4).includes("4"));
+  check("10d) formatters interpolate the count", dicts.en.contacts.exportLimited(7).includes("7") && dicts.sk.contacts.bulkAffected(4).includes("4"));
+  check("10d2) the selected-count template carries the placeholder in every locale, not a hard-coded number",
+    (["en", "sk", "de"] as const).every((l) => dicts[l].contacts.selectedCountTemplate.includes("{count}")));
   check("10e) no user-facing English is hard-coded in the shared pages", (() => {
     const page = read("apps/web/src/app/dashboard/contacts/page.tsx");
     return !/>Export CSV</.test(page) && !/>Apply</.test(page) && !/>Clear selection</.test(page);

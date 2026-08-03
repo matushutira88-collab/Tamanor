@@ -194,7 +194,6 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         <Card>
           <ContactsBulkTable
             key={selectionKey}
-            pageIds={page.items.map((c) => c.id)}
             canManage={canManage}
             statusAction={bulkChangeStatusAction}
             assignAction={bulkAssignAction}
@@ -202,7 +201,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             assigneeOptions={members.map((m) => ({ value: m.userId, label: m.email }))}
             labels={{
               selectRow: t.contacts.selectRow, selectPage: t.contacts.selectPage,
-              selectedCount: t.contacts.selectedCount, clearSelection: t.contacts.clearSelection,
+              selectedCountTemplate: t.contacts.selectedCountTemplate, clearSelection: t.contacts.clearSelection,
               bulkStatus: t.contacts.bulkStatus, bulkAssign: t.contacts.bulkAssign,
               bulkUnassign: t.contacts.bulkUnassign, apply: t.contacts.apply,
             }}
@@ -216,9 +215,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colAssignee2}</th>
               <th scope="col" className="px-3 py-2 font-semibold">{t.contacts.colStatus}</th>
             </>}
-            renderRow={(id) => {
-              const c = page.items.find((x) => x.id === id)!;
-              return (<>
+            /* RSC BOUNDARY: rows are DATA, not a render callback — a function cannot be serialized into
+               the RSC payload. Each row's cells are created here, on the server, inside the SAME map
+               callback that supplies its id, so id and content can never drift apart. */
+            rows={page.items.map((c) => ({
+              id: c.id,
+              cells: (<>
                 <td className="px-3 py-2">
                   <Link href={`/dashboard/contacts/${c.id}`} className="font-medium hover:underline">
                     {c.lifecycleState === BusinessContactLifecycle.Anonymized
@@ -239,8 +241,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   {c.assignedUserId ? (memberEmail.get(c.assignedUserId) ?? "—") : t.contacts.unassignedShort}
                 </td>
                 <td className="px-3 py-2"><Badge tone={STATUS_TONE[c.status]}>{bizLabel(t.status, c.status)}</Badge></td>
-              </>);
-            }}
+              </>),
+            }))}
           />
         </Card>
       )}

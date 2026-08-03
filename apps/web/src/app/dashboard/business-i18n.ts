@@ -28,7 +28,10 @@ export interface BusinessDict {
     activity: string; activityReceived: string; activityStatusChanged: string; activityAssigned: string;
     activityUnassigned: string; activityNote: string; activityBy: string; activityEmpty: string;
     /** BUSINESS-CRM-V2 Phase B — bulk selection + CSV export. */
-    selectRow: string; selectPage: string; selectedCount: (n: number) => string; clearSelection: string;
+    /** A TEMPLATE, not a formatter: this value crosses the RSC boundary into ContactsBulkTable, and a
+     *  function cannot be serialized into the RSC payload. `{count}` is substituted client-side. */
+    selectedCountTemplate: string;
+    selectRow: string; selectPage: string; clearSelection: string;
     bulkStatus: string; bulkAssign: string; bulkUnassign: string; apply: string;
     exportCsv: string; exportLimited: (n: number) => string;
     bulkAffected: (n: number) => string; bulkFailed: (n: number) => string;
@@ -89,7 +92,7 @@ const en: BusinessDict = {
     activity: "Activity", activityReceived: "Contact received", activityStatusChanged: "Status changed",
     activityAssigned: "Assigned", activityUnassigned: "Unassigned", activityNote: "Note added",
     activityBy: "by", activityEmpty: "No activity yet.",
-    selectRow: "Select contact", selectPage: "Select all on this page", selectedCount: (n) => `${n} selected`,
+    selectRow: "Select contact", selectPage: "Select all on this page", selectedCountTemplate: "{count} selected",
     clearSelection: "Clear selection",
     bulkStatus: "Set status", bulkAssign: "Assign to", bulkUnassign: "Unassign", apply: "Apply",
     exportCsv: "Export CSV", exportLimited: (n) => `Export limited to the first ${n} contacts.`,
@@ -184,7 +187,7 @@ const sk: BusinessDict = {
     activity: "Aktivita", activityReceived: "Kontakt prijatý", activityStatusChanged: "Stav zmenený",
     activityAssigned: "Priradené", activityUnassigned: "Priradenie zrušené", activityNote: "Poznámka pridaná",
     activityBy: "od", activityEmpty: "Zatiaľ žiadna aktivita.",
-    selectRow: "Vybrať kontakt", selectPage: "Vybrať všetky na tejto strane", selectedCount: (n) => `Vybraných: ${n}`,
+    selectRow: "Vybrať kontakt", selectPage: "Vybrať všetky na tejto strane", selectedCountTemplate: "Vybraných: {count}",
     clearSelection: "Zrušiť výber",
     bulkStatus: "Nastaviť stav", bulkAssign: "Priradiť", bulkUnassign: "Zrušiť priradenie", apply: "Použiť",
     exportCsv: "Exportovať CSV", exportLimited: (n) => `Export je obmedzený na prvých ${n} kontaktov.`,
@@ -279,7 +282,7 @@ const de: BusinessDict = {
     activity: "Aktivität", activityReceived: "Kontakt erhalten", activityStatusChanged: "Status geändert",
     activityAssigned: "Zugewiesen", activityUnassigned: "Zuweisung aufgehoben", activityNote: "Notiz hinzugefügt",
     activityBy: "von", activityEmpty: "Noch keine Aktivität.",
-    selectRow: "Kontakt auswählen", selectPage: "Alle auf dieser Seite auswählen", selectedCount: (n) => `${n} ausgewählt`,
+    selectRow: "Kontakt auswählen", selectPage: "Alle auf dieser Seite auswählen", selectedCountTemplate: "{count} ausgewählt",
     clearSelection: "Auswahl aufheben",
     bulkStatus: "Status setzen", bulkAssign: "Zuweisen an", bulkUnassign: "Zuweisung aufheben", apply: "Anwenden",
     exportCsv: "CSV exportieren", exportLimited: (n) => `Export auf die ersten ${n} Kontakte begrenzt.`,
