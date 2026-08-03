@@ -24,9 +24,14 @@ const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 export const META_READ_ONLY_SCOPES: readonly string[] = [
   "pages_show_list",
   "pages_read_engagement",
+  // Reading USER-authored comments on Page posts (`/{page-id}/feed?fields=comments{…}`) needs this in
+  // addition to pages_read_engagement, which only covers Page-owned content.
+  "pages_read_user_content",
   "instagram_basic",
-  "instagram_manage_comments",
-  "business_management",
+  // REMOVED (META-EXTERNAL-ACCESS-V2): `business_management` and `instagram_manage_comments` had no shipped
+  // code path — no Business-Manager endpoint is called, and Instagram moderation exists only as a status
+  // reporter plus a manual operator script. Requesting a permission with no demonstrable use is an App Review
+  // rejection reason, so neither is requested. See META_SCOPE_MATRIX in @guardora/config.
 ];
 
 export interface MetaOAuthConfig {

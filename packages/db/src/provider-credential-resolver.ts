@@ -109,6 +109,12 @@ export interface WriteMetaCredentialInput {
   scopes?: string[];
   /** The token kind. Meta page tokens are long-lived; default long_lived_token. */
   purpose?: ProviderCredentialPurpose;
+  /**
+   * META-EXTERNAL-ACCESS-V2 — the Meta app-scoped user id whose grant produced this token. Recorded as the
+   * credential's authorization provenance so a later deauthorize / data-deletion callback can invalidate
+   * exactly the credentials that grant produced. Server-resolved only.
+   */
+  authorizingProviderUserId?: string | null;
 }
 
 /**
@@ -125,6 +131,7 @@ export async function writeMetaCredentialToVault(input: WriteMetaCredentialInput
     tokenType: input.tokenType ?? null,
     expiresAt: input.expiresAt ?? null,
     scopes: input.scopes ?? [],
+    authorizingProviderUserId: input.authorizingProviderUserId ?? null,
   }, opts);
   return { id: res.id, fingerprint: res.fingerprint };
 }

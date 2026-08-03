@@ -73,6 +73,21 @@ export default async function MetaReviewReadinessPage() {
           ))}
           <Row label={m.scopesAll} ok={r.allRequiredScopesConfigured} yes={m.yes} no={m.no} />
         </ul>
+        {/* Missing-required and unsupported-extra are DISTINCT problems and are reported separately. */}
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div>
+            <p className="text-xs font-semibold">{m.scopesMissing}</p>
+            <p className="mt-1 text-xs text-[var(--color-muted)]" data-testid="scopes-missing">
+              {r.missingRequiredScopes.length ? r.missingRequiredScopes.join(", ") : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold">{m.scopesUnsupported}</p>
+            <p className="mt-1 text-xs text-[var(--color-muted)]" data-testid="scopes-unsupported">
+              {r.unsupportedExtraScopes.length ? r.unsupportedExtraScopes.join(", ") : "—"}
+            </p>
+          </div>
+        </div>
       </Card>
 
       <Card className="p-4">

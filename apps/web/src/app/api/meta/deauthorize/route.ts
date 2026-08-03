@@ -1,24 +1,28 @@
 /**
- * META-EXTERNAL-ACCESS-V1 — Meta **Deauthorize** callback.
+ * META-EXTERNAL-ACCESS-V2 — Meta **Deauthorize** callback.
  *
- * Meta POSTs a form-encoded `signed_request` when a person removes Tamanor from their Facebook account. As with
- * the deletion callback there is no session and no trustworthy source IP, so the verified `signed_request` is
- * the ONLY authentication and a forged POST is rejected before any lookup or write.
+ * Meta POSTs a form-encoded `signed_request` when a person removes Tamanor from their Facebook account. As
+ * with the deletion callback the verified `signed_request` is the ONLY authentication, and a forged, tampered,
+ * stale or unsigned POST is rejected with 400 before any lookup or write.
  *
- * Deauthorization revokes the person's own grant, so Tamanor drops the one thing that grant created and that
- * the payload can authoritatively identify: the Facebook LOGIN link. It deliberately does NOT disconnect any
- * Page, Instagram account, credential, tenant or membership — a connected Page never records WHICH Meta user
- * authorised it, so acting on it here could destroy an unrelated customer's working integration. A Page whose
- * underlying token really did die is already detected truthfully by the existing token-health path and surfaces
- * as `needs_reconnect`.
+ * The grant is withdrawn, so everything it authorises must stop working. `revokeMetaAuthorization` revokes
+ * every ACTIVE Meta credential whose CURRENT authorization provenance is that identity, marks the owning
+ * Facebook Page / Instagram accounts `needs_reconnect`, and removes the Facebook login link only afterwards —
+ * so a crash mid-way can never leave a usable credential behind. No provider HTTP is needed: the invalidation
+ * is entirely local and takes effect immediately because a revoked vault row is never downgraded to a legacy
+ * column read.
  *
- * Idempotent and tenant-safe. Never logs or returns the signed request, the payload, the app secret or the
- * app-scoped user id.
+ * Untouched: the tenant's contacts, comments and business records; the connected account rows themselves
+ * (kept but unusable until an authorised person reconnects); the Tamanor user, memberships and tenants; and
+ * any credential whose provenance is a DIFFERENT Meta identity — including a Page whose credential was later
+ * replaced by another authorised person, which a stale callback from the first person must not kill.
+ *
+ * Idempotent and replay-safe. Never logs or returns the signed request, payload, app secret or user id.
  */
 import { getMetaConfig } from "@guardora/config";
 import { emitOpsEvent } from "@guardora/core";
 import { verifyMetaSignedRequest } from "@guardora/connectors";
-import { deleteFacebookLoginIdentity } from "@guardora/db";
+import { revokeMetaAuthorization } from "@guardora/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,8 +52,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const res = await deleteFacebookLoginIdentity(verified.userId);
-    emitOpsEvent("meta.deauthorize_completed", { operation: "meta_deauthorize", result: res.removed ? "removed" : "already_absent" });
+    const outcome = await revokeMetaAuthorization(verified.userId);
+    // Counts are intentionally NOT emitted — only a bounded outcome label.
+    emitOpsEvent("meta.deauthorize_completed", { operation: "meta_deauthorize", result: outcome.alreadyClean ? "already_absent" : "revoked" });
   } catch {
     emitOpsEvent("meta.deauthorize_rejected", { operation: "meta_deauthorize", reason: "storage_error" });
     return Response.json({ error: "temporarily_unavailable" }, { status: 503 });

@@ -29,14 +29,16 @@ const en: LegalDoc = {
       title: "2. What is removed",
       blocks: [
         { type: "p", text: "Tamanor removes the link between your Facebook account and your Tamanor sign-in. After this, signing in with Facebook no longer identifies you to Tamanor." },
+        { type: "p", text: "Tamanor also revokes every stored Facebook Page and Instagram credential that your authorisation produced and that is still in use. Those connections stop working immediately: no further comments are read, no moderation is performed and no leads are fetched with them. Someone with access must reconnect before they work again." },
       ],
     },
     {
       title: "3. What is not removed, and why",
       blocks: [
         { type: "p", text: "Your Tamanor user account is not deleted. It may also be accessible by e-mail and password or another sign-in method, and it may belong to a workspace shared with other people." },
-        { type: "p", text: "Connected Facebook Pages, Instagram accounts, stored credentials and business contacts are not deleted. A connected Page records the Page itself, not which Facebook user authorised the connection, so a deletion request for one person cannot be attributed to a Page that a whole organisation depends on." },
-        { type: "p", text: "To remove a connected Page, use Disconnect inside Tamanor. To request deletion of your Tamanor account or workspace data, follow the Data Subject Rights Policy." },
+        { type: "p", text: "Business records held by the organisation whose Page you connected are not deleted: contacts and leads captured by that Page's own forms, comments, and the connection settings themselves. Those belong to that organisation, not to your Facebook account, so a request from one person cannot erase them." },
+        { type: "p", text: "Credentials that a different Facebook account authorised are not affected. If someone else reconnected a Page after you, that newer authorisation keeps working." },
+        { type: "p", text: "Your Tamanor user account is not deleted. To remove a connection entirely, use Disconnect inside Tamanor. To request deletion of your Tamanor account or workspace data, follow the Data Subject Rights Policy." },
       ],
     },
     {
@@ -67,14 +69,16 @@ const sk: LegalDoc = {
       title: "2. Čo sa odstráni",
       blocks: [
         { type: "p", text: "Tamanor odstráni prepojenie medzi vaším facebookovým účtom a vaším prihlásením do služby Tamanor. Po tomto kroku vás prihlásenie cez Facebook v službe Tamanor už neidentifikuje." },
+        { type: "p", text: "Tamanor zároveň zneplatní všetky uložené poverenia k facebookovým stránkam a instagramovým účtom, ktoré vznikli na základe vášho súhlasu a stále sa používajú. Tieto pripojenia okamžite prestanú fungovať: nečítajú sa ďalšie komentáre, nevykonáva sa moderovanie a nesťahujú sa žiadne leady. Aby opäť fungovali, musí ich niekto s prístupom znovu pripojiť." },
       ],
     },
     {
       title: "3. Čo sa neodstráni a prečo",
       blocks: [
         { type: "p", text: "Váš používateľský účet Tamanor sa nevymaže. Môže byť prístupný aj cez e-mail a heslo alebo iný spôsob prihlásenia a môže patriť do pracovného priestoru zdieľaného s ďalšími osobami." },
-        { type: "p", text: "Pripojené facebookové stránky, instagramové účty, uložené poverenia a obchodné kontakty sa nevymažú. Pripojená stránka eviduje samotnú stránku, nie to, ktorý facebookový používateľ pripojenie autorizoval, takže žiadosť jednej osoby nemožno priradiť k stránke, na ktorej závisí celá organizácia." },
-        { type: "p", text: "Na odstránenie pripojenej stránky použite funkciu Odpojiť priamo v službe Tamanor. Vymazanie účtu Tamanor alebo údajov pracovného priestoru si vyžiadajte podľa Zásad práv dotknutých osôb." },
+        { type: "p", text: "Obchodné záznamy organizácie, ktorej stránku ste pripojili, sa nevymažú: kontakty a leady zachytené formulármi tejto stránky, komentáre a samotné nastavenia pripojenia. Patria tejto organizácii, nie vášmu facebookovému účtu, takže žiadosť jednej osoby ich nemôže vymazať." },
+        { type: "p", text: "Poverenia, ktoré autorizoval iný facebookový účet, nie sú dotknuté. Ak stránku po vás znovu pripojil niekto iný, jeho novšia autorizácia funguje ďalej." },
+        { type: "p", text: "Váš používateľský účet Tamanor sa nevymaže. Na úplné odstránenie pripojenia použite funkciu Odpojiť priamo v službe Tamanor. Vymazanie účtu Tamanor alebo údajov pracovného priestoru si vyžiadajte podľa Zásad práv dotknutých osôb." },
       ],
     },
     {
@@ -105,14 +109,16 @@ const de: LegalDoc = {
       title: "2. Was entfernt wird",
       blocks: [
         { type: "p", text: "Tamanor entfernt die Verknüpfung zwischen Ihrem Facebook-Konto und Ihrer Tamanor-Anmeldung. Danach identifiziert Sie eine Anmeldung über Facebook bei Tamanor nicht mehr." },
+        { type: "p", text: "Tamanor widerruft außerdem alle gespeicherten Zugangsdaten für Facebook-Seiten und Instagram-Konten, die durch Ihre Autorisierung entstanden sind und noch verwendet werden. Diese Verbindungen funktionieren sofort nicht mehr: es werden keine weiteren Kommentare gelesen, keine Moderation ausgeführt und keine Leads abgerufen. Für eine erneute Nutzung muss eine berechtigte Person sie neu verbinden." },
       ],
     },
     {
       title: "3. Was nicht entfernt wird und warum",
       blocks: [
         { type: "p", text: "Ihr Tamanor-Benutzerkonto wird nicht gelöscht. Es kann auch per E-Mail und Passwort oder über eine andere Anmeldemethode zugänglich sein und zu einem Arbeitsbereich gehören, der mit anderen Personen geteilt wird." },
-        { type: "p", text: "Verbundene Facebook-Seiten, Instagram-Konten, gespeicherte Anmeldedaten und Geschäftskontakte werden nicht gelöscht. Eine verbundene Seite erfasst die Seite selbst, nicht welcher Facebook-Nutzer die Verbindung autorisiert hat; eine Löschanfrage einer einzelnen Person kann daher keiner Seite zugeordnet werden, von der eine ganze Organisation abhängt." },
-        { type: "p", text: "Um eine verbundene Seite zu entfernen, verwenden Sie in Tamanor die Funktion Trennen. Die Löschung Ihres Tamanor-Kontos oder der Arbeitsbereichsdaten beantragen Sie gemäß der Richtlinie zu Betroffenenrechten." },
+        { type: "p", text: "Geschäftsdaten der Organisation, deren Seite Sie verbunden haben, werden nicht gelöscht: Kontakte und Leads aus den Formularen dieser Seite, Kommentare sowie die Verbindungseinstellungen selbst. Sie gehören dieser Organisation und nicht Ihrem Facebook-Konto; die Anfrage einer einzelnen Person kann sie daher nicht löschen." },
+        { type: "p", text: "Zugangsdaten, die ein anderes Facebook-Konto autorisiert hat, sind nicht betroffen. Hat jemand anderes eine Seite nach Ihnen neu verbunden, bleibt diese neuere Autorisierung wirksam." },
+        { type: "p", text: "Ihr Tamanor-Benutzerkonto wird nicht gelöscht. Um eine Verbindung vollständig zu entfernen, verwenden Sie in Tamanor die Funktion Trennen. Die Löschung Ihres Tamanor-Kontos oder der Arbeitsbereichsdaten beantragen Sie gemäß der Richtlinie zu Betroffenenrechten." },
       ],
     },
     {

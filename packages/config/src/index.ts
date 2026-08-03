@@ -845,19 +845,114 @@ export const META_PRIVACY_POLICY_PATH = "/privacy";
 export const META_DELETION_INSTRUCTIONS_PATH = "/data-subject-rights";
 
 /**
- * The Meta permissions this deployment's features require. Scope NAMES are public API identifiers, not
- * secrets. Presence is checked against the CONFIGURED OAuth scopes — never against a Meta approval state,
- * which this system cannot observe.
+ * META-EXTERNAL-ACCESS-V2 — the EXACT Meta permissions this deployment's shipped features require, each backed
+ * by a real Graph call in this repository. Scope NAMES are public API identifiers, not secrets. Presence is
+ * checked against the CONFIGURED OAuth scopes — never against a Meta approval state, which this system cannot
+ * observe.
+ *
+ * `business_management` and `instagram_manage_comments` are deliberately ABSENT: no shipped code path calls an
+ * endpoint requiring either (see META_SCOPE_MATRIX). Requesting a permission with no demonstrable use is an
+ * App Review rejection reason.
  */
 export const META_REQUIRED_SCOPES: readonly string[] = [
   "pages_show_list",
   "pages_read_engagement",
+  "pages_read_user_content",
   "pages_manage_engagement",
   "pages_manage_metadata",
   "leads_retrieval",
   "instagram_basic",
-  "instagram_manage_comments",
 ];
+
+/** Whether a scope is required, optional-but-supported, or has no code path at all. */
+export type MetaScopeVerdict = "keep" | "add" | "remove";
+
+export interface MetaScopeFact {
+  scope: string;
+  /**
+   * Present in this repository's own `META_READ_ONLY_SCOPES` constant. False does NOT mean unused — the
+   * production request is driven by `META_OAUTH_SCOPES`, and several genuinely-used scopes live only there.
+   */
+  requestedInCode: boolean;
+  /** Present in the operator-recorded production `META_OAUTH_SCOPES` (documented, not read from Vercel). */
+  requestedInProduction: boolean;
+  /** A shipped code path genuinely needs it. */
+  usedInCode: boolean;
+  /** The exact Graph endpoint or operation that needs it — or why nothing does. */
+  operation: string;
+  /**
+   * Decision for the PRODUCTION request: `keep` (used and already requested), `add` (used but not requested),
+   * `remove` (requested with no shipped code path). Acting on it is a manual dashboard change.
+   */
+  verdict: MetaScopeVerdict;
+}
+
+/**
+ * The operator-recorded production `META_OAUTH_SCOPES`. Vercel marks the variable *Sensitive*, so its value
+ * cannot be read programmatically; this constant records what the operator reported so the matrix can
+ * reconcile code against production. Changing production is a MANUAL dashboard action — never done from here.
+ */
+export const META_PRODUCTION_SCOPES_AS_REPORTED: readonly string[] = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_read_user_content",
+  "pages_manage_metadata",
+  "pages_manage_engagement",
+  "pages_messaging",
+  "business_management",
+  "instagram_basic",
+  "leads_retrieval",
+];
+
+/**
+ * The factual scope reconciliation. Every entry is derived from an actual Graph call (or the documented
+ * absence of one) in this repository — nothing is asserted to retain a permission.
+ */
+export const META_SCOPE_MATRIX: readonly MetaScopeFact[] = [
+  { scope: "pages_show_list", requestedInCode: true, requestedInProduction: true, usedInCode: true,
+    operation: "GET /me/accounts — Page discovery (meta/discovery.ts)", verdict: "keep" },
+  { scope: "pages_read_engagement", requestedInCode: true, requestedInProduction: true, usedInCode: true,
+    operation: "GET /{page-id}?fields=id,name + /{page-id}/feed post metadata (connector-transport.ts, meta-read-only-connector.ts)", verdict: "keep" },
+  { scope: "pages_read_user_content", requestedInCode: true, requestedInProduction: true, usedInCode: true,
+    operation: "GET /{page-id}/feed?fields=…comments{…,from{id,name}} — reads USER-authored comments on Page posts; pages_read_engagement alone covers only Page-owned content (meta-read-only-connector.ts)", verdict: "keep" },
+  { scope: "pages_manage_engagement", requestedInCode: false, requestedInProduction: true, usedInCode: true,
+    operation: "POST /{comment-id} is_hidden=true — the only live write (meta/facebook-hide.ts)", verdict: "keep" },
+  { scope: "pages_manage_metadata", requestedInCode: false, requestedInProduction: true, usedInCode: true,
+    operation: "GET/POST /{page-id}/subscribed_apps — Page-level leadgen webhook subscription (meta/leadgen-subscription.ts)", verdict: "keep" },
+  { scope: "leads_retrieval", requestedInCode: false, requestedInProduction: true, usedInCode: true,
+    operation: "GET /{leadgen_id} — lead detail fetch (sync/meta-leads.ts)", verdict: "keep" },
+  { scope: "instagram_basic", requestedInCode: true, requestedInProduction: true, usedInCode: true,
+    operation: "GET /{ig-user-id}?fields=id,username, /{ig-id}/media, /{media-id}/comments (connector-transport.ts, content-transport.ts)", verdict: "keep" },
+  { scope: "instagram_manage_comments", requestedInCode: true, requestedInProduction: false, usedInCode: false,
+    operation: "No shipped path. sync/instagram-moderation.ts only REPORTS whether it was granted; the only executor is a manual operator script.", verdict: "remove" },
+  { scope: "business_management", requestedInCode: true, requestedInProduction: true, usedInCode: false,
+    operation: "No shipped path. No Business-Manager-scoped endpoint is called anywhere in this repository.", verdict: "remove" },
+  { scope: "pages_messaging", requestedInCode: false, requestedInProduction: true, usedInCode: false,
+    operation: "No shipped path. No conversation/message endpoint exists; Tamanor never reads or sends Page messages.", verdict: "remove" },
+];
+
+export interface MetaScopeReconciliation {
+  /** Required by code but NOT present in the configured scopes — the connect flow will be degraded. */
+  missingRequired: string[];
+  /** Configured but with no shipped code path — an App Review rejection risk; remove from production. */
+  unsupportedExtras: string[];
+  /** Required and present. */
+  satisfied: string[];
+}
+
+/**
+ * Reconcile a configured scope list against the required set and the matrix. Missing-required and
+ * unsupported-extra are reported SEPARATELY so an operator can act on each independently.
+ */
+export function reconcileMetaScopes(configured: readonly string[]): MetaScopeReconciliation {
+  const have = new Set(configured);
+  const supported = new Set(META_SCOPE_MATRIX.filter((m) => m.usedInCode).map((m) => m.scope));
+  return {
+    missingRequired: META_REQUIRED_SCOPES.filter((s) => !have.has(s)),
+    unsupportedExtras: [...have].filter((s) => !supported.has(s)).sort(),
+    satisfied: META_REQUIRED_SCOPES.filter((s) => have.has(s)),
+  };
+}
 
 export interface MetaReviewReadiness {
   /** App id + secret + redirect URI all present. */
@@ -872,6 +967,10 @@ export interface MetaReviewReadiness {
   scopes: Array<{ scope: string; configured: boolean }>;
   /** Every required scope is configured. */
   allRequiredScopesConfigured: boolean;
+  /** Required by a shipped code path but absent from the configured scopes. */
+  missingRequiredScopes: string[];
+  /** Configured but backed by NO shipped code path — should be removed from the production request. */
+  unsupportedExtraScopes: string[];
   /**
    * OPERATOR ATTESTATIONS. These are claims the operator makes in configuration; this system cannot verify
    * them against Meta and NEVER infers approval. Default false.
@@ -891,6 +990,7 @@ export function getMetaReviewReadiness(source: NodeJS.ProcessEnv = process.env):
   const meta = getMetaConfig(source);
   const configured = new Set(getMetaOAuthScopes(source));
   const scopes = META_REQUIRED_SCOPES.map((scope) => ({ scope, configured: configured.has(scope) }));
+  const reconciliation = reconcileMetaScopes([...configured]);
   return {
     appCredentialsConfigured: meta.configured,
     oauthCallbackConfigured: Boolean(meta.redirectUri),
@@ -898,6 +998,8 @@ export function getMetaReviewReadiness(source: NodeJS.ProcessEnv = process.env):
     webhookSyncEnabled: meta.webhookSync,
     scopes,
     allRequiredScopesConfigured: scopes.every((s) => s.configured),
+    missingRequiredScopes: reconciliation.missingRequired,
+    unsupportedExtraScopes: reconciliation.unsupportedExtras,
     businessVerificationAttested: flagOn(source.META_BUSINESS_VERIFICATION_ATTESTED),
     advancedAccessAttested: flagOn(source.META_ADVANCED_ACCESS_ATTESTED),
   };

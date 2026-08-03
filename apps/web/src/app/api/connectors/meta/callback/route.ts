@@ -6,6 +6,7 @@ import {
   exchangeForLongLivedToken,
   discoverMetaAccounts,
   fetchMetaPermissions,
+  fetchMetaAuthorizingUserId,
   MetaGraphError,
   type MetaPermissionsResult,
 } from "@guardora/connectors";
@@ -148,6 +149,19 @@ export async function GET(req: NextRequest) {
   }
   const hasPagesShowList = perms.granted.includes("pages_show_list");
 
+  // 1c) META-EXTERNAL-ACCESS-V2 — the APP-SCOPED user id of the identity completing this flow. Resolved from
+  //     Graph with the just-exchanged user token (never from the browser) and carried into credential
+  //     authorization provenance at confirm time, so a later Meta deauthorize / data-deletion callback can
+  //     invalidate exactly the credentials this grant produced. Best-effort: if Graph does not return it the
+  //     connect still succeeds, the credential simply records no provenance and is not attributable.
+  let authorizingProviderUserId: string | null = null;
+  try {
+    authorizingProviderUserId = await fetchMetaAuthorizingUserId(token.accessToken, cfg.appSecret);
+    logDiag({ step: "me/id", ok: true, resolved: authorizingProviderUserId !== null });
+  } catch (err) {
+    logDiag({ step: "me/id", ok: false, ...metaErrFields(err) });
+  }
+
   // 2) Account discovery (uses the long-lived user token + appsecret_proof).
   let pages;
   try {
@@ -216,6 +230,8 @@ export async function GET(req: NextRequest) {
           tokenExpiresAt: expiresAt,
           // The scopes actually requested for this flow (env-driven, safe default).
           grantedScopes: meta.scopes,
+          // Opaque provider subject id only — never a token, never rendered.
+          authorizingProviderUserId,
           pages: pages as never,
           expiresAt: new Date(Date.now() + ONBOARDING_TTL_MS),
         },

@@ -21,6 +21,8 @@ import {
   META_PRIVACY_POLICY_PATH, META_DELETION_INSTRUCTIONS_PATH,
 } from "@guardora/config";
 import { resolveMetaAssetSelection, classifyMetaPageOnboarding } from "@guardora/core";
+import { META_SCOPE_MATRIX, META_PRODUCTION_SCOPES_AS_REPORTED, reconcileMetaScopes } from "@guardora/config";
+import { META_READ_ONLY_SCOPES } from "@guardora/connectors";
 
 let pass = 0, fail = 0;
 const check = (l: string, c: boolean, d = "") => { console.log(`${c ? "  ✓" : "  ✗"} ${l}${c ? "" : `  — ${d}`}`); c ? pass++ : fail++; };
@@ -109,31 +111,49 @@ console.log("\n2) deletion confirmation code — idempotent, non-reversible, PII
   check("2d) contains no identity or secret material", !a.includes(FB_USER) && !a.includes(APP_SECRET) && /^[a-f0-9]{24}$/.test(a));
 }
 
-console.log("\n3) deletion scope — only the authoritatively linked identity");
+console.log("\n3) revocation scope — everything that identity authorised, and nothing else");
 {
   const src = read("packages/db/src/meta-identity-deletion.ts");
-  check("3a) scoped by the unique (provider, providerAccountId) pair",
-    /provider: FACEBOOK_LOGIN_PROVIDER, providerAccountId: id/.test(src));
-  check("3b) deletes ONLY oauth account rows", /oAuthAccount\.deleteMany/.test(src) && (src.match(/deleteMany|delete\(/g) ?? []).length === 1);
-  check("3c) never touches tenants, users, memberships, Pages, credentials or contacts",
-    !/\b(tenant|user|membership|connectedAccount|providerCredential|businessContact)\.(delete|deleteMany|update|updateMany)/i.test(src));
-  check("3d) idempotent for an absent link (no throw, reports alreadyAbsent)", /alreadyAbsent: true/.test(src));
-  check("3e) empty/blank id is a no-op", /if \(!id\) return \{ removed: false, alreadyAbsent: true \}/.test(src));
+  check("3a) selects only ACTIVE Meta credentials whose CURRENT provenance is the requester",
+    /authorizingProviderUserId: id/.test(src) && /revokedAt: null/.test(src));
+  check("3b) revokes credentials rather than deleting them", /providerCredential\.updateMany/.test(src) && !/providerCredential\.delete/.test(src));
+  check("3c) downgrades the owning accounts so no provider call can use the withdrawn grant",
+    /connectionStatus: "needs_reconnect"/.test(src) && /tokenHealth: "revoked"/.test(src) && /PROVIDER_DEAUTHORIZED_REASON/.test(src));
+  check("3d) never deletes tenants, users, contacts, comments or connected accounts",
+    !/\b(tenant|user|businessContact|reputationItem|connectedAccount)\.(delete|deleteMany)/i.test(src));
+  check("3e) drops the login link only AFTER credentials are invalidated",
+    src.indexOf("providerCredential.updateMany") < src.indexOf("oAuthAccount.deleteMany"));
+  check("3f) idempotent for an unknown identity (no throw, reports alreadyClean)", /alreadyClean/.test(src));
+  check("3g) a blank id is a no-op", /if \(!id\) return \{ credentialsRevoked: 0/.test(src));
+  check("3h) a NULL provenance is never attributable", /authorizingProviderUserId: id/.test(src) && !/authorizingProviderUserId: null/.test(src.split("findMany")[1] ?? ""));
 
   for (const route of ["apps/web/src/app/api/meta/data-deletion/route.ts", "apps/web/src/app/api/meta/deauthorize/route.ts"]) {
     const r = read(route);
     const name = route.includes("deauthorize") ? "deauthorize" : "data-deletion";
-    check(`3f) ${name}: verifies signed_request BEFORE any deletion`,
-      r.indexOf("verifyMetaSignedRequest") < r.indexOf("deleteFacebookLoginIdentity"));
-    check(`3g) ${name}: rejects an unverified request with 400 and does not delete`,
-      /if \(!verified\.ok\)/.test(r) && /status: 400/.test(r));
-    check(`3h) ${name}: never logs the signed request, payload, secret or user id`,
-      !/emitOpsEvent\([^)]*verified\.userId/.test(r) && !/console\.(log|warn|error)/.test(r) && !/signed_request:\s*signed/.test(r));
-    check(`3i) ${name}: a storage failure is NOT reported as a completed deletion`, /503/.test(r));
+    const verifyCall = r.indexOf("= verifyMetaSignedRequest(");
+    const revokeCall = r.indexOf("await revokeMetaAuthorization(verified.userId)");
+    check(`3i) ${name}: verifies signed_request BEFORE any revocation`, verifyCall > 0 && revokeCall > verifyCall);
+    check(`3j) ${name}: rejects an unverified request with 400 and revokes nothing`,
+      /if \(!verified\.ok\)/.test(r) && r.indexOf('{ status: 400 }') < revokeCall);
+    check(`3k) ${name}: never logs the signed request, payload, secret, user id or counts`,
+      !/emitOpsEvent\([^)]*verified\.userId/.test(r) && !/console\.(log|warn|error)/.test(r)
+      && !/credentialsRevoked/.test(r) && !/accountsInvalidated/.test(r));
+    check(`3l) ${name}: a storage failure is NOT reported as completed`, /503/.test(r));
+    check(`3m) ${name}: performs the full credential invalidation`, /revokeMetaAuthorization\(verified\.userId\)/.test(r));
   }
   const del = read("apps/web/src/app/api/meta/data-deletion/route.ts");
-  check("3j) data-deletion returns exactly Meta's contract (url + confirmation_code)",
+  check("3n) data-deletion returns exactly Meta's contract (url + confirmation_code)",
     /url: abs\(/.test(del) && /confirmation_code: confirmationCode/.test(del));
+
+  const vault = read("packages/db/src/provider-credential-vault.ts");
+  check("3o) provenance is written server-side on every credential store/rotate",
+    /authorizingProviderUserId: input\.authorizingProviderUserId \?\? null/.test(vault));
+  const cbSrc = read("apps/web/src/app/api/connectors/meta/callback/route.ts");
+  check("3p) the authorizing identity is resolved from Graph, never from the browser",
+    /fetchMetaAuthorizingUserId\(token\.accessToken/.test(cbSrc) && !/searchParams\.get\("user_id"\)/.test(cbSrc));
+  const confirmSrc = read("apps/web/src/app/dashboard/accounts/meta/actions.ts");
+  check("3q) provenance reaches the credential from the server-held onboarding row, not the form",
+    /authorizingProviderUserId: row\.authorizingProviderUserId/.test(confirmSrc) && !/get\("authorizingProviderUserId"\)/.test(confirmSrc));
 }
 
 console.log("\n4) public routes reachable without authentication");
@@ -334,6 +354,65 @@ console.log("\n12) evidence pack contains no credential, secret or identifier");
   check("12d) evidence pack lists the manual dashboard actions", /Remaining manual Meta dashboard actions/i.test(doc));
   check("12e) evidence pack documents tenant isolation, vault-only tokens and allow-listed lead fields",
     /tenant-isolated/i.test(doc) && /vault-only/i.test(doc) && /allow-list/i.test(doc));
+}
+
+console.log("\n13) scope reconciliation is exact and truthful");
+{
+  const matrixScopes = new Set(META_SCOPE_MATRIX.map((m) => m.scope));
+  for (const scope of META_PRODUCTION_SCOPES_AS_REPORTED) {
+    check(`13a) matrix covers production scope ${scope}`, matrixScopes.has(scope));
+  }
+  check("13b) every required scope is in the matrix and marked used",
+    META_REQUIRED_SCOPES.every((s) => META_SCOPE_MATRIX.find((m) => m.scope === s)?.usedInCode === true));
+  check("13c) every matrix entry states an exact endpoint or why none exists",
+    META_SCOPE_MATRIX.every((m) => m.operation.trim().length > 20));
+  check("13d) a scope is `remove` if and only if no code path uses it",
+    META_SCOPE_MATRIX.every((m) => (m.verdict === "remove") === (m.usedInCode === false)));
+
+  // business_management: unsupported, and gone from the code defaults.
+  const bm = META_SCOPE_MATRIX.find((m) => m.scope === "business_management")!;
+  check("13e) business_management is classified unsupported", bm.usedInCode === false && bm.verdict === "remove");
+  check("13f) business_management is removed from the code default scope set", !META_READ_ONLY_SCOPES.includes("business_management"));
+  check("13g) business_management is not a required scope", !META_REQUIRED_SCOPES.includes("business_management"));
+  check("13h) no Business-Manager endpoint exists to justify it",
+    !/business_management/.test(read("packages/connectors/src/meta/discovery.ts")));
+
+  // pages_messaging: unsupported extra present only in production.
+  const pm = META_SCOPE_MATRIX.find((m) => m.scope === "pages_messaging")!;
+  check("13i) pages_messaging is classified unsupported", pm.usedInCode === false && pm.verdict === "remove");
+  check("13j) pages_messaging is absent from code defaults and required scopes",
+    !META_READ_ONLY_SCOPES.includes("pages_messaging") && !META_REQUIRED_SCOPES.includes("pages_messaging"));
+
+  // instagram_manage_comments: no shipped executor → not requested at all.
+  const imc = META_SCOPE_MATRIX.find((m) => m.scope === "instagram_manage_comments")!;
+  check("13k) instagram_manage_comments is unsupported and no longer requested in code",
+    imc.usedInCode === false && !META_READ_ONLY_SCOPES.includes("instagram_manage_comments") && !META_REQUIRED_SCOPES.includes("instagram_manage_comments"));
+
+  // pages_read_user_content: genuinely used → kept and added to code defaults.
+  const purc = META_SCOPE_MATRIX.find((m) => m.scope === "pages_read_user_content")!;
+  check("13l) pages_read_user_content is used and required",
+    purc.usedInCode === true && purc.verdict === "keep" && META_REQUIRED_SCOPES.includes("pages_read_user_content"));
+  check("13m) its endpoint really reads user comments",
+    /comments\.limit/.test(read("packages/connectors/src/adapters/meta-read-only-connector.ts")));
+
+  // Reconciliation against the reported production list.
+  const rec = reconcileMetaScopes(META_PRODUCTION_SCOPES_AS_REPORTED);
+  check("13n) required-but-missing production scopes reported truthfully (none today)",
+    rec.missingRequired.length === 0, rec.missingRequired.join(","));
+  check("13o) unsupported production extras reported truthfully",
+    rec.unsupportedExtras.join(",") === "business_management,pages_messaging", rec.unsupportedExtras.join(","));
+  check("13p) missing and extras are reported SEPARATELY", (() => {
+    const partial = reconcileMetaScopes(["pages_show_list", "pages_messaging"]);
+    return partial.missingRequired.length === 6 && partial.unsupportedExtras.join(",") === "pages_messaging";
+  })());
+  const readiness = getMetaReviewReadiness({
+    META_APP_ID: "x", META_APP_SECRET: "y", META_REDIRECT_URI: "https://e.test/cb",
+    META_OAUTH_SCOPES: META_PRODUCTION_SCOPES_AS_REPORTED.join(","), NODE_ENV: "test" as const,
+  } satisfies NodeJS.ProcessEnv);
+  check("13q) the admin readiness report surfaces both lists separately",
+    readiness.missingRequiredScopes.length === 0 && readiness.unsupportedExtraScopes.join(",") === "business_management,pages_messaging");
+  check("13r) the evidence pack documents ONLY the final justified scope set",
+    !/^\| `business_management` \| /m.test(read("docs/META_APP_REVIEW.md").split("## 11.")[0] ?? ""));
 }
 
 console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — meta external access readiness: ${pass} passed, ${fail} failed`);

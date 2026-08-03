@@ -32,28 +32,23 @@ without a session.
 
 ## 2. Permission-by-permission justification
 
-Every row is derived from an actual code path in this repository. Access levels are **not** asserted — this
-system cannot observe a Meta approval state, so approval must be read from the Meta App Dashboard.
+Final justified scope set. Every row is backed by an actual Graph call in this repository. Access levels are
+**not** asserted — this system cannot observe a Meta approval state.
 
-| Permission | Tamanor feature | Code path | Why required | Reviewer action that demonstrates it | Login-time or later |
+| Permission | Tamanor feature | Code path | Exact endpoint | Reviewer action | When |
 |---|---|---|---|---|---|
-| `public_profile` | Facebook Login for the connect flow | `packages/connectors/src/meta/oauth.ts` (`buildMetaAuthUrl`), `apps/web/src/app/api/connectors/meta/callback/route.ts` | Base permission for Facebook Login; without it the OAuth dialog cannot complete. | Step 5–6: the Facebook dialog appears and returns to Tamanor. | Login |
-| `pages_show_list` | Page discovery / asset selection | `packages/connectors/src/meta/discovery.ts` (`discoverMetaAccounts` → `/me/accounts`), classification in `apps/web/src/server/oauth/meta-callback-classify.ts` | Enumerates the Pages the person administers so they can choose which to connect. Declining it makes `/me/accounts` empty and the flow reports `missing_permission`. | Step 6: the Page selection screen lists the reviewer's Page. | Login |
-| `pages_read_engagement` | Comment monitoring (read-only sync) | `packages/sync/src/index.ts` (`runReadOnlySync`), `packages/connectors/src/meta/content-transport.ts` | Reads public comments on the connected Page so they can be classified and shown in the inbox. | Step 11 (variant): open Comments and see synced Page comments. | Login |
-| `pages_manage_engagement` | Comment moderation (hide) | `packages/ai/src/auto-protect.ts` (`FACEBOOK_HIDE_PERMISSION`), `packages/connectors/src/meta/facebook-hide.ts`, `packages/sync/src/meta-connector.ts` (`REQUIRED_PAGE_PERMISSION`) | The only live write action: hiding an abusive comment on the customer's own Page. Absence downgrades the account to `read_only` (`packages/db/src/dashboard-metrics.ts`). | Open an inbox item → the hide capability badge reads available; execute a hide if the operator enables live actions. | Login |
-| `pages_manage_metadata` | Page-level `leadgen` webhook subscription | `packages/connectors/src/meta/leadgen-subscription.ts` (`POST /{page-id}/subscribed_apps`), `packages/sync/src/meta-leadgen-subscription.ts` | Subscribing a Page to the app for the `leadgen` field requires this permission. Without it Meta delivers no lead webhooks and the Lead Ads Testing Tool reports "Selected page has no app associated with it". | Step 8: the Page shows **Connected and Lead Ads ready**; Step 10 shows the Page as verified. | Login |
-| `leads_retrieval` | Lead Ads ingestion | `packages/sync/src/meta-leads.ts` (`graphLeadFetcher` → `GET /{leadgen_id}`), `packages/sync/src/meta-leadgen-subscription.ts` (`LEADS_RETRIEVAL_PERMISSION`) | Reads the lead the customer's own form captured, so it appears in Contacts. Declining it leaves the Page connected for comments and the state reads `leads_permission_missing`. | Step 11: a test lead appears in Contacts. | Login (declinable — the flow degrades truthfully) |
-| `instagram_basic` | Instagram account connection | `packages/sync/src/instagram-moderation.ts` (`IG_READ_PERM`), `packages/connectors/src/meta/discovery.ts` | Resolves the Instagram Professional account linked to the Page and reads its basic profile so it can be listed and connected. | Step 6: the linked Instagram account is offered as a selectable asset. | Login |
-| `instagram_manage_comments` | Instagram comment moderation | `packages/sync/src/instagram-moderation.ts` (`IG_MODERATION_PERMS`) | Reads and moderates comments on the customer's own Instagram Professional account. | Open an Instagram account detail → the moderation capability state is shown truthfully. | Login |
-| `business_management` | Business-asset discovery | `packages/connectors/src/meta/oauth.ts` (`META_READ_ONLY_SCOPES`) | Present in the read-only scope constant for Business-owned asset discovery. | See §9 — flagged for verification before submission. | Login |
+| `public_profile` | Facebook Login | `meta/oauth.ts`, `connectors/meta/callback` | OAuth dialog | Dialog completes and returns | Login |
+| `pages_show_list` | Page discovery | `meta/discovery.ts` | `GET /me/accounts` | Reviewer's Page appears in selection | Login |
+| `pages_read_engagement` | Page metadata + post reads | `meta/connector-transport.ts`, `adapters/meta-read-only-connector.ts` | `GET /{page-id}?fields=id,name`, `GET /{page-id}/feed` post fields | Account health reads as connected | Login |
+| `pages_read_user_content` | Reading user comments on Page posts | `adapters/meta-read-only-connector.ts` | `GET /{page-id}/feed?fields=…comments{…,from{id,name}}` | Page comments appear in the inbox | Login |
+| `pages_manage_engagement` | Comment moderation (hide) | `meta/facebook-hide.ts`, `ai/auto-protect.ts` | `POST /{comment-id}` `is_hidden=true` | Hide capability badge available | Login |
+| `pages_manage_metadata` | Page `leadgen` webhook subscription | `meta/leadgen-subscription.ts` | `GET`/`POST /{page-id}/subscribed_apps` | Page shows Lead Ads ready | Login |
+| `leads_retrieval` | Lead Ads ingestion | `sync/meta-leads.ts` | `GET /{leadgen_id}` | Test lead appears in Contacts | Login (declinable — degrades to comments-only) |
+| `instagram_basic` | Instagram connection + comment reads | `meta/connector-transport.ts`, `meta/content-transport.ts` | `GET /{ig-user-id}?fields=id,username`, `GET /{ig-id}/media`, `GET /{media-id}/comments` | Linked Instagram account offered and connectable | Login |
 
-**Requested vs. used.** `META_OAUTH_SCOPES` in Vercel Production is marked *Sensitive* and its value cannot be
-read from the CLI or API. Before submission the operator must open the Meta App Dashboard / Vercel dashboard
-and confirm the configured list matches `META_REQUIRED_SCOPES` in `packages/config/src/index.ts`. The
-platform-admin readiness page (`/admin/meta-review`) reports per-scope configured booleans without printing the
-value.
-
----
+**Not requested.** `business_management`, `pages_messaging` and `instagram_manage_comments` are deliberately
+excluded — no shipped code path calls an endpoint requiring any of them. See §11 for the full reconciliation
+and the production changes that follow from it.
 
 ## 3. Reviewer steps
 
@@ -97,12 +92,12 @@ Record one continuous take, no cuts, screen only (never the credential entry its
 |---|---|
 | `public_profile` | The Facebook dialog completes and returns to Tamanor. |
 | `pages_show_list` | The reviewer's Page appears in the selection list. |
-| `pages_read_engagement` | Page comments appear in the Comments inbox after the first sync. |
+| `pages_read_engagement` | The account health reads as connected after the first sync. |
+| `pages_read_user_content` | User comments on Page posts appear in the Comments inbox. |
 | `pages_manage_engagement` | The hide capability badge on the account reads available. |
 | `pages_manage_metadata` | The Page reports *Lead Ads ready* / webhook verified on Connected platforms. |
 | `leads_retrieval` | The test lead appears in Contacts. |
 | `instagram_basic` | The linked Instagram account is offered and can be connected. |
-| `instagram_manage_comments` | The Instagram account's moderation state renders truthfully. |
 
 ---
 
@@ -159,31 +154,46 @@ Graph field list is pinned by `packages/sync/scripts/meta-lead-detail-fields.tes
 ## 8. Data deletion and deauthorization callbacks
 
 Both callbacks authenticate **solely** by verifying Meta's `signed_request` (HMAC-SHA256 over the encoded
-payload with the app secret, constant-time compare, algorithm pinned, `issued_at` freshness enforced) —
-`packages/connectors/src/meta/signed-request.ts`. A forged, unsigned, malformed, stale or wrong-secret request
-is rejected with `400` before any lookup or write.
+payload with the app secret, constant-time compare, algorithm pinned, bounded parsing, `issued_at` freshness
+enforced) — `packages/connectors/src/meta/signed-request.ts`. A forged, unsigned, malformed, stale or
+wrong-secret request is rejected with `400` before any lookup or write.
 
-**Deletion scope is exactly what the callback can prove.** The payload identifies an app-scoped user id whose
-only authoritative mapping is the Facebook login link `OAuthAccount(provider="facebook", providerAccountId)`,
-unique on that pair. That row is removed. Nothing else is:
+**Credential authorization provenance.** `ProviderCredential.authorizingProviderUserId` records the Meta
+app-scoped user id whose OAuth grant produced the credential **currently** stored for a Page or Instagram
+account. It is resolved server-side during the OAuth callback (`GET /me?fields=id`), never submitted by the
+browser, and rewritten on every store/rotate — so a reconnect by a different authorised person replaces it.
+It holds no token and no ciphertext.
 
-- the Tamanor user account is **not** deleted (they may sign in by password or Google and may belong to a
-  workspace shared with other people);
-- no tenant, brand, membership, connected Page, Instagram account, credential or business contact is touched.
+**What a callback does** (`revokeMetaAuthorization`, identical for deauthorize and data deletion):
 
-A connected Page records the Page, **not** which Meta user authorised it, so it can never be attributed to the
-requester; deleting one on this signal would destroy an unrelated organisation's integration. This limit is
-stated publicly on the deletion status page and enforced in
-`packages/db/src/meta-identity-deletion.ts`.
+1. revoke every **active** Meta credential whose current provenance is that identity;
+2. mark the owning connected accounts `needs_reconnect` / `tokenHealth=revoked` /
+   `requiresReconnectReason=provider_deauthorized`;
+3. only **then** remove the Facebook login link, so a crash mid-way can never leave a usable credential behind.
 
-Idempotency: the confirmation code is an HMAC of the identity, so a replayed callback returns the same code and
-removes nothing further. Auditing is via ops events carrying a bounded outcome label only — no app-scoped user
-id, e-mail, tenant or confirmation code.
+After step 1 `resolveMetaAccessToken` fails closed for those accounts — a revoked vault row is never downgraded
+to a legacy column read — so comment sync, moderation and Lead Ads fetching all stop. No provider HTTP is
+required; the invalidation is local and immediate.
+
+**Deliberately preserved**, because they are not the requester's data:
+
+- the tenant's business contacts and leads (captured by the Page's own forms), comments, reputation items and
+  audit history — claiming a Page-owned lead belongs to the authorising Facebook user would be false;
+- the connected account rows themselves (kept but unusable until an authorised person reconnects);
+- the Tamanor user account, memberships, tenants and brands;
+- any credential whose provenance is a **different** Meta identity, including a Page whose credential was later
+  replaced by another authorised person — a stale callback from the first person must not kill it.
+
+**Known limit.** Credentials written before provenance existed carry `NULL` and are not attributable to any
+identity; a callback never touches them. They can only be cleared by an in-product Disconnect. New and
+reconnected credentials all carry provenance.
+
+Idempotent and replay-safe: a repeat finds no active attributable credential and changes nothing. The
+confirmation code is an HMAC of the identity, so a replay returns the same code. Auditing is ops events with a
+bounded outcome label only — no app-scoped user id, e-mail, tenant, count or confirmation code.
 
 **Reviewer credentials** are never stored in this repository. They are entered directly into the Meta App
 Review form by the operator and rotated after review.
-
----
 
 ## 9. Remaining manual Meta dashboard actions
 
@@ -198,15 +208,41 @@ These cannot be performed or verified from this repository:
 7. Complete **Business Verification** for the owning Business portfolio, then set
    `META_BUSINESS_VERIFICATION_ATTESTED=true`.
 8. Request **Advanced Access** for each permission in §2, then set `META_ADVANCED_ACCESS_ATTESTED=true`.
-9. Decide whether `business_management` is genuinely required — see the blocker in §2/§10.
-10. Provide reviewer credentials and the screencast; submit.
+9. **Remove `business_management` and `pages_messaging` from production `META_OAUTH_SCOPES`** — neither has a
+   code path (see §11). Documented here only; Vercel was not modified.
+10. Register the deletion/deauthorize URLs in the app's Facebook Login settings (items 3–4 above).
+11. Provide reviewer credentials and the screencast; submit.
 
-## 10. Open items flagged by the audit
+## 10. Open items
 
-- **`business_management`** appears only in the `META_READ_ONLY_SCOPES` constant
-  (`packages/connectors/src/meta/oauth.ts`). No code path in this repository calls a Business-Manager-scoped
-  endpoint that requires it. Meta rejects submissions for permissions without a demonstrable use, so either a
-  concrete use must be demonstrated or the scope must be dropped from the request. **No scope was removed in
-  this checkpoint** — this is reported, not acted on.
-- The Production values of `META_APP_ID` and `META_OAUTH_SCOPES` are *Sensitive* in Vercel and could not be
-  read programmatically; §9 items 1–2 remain operator verification steps.
+- Production `META_APP_ID` and `META_OAUTH_SCOPES` are marked *Sensitive* in Vercel and cannot be read
+  programmatically. The production scope list in §11 is **operator-reported**, and items 1–2 of §9 remain
+  operator verification steps.
+- Pre-provenance credentials (`authorizingProviderUserId IS NULL`) are not attributable to a Meta identity and
+  are therefore never invalidated by a callback — see the known limit in §8.
+
+## 11. Scope reconciliation
+
+Source of truth: `META_SCOPE_MATRIX` in `packages/config/src/index.ts`, asserted by
+`meta-external-access:test`. "In code" means this repository's own `META_READ_ONLY_SCOPES` constant; the
+production request is driven by `META_OAUTH_SCOPES`, so several genuinely-used scopes appear only there.
+
+| Scope | In code | In production | Used by code | Exact endpoint / operation | Decision |
+|---|---|---|---|---|---|
+| `pages_show_list` | yes | yes | yes | `GET /me/accounts` — Page discovery | **keep** |
+| `pages_read_engagement` | yes | yes | yes | `GET /{page-id}?fields=id,name`; `/{page-id}/feed` post metadata | **keep** |
+| `pages_read_user_content` | yes (added) | yes | yes | `GET /{page-id}/feed?fields=…comments{…,from{id,name}}` — user-authored comments; `pages_read_engagement` alone covers only Page-owned content | **keep** |
+| `pages_manage_engagement` | no | yes | yes | `POST /{comment-id}` `is_hidden=true` — the only live write | **keep** |
+| `pages_manage_metadata` | no | yes | yes | `GET`/`POST /{page-id}/subscribed_apps` — leadgen subscription | **keep** |
+| `leads_retrieval` | no | yes | yes | `GET /{leadgen_id}` — lead detail fetch | **keep** |
+| `instagram_basic` | yes | yes | yes | `GET /{ig-user-id}?fields=id,username`; `/{ig-id}/media`; `/{media-id}/comments` | **keep** |
+| `business_management` | **removed** | yes | **no** | No Business-Manager endpoint is called anywhere | **remove from production** |
+| `pages_messaging` | no | yes | **no** | No conversation/message endpoint exists; Tamanor never reads or sends Page messages | **remove from production** |
+| `instagram_manage_comments` | **removed** | no | **no** | Only a status reporter (`sync/instagram-moderation.ts`) plus a manual operator script — no shipped executor | **not requested** |
+
+Reconciliation of the operator-reported production list against the required set:
+
+- **Missing required:** none — all seven required scopes are present in production.
+- **Unsupported extras:** `business_management`, `pages_messaging` → remove (manual dashboard action, §9 item 9).
+
+Instagram comment **moderation** is not part of the submission. Instagram **reading** (`instagram_basic`) is.

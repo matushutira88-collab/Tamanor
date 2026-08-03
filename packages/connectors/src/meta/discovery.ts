@@ -81,3 +81,23 @@ export async function fetchMetaPermissions(
   }
   return { granted, declined };
 }
+
+/**
+ * META-EXTERNAL-ACCESS-V2 — read the APP-SCOPED user id of the identity that completed this OAuth flow
+ * (`GET /me?fields=id`). This is the only value Meta's deauthorize / data-deletion callbacks send, so it is
+ * what credential authorization provenance must be keyed on.
+ *
+ * Resolved SERVER-SIDE from the provider with the just-exchanged user token — never accepted from the browser.
+ * The id is an opaque per-app subject identifier: it is not a token, is never rendered, logged or placed in a
+ * URL, and reveals nothing about the person outside this app. Returns null when Graph does not supply it; the
+ * caller then stores no provenance and the credential is simply not attributable to any identity.
+ */
+export async function fetchMetaAuthorizingUserId(
+  userAccessToken: string,
+  appSecret?: string,
+): Promise<string | null> {
+  const client = new MetaGraphClient(userAccessToken, appSecret);
+  const me = await client.get<{ id?: string }>("me", { fields: "id" });
+  const id = typeof me?.id === "string" ? me.id.trim() : "";
+  return id.length > 0 && id.length <= 64 ? id : null;
+}

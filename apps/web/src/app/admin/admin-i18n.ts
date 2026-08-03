@@ -19,7 +19,7 @@ export interface AdminCopy {
     title: string; desc: string; note: string;
     appCredentials: string; oauthCallback: string; webhookVerifyToken: string; webhookSync: string;
     privacyRoute: string; deletionRoute: string; deauthRoute: string; deletionInstructions: string;
-    scopes: string; scopesAll: string;
+    scopes: string; scopesAll: string; scopesMissing: string; scopesUnsupported: string;
     businessVerification: string; advancedAccess: string; attestationNote: string;
     yes: string; no: string;
   };
@@ -106,6 +106,7 @@ export const ADMIN_COPY: Record<Locale, AdminCopy> = {
       appCredentials: "App credentials configured", oauthCallback: "OAuth callback configured", webhookVerifyToken: "Webhook verify token configured", webhookSync: "Webhook processing enabled",
       privacyRoute: "Privacy policy route", deletionRoute: "Data deletion callback", deauthRoute: "Deauthorize callback", deletionInstructions: "Deletion instructions route",
       scopes: "Required permissions configured", scopesAll: "All required permissions configured",
+      scopesMissing: "Required permissions missing from configuration", scopesUnsupported: "Configured permissions with no code path (remove)",
       businessVerification: "Business verification (operator attestation)", advancedAccess: "Advanced Access (operator attestation)",
       attestationNote: "Attestations are operator-set configuration flags, not verified Meta states.",
       yes: "Yes", no: "No",
@@ -132,6 +133,7 @@ export const ADMIN_COPY: Record<Locale, AdminCopy> = {
       appCredentials: "Poverenia aplikácie nakonfigurované", oauthCallback: "OAuth callback nakonfigurovaný", webhookVerifyToken: "Overovací token webhooku nakonfigurovaný", webhookSync: "Spracovanie webhookov zapnuté",
       privacyRoute: "Trasa zásad ochrany osobných údajov", deletionRoute: "Callback na vymazanie údajov", deauthRoute: "Callback na zrušenie autorizácie", deletionInstructions: "Trasa s pokynmi na vymazanie",
       scopes: "Požadované oprávnenia nakonfigurované", scopesAll: "Všetky požadované oprávnenia nakonfigurované",
+      scopesMissing: "Požadované oprávnenia chýbajúce v konfigurácii", scopesUnsupported: "Nakonfigurované oprávnenia bez použitia v kóde (odstrániť)",
       businessVerification: "Overenie firmy (vyhlásenie prevádzkovateľa)", advancedAccess: "Rozšírený prístup (vyhlásenie prevádzkovateľa)",
       attestationNote: "Vyhlásenia sú konfiguračné príznaky nastavené prevádzkovateľom, nie overené stavy zo strany Meta.",
       yes: "Áno", no: "Nie",
@@ -158,6 +160,7 @@ export const ADMIN_COPY: Record<Locale, AdminCopy> = {
       appCredentials: "App-Zugangsdaten konfiguriert", oauthCallback: "OAuth-Callback konfiguriert", webhookVerifyToken: "Webhook-Verifizierungstoken konfiguriert", webhookSync: "Webhook-Verarbeitung aktiviert",
       privacyRoute: "Route der Datenschutzerklärung", deletionRoute: "Callback zur Datenlöschung", deauthRoute: "Callback zur Deautorisierung", deletionInstructions: "Route mit Löschanweisungen",
       scopes: "Erforderliche Berechtigungen konfiguriert", scopesAll: "Alle erforderlichen Berechtigungen konfiguriert",
+      scopesMissing: "In der Konfiguration fehlende erforderliche Berechtigungen", scopesUnsupported: "Konfigurierte Berechtigungen ohne Codepfad (entfernen)",
       businessVerification: "Unternehmensverifizierung (Betreiberzusicherung)", advancedAccess: "Erweiterter Zugriff (Betreiberzusicherung)",
       attestationNote: "Zusicherungen sind vom Betreiber gesetzte Konfigurationsflags, keine verifizierten Meta-Zustände.",
       yes: "Ja", no: "Nein",

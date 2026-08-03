@@ -75,6 +75,12 @@ export interface StoreCredentialInput {
   tokenType?: string | null;
   expiresAt?: Date | null;
   scopes?: string[];
+  /**
+   * META-EXTERNAL-ACCESS-V2 — the provider app-scoped user id whose OAuth grant produced this secret.
+   * SERVER-SIDE ONLY: it is read from the provider during the OAuth callback and must never originate from a
+   * browser submission. Opaque subject id only — never a token, never rendered, never logged.
+   */
+  authorizingProviderUserId?: string | null;
 }
 
 export interface CredentialQuery {
@@ -124,6 +130,9 @@ export async function storeProviderCredential(input: StoreCredentialInput, opts?
   const data = {
     ciphertext: enc.ciphertext, iv: enc.iv, authTag: enc.authTag, wrappedDataKey: enc.wrappedDataKey,
     keyProvider: enc.keyProvider, keyVersion: enc.keyVersion, formatVersion: enc.formatVersion,
+    // META-EXTERNAL-ACCESS-V2 — whose OAuth grant produced the secret being written now. Set on every
+    // store/rotate so a reconnect by another authorised person REPLACES the provenance. Never a token.
+    authorizingProviderUserId: input.authorizingProviderUserId ?? null,
     tokenType: input.tokenType ?? null, expiresAt: input.expiresAt ?? null, scopes: input.scopes ?? [],
     fingerprint: enc.fingerprint,
   };

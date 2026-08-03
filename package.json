@@ -174,6 +174,7 @@
     "meta-lead-fetch-classification:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-lead-fetch-classification.test.ts",
     "meta-lead-detail-fields:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-lead-detail-fields.test.ts",
     "meta-lead-multi-page:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-lead-multi-page-readiness.test.ts",
+    "meta-authorization-revocation:test": "pnpm --filter @guardora/worker exec tsx ../../packages/db/scripts/meta-authorization-revocation.test.ts",
     "meta-external-access:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/meta-external-access.test.ts",
     "meta-lead-onboarding:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/meta-lead-onboarding.test.ts",
     "business-contacts-source:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/business-contacts-source.test.ts",

@@ -69,6 +69,13 @@ export interface MetaLinkInput {
   pageAccessToken: string;
   tokenType: string | null;
   tokenExpiresAt: Date | null;
+  /**
+   * META-EXTERNAL-ACCESS-V2 — the Meta app-scoped user id whose OAuth grant produced `pageAccessToken`,
+   * resolved SERVER-SIDE during the OAuth callback (never submitted by the browser). Stored as the
+   * credential's authorization provenance so a later deauthorize / data-deletion callback can invalidate
+   * exactly the credentials this grant produced. Null when Graph did not supply it.
+   */
+  authorizingProviderUserId?: string | null;
   /** DEPRECATED (V1.59): the legacy bundle connection-limit. IGNORED — the monitored-account limit is
    *  now enforced per-account at monitoring activation (enableAccountMonitoringWithinLimit). Kept only
    *  for source compatibility with existing callers; passing it has no effect. */
@@ -198,6 +205,7 @@ export async function linkMetaAssets(input: MetaLinkInput): Promise<MetaLinkResu
             tokenType: input.tokenType,
             expiresAt: input.tokenExpiresAt,
             scopes: input.scopes,
+            authorizingProviderUserId: input.authorizingProviderUserId ?? null,
           }, { db: tx });
           const check = await resolveProviderCredential(
             { tenantId, provider: BusinessProvider.meta, purpose: ProviderCredentialPurpose.long_lived_token, connection: { connectedAccountId: t.id } },

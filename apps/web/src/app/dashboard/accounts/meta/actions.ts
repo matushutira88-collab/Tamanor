@@ -92,6 +92,8 @@ export async function confirmMetaSelection(
         // linkMetaAssets and NEVER written to a legacy ConnectedAccount token column.
         pageAccessToken: page.pageAccessToken,
         tokenType: row.tokenType, tokenExpiresAt: row.tokenExpiresAt,
+        // Server-resolved during the OAuth callback — never a client submission.
+        authorizingProviderUserId: row.authorizingProviderUserId,
       });
     } catch (e) {
       if (e instanceof EntitlementError && e.reason === "brand_platform_limit_reached") {

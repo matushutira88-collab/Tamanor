@@ -880,6 +880,10 @@ model MetaOnboardingSession {
   tokenType       String?
   tokenExpiresAt  DateTime?
   grantedScopes   String[]
+  // META-EXTERNAL-ACCESS-V2 — the app-scoped Meta user id of the person who completed THIS OAuth flow, read
+  // server-side from the Graph API during the callback. Carried to credential provenance at confirm time.
+  // Never accepted from the browser and never rendered. Null when Graph did not return it.
+  authorizingProviderUserId String?
   // Discovered pages (JSON) incl. per-page access tokens — server-only secrets.
   pages           Json
   createdAt       DateTime  @default(now())
@@ -4218,6 +4222,13 @@ model ProviderCredential {
   expiresAt            DateTime?
   scopes               String[]                  @default([])
   fingerprint          String
+  // META-EXTERNAL-ACCESS-V2 — CREDENTIAL AUTHORIZATION PROVENANCE. The provider (Meta) app-scoped user id of
+  // the identity whose OAuth grant produced the credential CURRENTLY stored in this row. Written server-side
+  // only, on every store/rotate, so a reconnect by a different authorised person REPLACES it. Holds no token
+  // and no ciphertext — an opaque provider subject id used solely to answer "whose grant is this credential?"
+  // when Meta sends a deauthorize / data-deletion callback. NULL for rows written before this field existed
+  // (and for non-Meta providers): those are NOT attributable and are therefore never invalidated by a callback.
+  authorizingProviderUserId String?
   rotatedAt            DateTime?
   revokedAt            DateTime?
   createdAt            DateTime                  @default(now())
@@ -4228,6 +4239,8 @@ model ProviderCredential {
   @@index([tenantId, provider, purpose])
   @@index([connectedAccountId])
   @@index([businessConnectionId])
+  // Callback lookup: "every active credential currently authorised by this provider identity".
+  @@index([provider, authorizingProviderUserId])
   @@map("provider_credentials")
 }
 
