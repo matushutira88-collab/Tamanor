@@ -1,3 +1,7 @@
+import { projectStoredClassification, type StoredClassificationRow } from "@guardora/ai";
+
+/** Canonical customer-visible projection for one exported row. */
+const exportView = (r: StoredClassificationRow) => projectStoredClassification(r);
 import { planEntitlements } from "@guardora/core";
 import { withTenant } from "./repositories";
 import { getUsageSummary } from "./usage-repo";
@@ -33,7 +37,7 @@ async function exportComments(tenantId: string, from: Date, to: Date, riskyOnly:
     orderBy: [{ createdAt: "desc" }],
     take: EXPORT_MAX_ROWS + 1,
     select: {
-      createdAt: true, platform: true, brandId: true, riskLevel: true, riskCategories: true, sentiment: true, status: true,
+      createdAt: true, platform: true, brandId: true, riskLevel: true, riskCategories: true, aiDiagnostics: true, sentiment: true, status: true,
       contentItem: { select: { text: true, permalink: true, publishedAt: true } },
     },
   }));
@@ -41,7 +45,12 @@ async function exportComments(tenantId: string, from: Date, to: Date, riskyOnly:
   return {
     headers: ["created_at", "platform", "brand_id", "risk_level", "risk_categories", "sentiment", "status", "published_at", "permalink", "text"],
     rows: rows.slice(0, EXPORT_MAX_ROWS).map((r) => [
-      r.createdAt.toISOString(), r.platform, r.brandId, r.riskLevel, r.riskCategories.join("|"), r.sentiment, r.status,
+      // Customer-visible export mirrors the UI: confirmed categories and the safe-capped level only.
+      // An unverified legacy accusation is exported as `requires_review`, never as a fact.
+      r.createdAt.toISOString(), r.platform, r.brandId,
+      exportView(r).riskLevel,
+      exportView(r).state === "review_required" ? "requires_review" : exportView(r).categories.join("|"),
+      r.sentiment, r.status,
       r.contentItem?.publishedAt?.toISOString() ?? "", r.contentItem?.permalink ?? "", r.contentItem?.text ?? "",
     ]),
     truncated,

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PLATFORM_META, Platform, RiskLevel, Sentiment } from "@guardora/core";
+import { projectStoredClassification } from "@guardora/ai";
 import { PageHeader, Card, SectionHeader, StatCard, Badge, EmptyState, Tabs } from "@/components/dashboard/ui";
 import { TrendChart, BarList } from "@/components/dashboard/trend-chart";
 import { PlatformBreakdown } from "@/components/dashboard/platform-icon";
@@ -144,12 +145,13 @@ const EMOTION_TONE: Record<string, string> = { Anger: "danger", Anxiety: "warn",
 
 async function EmotionsTab({ where }: { where: Where }) {
   const t = await getT();
-  const items = await withTenant(where.tenantId, (db) => db.reputationItem.findMany({ where, select: { riskCategories: true }, take: 1000 }));
+  const items = await withTenant(where.tenantId, (db) => db.reputationItem.findMany({ where, select: { riskLevel: true, riskCategories: true, aiDiagnostics: true }, take: 1000 }));
   if (items.length === 0) {
     return <EmptyState title={t.dash.noEmotion} body={t.dash.noEmotionBody} action={cta(t.dash.connectAccount)} />;
   }
   const counts = new Map<string, number>([["Anger", 0], ["Anxiety", 0], ["Sadness", 0], ["Happiness", 0], ["Warmth", 0]]);
-  for (const it of items) for (const c of it.riskCategories) {
+  // Confirmed categories only — legacy/unverified accusations never inflate a topic tally.
+  for (const it of items) for (const c of projectStoredClassification(it as never).categories) {
     const emo = EMOTION_MAP[c];
     if (emo) counts.set(emo, (counts.get(emo) ?? 0) + 1);
   }
@@ -214,9 +216,9 @@ async function PostsTab({ where }: { where: Where }) {
 /* ----------------------------------------------------------------- Topics */
 async function TopicsTab({ where }: { where: Where }) {
   const t = await getT();
-  const items = await withTenant(where.tenantId, (db) => db.reputationItem.findMany({ where, select: { riskCategories: true }, take: 1000 }));
+  const items = await withTenant(where.tenantId, (db) => db.reputationItem.findMany({ where, select: { riskLevel: true, riskCategories: true, aiDiagnostics: true }, take: 1000 }));
   const counts = new Map<string, number>();
-  for (const it of items) for (const c of it.riskCategories) counts.set(c, (counts.get(c) ?? 0) + 1);
+  for (const it of items) for (const c of projectStoredClassification(it as never).categories) counts.set(c, (counts.get(c) ?? 0) + 1);
   const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([label, value]) => ({ label: withEmoji("category", label, tEnum(t, "category", label)), value }));
   if (rows.length === 0) {
     return <EmptyState title={t.dash.noTopics} body={t.dash.noTopicsBody} action={cta(t.dash.connectAccount)} />;

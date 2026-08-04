@@ -452,6 +452,162 @@ export function isLegacyUnverifiedVerdict(
   return hasAccusation && (gateDecisions ?? []).length === 0;
 }
 
+/* ------------------------------------------------------------------ canonical customer projection */
+
+/** The stored shape every customer surface reads. Only these columns are needed to interpret a verdict. */
+export interface StoredClassificationRow {
+  riskLevel: string;
+  riskCategories: readonly string[] | null | undefined;
+  riskConfidence?: number | null;
+  /** Raw `aiDiagnostics` JSON exactly as persisted. Malformed values fail CLOSED. */
+  aiDiagnostics?: unknown;
+  /** The persisted Auto-Protect decision for this item, if one exists. */
+  autoProtect?: { decision: string; matchedCategory: string } | null;
+}
+
+/** Customer-visible Auto-Protect state. A stale decision is never presented as actionable. */
+export interface CustomerAutoProtectView {
+  state: "confirmed" | "stale_unverified" | "none";
+  /** Withheld (null) unless the source classification is confirmed. */
+  decision: string | null;
+  matchedCategory: string | null;
+  /** May this decision be counted in affirmative would_auto_hide totals/samples? */
+  countsTowardWouldAutoHide: boolean;
+  /** Stored decision rests on an unverified verdict and can only be cleared by re-analysis. */
+  requiresReanalysis: boolean;
+}
+
+/**
+ * THE single authoritative interpretation of a stored reputation classification. Every customer-facing
+ * badge, count, chart, export and API response must go through this — no surface may re-derive the
+ * evidence gate on its own, or the fail-open bug returns on whichever page was forgotten.
+ */
+export interface CustomerClassificationProjection {
+  state: "confirmed" | "review_required" | "no_issue";
+  /** Categories the customer may see. Empty when nothing is confirmed. */
+  categories: string[];
+  /** Severity the customer may see (safe-capped for anything unconfirmed). */
+  riskLevel: string;
+  legacyUnverified: boolean;
+  requiresReview: boolean;
+  /** May this row count toward confirmed accusatory-category totals (profanity/scam/threat/…)? */
+  eligibleForCategoryTotals: boolean;
+  /** May this row count toward confirmed high/critical totals? */
+  eligibleForSeverityTotals: boolean;
+  autoProtect: CustomerAutoProtectView;
+  /** ADMIN-ONLY raw stored values, preserved verbatim. Never render these on a customer surface. */
+  stored: {
+    riskLevel: string;
+    categories: string[];
+    autoProtectDecision: string | null;
+    matchedCategory: string | null;
+  };
+}
+
+/**
+ * Read the evidence-gate decisions out of a raw `aiDiagnostics` value. Anything unexpected — null, a
+ * string, a missing `evidenceGate`, a non-array `decisions`, entries without a category/verdict — is
+ * treated as NO GATE, which fails closed into review_required. Malformed diagnostics must never be
+ * mistaken for confirmation.
+ */
+export function readEvidenceGateDecisions(aiDiagnostics: unknown): { category: string; verdict: string }[] {
+  if (!aiDiagnostics || typeof aiDiagnostics !== "object" || Array.isArray(aiDiagnostics)) return [];
+  const gate = (aiDiagnostics as { evidenceGate?: unknown }).evidenceGate;
+  if (!gate || typeof gate !== "object" || Array.isArray(gate)) return [];
+  const raw = (gate as { decisions?: unknown }).decisions;
+  if (!Array.isArray(raw)) return [];
+  const out: { category: string; verdict: string }[] = [];
+  for (const d of raw) {
+    if (!d || typeof d !== "object") continue;
+    const { category, verdict } = d as { category?: unknown; verdict?: unknown };
+    if (typeof category !== "string" || typeof verdict !== "string") continue;
+    if (!category || !verdict) continue;
+    out.push({ category, verdict });
+  }
+  return out;
+}
+
+const HIGHISH = new Set(["high", "critical"]);
+
+/** Project a stored row into the one customer-visible truth. Pure; safe to call per row. */
+export function projectStoredClassification(row: StoredClassificationRow): CustomerClassificationProjection {
+  const storedCategories = [...(row.riskCategories ?? [])];
+  const decisions = readEvidenceGateDecisions(row.aiDiagnostics);
+  const display = customerClassificationDisplay(storedCategories, decisions);
+  const legacyUnverified = isLegacyUnverifiedVerdict(storedCategories, decisions);
+  const requiresReview = display.kind === "review_required";
+  const riskLevel = customerVisibleRiskLevel(row.riskLevel, display);
+
+  const state: CustomerClassificationProjection["state"] =
+    display.kind === "confirmed_category" ? "confirmed"
+      : display.kind === "review_required" ? "review_required"
+        : "no_issue";
+
+  // A confirmed row shows exactly the categories the gate stands behind (or its descriptive category).
+  const categories = display.kind === "confirmed_category"
+    ? storedCategories.filter((c) => !NON_ACCUSATORY.has(c)
+      && (!EVIDENCE_REQUIRED_CATEGORIES.has(c) || decisions.some((d) => d.category === c && d.verdict === "confirmed")))
+    : [];
+
+  // Aggregate eligibility. Unconfirmed rows are excluded from confirmed totals but are NOT clean —
+  // callers must count them under "requires review" instead of dropping them.
+  const eligibleForCategoryTotals = state === "confirmed";
+  const eligibleForSeverityTotals = state === "confirmed" && HIGHISH.has(row.riskLevel);
+
+  const ap = row.autoProtect ?? null;
+  const autoProtect: CustomerAutoProtectView = ap === null
+    ? { state: "none", decision: null, matchedCategory: null, countsTowardWouldAutoHide: false, requiresReanalysis: false }
+    : state === "confirmed"
+      ? {
+        state: "confirmed", decision: ap.decision, matchedCategory: ap.matchedCategory,
+        countsTowardWouldAutoHide: ap.decision === "would_auto_hide", requiresReanalysis: false,
+      }
+      : {
+        // Source classification is unconfirmed ⇒ the stored decision rests on nothing. Withhold the
+        // decision AND the matched category (it is the same accusation by another name), and expose no
+        // approval/execution affordance.
+        state: "stale_unverified", decision: null, matchedCategory: null,
+        countsTowardWouldAutoHide: false, requiresReanalysis: true,
+      };
+
+  return {
+    state, categories, riskLevel, legacyUnverified, requiresReview,
+    eligibleForCategoryTotals, eligibleForSeverityTotals, autoProtect,
+    stored: {
+      riskLevel: row.riskLevel,
+      categories: storedCategories,
+      autoProtectDecision: ap?.decision ?? null,
+      matchedCategory: ap?.matchedCategory ?? null,
+    },
+  };
+}
+
+/** Bounded tally helper: confirmed category counts plus a separate requires-review bucket. */
+export interface ProjectedTally {
+  confirmed: Map<string, number>;
+  requiresReview: number;
+  legacyUnverified: number;
+  confirmedHighOrCritical: number;
+  total: number;
+}
+
+/**
+ * Tally an ALREADY-BOUNDED page of rows through the projection. This never widens a query — callers
+ * keep their existing `take`/cursor — it only changes how the fetched rows are counted.
+ */
+export function tallyProjected(rows: readonly StoredClassificationRow[]): ProjectedTally {
+  const confirmed = new Map<string, number>();
+  let requiresReview = 0, legacyUnverified = 0, confirmedHighOrCritical = 0;
+  for (const row of rows) {
+    const p = projectStoredClassification(row);
+    if (p.eligibleForCategoryTotals) for (const c of p.categories) confirmed.set(c, (confirmed.get(c) ?? 0) + 1);
+    if (p.eligibleForSeverityTotals) confirmedHighOrCritical++;
+    if (p.requiresReview) requiresReview++;
+    if (p.legacyUnverified) legacyUnverified++;
+  }
+  return { confirmed, requiresReview, legacyUnverified, confirmedHighOrCritical, total: rows.length };
+}
+
 /** Severity a customer may be shown. An unconfirmed item is never presented at a definitive level. */
 export function customerVisibleRiskLevel(level: string, display: CustomerClassificationDisplay): string {
   if (display.kind === "confirmed_category") return level;

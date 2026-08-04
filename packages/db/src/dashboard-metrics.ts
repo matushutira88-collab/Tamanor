@@ -1,3 +1,7 @@
+import { projectStoredClassification } from "@guardora/ai";
+
+/** Bounded scan window for the risk-by-category dashboard card. */
+const RISK_CATEGORY_SCAN_CAP = 2000;
 /**
  * V1.59 phase 2 — REAL, tenant-scoped, batched dashboard + watched-account metrics. Every number comes
  * from the database (never fabricated); a value the DB cannot supply is simply absent (the UI shows
@@ -73,10 +77,15 @@ export async function getRiskByCategory(tenantId: string, since: Date, brandWher
   return withTenant(tenantId, async (db) => {
     const rows = await db.reputationItem.findMany({
       where: { tenantId, ...brandWhere, createdAt: { gte: since }, riskLevel: { in: ["high", "critical"] as never } },
-      select: { riskCategories: true },
+      select: { riskLevel: true, riskCategories: true, aiDiagnostics: true },
+      // Bounded: this tally is a dashboard card, not an audit. Previously unbounded.
+      take: RISK_CATEGORY_SCAN_CAP,
     });
+    // CONFIRMED categories only — a legacy/unverified accusation must not inflate a risk card.
     const tally = new Map<string, number>();
-    for (const r of rows) for (const c of r.riskCategories ?? []) tally.set(c, (tally.get(c) ?? 0) + 1);
+    for (const r of rows) {
+      for (const c of projectStoredClassification(r as never).categories) tally.set(c, (tally.get(c) ?? 0) + 1);
+    }
     return [...tally.entries()].map(([category, count]) => ({ category, count })).sort((a, b) => b.count - a.count);
   });
 }

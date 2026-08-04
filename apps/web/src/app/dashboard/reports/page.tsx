@@ -1,4 +1,8 @@
 import Link from "next/link";
+import { projectStoredClassification } from "@guardora/ai";
+
+/** Bounded scan window for verifying stored Auto-Protect decisions against their source classification. */
+const AUTO_PROTECT_SCAN_CAP = 200;
 import {
   PLATFORM_META,
   Platform,
@@ -83,13 +87,39 @@ export default async function ReportsPage() {
   const attention = accounts.filter((a) => a.health === ConnectorHealth.Degraded || a.health === ConnectorHealth.Error).length;
 
   // Auto-Protect report (shadow mode — no live action).
-  const [apByDecision, apByCategory, apWouldHideItems, apPreservedItems] = await withTenant(session.tenantId, (db) => Promise.all([
+  const [apByDecision, apByCategory, apWouldHideItemsRaw, apPreservedItems] = await withTenant(session.tenantId, (db) => Promise.all([
     db.autoProtectDecision.groupBy({ by: ["decision"], where, _count: true }),
     db.autoProtectDecision.groupBy({ by: ["matchedCategory"], where, _count: true }),
-    db.autoProtectDecision.findMany({ where: { ...where, decision: "would_auto_hide" }, orderBy: { createdAt: "desc" }, take: 5, select: { matchedCategory: true, confidence: true, itemId: true } }),
+    // Bounded over-fetch: stale decisions (source classification unconfirmed) are filtered out below,
+    // so we read a bounded window and then slice back to the displayed sample size.
+    db.autoProtectDecision.findMany({ where: { ...where, decision: "would_auto_hide" }, orderBy: { createdAt: "desc" }, take: AUTO_PROTECT_SCAN_CAP, select: { matchedCategory: true, confidence: true, itemId: true } }),
     db.autoProtectDecision.findMany({ where: { ...where, matchedCategory: "normal_criticism" }, orderBy: { createdAt: "desc" }, take: 5, select: { itemId: true } }),
   ]));
   const apDec = new Map(apByDecision.map((g) => [g.decision, g._count as unknown as number]));
+
+  // CANONICAL: a stored Auto-Protect decision only counts affirmatively when its SOURCE classification
+  // is confirmed. AutoProtectDecision has no Prisma relation to ReputationItem, so the gate columns are
+  // fetched in one bounded follow-up query keyed by the ids we already hold (RLS-scoped, no widening).
+  const apScanIds = apWouldHideItemsRaw.map((d) => d.itemId);
+  const apSourceRows = apScanIds.length
+    ? await withTenant(session.tenantId, (db) => db.reputationItem.findMany({
+      where: { id: { in: apScanIds }, tenantId: session.tenantId },
+      select: { id: true, riskLevel: true, riskCategories: true, aiDiagnostics: true },
+    }))
+    : [];
+  const apSourceById = new Map(apSourceRows.map((r) => [r.id, r]));
+  const apConfirmedWouldHide = apWouldHideItemsRaw.filter((d) => {
+    const src = apSourceById.get(d.itemId);
+    if (!src) return false; // no readable source ⇒ cannot confirm ⇒ excluded (fail closed)
+    return projectStoredClassification({
+      riskLevel: src.riskLevel as string, riskCategories: src.riskCategories, aiDiagnostics: src.aiDiagnostics,
+      autoProtect: { decision: "would_auto_hide", matchedCategory: d.matchedCategory },
+    }).autoProtect.countsTowardWouldAutoHide;
+  });
+  const apStaleCount = apWouldHideItemsRaw.length - apConfirmedWouldHide.length;
+  /** True when the bounded scan was saturated, so the confirmed figure is a lower bound. */
+  const apScanSaturated = apWouldHideItemsRaw.length >= AUTO_PROTECT_SCAN_CAP;
+  const apWouldHideItems = apConfirmedWouldHide.slice(0, 5);
   const apCatRows = apByCategory
     .map((g) => ({ category: g.matchedCategory, value: g._count as unknown as number }))
     .filter((r) => r.category !== "normal_criticism")
@@ -212,7 +242,10 @@ export default async function ReportsPage() {
           ✅ <span className="font-medium">{hdrT.autoProtect.noLiveAction}</span> · {hdrT.autoProtect.liveDisabled}
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Metric label={hdrT.autoProtect.mWouldHide} value={String(apDec.get("would_auto_hide") ?? 0)} tone="warn" />
+          {/* Confirmed only. Stale decisions resting on an unverified legacy verdict are counted
+              separately as "requires re-analysis" — never dropped, never asserted. */}
+          <Metric label={hdrT.autoProtect.mWouldHide} value={`${apConfirmedWouldHide.length}${apScanSaturated ? "+" : ""}`} tone="warn" />
+          <Metric label={hdrT.autoProtect.mStale} value={`${apStaleCount}${apScanSaturated ? "+" : ""}`} hint={hdrT.autoProtect.staleExplain} tone="neutral" />
           <Metric label={hdrT.autoProtect.mSentApproval} value={String(apDec.get("requires_approval") ?? 0)} tone="warn" />
           <Metric label={hdrT.autoProtect.mCriticism} value={String(apPreservedCount)} tone="ok" />
           <Metric label={hdrT.autoProtect.mLiveActions} value="0" hint={hdrT.autoProtect.liveDisabled} tone="ok" />

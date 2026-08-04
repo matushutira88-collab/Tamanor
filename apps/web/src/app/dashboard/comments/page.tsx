@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   buildActorSignals, actorRiskScore, actorRiskLevel, sentimentBucket,
-  customerClassificationDisplay, customerVisibleRiskLevel, isLegacyUnverifiedVerdict,
+  customerClassificationDisplay, customerVisibleRiskLevel, isLegacyUnverifiedVerdict, projectStoredClassification,
   type ActorComment, type ActorRiskLevel, type SentimentBucket, type AiDiagnostics,
 } from "@guardora/ai";
 import { getPlatformConnector, platformKeyFor, actorIdentityKey, PLATFORM_META, ALL_PLATFORMS, can, Permission, Role, providerCapabilities, connectorHealthStatus, type Platform, type ConnectorHealthState } from "@guardora/core";
@@ -502,7 +502,9 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     const ci = r.contentItem;
     const key = actorIdentityKey(platformKeyFor(ci.platform), ci.authorExternalId, ci.authorDisplayName);
     if (!key) continue;
-    (authorComments.get(key) ?? authorComments.set(key, []).get(key)!).push({ categories: r.riskCategories ?? [], riskLevel: r.riskLevel as string, sentiment: r.sentiment as string, postId: ci.externalParentId ?? null, text: ci.text, hidden: ci.externalId ? execState.get(ci.externalId) === "hidden" : false });
+    // Actor signals derive from CONFIRMED categories/severity only (canonical projection).
+    const av = projectStoredClassification(r as never);
+    (authorComments.get(key) ?? authorComments.set(key, []).get(key)!).push({ categories: av.categories, riskLevel: av.riskLevel, sentiment: r.sentiment as string, postId: ci.externalParentId ?? null, text: ci.text, hidden: ci.externalId ? execState.get(ci.externalId) === "hidden" : false });
   }
   const authorLevel = new Map<string, ActorRiskLevel>();
   for (const [key, comments] of authorComments) {

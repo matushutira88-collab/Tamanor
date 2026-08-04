@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   buildActorSignals, actorRiskScore, actorRiskLevel, actorRiskReasons,
-  sentimentBucket, type ActorComment, type ActorRiskLevel,
+  sentimentBucket, projectStoredClassification, type ActorComment, type ActorRiskLevel,
 } from "@guardora/ai";
 import { actorIdentityKey, platformKeyFor, PLATFORM_META, type Platform } from "@guardora/core";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
@@ -59,7 +59,7 @@ export default async function ActorRiskPage({ searchParams }: { searchParams: Pr
     db.reputationItem.findMany({
       where: { ...where, createdAt: { gte: rangeStart } },
       select: {
-        id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true,
+        id: true, riskLevel: true, riskCategories: true, aiDiagnostics: true, sentiment: true, createdAt: true,
         contentItem: {
           select: {
             text: true, externalId: true, externalParentId: true,
@@ -93,7 +93,9 @@ export default async function ActorRiskPage({ searchParams }: { searchParams: Pr
   let unknownRisky = 0;
   for (const r of repItems) {
     const ci = r.contentItem;
-    const cats = r.riskCategories ?? [];
+    // Actor risk is derived from CONFIRMED categories only — an unverified legacy verdict must not
+    // raise a person's risk score.
+    const cats = projectStoredClassification(r as never).categories;
     const extId = ci.externalId;
     const hidden = extId ? hiddenSet.has(extId) : false;
     const resolved = extId ? resolvedSet.has(extId) : false;

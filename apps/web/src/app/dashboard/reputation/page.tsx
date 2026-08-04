@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { sentimentBucket, topicOf, type SentimentBucket, type ReputationTopic } from "@guardora/ai";
+import { sentimentBucket, topicOf, projectStoredClassification, type SentimentBucket, type ReputationTopic } from "@guardora/ai";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
 import { withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
@@ -34,12 +34,12 @@ export default async function ReputationPage({ searchParams }: { searchParams: P
       const [repItems, pendingApprovals, hides, prevRepItems] = await Promise.all([
         db.reputationItem.findMany({
           where: { ...where, createdAt: { gte: rangeStart } },
-          select: { id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true, contentItem: { select: { text: true, externalParentId: true, connectedAccount: { select: { externalName: true } } } } },
+          select: { id: true, riskLevel: true, riskCategories: true, riskConfidence: true, aiDiagnostics: true, sentiment: true, createdAt: true, contentItem: { select: { text: true, externalParentId: true, connectedAccount: { select: { externalName: true } } } } },
           take: 2000,
         }),
         db.actionQueueItem.count({ where: { ...where, queueState: "approval_required" } }),
         db.platformActionExecution.findMany({ where: { ...where, status: "executed", reason: { in: HIDE_REASONS }, executedAt: { gte: rangeStart } }, select: { trigger: true, externalPostId: true, executedAt: true } }),
-        db.reputationItem.findMany({ where: { ...where, createdAt: { gte: prevStart, lt: rangeStart } }, select: { riskLevel: true, riskCategories: true, sentiment: true } }),
+        db.reputationItem.findMany({ where: { ...where, createdAt: { gte: prevStart, lt: rangeStart } }, select: { riskLevel: true, riskCategories: true, riskConfidence: true, aiDiagnostics: true, sentiment: true } }),
       ]);
       const queueRows = await db.actionQueueItem.findMany({ where: { ...where, itemId: { in: repItems.map((r) => r.id) } }, select: { itemId: true, queueState: true } });
       return { repItems, pendingApprovals, hides, prevRepItems, queueRows };
@@ -56,9 +56,16 @@ export default async function ReputationPage({ searchParams }: { searchParams: P
   // Criticism vs harmful split.
   const split = { legit: 0, questions: 0, complaints: 0, hate: 0, spamScam: 0, threats: 0 };
 
+  // CANONICAL projection — an unconfirmed accusation contributes to `requiresReview`, never to a
+  // confirmed risky/scam/threat total, and is never silently counted as clean.
+  let requiresReviewCount = 0;
   for (const r of repItems) {
-    const cats = r.riskCategories ?? [];
-    const b = sentimentBucket({ categories: cats, sentiment: r.sentiment as string, riskLevel: r.riskLevel as string });
+    const view = projectStoredClassification(r as never);
+    if (view.requiresReview) requiresReviewCount++;
+    const cats = view.eligibleForCategoryTotals ? view.categories : [];
+    const b = view.requiresReview
+      ? "risky" as const  // still surfaced, but under the review bucket below — never as confirmed harm
+      : sentimentBucket({ categories: cats, sentiment: r.sentiment as string, riskLevel: view.riskLevel });
     buckets[b]++;
     const topic = topicOf(cats, r.contentItem.text);
     topics.set(topic, (topics.get(topic) ?? 0) + 1);
@@ -110,7 +117,8 @@ export default async function ReputationPage({ searchParams }: { searchParams: P
   const riskyByDay = new Map<string, number>();
   const hiddenByDay = new Map<string, number>();
   for (const r of repItems) {
-    if (sentimentBucket({ categories: r.riskCategories ?? [], sentiment: r.sentiment as string, riskLevel: r.riskLevel as string }) === "risky") {
+    const v = projectStoredClassification(r as never);
+    if (v.eligibleForCategoryTotals && sentimentBucket({ categories: v.categories, sentiment: r.sentiment as string, riskLevel: v.riskLevel }) === "risky") {
       const k = r.createdAt.toISOString().slice(0, 10);
       riskyByDay.set(k, (riskyByDay.get(k) ?? 0) + 1);
     }
@@ -119,8 +127,12 @@ export default async function ReputationPage({ searchParams }: { searchParams: P
   const maxDay = Math.max(1, ...dayKeys.map((d) => Math.max(riskyByDay.get(d.key) ?? 0, hiddenByDay.get(d.key) ?? 0)));
 
   // --- Recommendations ---
-  const prevRisky = prevRepItems.filter((r) => sentimentBucket({ categories: r.riskCategories ?? [], sentiment: r.sentiment as string, riskLevel: r.riskLevel as string }) === "risky").length;
-  const scamCount = repItems.filter((r) => (r.riskCategories ?? []).some((c) => ["scam", "phishing"].includes(c))).length;
+  const prevRisky = prevRepItems.filter((r) => {
+    const v = projectStoredClassification(r as never);
+    return v.eligibleForCategoryTotals && sentimentBucket({ categories: v.categories, sentiment: r.sentiment as string, riskLevel: v.riskLevel }) === "risky";
+  }).length;
+  // Confirmed scam only — a legacy/unverified scam row must not drive a recommendation.
+  const scamCount = repItems.filter((r) => projectStoredClassification(r as never).categories.some((c) => ["scam", "phishing"].includes(c))).length;
   const recs: string[] = [];
   if (riskyCount > prevRisky && prevRisky >= 0 && riskyCount > 0) recs.push(t.rep.recRiskUp);
   if (scamCount >= 3) recs.push(t.rep.recScam);

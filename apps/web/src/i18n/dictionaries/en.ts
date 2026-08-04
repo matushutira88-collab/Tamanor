@@ -621,6 +621,9 @@ export const en = {
 
   // Auto-Protect policies (V1.18).
   autoProtect: {
+    mStale: "Requires re-analysis",
+    reviewRequired: "Requires review", reanalysisRequired: "Re-analysis required",
+    staleExplain: "Stored decision is based on an unverified legacy classification. It is not pending, approved or executable.",
     title: "Auto-Protect",
     subtitle: "Choose what happens for each harmful-content category. Auto-hide runs in shadow mode — no live platform action.",
     shadowExplain: "Tamanor would hide this content, but live platform actions are currently disabled.",

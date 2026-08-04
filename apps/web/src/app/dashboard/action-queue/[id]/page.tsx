@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Permission, PLATFORM_META, Platform, can, platformKeyFor } from "@guardora/core";
-import { NEVER_AUTONOMOUS, AUTONOMOUS_ELIGIBLE, FACEBOOK_HIDE_PERMISSION, buildActorSignals, actorRiskScore, actorRiskLevel, type ActorRiskLevel } from "@guardora/ai";
+import { NEVER_AUTONOMOUS, AUTONOMOUS_ELIGIBLE, FACEBOOK_HIDE_PERMISSION, buildActorSignals, actorRiskScore, actorRiskLevel, projectStoredClassification, type ActorRiskLevel } from "@guardora/ai";
 import { getLiveActionsConfig } from "@guardora/config";
 import { predictHideOutcome, findPreflightDryRun, resolvePrimaryAction, checkAccountToken, getCommentLifecycle, ROLLBACK_AVAILABLE } from "@guardora/sync";
 import { PageHeader, Card, Badge } from "@/components/dashboard/ui";
@@ -54,12 +54,13 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
     if (authorKey) {
       const authorReps = await withTenant(session.tenantId, (db) => db.reputationItem.findMany({
         where: { tenantId: session.tenantId, brandId: q.brandId, contentItem: { is: authorKey } },
-        select: { riskLevel: true, riskCategories: true, sentiment: true, contentItem: { select: { text: true, externalParentId: true } } },
+        select: { riskLevel: true, riskCategories: true, aiDiagnostics: true, sentiment: true, contentItem: { select: { text: true, externalParentId: true } } },
         take: 500,
       }));
       if (authorReps.length > 1) {
         const level = actorRiskLevel(actorRiskScore(buildActorSignals(
-          authorReps.map((r) => ({ categories: r.riskCategories ?? [], riskLevel: r.riskLevel as string, sentiment: r.sentiment as string, postId: r.contentItem.externalParentId ?? null, text: r.contentItem.text, hidden: false })),
+          // Confirmed classification only — a legacy/unverified verdict must not raise actor risk here.
+          authorReps.map((r) => ({ categories: projectStoredClassification(r as never).categories, riskLevel: projectStoredClassification(r as never).riskLevel, sentiment: r.sentiment as string, postId: r.contentItem.externalParentId ?? null, text: r.contentItem.text, hidden: false })),
         )));
         if (level !== "low") actorLevel = level;
       }

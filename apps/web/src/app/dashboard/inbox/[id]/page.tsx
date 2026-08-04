@@ -9,6 +9,7 @@ import {
   Priority,
   can,
 } from "@guardora/core";
+import { projectStoredClassification } from "@guardora/ai";
 import { PageHeader, Badge, Textarea, PrimaryButton } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
@@ -67,6 +68,17 @@ export default async function InboxItemPage({
     db.autoProtectDecision.findUnique({ where: { itemId: item.id } }),
     db.platformActionExecution.findFirst({ where: { itemId: item.id }, orderBy: { createdAt: "desc" }, select: { status: true, reason: true } }),
   ]));
+
+  // CANONICAL customer-visible interpretation. Every badge, level and Auto-Protect affordance below
+  // reads from THIS — never from item.riskCategories / item.riskLevel / autoDecision directly. A stored
+  // accusation without a confirming evidence gate (legacy rows) is withheld, not asserted.
+  const view = projectStoredClassification({
+    riskLevel: item.riskLevel as string,
+    riskCategories: item.riskCategories,
+    riskConfidence: item.riskConfidence,
+    aiDiagnostics: item.aiDiagnostics,
+    autoProtect: autoDecision ? { decision: autoDecision.decision, matchedCategory: autoDecision.matchedCategory } : null,
+  });
 
   const meta = PLATFORM_META[item.platform as Platform];
   const notice = sp.notice;
@@ -240,8 +252,8 @@ export default async function InboxItemPage({
             <h3 className="mb-3 text-sm font-semibold">{t.dash.aiRiskAssessment}</h3>
             <dl className="space-y-2 text-sm">
               <Row label={t.dash.riskLevel}>
-                <Badge tone={RISK_TONE[item.riskLevel as RiskLevel]}>
-                  {withEmoji("risk", item.riskLevel, tEnum(t, "risk", item.riskLevel))}
+                <Badge tone={RISK_TONE[view.riskLevel as RiskLevel]}>
+                  {withEmoji("risk", view.riskLevel, tEnum(t, "risk", view.riskLevel))}
                 </Badge>
               </Row>
               <Row label={t.dash.confidence}>
@@ -261,11 +273,17 @@ export default async function InboxItemPage({
                 )}
               </Row>
             </dl>
-            {item.riskCategories.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {item.riskCategories.map((c) => (
+            {view.categories.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5" data-testid="confirmed-categories">
+                {view.categories.map((c) => (
                   <Badge key={c}>{withEmoji("category", c, tEnum(t, "category", c))}</Badge>
                 ))}
+              </div>
+            ) : null}
+            {/* Unconfirmed accusation: the category NAME is withheld — only a neutral review prompt. */}
+            {view.requiresReview ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                <Badge tone="warn" data-testid="review-required">{t.autoProtect.reviewRequired}</Badge>
               </div>
             ) : null}
             {item.riskRationale ? (
@@ -374,25 +392,30 @@ export default async function InboxItemPage({
             <div className="gu-card p-5">
               <h3 className="mb-3 text-sm font-semibold">🛡️ {t.autoProtect.decisionTitle}</h3>
               <dl className="space-y-2 text-sm">
-                <Row label={t.autoProtect.matchedCategory}>{tEnum(t, "autoProtectCategory", autoDecision.matchedCategory)}</Row>
+                <Row label={t.autoProtect.matchedCategory}>{view.autoProtect.matchedCategory ? tEnum(t, "autoProtectCategory", view.autoProtect.matchedCategory) : "—"}</Row>
                 <Row label={t.autoProtect.policyMode}>{autoDecision.policyMode === "none" ? "—" : tEnum(t, "autoProtectMode", autoDecision.policyMode)}</Row>
                 <Row label={t.autoProtect.decision}>
-                  {autoDecision.decision === "would_auto_hide" ? (
+                  {/* A decision whose source classification is unconfirmed is NEVER shown as actionable,
+                      pending, approved or executable — only as a bounded, neutral re-analysis state. */}
+                  {view.autoProtect.state === "stale_unverified" ? (
+                    <Badge tone="neutral" data-testid="auto-protect-stale">{t.autoProtect.reanalysisRequired}</Badge>
+                  ) : view.autoProtect.decision === "would_auto_hide" ? (
                     <Badge tone="warn">{t.autoProtect.wouldHideBadge}</Badge>
                   ) : (
-                    <Badge tone={autoDecision.decision === "requires_approval" ? "brand" : "neutral"}>{tEnum(t, "autoProtectDecision", autoDecision.decision)}</Badge>
+                    <Badge tone={view.autoProtect.decision === "requires_approval" ? "brand" : "neutral"}>{tEnum(t, "autoProtectDecision", view.autoProtect.decision ?? "monitor")}</Badge>
                   )}
                 </Row>
                 <Row label={t.autoProtect.reason}><span className="text-xs text-[var(--color-muted)]">{
-                  autoDecision.decision === "would_auto_hide" ? t.autoProtect.rWouldHide
-                  : autoDecision.decision === "requires_approval" ? t.autoProtect.rApproval
+                  view.autoProtect.state === "stale_unverified" ? t.autoProtect.staleExplain
+                  : view.autoProtect.decision === "would_auto_hide" ? t.autoProtect.rWouldHide
+                  : view.autoProtect.decision === "requires_approval" ? t.autoProtect.rApproval
                   : autoDecision.decision === "blocked_by_safety" ? t.autoProtect.rBlocked
-                  : autoDecision.decision === "no_action" ? t.autoProtect.rNoAction
+                  : view.autoProtect.decision === "no_action" ? t.autoProtect.rNoAction
                   : t.autoProtect.rMonitor
                 }</span></Row>
                 <Row label={t.autoProtect.liveExecuted}><span className="font-medium text-[var(--color-ok)]">{t.autoProtect.always}</span></Row>
               </dl>
-              {autoDecision.decision === "would_auto_hide" ? (
+              {view.autoProtect.countsTowardWouldAutoHide ? (
                 <div className="mt-3 rounded-lg border border-dashed border-[var(--color-warn)] p-3 text-xs">
                   <p className="font-medium">{t.autoProtect.wouldHideNote}</p>
                   <p className="mt-1 text-[var(--color-muted)]">{t.autoProtect.shadowExplain}</p>

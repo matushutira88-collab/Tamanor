@@ -611,6 +611,9 @@ export const de: Dictionary = {
   },
 
   autoProtect: {
+    mStale: "Erneute Analyse erforderlich",
+    reviewRequired: "Prüfung erforderlich", reanalysisRequired: "Erneute Analyse erforderlich",
+    staleExplain: "Die gespeicherte Entscheidung beruht auf einer unbestätigten Alt-Klassifizierung. Sie ist weder ausstehend noch genehmigt oder ausführbar.",
     title: "Automatischer Schutz",
     subtitle: "Legen Sie fest, was bei jeder Kategorie schädlicher Inhalte passiert. Automatisches Ausblenden läuft im Schattenmodus — keine Live-Aktion auf der Plattform.",
     shadowExplain: "Tamanor würde diesen Inhalt ausblenden, aber Live-Aktionen auf der Plattform sind derzeit deaktiviert.",

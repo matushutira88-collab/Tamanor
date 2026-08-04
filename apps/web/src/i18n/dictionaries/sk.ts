@@ -611,6 +611,9 @@ export const sk: Dictionary = {
   },
 
   autoProtect: {
+    mStale: "Vyžaduje opätovnú analýzu",
+    reviewRequired: "Vyžaduje kontrolu", reanalysisRequired: "Vyžaduje opätovnú analýzu",
+    staleExplain: "Uložené rozhodnutie vychádza z neovereného staršieho zaradenia. Nie je čakajúce, schválené ani vykonateľné.",
     title: "Automatická ochrana",
     subtitle: "Vyberte, čo sa stane pri každej kategórii škodlivého obsahu. Automatické skrytie beží v tieňovom režime — žiadna živá akcia na platforme.",
     shadowExplain: "Tamanor by tento obsah skryla, ale živé akcie na platforme sú momentálne vypnuté.",
