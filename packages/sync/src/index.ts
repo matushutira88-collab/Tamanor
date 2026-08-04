@@ -787,7 +787,9 @@ async function persistNewItem(
     select: { category: true, mode: true, minConfidence: true, isActive: true },
   }));
   const autoProtect = evaluateAutoProtect(
-    { text: item.text, riskLevel: hybrid.level, categories: hybrid.categories, riskSignals: hybrid.explanation.riskSignals, matchedTerms: hybrid.explanation.matchedTerms, sentiment: hybrid.sentiment, confidence: hybrid.confidence },
+    // `hybrid.categories` is already evidence-gated (confirmed only); `requiresReview` blocks any
+    // automatic protection action derived from an unsubstantiated accusation.
+    { text: item.text, riskLevel: hybrid.level, categories: hybrid.categories, riskSignals: hybrid.explanation.riskSignals, matchedTerms: hybrid.explanation.matchedTerms, sentiment: hybrid.sentiment, confidence: hybrid.confidence, requiresReview: hybrid.requiresReview },
     policies,
   );
   const requiresApproval = hybrid.approvalRequired || autoProtect.decision === "requires_approval";

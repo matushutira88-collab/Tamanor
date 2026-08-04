@@ -13,6 +13,7 @@ import type {
   RiskEngine,
 } from "./types";
 import { detectLanguage } from "./language-detect";
+import { findTermSpans, type EvidenceSpan } from "./evidence";
 
 /**
  * RiskClassifier — deterministic Risk Rules V1 (+ placeholder heuristic).
@@ -37,12 +38,20 @@ export class RiskClassifier implements RiskEngine {
     let score = 0;
     let deterministic = false;
 
-    // Lexicon rules (multilingual, obfuscation-tolerant).
-    for (const [category, weight, terms] of LEXICON) {
-      const hits = terms.filter((t) => containsFuzzy(norm, t));
-      if (hits.length > 0) {
+    // Lexicon rules (multilingual, obfuscation-tolerant). Every hit must produce a VERIFIABLE span of
+    // the analyzed text — a term that cannot point at a real word does not count as a match at all.
+    const evidence: EvidenceSpan[] = [];
+    for (const [category, weight, terms, isStem] of LEXICON) {
+      let fired = false;
+      for (const t of terms) {
+        const spans = findTermSpans(norm, t, category, { stem: isStem === true });
+        if (spans.length === 0) continue;
+        evidence.push(...spans);
+        matchedTerms.add(t.trim());
+        fired = true;
+      }
+      if (fired) {
         categories.add(category);
-        for (const h of hits) matchedTerms.add(h.trim());
         score = Math.max(score, weight);
         deterministic = true;
       }
@@ -92,6 +101,9 @@ export class RiskClassifier implements RiskEngine {
       languageConfidence: lang.confidence,
       isMixedLanguage: lang.isMixed,
       languageDetectionSource: lang.source,
+      /** The exact normalized text every rule verdict was computed against — spans index into THIS. */
+      analyzedText: norm,
+      evidence,
       explanation: {
         matchedTerms: [...matchedTerms],
         matchedRules: matchedRules.map((m) => m.phrase),
@@ -144,20 +156,24 @@ export function containsFuzzy(hay: string, needle: string): boolean {
 }
 
 /**
- * [category, severity 0..1, normalized trigger terms].
+ * [category, severity 0..1, normalized trigger terms, isStem?].
  * Terms MUST be diacritics-free/lowercase (matched against normalize()).
- * Illustrative beta lexicon — not exhaustive, tune per feedback.
+ *
+ * MATCHING IS WORD-BOUNDED, not substring-based: see `findTermSpans` in ./evidence. Marking a row as a
+ * STEM opts it into the stricter, purely inflectional suffix set — that is what stops `pic` from firing
+ * on "suspicious", "picture", "picked", "topic", "epic" and "olympic" while still catching "pica"/"picu".
+ * Irregular forms (doubled consonants, compounds) are listed explicitly rather than guessed at.
  */
-const LEXICON: ReadonlyArray<readonly [RiskCategory, number, readonly string[]]> = [
+const LEXICON: ReadonlyArray<readonly [RiskCategory, number, readonly string[], boolean?]> = [
   // Strong vulgarity (SK/CZ/EN/DE) → critical.
   [RiskCategory.Profanity, 0.9, [
-    "kokot", "pica", "kurva", "hovno", "skurveny", "chuj", "curak", "sracka",
+    "kokot", "pica", "kurva", "kurv", "hovno", "skurveny", "chuj", "curak", "sracka",
     "mrdka", "jebat", "vyjebany", "zmrd", "ojeb", "kokotina",
-    "fuck", "shit", "bitch", "asshole", "cunt",
+    "fuck", "fucker", "motherfucker", "shit", "bitch", "asshole", "cunt",
     "scheisse", "arschloch", "hurensohn", "wichser", "fick",
   ]],
-  // Short profanity stems (catch masked variants like jeb***).
-  [RiskCategory.Profanity, 0.85, ["jeb", "pic"]],
+  // Short profanity stems (catch masked variants like jeb***). STEM = strict suffixes only.
+  [RiskCategory.Profanity, 0.85, ["jeb", "pic"], true],
   // Personal insults / harassment → high.
   [RiskCategory.Harassment, 0.8, [
     "kreten", "idiot", "debil", "hajzel", "svina", "sprostak", "magor",
@@ -178,7 +194,7 @@ const LEXICON: ReadonlyArray<readonly [RiskCategory, number, readonly string[]]>
   ]],
   // Scam / fraud / phishing / prize-bait → critical (SK/CZ/EN/DE/PL/HU).
   [RiskCategory.Scam, 0.9, [
-    "podvod", "podvodnik", "scam", "fraud", "betrug", "betrueger",
+    "podvod", "podvodnik", "scam", "scammer", "scammed", "fraud", "betrug", "betrueger",
     "oszustwo", "oszust", "atveres", "csalas", "csalo", "prevod",
     "free money", "click here", "crypto giveaway", "wire transfer", "prevod penazi",
     "verify your account", "click here to claim", "reset your password", "confirm your password",

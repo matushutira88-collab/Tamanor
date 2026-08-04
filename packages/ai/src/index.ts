@@ -5,6 +5,7 @@
  * plug in behind the same {@link RiskEngine} interface.
  */
 export * from "./types";
+export * from "./evidence";
 export * from "./risk-classifier";
 export * from "./language-detect";
 export * from "./translation";

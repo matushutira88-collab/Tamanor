@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   buildActorSignals, actorRiskScore, actorRiskLevel, sentimentBucket,
+  customerClassificationDisplay, customerVisibleRiskLevel,
   type ActorComment, type ActorRiskLevel, type SentimentBucket, type AiDiagnostics,
 } from "@guardora/ai";
 import { getPlatformConnector, platformKeyFor, actorIdentityKey, PLATFORM_META, ALL_PLATFORMS, can, Permission, Role, providerCapabilities, connectorHealthStatus, type Platform, type ConnectorHealthState } from "@guardora/core";
@@ -151,7 +152,7 @@ function buildDiag(
 
 interface Row {
   id: string; text: string; author: string; authorKey: string | null; platformLabel: string; account: string;
-  permalink: string | null; createdAt: Date; bucket: SentimentBucket; riskLevel: string; category: string | null;
+  permalink: string | null; createdAt: Date; bucket: SentimentBucket; riskLevel: string; category: string | null; needsReview: boolean;
   statusKey: string; hiddenPublic: boolean; pending: boolean; resolved: boolean; queueItemId: string | null;
   actorLevel: ActorRiskLevel | null; cantHide: boolean; isReview: boolean; rating: number | null; providerKey: string;
   isRead: boolean; archived: boolean; priority: string; workflowStatus: string; assigneeId: string | null; assigneeName: string | null;
@@ -512,6 +513,10 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const rows: Row[] = pageRows.map((r) => {
     const ci = r.contentItem;
     const cats = r.riskCategories ?? [];
+    const display = customerClassificationDisplay(
+      cats,
+      ((r.aiDiagnostics ?? null) as { evidenceGate?: { decisions?: { category: string; verdict: string }[] } } | null)?.evidenceGate?.decisions,
+    );
     const bucket = sentimentBucket({ categories: cats, sentiment: r.sentiment as string, riskLevel: r.riskLevel as string });
     const st = ci.externalId ? execState.get(ci.externalId) : undefined;
     const qi = queueByItem.get(r.id);
@@ -539,7 +544,13 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     return {
       id: r.id, text: ci.text, author: ci.authorDisplayName ?? t.comments.unknownAuthor, authorKey: key,
       platformLabel: PLATFORM_META[ci.platform as Platform]?.label ?? ci.platform, account: ci.connectedAccount?.externalName ?? "—", permalink: ci.permalink,
-      createdAt: r.createdAt, bucket, riskLevel: r.riskLevel as string, category: cats[0] ?? null,
+      // CUSTOMER INTEGRITY: never render a definitive violation label without validated evidence. The
+      // display verdict is decided in ONE place (customerClassificationDisplay) so no surface can
+      // accidentally assert an unsupported category such as "Vulgarita".
+      createdAt: r.createdAt, bucket,
+      riskLevel: customerVisibleRiskLevel(r.riskLevel as string, display),
+      category: display.kind === "confirmed_category" ? display.category : null,
+      needsReview: display.kind === "review_required",
       statusKey, hiddenPublic, pending, resolved, queueItemId: qi?.id ?? null, actorLevel: key ? authorLevel.get(key) ?? null : null,
       cantHide: bucket === "risky" && !caps.canHideComment && !hiddenPublic && !resolved,
       isReview: ci.kind === "review",
@@ -761,7 +772,8 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                               {r.assigneeName ? <Badge tone="neutral">@{r.assigneeName}</Badge> : null}
                               {r.labels.map((l) => <Badge key={l.id} tone={l.colorKey}>{l.name}</Badge>)}
                               {r.noteCount > 0 ? <Badge tone="neutral">{c.notes(r.noteCount)}</Badge> : null}
-                              {r.category ? <Badge tone="neutral">{tEnum(t, "autoProtectCategory", r.category)}</Badge> : null}
+                              {r.category ? <Badge tone="neutral" data-testid="category-badge">{tEnum(t, "autoProtectCategory", r.category)}</Badge> : null}
+                              {r.needsReview ? <Badge tone="warn" data-testid="review-required-badge">{t.comments.reviewRequired}</Badge> : null}
                               {r.hiddenPublic ? <Badge tone="warn">{t.comments.hiddenPublic}</Badge> : null}
                               {r.pending ? <Badge tone="neutral">{t.comments.pendingDecision}</Badge> : null}
                               {r.actorLevel ? <Link href="/dashboard/actor-risk"><Badge tone={r.actorLevel === "medium" ? "warn" : "danger"}>{t.actor.badgePrefix}: {t.actor[`level_${r.actorLevel}` as "level_medium"]}</Badge></Link> : null}
@@ -781,7 +793,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                               <Row2 label={t.comments.platform}>{r.platformLabel}</Row2>
                               <Row2 label={t.comments.account}>{r.account}</Row2>
                               <Row2 label={t.comments.sentiment}>{t.rep[`bucket_${r.bucket}` as "bucket_positive"]}</Row2>
-                              <Row2 label={t.comments.risk}>{tEnum(t, "risk", r.riskLevel)}{r.category ? ` · ${tEnum(t, "autoProtectCategory", r.category)}` : ""}</Row2>
+                              <Row2 label={t.comments.risk}>{tEnum(t, "risk", r.riskLevel)}{r.category ? ` · ${tEnum(t, "autoProtectCategory", r.category)}` : r.needsReview ? ` · ${t.comments.reviewRequired}` : ""}</Row2>
                               <Row2 label={t.comments.status}>{t.comments[r.statusKey as "st_captured"]}</Row2>
                               {r.permalink ? <Row2 label={t.comments.post}><a href={r.permalink} target="_blank" rel="noopener noreferrer" className="text-[var(--color-brand)] hover:underline">{t.comments.post} →</a></Row2> : null}
                             </dl>

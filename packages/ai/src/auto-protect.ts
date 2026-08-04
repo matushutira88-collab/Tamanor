@@ -6,7 +6,8 @@
  * "would_auto_hide" decision ONLY — no platform action is ever performed here.
  * Normal criticism is never auto-hidden (safety floor).
  */
-import { normalize, containsFuzzy } from "./risk-classifier";
+import { normalize } from "./risk-classifier";
+import { findTermSpans } from "./evidence";
 
 export type AutoProtectCategory =
   | "profanity" | "personal_attack" | "hate_speech" | "racism" | "scam" | "phishing"
@@ -29,11 +30,17 @@ export interface AutoProtectPolicy {
 export interface AutoProtectInput {
   text: string;
   riskLevel: string;
+  /** CONFIRMED categories only — an unsubstantiated accusation must never reach a protection decision. */
   categories: string[];
   riskSignals: string[];
   matchedTerms: string[];
   sentiment: string;
   confidence: number;
+  /**
+   * True when the evidence gate held at least one accusation for review. No automatic protection action
+   * may be derived from an unconfirmed classification — the item goes to a human instead.
+   */
+  requiresReview?: boolean;
 }
 
 export interface AutoProtectResult {
@@ -142,15 +149,17 @@ export function matchAutoProtectCategory(text: string, signals: string[]): AutoP
   const norm = normalize(text);
   let category: AutoProtectCategory = "normal_criticism";
 
+  // Word-bounded, same rule as the risk lexicon — a raw substring scan here would re-create the
+  // "suspicious → profanity" defect on the Auto-Protect category (e.g. "bomb" inside "bombastic").
   for (const { category: c, terms } of TERM_LEXICON) {
-    if (terms.some((t) => containsFuzzy(norm, t))) category = pickHigher(category, c);
+    if (terms.some((t) => findTermSpans(norm, t, c).length > 0)) category = pickHigher(category, c);
   }
   for (const [sig, c] of SIGNAL_MAP) {
     if (signals.includes(sig)) category = pickHigher(category, c);
   }
   // Promo/self-promotion markers → competitor_promo (with or without a competitor
   // signal). A bare competitor mention without promo is a normal comparison.
-  const promo = PROMO_MARKERS.some((m) => containsFuzzy(norm, m));
+  const promo = PROMO_MARKERS.some((m) => findTermSpans(norm, m, "competitor_promo").length > 0);
   if (promo) category = pickHigher(category, "competitor_promo");
   else if (signals.includes("competitor")) category = pickHigher(category, "normal_criticism");
   return category;
@@ -163,6 +172,16 @@ export function evaluateAutoProtect(
 ): AutoProtectResult {
   const signals = [...new Set([...input.riskSignals, ...input.categories])];
   const matchedCategory = matchAutoProtectCategory(input.text, signals);
+
+  // FAIL-CLOSED: an unconfirmed accusation can never trigger an automatic protection action, regardless
+  // of policy or confidence. It is routed to a human exactly like an approval-mode category.
+  if (input.requiresReview) {
+    return {
+      decision: "requires_approval", matchedCategory, policyMode: "none", confidence: input.confidence,
+      reason: "Classification is unconfirmed (no validated evidence) — human review, no automatic action.",
+      safetyBlocked: true,
+    };
+  }
 
   const policy = policies.find((p) => p.category === matchedCategory && p.isActive);
   const policyMode = (policy?.mode as AutoProtectMode | undefined) ?? "none";

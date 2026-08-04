@@ -113,6 +113,7 @@
     "google-launch:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/google-launch.test.ts",
     "indexnow:submit": "pnpm --filter @guardora/worker exec tsx ../web/scripts/indexnow-submit.ts",
     "risk:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/classifier.test.ts",
+    "classification-evidence:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/classification-evidence.test.ts",
     "openai-provider:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/openai-provider.test.ts",
     "openai-pricing:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/openai-pricing.test.ts",
     "intel:test": "pnpm --filter @guardora/worker exec tsx ../../packages/ai/scripts/language.test.ts",

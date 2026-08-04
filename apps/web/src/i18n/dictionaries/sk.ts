@@ -1192,6 +1192,7 @@ export const sk: Dictionary = {
     status: "Stav",
     hiddenPublic: "Skryté pre verejnosť",
     pendingDecision: "Čaká na rozhodnutie",
+    reviewRequired: "Vyžaduje kontrolu",
     openInQueue: "Otvoriť vo fronte",
     openActor: "Otvoriť rizikový profil",
     openReputation: "Otvoriť Reputáciu",

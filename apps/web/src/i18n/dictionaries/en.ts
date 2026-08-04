@@ -1222,6 +1222,8 @@ export const en = {
     status: "Status",
     hiddenPublic: "Hidden from public",
     pendingDecision: "Awaiting decision",
+    // Shown INSTEAD of a category label when the AI suspected something it could not substantiate.
+    reviewRequired: "Requires review",
     openInQueue: "Open in queue",
     openActor: "Open risk profile",
     openReputation: "Open Reputation",

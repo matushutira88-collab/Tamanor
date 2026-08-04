@@ -18,6 +18,18 @@ import {
   type OpenAiRiskConfig,
 } from "./providers";
 import { applyBrandMemory, type BrandMemoryRule, type BrandMemoryMatch } from "./brand-memory";
+import {
+  decideCategory, severityForVerdicts, validEvidenceForCategory, EVIDENCE_REQUIRED_CATEGORIES,
+  type CategoryDecision, type EvidenceSpan,
+} from "./evidence";
+
+/**
+ * The state of the customer-visible classification as a whole.
+ *  - `confirmed`       — every presented category has validated evidence (or is non-accusatory).
+ *  - `review_required` — at least one accusation could not be substantiated; nothing is asserted as fact.
+ * `rejected` is a per-category verdict (admin diagnostics), not a whole-item state.
+ */
+export type ClassificationState = "confirmed" | "review_required";
 
 const RISK_ORDER = ["none", "low", "medium", "high", "critical"] as const;
 const rank = (l: string) => Math.max(0, RISK_ORDER.indexOf(l as (typeof RISK_ORDER)[number]));
@@ -80,6 +92,11 @@ export interface AiDiagnostics {
     verdict?: RiskSnapshot;
   };
   merged: RiskSnapshot;
+  /** Per-category evidence verdicts + whether a severity escalation was refused. Admin-only. */
+  evidenceGate?: {
+    decisions: CategoryDecision[];
+    severity: { proposed: string; applied: string; capped: boolean; reason: string };
+  };
 }
 
 // Test-only seam to exercise the fail-open path in {@link safeBuildAiDiagnostics}. No effect in production.
@@ -103,8 +120,24 @@ export function safeBuildAiDiagnostics(build: () => AiDiagnostics): AiDiagnostic
 export interface HybridResult {
   // Final merged assessment.
   level: string;
-  confidence: number;
+  /**
+   * CUSTOMER-VISIBLE categories only — every entry here is either non-accusatory or backed by a
+   * validated evidence span. Unsubstantiated accusations are in `reviewCategories` instead.
+   */
   categories: string[];
+  confidence: number;
+  /** `review_required` ⇒ the UI must not present any category as a confirmed violation. */
+  classificationState: ClassificationState;
+  requiresReview: boolean;
+  confirmedCategories: string[];
+  /** Accusations that could not be substantiated. Diagnostic; never presented as fact. */
+  reviewCategories: string[];
+  /** Accusations affirmatively refuted (no evidence, no rule agreement). Admin diagnostics only. */
+  rejectedCategories: string[];
+  /** Verifiable spans of `analyzedText` supporting the confirmed categories. */
+  evidence: EvidenceSpan[];
+  /** The normalized text the verdicts were computed against (spans index into this). */
+  analyzedText: string;
   sentiment: string;
   detectedLanguage: string;
   languageConfidence: number;
@@ -224,6 +257,11 @@ export async function classifyHybrid(
   const rulesSnapshot: RiskSnapshot = { level, confidence: round2(confidence), categories: [...categories] };
   let aiVerdict: RiskSnapshot | undefined;
   let aiErrorCode: string | undefined;
+  /** The level the AI would like; only applied if the evidence gate confirms an escalation. */
+  let proposedLevel = level;
+  let aiCategories: string[] = [];
+  /** False as soon as any provider output is ambiguous — ambiguity may never confirm an accusation. */
+  let parserOk = true;
 
   // `all` consults the provider for every comment (rules already ran above and remain the floor); `value_gated`
   // (default, incl. when unset) keeps the historical shouldCallAi value-gate untouched.
@@ -259,22 +297,66 @@ export async function classifyHybrid(
       // AI's OWN verdict, recorded BEFORE the merge so diagnostics can prove the floor was applied.
       aiVerdict = { level: out.riskLevel, confidence: round2(out.confidence), categories: [...out.categories] };
       // Merge: never LOWER the rules risk (rules are a safety floor); union signals.
-      if (rank(out.riskLevel) > rank(level)) level = out.riskLevel;
+      // NOTE the AI's proposed level is held separately — it is NOT applied until the evidence gate below
+      // has decided whether anything actually confirms an escalation.
+      proposedLevel = out.riskLevel;
+      aiCategories = [...out.categories];
       confidence = Math.max(confidence, out.confidence);
       if (out.categories.length) categories = [...new Set([...categories, ...out.categories])];
       if (out.recommendedReviewAction !== "none") recommendedReviewAction = out.recommendedReviewAction;
       if (out.sentiment) sentiment = out.sentiment;
-      approvalRequired = approvalRequired || out.approvalRequired || rank(level) >= rank("high");
       shortReason = out.shortReason;
       aiUsage = out.usage;
+    } else {
+      // failed/unavailable/refused → the provider output is ambiguous; nothing from it may confirm.
+      parserOk = false;
     }
-    // failed/unavailable → fall back to rules result (already the default).
   }
+
+  // ------------------------------------------------------------------ evidence gate (fail-closed)
+  // Every accusatory category must point at a span of the analyzed text before a customer sees it as a
+  // fact. A confidence score is not evidence. This is what stops "suspicious" → Vulgarita/Kritické.
+  const analyzedText = rules.analyzedText ?? "";
+  const ruleCategories = new Set(rulesSnapshot.categories);
+  const decisions: CategoryDecision[] = categories.map((category) =>
+    decideCategory({
+      category,
+      validEvidenceCount: validEvidenceForCategory(analyzedText, rules.evidence, category).length,
+      rulesAgree: ruleCategories.has(category),
+      aiClaimed: aiCategories.includes(category),
+      confidence,
+      parserOk,
+    }),
+  );
+
+  // Severity comes from CONFIRMED harm, never from a category score.
+  const severity = severityForVerdicts(level, proposedLevel, decisions);
+  level = severity.level;
+
+  const confirmedCategories = decisions.filter((d) => d.verdict === "confirmed").map((d) => d.category);
+  const reviewCategories = decisions.filter((d) => d.verdict === "review_required").map((d) => d.category);
+  const rejectedCategories = decisions.filter((d) => d.verdict === "rejected").map((d) => d.category);
+
+  // What the customer sees. An unconfirmed accusation NEVER appears here — it becomes a review request.
+  categories = confirmedCategories.length > 0 ? confirmedCategories : [ruleCategories.has("positive") ? "positive" : "neutral"];
+  const classificationState: ClassificationState =
+    reviewCategories.length > 0 ? "review_required" : confirmedCategories.some((c) => EVIDENCE_REQUIRED_CATEGORIES.has(c)) ? "confirmed" : "confirmed";
+  const requiresReview = reviewCategories.length > 0;
+
+  approvalRequired = approvalRequired || rank(level) >= rank("high") || requiresReview;
+  if (requiresReview && recommendedReviewAction === "none") recommendedReviewAction = "review";
 
   return {
     level,
     confidence: round2(confidence),
     categories,
+    classificationState,
+    requiresReview,
+    confirmedCategories,
+    reviewCategories,
+    rejectedCategories,
+    evidence: rules.evidence ?? [],
+    analyzedText,
     sentiment,
     detectedLanguage,
     languageConfidence: rules.languageConfidence ?? 0,
@@ -305,6 +387,12 @@ export async function classifyHybrid(
       rules: rulesSnapshot,
       ai: { status: aiProviderStatus, errorCode: aiErrorCode, verdict: aiVerdict },
       merged: { level, confidence: round2(confidence), categories },
+      // Admin-only: exactly why each claimed category was confirmed, held for review, or rejected —
+      // plus whether a proposed severity escalation was refused for lack of confirmed harm.
+      evidenceGate: {
+        decisions,
+        severity: { proposed: proposedLevel, applied: level, capped: severity.capped, reason: severity.reason },
+      },
     })),
   };
 }

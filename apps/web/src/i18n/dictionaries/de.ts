@@ -1192,6 +1192,7 @@ export const de: Dictionary = {
     status: "Status",
     hiddenPublic: "Öffentlich verborgen",
     pendingDecision: "Wartet auf Entscheidung",
+    reviewRequired: "Prüfung erforderlich",
     openInQueue: "In der Warteschlange öffnen",
     openActor: "Risikoprofil öffnen",
     openReputation: "Reputation öffnen",

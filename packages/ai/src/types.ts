@@ -4,6 +4,7 @@ import type {
   ReputationRisk,
   RuleCategory,
 } from "@guardora/core";
+import type { EvidenceSpan } from "./evidence";
 
 /** Minimal brand-rule shape the classifier consumes (decoupled from the DB). */
 export interface ClassifierRule {
@@ -47,6 +48,14 @@ export interface RiskExplanation {
 
 /** Result of a single classification pass. */
 export interface ClassificationResult extends ReputationRisk {
+  /**
+   * The normalized text every verdict below was computed against. Evidence spans index into THIS string,
+   * so a span can always be re-validated — including against a DIFFERENT item, which is how a stale or
+   * mismatched result is caught.
+   */
+  analyzedText?: string;
+  /** Verifiable spans of `analyzedText` justifying each category. Empty ⇒ nothing to confirm. */
+  evidence?: EvidenceSpan[];
   /** Brand rules that matched, if any. */
   matchedRules?: MatchedRule[];
   /** Detected language of the content (best-effort; may be "unknown"). */
