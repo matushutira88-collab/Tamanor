@@ -7,7 +7,10 @@
  */
 import { ActorKind, Prisma, type Priority, type InboxWorkflowStatus, type Platform, type RiskLevel } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { sentimentBucketWhere, type SentimentBucket } from "@guardora/ai";
+import {
+  sentimentBucketWhere, customerRiskyWhere, customerRequiresReviewWhere, CUSTOMER_PROJECTION_VERSION,
+  type SentimentBucket,
+} from "@guardora/ai";
 import { withTenantDb, type TenantTx } from "./tenant-db";
 
 export type InboxMutationResult =
@@ -262,7 +265,9 @@ export interface InboxFilterInput {
   selfUserId?: string;                 // resolves `assigned_me`
   platformIn?: Platform[];             // provider filter (caller maps provider-key → platforms)
   type?: "comment" | "review";         // content type (relation filter)
-  sentiment?: SentimentBucket;         // pushed down via sentimentBucketWhere (canonical)
+  sentiment?: SentimentBucket;         // pushed down via sentimentBucketWhere / customerRiskyWhere (canonical)
+  /** Customer facet: rows whose accusation is unverified, legacy or on a stale projection version. */
+  requiresReview?: boolean;
   workflowStatus?: InboxWorkflowStatus;
   priority?: Priority;
   riskLevel?: RiskLevel;
@@ -298,7 +303,14 @@ export function buildInboxWhere(tenantId: string, f: InboxFilterInput): Prisma.R
   if (f.labelId) and.push({ inboxLabels: { some: { labelId: f.labelId } } });
   if (f.assigneeId) and.push({ assignedToUserId: f.assigneeId });
   if (f.since) and.push({ createdAt: { gte: f.since } });
-  if (f.sentiment) and.push(sentimentBucketWhere(f.sentiment) as Prisma.ReputationItemWhereInput);
+  // CUSTOMER-FACING sentiment filtering. "risky" means CONFIRMED risky and is pushed down over the
+  // PERSISTED projection columns (indexed), so a legacy/unverified accusation can never match it — and
+  // because the exclusion happens in SQL, cursor pagination and page sizes stay exact. The other buckets
+  // keep the existing raw cascade (they are descriptive, not accusatory).
+  if (f.sentiment === "risky") and.push(customerRiskyWhere(CUSTOMER_PROJECTION_VERSION) as Prisma.ReputationItemWhereInput);
+  else if (f.sentiment) and.push(sentimentBucketWhere(f.sentiment) as Prisma.ReputationItemWhereInput);
+  // The companion facet: unverified/legacy/stale rows the customer must still be able to find.
+  if (f.requiresReview) and.push(customerRequiresReviewWhere(CUSTOMER_PROJECTION_VERSION) as Prisma.ReputationItemWhereInput);
 
   const q = (f.q ?? "").trim();
   if (q) {
@@ -316,6 +328,8 @@ export function buildInboxWhere(tenantId: string, f: InboxFilterInput): Prisma.R
 /** Canonical select for an inbox list row (drives both the list and its typed Row). No N+1. */
 export const inboxItemSelect = {
   id: true, riskLevel: true, riskCategories: true, sentiment: true, createdAt: true,
+  customerClassificationState: true, customerRiskLevel: true, customerRiskCategories: true,
+  customerClassificationProjectionVersion: true, customerRequiresReanalysis: true,
   isRead: true, archivedAt: true, priority: true, inboxWorkflowStatus: true, assignedToUserId: true,
   // V1.44B — truthful processing state for the inbox card/detail.
   processingTier: true, processingStatus: true, processingReason: true, lastProcessedAt: true, classifierVersion: true,

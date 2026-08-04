@@ -37,7 +37,10 @@ import {
 import { createLeaseHeartbeat } from "./lease-heartbeat";
 import { parseMetaLeadgenChanges, ingestMetaLeadgenChanges } from "./meta-leads";
 import { randomUUID } from "node:crypto";
-import { buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, type ClassifierRule } from "@guardora/ai";
+import {
+  buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, persistedProjectionFields,
+  type ClassifierRule,
+} from "@guardora/ai";
 import { classifyWithUsagePolicy } from "./metered-classify";
 import { attemptFacebookHide } from "./live-actions";
 import { loadProductionSafetyContext } from "./production-safety";
@@ -836,6 +839,20 @@ async function persistNewItem(
         riskLevel: hybrid.level as unknown as DbRiskLevel,
         riskConfidence: hybrid.confidence,
         riskCategories: hybrid.categories,
+        // PERSISTED customer projection, derived through the ONE canonical helper — never re-derived
+        // here. This is what the customer-facing SQL filters and aggregates read.
+        ...persistedProjectionFields({
+          riskLevel: hybrid.level,
+          riskCategories: hybrid.categories,
+          riskConfidence: hybrid.confidence,
+          aiDiagnostics: hybrid.diagnostics,
+          autoProtect: { decision: autoProtect.decision, matchedCategory: autoProtect.matchedCategory },
+        }),
+        customerRiskLevel: persistedProjectionFields({
+          riskLevel: hybrid.level, riskCategories: hybrid.categories, riskConfidence: hybrid.confidence,
+          aiDiagnostics: hybrid.diagnostics,
+          autoProtect: { decision: autoProtect.decision, matchedCategory: autoProtect.matchedCategory },
+        }).customerRiskLevel as unknown as DbRiskLevel,
         sentiment: hybrid.sentiment as unknown as DbSentiment,
         riskRationale: hybrid.explanation.shortReason || hybrid.engine,
         riskEngine: hybrid.engine,

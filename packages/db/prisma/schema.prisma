@@ -1036,6 +1036,22 @@ model ReputationItem {
   // (historical rows have none); surfaced solely in the admin diagnostics panel.
   aiDiagnostics      Json?
 
+  // PERSISTED CUSTOMER-VISIBLE PROJECTION (migration 20260901090000). The evidence gate lives inside
+  // `aiDiagnostics` and cannot be indexed, so the canonical customer verdict is materialised here and the
+  // customer-facing SQL filters read THESE columns instead of the raw ones. The raw fields above stay the
+  // immutable diagnostic source and are never derived from these.
+  //
+  // "NOT YET PROJECTED" is carried by the STATE + VERSION markers, never by the category array: Prisma
+  // has no optional scalar list, so `customerRiskCategories` is NOT NULL with an empty default and `[]`
+  // means only "no confirmed categories". A row is trusted solely when the state is a known value AND
+  // the version is current — otherwise it fails closed to review_required. See `readPersistedProjection`
+  // / `persistedProjectionFields` in @guardora/ai, and CUSTOMER_PROJECTION_VERSION for staleness.
+  customerClassificationState             String? // confirmed | review_required | no_issue; NULL = unprojected
+  customerRiskLevel                       RiskLevel?
+  customerRiskCategories                  String[] @default([]) // CONFIRMED categories only; [] = none
+  customerClassificationProjectionVersion Int? //     NULL or < CUSTOMER_PROJECTION_VERSION = stale
+  customerRequiresReanalysis              Boolean?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1072,6 +1088,13 @@ model ReputationItem {
   // turns the sentiment count from a Seq Scan (~986 buffers) into an Index-Only Scan (~37 buffers),
   // a ~150× execution-time reduction on a 10k-row table. The only index added this milestone.
   @@index([tenantId, sentiment])
+  // Persisted customer projection (migration 20260901090000): state + level facets, keyset pagination on
+  // a state-filtered page, GIN containment over confirmed categories, and the backfill cursor.
+  @@index([tenantId, customerClassificationState])
+  @@index([tenantId, customerRiskLevel])
+  @@index([tenantId, customerClassificationState, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([customerRiskCategories], type: Gin)
+  @@index([tenantId, customerClassificationProjectionVersion, id])
   @@map("reputation_items")
 }
 

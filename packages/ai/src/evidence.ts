@@ -582,6 +582,101 @@ export function projectStoredClassification(row: StoredClassificationRow): Custo
   };
 }
 
+/* ------------------------------------------------------------------ persisted projection */
+
+/**
+ * Version of the projection ALGORITHM. Bump whenever `projectStoredClassification` changes in a way that
+ * could alter a stored verdict's customer-visible meaning; every row below this version is stale and is
+ * treated exactly like an un-projected row (fail closed) until re-projected.
+ */
+export const CUSTOMER_PROJECTION_VERSION = 1;
+
+/** The persisted columns, exactly as written to `reputation_items`. */
+export interface PersistedProjectionFields {
+  customerClassificationState: "confirmed" | "review_required" | "no_issue";
+  customerRiskLevel: string;
+  customerRiskCategories: string[];
+  customerClassificationProjectionVersion: number;
+  customerRequiresReanalysis: boolean;
+}
+
+/** Derive the persisted columns from a stored row. THE single write-path helper — never inline this. */
+export function persistedProjectionFields(row: StoredClassificationRow): PersistedProjectionFields {
+  const v = projectStoredClassification(row);
+  return {
+    customerClassificationState: v.state,
+    customerRiskLevel: v.riskLevel,
+    customerRiskCategories: v.categories,
+    customerClassificationProjectionVersion: CUSTOMER_PROJECTION_VERSION,
+    // Re-analysis is required whenever nothing confirms the stored verdict, or a stale Auto-Protect
+    // decision hangs off it. Re-interpretation cannot clear either; only re-classification can.
+    customerRequiresReanalysis: v.requiresReview || v.autoProtect.requiresReanalysis,
+  };
+}
+
+/**
+ * The persisted columns as READ back.
+ *
+ * `customerRiskCategories` is NOT NULL in the database (Prisma has no optional scalar list), so it is
+ * ALWAYS an array — `[]` merely means "no confirmed categories". It is deliberately NOT a marker of
+ * whether the row was projected. The authoritative markers are `customerClassificationState` and
+ * `customerClassificationProjectionVersion`; the other columns stay nullable to carry that.
+ */
+export interface PersistedProjectionRow {
+  customerClassificationState?: string | null;
+  customerRiskLevel?: string | null;
+  customerRiskCategories?: readonly string[];
+  customerClassificationProjectionVersion?: number | null;
+  customerRequiresReanalysis?: boolean | null;
+}
+
+/**
+ * Interpret the PERSISTED projection, failing closed on anything missing, stale or malformed.
+ *
+ * A row is unprojected/stale when — and ONLY when — a canonical marker says so:
+ *   · `customerClassificationState` is null or not one of the three known values;
+ *   · `customerClassificationProjectionVersion` is null or older than CUSTOMER_PROJECTION_VERSION;
+ *   · the persisted state is internally inconsistent (`confirmed` with no categories).
+ * An empty `customerRiskCategories` on its own implies NEITHER clean NOR review_required — state and
+ * version are authoritative.
+ *
+ * Unprojected/stale rows read as `review_required` with no categories, a safe-capped level and
+ * `requiresReanalysis: true`, so they cannot match a confirmed filter, cannot reach a confirmed total,
+ * are never counted as clean, and stay visible in requires-review views.
+ */
+export function readPersistedProjection(row: PersistedProjectionRow): {
+  state: "confirmed" | "review_required" | "no_issue";
+  categories: string[];
+  riskLevel: string;
+  requiresReanalysis: boolean;
+  /** Missing, stale or malformed persisted projection — treat as unverified. */
+  stale: boolean;
+} {
+  const version = row.customerClassificationProjectionVersion;
+  const stale = typeof version !== "number" || version < CUSTOMER_PROJECTION_VERSION;
+  const rawState = row.customerClassificationState;
+  const known = rawState === "confirmed" || rawState === "review_required" || rawState === "no_issue";
+
+  if (stale || !known) {
+    return { state: "review_required", categories: [], riskLevel: "medium", requiresReanalysis: true, stale: true };
+  }
+  const categories = Array.isArray(row.customerRiskCategories) ? [...row.customerRiskCategories] : [];
+  // A confirmed state with no persisted categories is contradictory — fail closed rather than assert it.
+  if (rawState === "confirmed" && categories.length === 0) {
+    return { state: "review_required", categories: [], riskLevel: "medium", requiresReanalysis: true, stale: true };
+  }
+  const level = typeof row.customerRiskLevel === "string" && row.customerRiskLevel.length > 0
+    ? row.customerRiskLevel : "none";
+  return {
+    state: rawState,
+    categories: rawState === "confirmed" ? categories : [],
+    // Never present high/critical for anything not confirmed, whatever was persisted.
+    riskLevel: rawState === "confirmed" ? level : (rank(level) >= rank("high") ? "medium" : level),
+    requiresReanalysis: row.customerRequiresReanalysis === true || rawState !== "confirmed",
+    stale: false,
+  };
+}
+
 /** Bounded tally helper: confirmed category counts plus a separate requires-review bucket. */
 export interface ProjectedTally {
   confirmed: Map<string, number>;

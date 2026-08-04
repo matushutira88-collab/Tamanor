@@ -518,7 +518,17 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
     const cats = r.riskCategories ?? [];
     const gateDecisions = ((r.aiDiagnostics ?? null) as { evidenceGate?: { decisions?: { category: string; verdict: string }[] } } | null)?.evidenceGate?.decisions;
     const display = customerClassificationDisplay(cats, gateDecisions);
-    const bucket = sentimentBucket({ categories: cats, sentiment: r.sentiment as string, riskLevel: r.riskLevel as string });
+    // The customer-visible bucket is computed from the CANONICAL projection, never from the raw stored
+    // verdict — an unverified accusation must not present as "risky".
+    const projected = projectStoredClassification({
+      riskLevel: r.riskLevel as string, riskCategories: cats, riskConfidence: r.riskConfidence as number,
+      aiDiagnostics: r.aiDiagnostics,
+    });
+    const bucket = sentimentBucket({
+      categories: projected.categories,
+      sentiment: r.sentiment as string,
+      riskLevel: projected.riskLevel,
+    });
     const st = ci.externalId ? execState.get(ci.externalId) : undefined;
     const qi = queueByItem.get(r.id);
     const hiddenPublic = st === "hidden";

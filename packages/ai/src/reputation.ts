@@ -95,8 +95,52 @@ export function sentimentBucketWhere(bucket: SentimentBucket): SentimentWhere {
         { AND: [...fellThrough, sent("negative")] },
       ] };
     case "risky":
+      // CUSTOMER-FACING RISKY = CONFIRMED risky. The gate-aware form reads the PERSISTED projection
+      // columns (see customerRiskyWhere) — this raw form is retained only for the non-customer callers
+      // and for the parity tests that compare it against the pure sentimentBucket cascade.
       return { AND: [notPos, notQ, notNC, notLegit, { OR: [hasRisky, riskHi] }] };
   }
+}
+
+/**
+ * V1.66 — the CUSTOMER-FACING risky predicate, pushed down to SQL over the PERSISTED projection.
+ *
+ * `sentimentBucketWhere("risky")` reads the RAW `riskCategories`/`riskLevel`, so a legacy row whose
+ * accusation was never substantiated still matched it — the exact defect this replaces. A row only
+ * counts as risky for a customer when its persisted projection says `confirmed` AND is on the current
+ * projection version AND carries a confirmed risky category (or a confirmed high/critical level).
+ *
+ * Rows that are review_required, legacy/unverified, missing a projection, on a stale version, or
+ * awaiting re-analysis are excluded by construction — no application-memory post-filter, so cursor
+ * pagination and page sizes stay exact.
+ */
+export function customerRiskyWhere(projectionVersion: number): SentimentWhere {
+  return {
+    AND: [
+      { customerClassificationState: "confirmed" },
+      { customerClassificationProjectionVersion: { gte: projectionVersion } },
+      { OR: [
+        { customerRiskCategories: { hasSome: [...RISKY_CATEGORIES] } },
+        { customerRiskLevel: { in: ["high", "critical"] } },
+      ] },
+    ],
+  };
+}
+
+/**
+ * The companion facet: everything the customer must still see but which is NOT asserted as fact —
+ * un-projected legacy rows, stale projection versions, and explicit review_required verdicts. Together
+ * with {@link customerRiskyWhere} this guarantees an unverified accusation is never silently dropped.
+ */
+export function customerRequiresReviewWhere(projectionVersion: number): SentimentWhere {
+  return {
+    OR: [
+      { customerClassificationState: "review_required" },
+      { customerClassificationState: null },
+      { customerClassificationProjectionVersion: null },
+      { customerClassificationProjectionVersion: { lt: projectionVersion } },
+    ],
+  };
 }
 
 export type ReputationTopic =

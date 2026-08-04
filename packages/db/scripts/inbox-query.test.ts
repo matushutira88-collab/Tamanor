@@ -14,7 +14,7 @@
  *
  * Run: pnpm inbox-query:test
  */
-import { sentimentBucket, type SentimentBucket } from "@guardora/ai";
+import { sentimentBucket, sentimentBucketWhere, type SentimentBucket } from "@guardora/ai";
 import {
   systemDb, withTenant,
   buildInboxWhere, listInboxPage, inboxCounts, decodeCursor, listInboxItemsWithState,
@@ -159,8 +159,9 @@ async function run() {
     const cats = [[], ["positive_feedback"], ["customer_question"], ["normal_criticism"], ["refund_complaint"], ["spam"], ["normal_criticism", "spam"]];
     const sents = ["positive", "neutral", "negative"] as const;
     const risks = ["none", "high", "critical"] as const;
+    // The three DESCRIPTIVE buckets still use the raw cascade, so the original equivalence holds exactly.
     let mismatches = 0, matrix = 0;
-    for (const bucket of ["positive", "neutral", "negative", "risky"] as SentimentBucket[]) {
+    for (const bucket of ["positive", "neutral", "negative"] as SentimentBucket[]) {
       const inBucket = new Set((await listInboxItemsWithState(A.t.id, buildInboxWhere(A.t.id, { view: "default", sentiment: bucket }))).map((r) => r.id));
       for (const r of ordered) {
         const jsBucket = sentimentBucket({ categories: r.riskCategories, sentiment: r.sentiment as string, riskLevel: r.riskLevel as string });
@@ -168,7 +169,29 @@ async function run() {
         if ((jsBucket === bucket) !== inBucket.has(r.id)) mismatches++;
       }
     }
-    check("29) SQL sentiment predicate agrees with sentimentBucket() for every row×bucket", mismatches === 0, `${mismatches}/${matrix} mismatched`);
+    check("29) SQL sentiment predicate agrees with sentimentBucket() for every descriptive row×bucket", mismatches === 0, `${mismatches}/${matrix} mismatched`);
+
+    // RISKY is deliberately NO LONGER the raw cascade: it is CONFIRMED-risky, read from the persisted
+    // customer projection. These rows are seeded without a projection (state/version NULL) — exactly the
+    // legacy shape — so none may be presented as risky even though the raw cascade says several are.
+    // This is the defect the persisted projection closes.
+    const riskyRows = await listInboxItemsWithState(A.t.id, buildInboxWhere(A.t.id, { view: "default", sentiment: "risky" }));
+    const rawRisky = ordered.filter((r) => sentimentBucket({ categories: r.riskCategories, sentiment: r.sentiment as string, riskLevel: r.riskLevel as string }) === "risky");
+    check("29b) the RAW cascade still classifies some seeded rows as risky (the check is not vacuous)", rawRisky.length > 0, String(rawRisky.length));
+    check("29c) unprojected rows are EXCLUDED from the customer risky filter", riskyRows.length === 0, `${riskyRows.length} leaked`);
+
+    // …and the same rows must remain findable under the requires-review facet — never silently dropped.
+    const reviewRows = await listInboxItemsWithState(A.t.id, buildInboxWhere(A.t.id, { view: "default", requiresReview: true }));
+    check("29d) unprojected rows ARE included in the requires-review facet",
+      rawRisky.every((r) => reviewRows.some((x) => x.id === r.id)), `${reviewRows.length} rows`);
+
+    // The raw predicate itself is untouched — its equivalence with sentimentBucket still holds.
+    const rawRiskyIds = new Set((await listInboxItemsWithState(A.t.id, {
+      AND: [{ tenantId: A.t.id }, { archivedAt: null }, sentimentBucketWhere("risky") as never],
+    })).map((r) => r.id));
+    check("29e) the raw sentimentBucketWhere('risky') still agrees with sentimentBucket()",
+      rawRisky.length === rawRiskyIds.size && rawRisky.every((r) => rawRiskyIds.has(r.id)),
+      `${rawRiskyIds.size} vs ${rawRisky.length}`);
     void cats; void sents; void risks;
 
     // ---------------- 30) cursor is opaque & malformed cursor fails safe (page 1) ----------------
