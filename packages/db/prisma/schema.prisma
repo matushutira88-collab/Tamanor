@@ -157,6 +157,12 @@ enum Priority {
   urgent
 }
 
+enum PriorityProvenance {
+  system
+  human
+  unknown
+}
+
 // V1.42 — internal inbox workflow status (Tamanor-side triage; NOT provider moderation state).
 // `resolved` here NEVER implies a provider comment was hidden/deleted/replied.
 enum InboxWorkflowStatus {
@@ -423,6 +429,7 @@ model Tenant {
   connectedAccounts ConnectedAccount[]
   contentItems      ContentItem[]
   reputationItems   ReputationItem[]
+  reanalysisPreviews ReputationReanalysisPreview[]
   decisions         ModerationDecision[]
   brandRules        BrandRule[]
   auditLogs         AuditLog[]
@@ -984,8 +991,11 @@ model ReputationItem {
   platform         Platform
   contentItemId    String           @unique
   status           ReputationStatus @default(new)
-  priority         Priority         @default(normal)
-  requiresApproval Boolean          @default(false)
+  priority             Priority           @default(normal)
+  priorityProvenance   PriorityProvenance @default(unknown)
+  prioritySetByUserId  String?
+  prioritySetAt        DateTime?
+  requiresApproval     Boolean            @default(false)
 
   // V1.42 — Tamanor-side inbox workflow state (persisted, tenant-scoped, provider-neutral).
   // These are NEVER overwritten by provider ingest (ingest only touches provider content fields).
@@ -1064,6 +1074,7 @@ model ReputationItem {
   assignedTo    User?                 @relation("InboxAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   inboxLabels   InboxItemLabel[]
   inboxNotes    InboxNote[]
+  reanalysisPreviews ReputationReanalysisPreview[]
 
   // V1.37.5 — enables composite (id, tenantId) foreign keys so a child can never
   // reference a ReputationItem belonging to a different tenant.
@@ -1095,7 +1106,37 @@ model ReputationItem {
   @@index([tenantId, customerClassificationState, createdAt(sort: Desc), id(sort: Desc)])
   @@index([customerRiskCategories], type: Gin)
   @@index([tenantId, customerClassificationProjectionVersion, id])
+  @@index([tenantId, priorityProvenance, id], map: "reputation_items_tenantId_priorityProvenance_id_idx")
   @@map("reputation_items")
+}
+
+model ReputationReanalysisPreview {
+  id                  String   @id
+  tenantId            String
+  brandId             String
+  reputationItemId    String
+  createdByUserId     String
+  status              String   @default("pending")
+  sourceContentHash   String?
+  sourceUpdatedAt     DateTime
+  sourceAssessedAt    DateTime?
+  sourceFingerprint   String
+  proposal            Json
+  proposalDigest      String
+  idempotencyKey      String
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  consumedAuditId     String?
+  createdAt           DateTime @default(now())
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "reputation_reanalysis_previews_tenantId_fkey")
+  reputationItem ReputationItem @relation(fields: [reputationItemId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "reputation_reanalysis_previews_item_tenant_fkey")
+
+  @@unique([id, tenantId], map: "reputation_reanalysis_previews_id_tenantId_key")
+  @@unique([tenantId, createdByUserId, reputationItemId, idempotencyKey], map: "rrp_tenant_user_item_idem_key")
+  @@index([tenantId, reputationItemId, status], map: "reputation_reanalysis_previews_tenantId_item_status_idx")
+  @@index([tenantId, status, expiresAt], map: "reputation_reanalysis_previews_tenantId_status_expiresAt_idx")
+  @@map("reputation_reanalysis_previews")
 }
 
 // V1.42 — tenant-scoped inbox label. Unique normalized name per tenant. Deleting a label

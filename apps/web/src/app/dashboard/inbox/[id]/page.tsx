@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import {
   PLATFORM_META,
@@ -12,7 +13,7 @@ import {
 import { projectStoredClassification } from "@guardora/ai";
 import { PageHeader, Badge, Textarea, PrimaryButton } from "@/components/dashboard/ui";
 import { requireSession } from "@/server/auth";
-import { withTenant } from "@guardora/db";
+import { getReanalysisPreview, withTenant } from "@guardora/db";
 import { getLocale } from "@/i18n/locale-server";
 import { getDictionary } from "@/i18n";
 import { tEnum } from "@/i18n/labels";
@@ -27,7 +28,10 @@ import {
   proposeDelete,
   proposeReply,
 } from "../actions";
-import { submitFeedback, addMemoryRule } from "./actions";
+import {
+  submitFeedback, addMemoryRule, previewReanalysisAction, confirmReanalysisAction,
+} from "./actions";
+import { ReanalysisSubmit } from "./reanalysis-submit";
 
 const OPEN_PROPOSAL_STATUSES = ["proposed", "approved"];
 
@@ -68,6 +72,9 @@ export default async function InboxItemPage({
     db.autoProtectDecision.findUnique({ where: { itemId: item.id } }),
     db.platformActionExecution.findFirst({ where: { itemId: item.id }, orderBy: { createdAt: "desc" }, select: { status: true, reason: true } }),
   ]));
+  const reanalysisPreview = act && sp.preview
+    ? await getReanalysisPreview(session.tenantId, item.id, session.userId, sp.preview)
+    : null;
 
   // CANONICAL customer-visible interpretation. Every badge, level and Auto-Protect affordance below
   // reads from THIS — never from item.riskCategories / item.riskLevel / autoDecision directly. A stored
@@ -81,11 +88,32 @@ export default async function InboxItemPage({
   });
 
   const meta = PLATFORM_META[item.platform as Platform];
+  const requiresReanalysis = item.customerRequiresReanalysis === true;
+  const reanalysisCode = sp.reanalysis;
   const notice = sp.notice;
   const noticeKind = sp.kind ?? "ok";
   const openProposals = item.decisions.filter((d) =>
     OPEN_PROPOSAL_STATUSES.includes(d.status),
   );
+  const reanalysisMessage = reanalysisCode ? ({
+    preview_ready: t.reanalysis.previewReady,
+    success: t.reanalysis.success,
+    in_progress: t.reanalysis.inProgress,
+    provider_failure: t.reanalysis.providerFailure,
+    forbidden: t.reanalysis.forbidden,
+    source_changed: t.reanalysis.conflict,
+    expired: t.reanalysis.expired,
+    consumed: t.reanalysis.consumed,
+    superseded: t.reanalysis.superseded,
+    digest_mismatch: t.reanalysis.digestMismatch,
+    rate_limited: t.reanalysis.rateLimited,
+    invalid_request: t.reanalysis.invalidRequest,
+    invalid_proposal: t.reanalysis.invalidRequest,
+    proposal_too_large: t.reanalysis.invalidRequest,
+    csrf: t.reanalysis.csrf,
+    not_found: t.reanalysis.notFound,
+    wrong_actor: t.reanalysis.notFound,
+  } as Record<string, string>)[reanalysisCode] : null;
 
   return (
     <>
@@ -145,6 +173,103 @@ export default async function InboxItemPage({
             </div>
             <p className="text-[15px] leading-relaxed">{item.contentItem.text}</p>
           </div>
+
+          {act ? (
+            <div className="gu-card p-5" data-testid="item-reanalysis">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold">{t.reanalysis.title}</h3>
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">{t.reanalysis.description}</p>
+                </div>
+                {requiresReanalysis ? <Badge tone="neutral">{t.reanalysis.requiresReanalysis}</Badge> : null}
+              </div>
+              {requiresReanalysis ? (
+                <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-xs text-[var(--color-muted)]">
+                  {t.reanalysis.staleProcessing}
+                </p>
+              ) : null}
+              {reanalysisMessage ? (
+                <p className={`mt-3 text-xs ${reanalysisCode === "success" || reanalysisCode === "preview_ready" ? "text-[var(--color-ok)]" : "text-[var(--color-warn)]"}`} role="status">
+                  {reanalysisMessage}
+                </p>
+              ) : null}
+              <form action={previewReanalysisAction.bind(null, item.id)} className="mt-3">
+                <input type="hidden" name="idempotencyKey" value={`rean_${randomUUID().replace(/-/g, "")}`} />
+                <ReanalysisSubmit idle={t.reanalysis.action} pending={t.reanalysis.running} />
+              </form>
+
+              {reanalysisPreview ? (() => {
+                const p = reanalysisPreview.proposal;
+                const expired = reanalysisPreview.expiresAt.getTime() <= Date.now();
+                const blockedByConflict = ["source_changed", "digest_mismatch", "invalid_proposal"].includes(reanalysisCode ?? "");
+                const confirmable = reanalysisPreview.status === "pending" && !expired && !blockedByConflict;
+                const currentCats = requiresReanalysis
+                  ? t.reanalysis.requiresReanalysis
+                  : view.categories.length > 0
+                    ? view.categories.map((c) => tEnum(t, "category", c)).join(", ")
+                    : view.requiresReview ? t.autoProtect.reviewRequired : t.reanalysis.noCategories;
+                const proposedCats = p.projection.customerRiskCategories.length > 0
+                  ? p.projection.customerRiskCategories.map((c) => tEnum(t, "category", c)).join(", ")
+                  : t.reanalysis.noCategories;
+                return (
+                  <div className="mt-4 rounded-lg border border-[var(--color-border-strong)] p-4" data-testid="reanalysis-preview">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{t.reanalysis.current}</p>
+                        <dl className="space-y-2 text-xs">
+                          <CompareRow label={t.reanalysis.riskLevel} value={tEnum(t, "risk", view.riskLevel)} />
+                          <CompareRow label={t.reanalysis.categories} value={currentCats} />
+                          <CompareRow label={t.reanalysis.sentiment} value={tEnum(t, "sentiment", item.sentiment)} />
+                          <CompareRow label={t.reanalysis.priority} value={tEnum(t, "priority", item.priority)} />
+                          <CompareRow label={t.reanalysis.processing} value={requiresReanalysis ? t.reanalysis.requiresReanalysis : humanize(item.processingStatus)} />
+                          <CompareRow label={t.reanalysis.classifier} value={requiresReanalysis ? "—" : item.classifierVersion ?? "—"} />
+                          <CompareRow label={t.reanalysis.autoProtect} value={view.autoProtect.decision ?? t.reanalysis.noDecision} />
+                        </dl>
+                      </div>
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{t.reanalysis.proposed}</p>
+                        <dl className="space-y-2 text-xs">
+                          <CompareRow label={t.reanalysis.riskLevel} value={tEnum(t, "risk", p.classification.riskLevel)} />
+                          <CompareRow label={t.reanalysis.categories} value={proposedCats} />
+                          <CompareRow label={t.reanalysis.sentiment} value={tEnum(t, "sentiment", p.classification.sentiment)} />
+                          <CompareRow label={t.reanalysis.priority} value={tEnum(t, "priority", item.priorityProvenance === "system" ? p.priority.proposed : item.priority)} />
+                          <CompareRow label={t.reanalysis.processing} value={humanize(p.processing.processingStatus)} />
+                          <CompareRow label={t.reanalysis.classifier} value={p.processing.classifierVersion} />
+                          <CompareRow label={t.reanalysis.autoProtect} value={p.autoProtect.decision === "no_action" ? t.reanalysis.noDecision : humanize(p.autoProtect.decision)} />
+                        </dl>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-[11px] text-[var(--color-muted)]">
+                      {item.priorityProvenance === "system" ? t.reanalysis.prioritySystem : t.reanalysis.priorityPreserved}
+                    </p>
+                    <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                      {t.reanalysis.expires}: {formatDateTime(reanalysisPreview.expiresAt)}
+                    </p>
+                    {confirmable ? (
+                      <form action={confirmReanalysisAction.bind(null, item.id)} className="mt-3">
+                        <input type="hidden" name="previewId" value={reanalysisPreview.id} />
+                        <ReanalysisSubmit idle={t.reanalysis.confirm} pending={t.reanalysis.confirming} />
+                      </form>
+                    ) : (
+                      <p className="mt-3 text-xs text-[var(--color-muted)]">
+                        {expired
+                          ? t.reanalysis.expired
+                          : reanalysisPreview.status === "consumed"
+                            ? t.reanalysis.consumed
+                            : reanalysisCode === "source_changed"
+                              ? t.reanalysis.conflict
+                              : reanalysisCode === "digest_mismatch"
+                                ? t.reanalysis.digestMismatch
+                                : reanalysisCode === "invalid_proposal"
+                                  ? t.reanalysis.invalidRequest
+                                  : t.reanalysis.superseded}
+                      </p>
+                    )}
+                  </div>
+                );
+              })() : null}
+            </div>
+          ) : null}
 
           {/* Immediate actions (Guardora-side, no platform call) */}
           {act ? (
@@ -249,7 +374,10 @@ export default async function InboxItemPage({
         {/* Risk sidebar */}
         <aside className="space-y-4">
           <div className="gu-card p-5">
-            <h3 className="mb-3 text-sm font-semibold">{t.dash.aiRiskAssessment}</h3>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">{t.dash.aiRiskAssessment}</h3>
+              {requiresReanalysis ? <Badge tone="neutral">{t.reanalysis.requiresReanalysis}</Badge> : null}
+            </div>
             <dl className="space-y-2 text-sm">
               <Row label={t.dash.riskLevel}>
                 <Badge tone={RISK_TONE[view.riskLevel as RiskLevel]}>
@@ -257,7 +385,7 @@ export default async function InboxItemPage({
                 </Badge>
               </Row>
               <Row label={t.dash.confidence}>
-                {(item.riskConfidence * 100).toFixed(0)}%
+                {requiresReanalysis ? "—" : `${(item.riskConfidence * 100).toFixed(0)}%`}
               </Row>
               <Row label={t.dash.priority}>
                 <Badge tone={PRIORITY_TONE[item.priority as Priority]}>
@@ -281,17 +409,17 @@ export default async function InboxItemPage({
               </div>
             ) : null}
             {/* Unconfirmed accusation: the category NAME is withheld — only a neutral review prompt. */}
-            {view.requiresReview ? (
+            {view.requiresReview && !requiresReanalysis ? (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 <Badge tone="warn" data-testid="review-required">{t.autoProtect.reviewRequired}</Badge>
               </div>
             ) : null}
-            {item.riskRationale ? (
+            {item.riskRationale && !requiresReanalysis ? (
               <p className="mt-3 text-xs text-[var(--color-muted)]">
                 {item.riskRationale}
               </p>
             ) : null}
-            {item.riskEngine ? (
+            {item.riskEngine && !requiresReanalysis ? (
               <p className="mt-2 text-[11px] text-[var(--color-muted)]">
                 {t.dash.engine}: {item.riskEngine}
               </p>
@@ -343,18 +471,22 @@ export default async function InboxItemPage({
               <div className="gu-card p-5">
                 <div className="mb-2 flex items-center gap-2">
                   <h3 className="text-sm font-semibold">⚠️ {t.intel.whyFlagged}</h3>
-                  {item.classificationMode === "ai_assisted" ? (
+                  {requiresReanalysis ? (
+                    <Badge tone="neutral">{t.reanalysis.requiresReanalysis}</Badge>
+                  ) : item.classificationMode === "ai_assisted" ? (
                     <Badge tone="brand">{t.intel.aiAssisted}</Badge>
                   ) : (
                     <Badge tone="neutral">{t.intel.rulesOnly}</Badge>
                   )}
                 </div>
                 <p className="text-sm">
-                  {signals.length > 0
-                    ? `${t.intel.reasonPrefix} ${signals.map((s) => tEnum(t, "riskReason", s)).join(", ")}.`
-                    : t.intel.noSignals}
+                  {requiresReanalysis
+                    ? t.reanalysis.staleProcessing
+                    : signals.length > 0
+                      ? `${t.intel.reasonPrefix} ${signals.map((s) => tEnum(t, "riskReason", s)).join(", ")}.`
+                      : t.intel.noSignals}
                 </p>
-                {terms.length > 0 ? (
+                {!requiresReanalysis && terms.length > 0 ? (
                   <div className="mt-3">
                     <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[var(--color-muted)]">{t.intel.matchedTerms}</p>
                     <div className="flex flex-wrap gap-1.5">
@@ -364,24 +496,32 @@ export default async function InboxItemPage({
                     </div>
                   </div>
                 ) : null}
-                {signals.length > 0 ? (
+                {!requiresReanalysis && signals.length > 0 ? (
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {signals.map((s) => (
                       <Badge key={s} tone="danger">{withEmoji("category", s, tEnum(t, "category", s))}</Badge>
                     ))}
                   </div>
                 ) : null}
-                <p className="mt-3 text-xs">
-                  <span className="font-medium">{t.intel.recommendation}:</span>{" "}
-                  <span className="text-[var(--color-muted)]">{tEnum(t, "reviewAction", action)}</span>
-                </p>
-                {item.requiresApproval ? (
+                {!requiresReanalysis ? (
+                  <p className="mt-3 text-xs">
+                    <span className="font-medium">{t.intel.recommendation}:</span>{" "}
+                    <span className="text-[var(--color-muted)]">{tEnum(t, "reviewAction", action)}</span>
+                  </p>
+                ) : null}
+                {item.requiresApproval && !requiresReanalysis ? (
                   <p className="mt-2 text-xs text-[var(--color-warn)]">🛡️ {t.intel.approvalReason}</p>
                 ) : null}
                 <p className="mt-3 border-t border-[var(--color-border)] pt-2 text-[11px] text-[var(--color-muted)]">
-                  {item.aiProviderStatus === "classified"
-                    ? `${t.intel.classifiedWithAi} (${item.aiProvider})`
-                    : `${t.intel.classifiedByRules} · ${t.intel.noExternalAi}`}
+                  {requiresReanalysis
+                    ? t.reanalysis.staleProcessing
+                    : item.aiProviderStatus === "classified"
+                      ? `${t.intel.classifiedWithAi} (${item.aiProvider})`
+                      : `${t.intel.classifiedByRules} · ${t.intel.noExternalAi}`}
+                </p>
+                <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                  {t.reanalysis.classifier}: {requiresReanalysis ? "—" : item.classifierVersion ?? "—"}
+                  {item.lastProcessedAt && !requiresReanalysis ? ` · ${formatDateTime(item.lastProcessedAt)}` : ""}
                 </p>
               </div>
             );
@@ -393,7 +533,7 @@ export default async function InboxItemPage({
               <h3 className="mb-3 text-sm font-semibold">🛡️ {t.autoProtect.decisionTitle}</h3>
               <dl className="space-y-2 text-sm">
                 <Row label={t.autoProtect.matchedCategory}>{view.autoProtect.matchedCategory ? tEnum(t, "autoProtectCategory", view.autoProtect.matchedCategory) : "—"}</Row>
-                <Row label={t.autoProtect.policyMode}>{autoDecision.policyMode === "none" ? "—" : tEnum(t, "autoProtectMode", autoDecision.policyMode)}</Row>
+                <Row label={t.autoProtect.policyMode}>{view.autoProtect.state === "stale_unverified" || autoDecision.policyMode === "none" ? "—" : tEnum(t, "autoProtectMode", autoDecision.policyMode)}</Row>
                 <Row label={t.autoProtect.decision}>
                   {/* A decision whose source classification is unconfirmed is NEVER shown as actionable,
                       pending, approved or executable — only as a bounded, neutral re-analysis state. */}
@@ -501,6 +641,15 @@ export default async function InboxItemPage({
         </aside>
       </div>
     </>
+  );
+}
+
+function CompareRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="text-[var(--color-muted)]">{label}</dt>
+      <dd className="max-w-[60%] text-right">{value}</dd>
+    </div>
   );
 }
 

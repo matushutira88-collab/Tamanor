@@ -60,7 +60,11 @@ export function setInboxArchived(tenantId: string, itemId: string, archived: boo
 // --------------------------- priority / workflow status ---------------------------
 export function setInboxPriority(tenantId: string, itemId: string, priority: Priority, actorUserId: string): Promise<InboxMutationResult> {
   return withTenantDb(tenantId, async (db) => {
-    const r = await db.reputationItem.updateMany({ where: { id: itemId }, data: { priority } });
+    const now = new Date();
+    const r = await db.reputationItem.updateMany({
+      where: { id: itemId },
+      data: { priority, priorityProvenance: "human", prioritySetByUserId: actorUserId, prioritySetAt: now },
+    });
     if (r.count === 0) return { ok: false, reason: "not_found" };
     await audit(db, tenantId, actorUserId, "inbox.set_priority", "reputation_item", itemId, { correlationId: cid(), priority });
     return { ok: true };
@@ -220,7 +224,10 @@ export function bulkInboxAction(
       case "mark_unread": data = { isRead: false }; break;
       case "archive": data = { archivedAt: new Date() }; break;
       case "unarchive": data = { archivedAt: null }; break;
-      case "set_priority": if (!opts.priority) return { ok: false, reason: "priority_required" }; data = { priority: opts.priority }; break;
+      case "set_priority":
+        if (!opts.priority) return { ok: false, reason: "priority_required" };
+        data = { priority: opts.priority, priorityProvenance: "human", prioritySetByUserId: actorUserId, prioritySetAt: new Date() };
+        break;
       case "set_workflow_status": if (!opts.status) return { ok: false, reason: "status_required" }; data = { inboxWorkflowStatus: opts.status }; break;
       case "assign":
         if (!opts.assigneeUserId) return { ok: false, reason: "assignee_required" };

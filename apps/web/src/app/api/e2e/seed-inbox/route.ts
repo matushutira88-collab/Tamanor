@@ -45,7 +45,7 @@ export async function POST() {
         create: { tenantId, brandId: brand.id, connectedAccountId: accountId, platform: platform as never, kind, externalId: extId, text, authorDisplayName: author, rating: rating ?? undefined, publishedAt: new Date() },
         update: { text, rating: rating ?? undefined, authorDisplayName: author },
       });
-      const baseline = { isRead: false, archivedAt: null, priority: "normal" as const, inboxWorkflowStatus: "new" as const, assignedToUserId: null, createdAt: new Date(), processingStatus: "processed_rules" as const, processingTier: "rules" as const, processingReason: null, lastProcessedAt: new Date(), classifierVersion: "risk-rules-v1", contentHash: null };
+      const baseline = { isRead: false, archivedAt: null, priority: "normal" as const, priorityProvenance: "system" as const, prioritySetByUserId: null, prioritySetAt: new Date(), inboxWorkflowStatus: "new" as const, assignedToUserId: null, createdAt: new Date(), processingStatus: "processed_rules" as const, processingTier: "rules" as const, processingReason: null, lastProcessedAt: new Date(), classifierVersion: "risk-rules-v1", contentHash: null };
       const existing = await db.reputationItem.findFirst({ where: { contentItemId: content.id } });
       if (existing) {
         await db.reputationItem.update({ where: { id: existing.id }, data: baseline });

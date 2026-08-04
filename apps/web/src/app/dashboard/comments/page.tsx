@@ -159,7 +159,7 @@ interface Row {
   isRead: boolean; archived: boolean; priority: string; workflowStatus: string; assigneeId: string | null; assigneeName: string | null;
   labels: LabelLite[]; noteCount: number; connectorHealth: ConnectorHealthState;
   processingStatus: string; processingTier: string | null; processingReason: string | null; lastProcessedAt: Date | null; classifierVersion: string | null;
-  classificationMode: string; diag: AdminDiag | null;
+  classificationMode: string; requiresReanalysis: boolean; diag: AdminDiag | null;
 }
 
 // Honest connector-health tone (never a fake green). Only a truly healthy connector is "ok".
@@ -561,7 +561,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       createdAt: r.createdAt, bucket,
       riskLevel: customerVisibleRiskLevel(r.riskLevel as string, display),
       category: display.kind === "confirmed_category" ? display.category : null,
-      needsReview: display.kind === "review_required",
+      needsReview: display.kind === "review_required" && r.customerRequiresReanalysis !== true,
       // Stored values are NEVER modified here — they are surfaced only in admin diagnostics, labelled.
       legacyUnverified: isLegacyUnverifiedVerdict(cats, gateDecisions),
       storedRiskLevel: r.riskLevel as string,
@@ -586,6 +586,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       lastProcessedAt: r.lastProcessedAt ?? null,
       classifierVersion: r.classifierVersion ?? null,
       classificationMode: (r.classificationMode as string) ?? "rules_only",
+      requiresReanalysis: r.customerRequiresReanalysis === true,
       diag: isAdmin ? buildDiag(r, usageByItem.get(r.id), aiCallByItem.get(r.id)) : null,
     };
   });
@@ -766,7 +767,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                   const notes = notesByItem.get(r.id) ?? [];
                   const audit = auditByItem.get(r.id) ?? [];
                   return (
-                    <div key={r.id} data-inbox-item={r.id} data-read={r.isRead ? "true" : "false"} data-archived={r.archived ? "true" : "false"} data-priority={r.priority} data-status={r.workflowStatus} data-notecount={r.noteCount} data-assignee={r.assigneeId ?? ""} data-connector-health={r.connectorHealth} data-processing={r.processingStatus} className="flex items-start gap-2">
+                    <div key={r.id} data-inbox-item={r.id} data-read={r.isRead ? "true" : "false"} data-archived={r.archived ? "true" : "false"} data-priority={r.priority} data-status={r.workflowStatus} data-notecount={r.noteCount} data-assignee={r.assigneeId ?? ""} data-connector-health={r.connectorHealth} data-processing={r.requiresReanalysis ? "requires_reanalysis" : r.processingStatus} className="flex items-start gap-2">
                       {/* Bulk checkbox lives OUTSIDE the <summary> (an interactive control nested in a
                           summary is an a11y anti-pattern and would toggle the disclosure). */}
                       {canAct ? <div className="pt-4"><SelectCheckbox id={r.id} locale={locale} /></div> : null}
@@ -780,9 +781,19 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                               <Badge tone={BUCKET_TONE[r.bucket]}>{t.rep[`bucket_${r.bucket}` as "bucket_positive"]}</Badge>
                               {r.priority !== "normal" ? <Badge tone={r.priority === "urgent" ? "danger" : r.priority === "high" ? "warn" : "neutral"}>{c.priority[r.priority] ?? r.priority}</Badge> : null}
                               <Badge tone="neutral">{c.workflow[r.workflowStatus] ?? r.workflowStatus.replace(/_/g, " ")}</Badge>
-                              <span data-testid="processing-badge" data-status={r.processingStatus}><Badge tone={PROCESSING_TONE[r.processingStatus] ?? "neutral"}>{processingCopy(r.processingStatus)}</Badge></span>
-                              {/* Customer-visible classification chip: Basic protection (rules) / AI assisted. */}
-                              <span data-testid="classification-chip" data-mode={r.classificationMode}><Badge tone={r.classificationMode === "ai_assisted" ? "brand" : "neutral"}>{r.classificationMode === "ai_assisted" ? dc.chipAi : dc.chipBasic}</Badge></span>
+                              <span data-testid="processing-badge" data-status={r.requiresReanalysis ? "requires_reanalysis" : r.processingStatus}>
+                                <Badge tone={r.requiresReanalysis ? "neutral" : PROCESSING_TONE[r.processingStatus] ?? "neutral"}>
+                                  {r.requiresReanalysis ? t.reanalysis.requiresReanalysis : processingCopy(r.processingStatus)}
+                                </Badge>
+                              </span>
+                              {/* A stale legacy row gets ONE neutral truth badge, never a second "AI assisted" badge. */}
+                              {!r.requiresReanalysis ? (
+                                <span data-testid="classification-chip" data-mode={r.classificationMode}>
+                                  <Badge tone={r.classificationMode === "ai_assisted" ? "brand" : "neutral"}>
+                                    {r.classificationMode === "ai_assisted" ? dc.chipAi : dc.chipBasic}
+                                  </Badge>
+                                </span>
+                              ) : null}
                               {r.archived ? <Badge tone="neutral">{c.viewArchived}</Badge> : null}
                               {r.assigneeName ? <Badge tone="neutral">@{r.assigneeName}</Badge> : null}
                               {r.labels.map((l) => <Badge key={l.id} tone={l.colorKey}>{l.name}</Badge>)}
@@ -808,7 +819,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                               <Row2 label={t.comments.platform}>{r.platformLabel}</Row2>
                               <Row2 label={t.comments.account}>{r.account}</Row2>
                               <Row2 label={t.comments.sentiment}>{t.rep[`bucket_${r.bucket}` as "bucket_positive"]}</Row2>
-                              <Row2 label={t.comments.risk}>{tEnum(t, "risk", r.riskLevel)}{r.category ? ` · ${tEnum(t, "autoProtectCategory", r.category)}` : r.needsReview ? ` · ${t.comments.reviewRequired}` : ""}</Row2>
+                              <Row2 label={t.comments.risk}>{r.requiresReanalysis ? t.reanalysis.requiresReanalysis : `${tEnum(t, "risk", r.riskLevel)}${r.category ? ` · ${tEnum(t, "autoProtectCategory", r.category)}` : r.needsReview ? ` · ${t.comments.reviewRequired}` : ""}`}</Row2>
                               <Row2 label={t.comments.status}>{t.comments[r.statusKey as "st_captured"]}</Row2>
                               {r.permalink ? <Row2 label={t.comments.post}><a href={r.permalink} target="_blank" rel="noopener noreferrer" className="text-[var(--color-brand)] hover:underline">{t.comments.post} →</a></Row2> : null}
                             </dl>
@@ -816,12 +827,18 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                             {r.cantHide ? <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs text-[var(--color-muted)]">{t.comments.cantHideNote}</p> : null}
 
                             {/* V1.44B — truthful processing state. Limit/disabled states link to usage; never a fake error. */}
-                            <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs" data-testid="processing-detail" data-status={r.processingStatus}>
-                              <span className="font-medium">{processingCopy(r.processingStatus)}</span>
-                              {r.processingTier ? <span className="text-[var(--color-muted)]"> · {c.tierLabel(r.processingTier)}</span> : null}
-                              {r.lastProcessedAt ? <span className="text-[var(--color-muted)]"> · {c.checkedPrefix} {relativeTime(r.lastProcessedAt, rel, now)}</span> : null}
-                              {r.classifierVersion ? <span className="text-[var(--color-muted)]"> · {dc.classifier}</span> : null}
-                              {PROCESSING_LIMIT_STATES.has(r.processingStatus) ? (
+                            <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-xs" data-testid="processing-detail" data-status={r.requiresReanalysis ? "requires_reanalysis" : r.processingStatus}>
+                              <span className="font-medium">{r.requiresReanalysis ? t.reanalysis.requiresReanalysis : processingCopy(r.processingStatus)}</span>
+                              {r.requiresReanalysis ? (
+                                <span className="text-[var(--color-muted)]"> · {t.reanalysis.staleProcessing}</span>
+                              ) : (
+                                <>
+                                  {r.processingTier ? <span className="text-[var(--color-muted)]"> · {c.tierLabel(r.processingTier)}</span> : null}
+                                  {r.lastProcessedAt ? <span className="text-[var(--color-muted)]"> · {c.checkedPrefix} {relativeTime(r.lastProcessedAt, rel, now)}</span> : null}
+                                  {r.classifierVersion ? <span className="text-[var(--color-muted)]"> · {dc.classifier}</span> : null}
+                                </>
+                              )}
+                              {!r.requiresReanalysis && PROCESSING_LIMIT_STATES.has(r.processingStatus) ? (
                                 <div className="mt-1"><Link href="/dashboard/usage" className="text-[var(--color-brand)] hover:underline" data-testid="processing-usage-link">{c.viewUsage}</Link></div>
                               ) : null}
                             </div>

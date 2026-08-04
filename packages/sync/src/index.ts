@@ -13,6 +13,7 @@ import {
   ActorKind,
   ConnectorHealth,
   Priority,
+  PriorityProvenance,
   ReputationStatus,
   RiskLevel as DbRiskLevel,
   Sentiment as DbSentiment,
@@ -38,7 +39,7 @@ import { createLeaseHeartbeat } from "./lease-heartbeat";
 import { parseMetaLeadgenChanges, ingestMetaLeadgenChanges } from "./meta-leads";
 import { randomUUID } from "node:crypto";
 import {
-  buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, persistedProjectionFields,
+  buildIntelFromHybrid, evaluateAutoProtect, evaluateControl, persistedProjectionFieldsAfterClassification,
   type ClassifierRule,
 } from "@guardora/ai";
 import { classifyWithUsagePolicy } from "./metered-classify";
@@ -835,20 +836,23 @@ async function persistNewItem(
         contentItemId: content.id,
         status: ReputationStatus.classified,
         priority: priorityFor(hybrid.level),
+        priorityProvenance: PriorityProvenance.system,
+        prioritySetByUserId: null,
+        prioritySetAt: new Date(),
         requiresApproval,
         riskLevel: hybrid.level as unknown as DbRiskLevel,
         riskConfidence: hybrid.confidence,
         riskCategories: hybrid.categories,
         // PERSISTED customer projection, derived through the ONE canonical helper — never re-derived
         // here. This is what the customer-facing SQL filters and aggregates read.
-        ...persistedProjectionFields({
+        ...persistedProjectionFieldsAfterClassification({
           riskLevel: hybrid.level,
           riskCategories: hybrid.categories,
           riskConfidence: hybrid.confidence,
           aiDiagnostics: hybrid.diagnostics,
           autoProtect: { decision: autoProtect.decision, matchedCategory: autoProtect.matchedCategory },
         }),
-        customerRiskLevel: persistedProjectionFields({
+        customerRiskLevel: persistedProjectionFieldsAfterClassification({
           riskLevel: hybrid.level, riskCategories: hybrid.categories, riskConfidence: hybrid.confidence,
           aiDiagnostics: hybrid.diagnostics,
           autoProtect: { decision: autoProtect.decision, matchedCategory: autoProtect.matchedCategory },
