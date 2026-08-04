@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   buildActorSignals, actorRiskScore, actorRiskLevel, sentimentBucket,
-  customerClassificationDisplay, customerVisibleRiskLevel,
+  customerClassificationDisplay, customerVisibleRiskLevel, isLegacyUnverifiedVerdict,
   type ActorComment, type ActorRiskLevel, type SentimentBucket, type AiDiagnostics,
 } from "@guardora/ai";
 import { getPlatformConnector, platformKeyFor, actorIdentityKey, PLATFORM_META, ALL_PLATFORMS, can, Permission, Role, providerCapabilities, connectorHealthStatus, type Platform, type ConnectorHealthState } from "@guardora/core";
@@ -67,7 +67,7 @@ interface AdminDiag {
 const DIAG_COPY: Record<Locale, {
   chipBasic: string; chipAi: string; heading: string; rules: string; ai: string; merged: string;
   callMode: string; model: string; tokens: string; cost: string; gate: string; aiStatus: string; notCalled: string; error: string; none: string; usageUnavailable: string;
-  classifier: string;
+  classifier: string; legacyVerdict: string; legacyUnverified: string;
   callModeVal: Record<"all" | "value_gated", string>;
   gateVal: Record<string, string>;
   gatePaused: string;
@@ -75,7 +75,7 @@ const DIAG_COPY: Record<Locale, {
 }> = {
   en: {
     chipBasic: "Basic protection", chipAi: "AI assisted", heading: "AI diagnostics (admin only)", rules: "Rules result", ai: "AI result", merged: "Merged result", callMode: "Call mode", model: "Model", tokens: "Tokens (in/out/total)", cost: "Cost", gate: "Gate", aiStatus: "AI status", notCalled: "not called", error: "Error", none: "—", usageUnavailable: "Usage details unavailable",
-    classifier: "Base protection",
+    classifier: "Base protection", legacyVerdict: "Stored verdict (legacy)", legacyUnverified: "unverified — predates evidence gate",
     callModeVal: { all: "Advanced AI check", value_gated: "Targeted AI check" },
     gateVal: { value_added: "AI added value", gate_not_fired: "AI check not needed", ai_disabled: "AI check off", no_provider: "AI provider not configured" },
     gatePaused: "AI check paused",
@@ -83,7 +83,7 @@ const DIAG_COPY: Record<Locale, {
   },
   sk: {
     chipBasic: "Základná ochrana", chipAi: "S pomocou AI", heading: "AI diagnostika (len admin)", rules: "Výsledok pravidiel", ai: "Výsledok AI", merged: "Zlúčený výsledok", callMode: "Režim volania", model: "Model", tokens: "Tokeny (in/out/spolu)", cost: "Náklad", gate: "Brána", aiStatus: "AI stav", notCalled: "nevolané", error: "Chyba", none: "—", usageUnavailable: "Údaje o spotrebe nedostupné",
-    classifier: "Základná ochrana",
+    classifier: "Základná ochrana", legacyVerdict: "Uložený verdikt (staršie)", legacyUnverified: "neoverené — spred evidenčnej brány",
     callModeVal: { all: "Pokročilá AI kontrola", value_gated: "Cielená AI kontrola" },
     gateVal: { value_added: "AI pridala hodnotu", gate_not_fired: "AI kontrola nebola potrebná", ai_disabled: "AI kontrola vypnutá", no_provider: "AI poskytovateľ nenastavený" },
     gatePaused: "AI kontrola pozastavená",
@@ -91,7 +91,7 @@ const DIAG_COPY: Record<Locale, {
   },
   de: {
     chipBasic: "Basisschutz", chipAi: "KI-unterstützt", heading: "KI-Diagnose (nur Admin)", rules: "Regel-Ergebnis", ai: "KI-Ergebnis", merged: "Zusammengeführtes Ergebnis", callMode: "Aufrufmodus", model: "Modell", tokens: "Tokens (ein/aus/gesamt)", cost: "Kosten", gate: "Gate", aiStatus: "KI-Status", notCalled: "nicht aufgerufen", error: "Fehler", none: "—", usageUnavailable: "Nutzungsdetails nicht verfügbar",
-    classifier: "Basisschutz",
+    classifier: "Basisschutz", legacyVerdict: "Gespeichertes Urteil (Alt)", legacyUnverified: "unbestätigt — vor dem Evidenz-Gate",
     callModeVal: { all: "Erweiterte KI-Prüfung", value_gated: "Gezielte KI-Prüfung" },
     gateVal: { value_added: "KI mit Mehrwert", gate_not_fired: "KI-Prüfung nicht nötig", ai_disabled: "KI-Prüfung aus", no_provider: "KI-Anbieter nicht konfiguriert" },
     gatePaused: "KI-Prüfung pausiert",
@@ -153,6 +153,7 @@ function buildDiag(
 interface Row {
   id: string; text: string; author: string; authorKey: string | null; platformLabel: string; account: string;
   permalink: string | null; createdAt: Date; bucket: SentimentBucket; riskLevel: string; category: string | null; needsReview: boolean;
+  legacyUnverified: boolean; storedRiskLevel: string; storedCategories: string[];
   statusKey: string; hiddenPublic: boolean; pending: boolean; resolved: boolean; queueItemId: string | null;
   actorLevel: ActorRiskLevel | null; cantHide: boolean; isReview: boolean; rating: number | null; providerKey: string;
   isRead: boolean; archived: boolean; priority: string; workflowStatus: string; assigneeId: string | null; assigneeName: string | null;
@@ -513,10 +514,8 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const rows: Row[] = pageRows.map((r) => {
     const ci = r.contentItem;
     const cats = r.riskCategories ?? [];
-    const display = customerClassificationDisplay(
-      cats,
-      ((r.aiDiagnostics ?? null) as { evidenceGate?: { decisions?: { category: string; verdict: string }[] } } | null)?.evidenceGate?.decisions,
-    );
+    const gateDecisions = ((r.aiDiagnostics ?? null) as { evidenceGate?: { decisions?: { category: string; verdict: string }[] } } | null)?.evidenceGate?.decisions;
+    const display = customerClassificationDisplay(cats, gateDecisions);
     const bucket = sentimentBucket({ categories: cats, sentiment: r.sentiment as string, riskLevel: r.riskLevel as string });
     const st = ci.externalId ? execState.get(ci.externalId) : undefined;
     const qi = queueByItem.get(r.id);
@@ -551,6 +550,10 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       riskLevel: customerVisibleRiskLevel(r.riskLevel as string, display),
       category: display.kind === "confirmed_category" ? display.category : null,
       needsReview: display.kind === "review_required",
+      // Stored values are NEVER modified here — they are surfaced only in admin diagnostics, labelled.
+      legacyUnverified: isLegacyUnverifiedVerdict(cats, gateDecisions),
+      storedRiskLevel: r.riskLevel as string,
+      storedCategories: cats,
       statusKey, hiddenPublic, pending, resolved, queueItemId: qi?.id ?? null, actorLevel: key ? authorLevel.get(key) ?? null : null,
       cantHide: bucket === "risky" && !caps.canHideComment && !hiddenPublic && !resolved,
       isReview: ci.kind === "review",
@@ -826,6 +829,14 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                                   <Row2 label={dc.ai}>{r.diag.ai.verdict ? `${tEnum(t, "risk", r.diag.ai.verdict.level)} · ${r.diag.ai.verdict.confidence.toFixed(2)}${r.diag.ai.verdict.categories.length ? ` · ${r.diag.ai.verdict.categories.join(", ")}` : ""}` : dc.notCalled}{r.diag.ai.errorCode ? ` · ${dc.error}: ${r.diag.ai.errorCode}` : ""}</Row2>
                                   {r.diag.merged ? <Row2 label={dc.merged}>{tEnum(t, "risk", r.diag.merged.level)} · {r.diag.merged.confidence.toFixed(2)}{r.diag.merged.categories.length ? ` · ${r.diag.merged.categories.join(", ")}` : ""}</Row2> : null}
                                   <Row2 label={dc.gate}>{diagGate(dc, r.diag.gateReason)}</Row2>
+                                  {/* Legacy rows (accusatory category stored before the evidence gate existed)
+                                      keep their raw verdict visible HERE, explicitly marked unverified — the
+                                      customer view withholds it instead of asserting it. */}
+                                  {r.legacyUnverified ? (
+                                    <Row2 label={dc.legacyVerdict}>
+                                      <span data-testid="legacy-unverified">{tEnum(t, "risk", r.storedRiskLevel)}{r.storedCategories.length ? ` · ${r.storedCategories.join(", ")}` : ""} · {dc.legacyUnverified}</span>
+                                    </Row2>
+                                  ) : null}
                                   {r.diag.usageAvailable ? (
                                     <>
                                       <Row2 label={dc.model}>{r.diag.model ?? dc.none}</Row2>

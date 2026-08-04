@@ -13,7 +13,7 @@ import type {
   RiskEngine,
 } from "./types";
 import { detectLanguage } from "./language-detect";
-import { findTermSpans, type EvidenceSpan } from "./evidence";
+import { findTermSpans, assessScamContext, type EvidenceSpan } from "./evidence";
 
 /**
  * RiskClassifier — deterministic Risk Rules V1 (+ placeholder heuristic).
@@ -55,6 +55,18 @@ export class RiskClassifier implements RiskEngine {
         score = Math.max(score, weight);
         deterministic = true;
       }
+    }
+
+    // Contextual scam gating. An accusatory term above already confirms; otherwise scam is only
+    // confirmed by TWO distinct contextual dimensions including a harm-bearing one. A lone CTA
+    // ("kliknite sem"), a lone urgency word or a CTA stacked with an offer confirms nothing.
+    const scamContext = assessScamContext(norm, categories.has(RiskCategory.Scam), findTermSpans);
+    if (scamContext.confirms && scamContext.reason === "multi_dimension_with_harm") {
+      categories.add(RiskCategory.Scam);
+      evidence.push(...scamContext.spans);
+      for (const s of scamContext.spans) matchedTerms.add(s.term);
+      score = Math.max(score, 0.9);
+      deterministic = true;
     }
 
     // Positive signals only count when nothing negative fired.
@@ -192,17 +204,24 @@ const LEXICON: ReadonlyArray<readonly [RiskCategory, number, readonly string[], 
     "zabijem", "zabit ta", "i will kill", "kill you", "vyhrazam",
     "ublizim", "umresh", "toch dich", "i will hurt", "burn your store", "beat you up",
   ]],
-  // Scam / fraud / phishing / prize-bait → critical (SK/CZ/EN/DE/PL/HU).
+  // Scam / fraud / phishing → critical. ACCUSATORY TERMS ONLY: each of these is independently strong
+  // evidence of fraud. Ordinary call-to-action, urgency, offer, prize and payment wording is NOT here —
+  // it lives in SCAM_CONTEXT_LEXICON and can only confirm in combination (see assessScamContext).
+  // "kliknite sem" is marketing copy, not a crime.
   [RiskCategory.Scam, 0.9, [
-    "podvod", "podvodnik", "scam", "scammer", "scammed", "fraud", "betrug", "betrueger",
-    "oszustwo", "oszust", "atveres", "csalas", "csalo", "prevod",
-    "free money", "click here", "crypto giveaway", "wire transfer", "prevod penazi",
-    "verify your account", "click here to claim", "reset your password", "confirm your password",
-    // "click & win" prize bait (SK/CZ/EN/DE/PL/HU)
-    "klikni", "kliknite", "klikni sem", "kliknite sem", "click here to win",
-    "vyhraj", "vyhrajte", "vyhra", "sutaz", "vyhrajes", "free iphone", "iphone zadarmo",
-    "claim prize", "claim your prize", "gewinne", "gewinnen sie", "kostenloses iphone",
-    "wygraj", "darmowy iphone", "nyerj", "ingyen iphone",
+    // Naming the fraud itself.
+    "podvod", "podvodnik", "scam", "scammer", "scammed", "fraud", "fraudulent",
+    "betrug", "betrueger", "oszustwo", "oszust", "atveres", "csalas", "csalo",
+    // Explicit credential theft.
+    "verify your account", "confirm your password", "reset your password", "send your password",
+    "confirm your login details", "zadajte heslo", "poslite heslo", "posli heslo",
+    "bestatigen sie ihr passwort", "geben sie ihr passwort ein",
+    // Explicit payment/prize fraud.
+    "free money", "crypto giveaway", "claim prize", "claim your prize", "click here to claim",
+    "click here to win", "advance fee", "pay to claim", "zaplatte za vyhru",
+    // Explicit investment fraud.
+    "guaranteed returns", "guaranteed profit", "double your money", "garantovany vynos",
+    "garantovany zisk", "garantierte rendite",
   ]],
   // Spam → high.
   [RiskCategory.Spam, 0.7, [

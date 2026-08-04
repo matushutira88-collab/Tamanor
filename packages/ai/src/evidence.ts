@@ -181,6 +181,140 @@ export function validEvidenceForCategory(
   return (spans ?? []).filter((s) => s.category === category && validateEvidenceSpan(normalized, s));
 }
 
+/* ------------------------------------------------------------------ scam context gating */
+
+/**
+ * SCAM / PHISHING CONTEXT MODEL.
+ *
+ * "Kliknite sem pre viac informácií o produkte." — ordinary Slovak marketing copy — was classified as
+ * CRITICAL SCAM and reached `would_auto_hide`, because `klikni`/`kliknite`/`kliknite sem` sat in the
+ * lexicon as standalone weight-0.9 scam terms. Word boundaries and evidence validation both worked
+ * perfectly: the word really is there. The word is simply not evidence of fraud.
+ *
+ * The lexicon is therefore split by EVIDENTIAL STRENGTH rather than by language:
+ *
+ *  - ACCUSATORY terms are independently strong evidence of fraud on their own (naming the fraud,
+ *    demanding a credential, demanding an advance payment to release a prize, promising guaranteed
+ *    returns). One validated span confirms.
+ *  - CONTEXTUAL terms are ordinary commercial language that only becomes suspicious in combination.
+ *    Each belongs to a DIMENSION, and dimensions are further split into:
+ *      · ambient  — CTA, urgency, offer, verification prompts: present in most marketing copy;
+ *      · harm-bearing — credential request, payment request, impersonation, prize claim, suspicious
+ *        link, investment promise: the things a fraud actually needs.
+ *
+ * CONFIRMATION RULE: one accusatory span, OR at least two DISTINCT contextual dimensions of which at
+ * least one is harm-bearing. Stacking ambient words never confirms — "click here" + "our offer" is two
+ * dimensions and still nothing, which is exactly the fixture that used to fail.
+ */
+export type ScamDimension =
+  | "cta" | "urgency" | "offer" | "verification_prompt"
+  | "credential_request" | "payment_request" | "impersonation" | "prize_claim"
+  | "suspicious_link" | "investment_promise";
+
+/** Dimensions a fraud actually needs. At least one must be present for a contextual confirmation. */
+export const HARM_BEARING_DIMENSIONS: ReadonlySet<ScamDimension> = new Set<ScamDimension>([
+  "credential_request", "payment_request", "impersonation", "prize_claim",
+  "suspicious_link", "investment_promise",
+]);
+
+/** [dimension, terms] — matched with the same word-bounded rule as every other lexicon. */
+export const SCAM_CONTEXT_LEXICON: ReadonlyArray<readonly [ScamDimension, readonly string[]]> = [
+  // ---- ambient: ordinary commercial language, never confirming on its own ------------------------
+  ["cta", [
+    "click here", "click the link", "open the link", "follow the link", "tap here",
+    "klikni", "kliknite", "klikni sem", "kliknite sem", "otvorte odkaz", "otvor odkaz",
+    "hier klicken", "klicken sie hier", "link oeffnen", "kliknij", "kliknij tutaj",
+  ]],
+  ["urgency", [
+    "urgent", "urgently", "immediately", "act now", "right now", "last chance", "expires today",
+    "only today", "hurry", "urgentne", "ihned", "okamzite", "posledna sanca", "len dnes",
+    "dringend", "sofort", "letzte chance", "nur heute",
+  ]],
+  ["offer", [
+    "special offer", "our offer", "discount", "promo", "sale", "deal",
+    "ponuka", "ponuku", "zlava", "akcia", "angebot", "rabatt",
+  ]],
+  ["verification_prompt", ["verify", "verification", "confirm", "overit", "overte", "bestatigen", "verifizieren"]],
+
+  // ---- harm-bearing: what a fraud actually needs -------------------------------------------------
+  ["credential_request", [
+    "password", "passwords", "login details", "login credentials", "credentials", "username and password",
+    "one time code", "verification code", "security code", "pin code", "otp",
+    "heslo", "hesla", "prihlasovacie udaje", "prihlasovacie meno", "overovaci kod", "bezpecnostny kod",
+    "passwort", "zugangsdaten", "anmeldedaten", "sicherheitscode",
+  ]],
+  ["payment_request", [
+    "wire transfer", "bank details", "bank account number", "card number", "credit card number",
+    "send money", "send payment", "advance payment", "processing fee", "shipping fee", "iban",
+    "prevod penazi", "cislo karty", "cislo uctu", "bankove udaje", "poslite peniaze", "zaplatte poplatok",
+    "ueberweisung", "kontonummer", "kreditkartennummer", "gebuehr bezahlen",
+  ]],
+  ["impersonation", [
+    "official support", "official support team", "customer service team", "bank support",
+    "we are the bank", "security department", "account security team",
+    "oficialna podpora", "bankova podpora", "zakaznicka podpora banky",
+    "offizieller support", "sicherheitsabteilung",
+  ]],
+  ["prize_claim", [
+    "you won", "you have won", "winner", "free iphone", "claim prize", "claim your reward",
+    "vyhraj", "vyhrajte", "vyhrali ste", "vyhra", "sutaz", "vyhrajes", "iphone zadarmo",
+    "gewinne", "gewinnen sie", "kostenloses iphone", "wygraj", "darmowy iphone", "nyerj", "ingyen iphone",
+  ]],
+  ["suspicious_link", [
+    "bit ly", "tinyurl", "goo gl", "shortened link", "short link", "t me", "wa me",
+  ]],
+  ["investment_promise", [
+    "invest now", "investment opportunity", "crypto investment", "trading signals", "roi guaranteed",
+    "investujte", "investicna prilezitost", "krypto investicia", "investieren sie jetzt",
+  ]],
+];
+
+export interface ScamContextAssessment {
+  /** Distinct contextual dimensions with at least one validated span. */
+  dimensions: ScamDimension[];
+  /** Dimensions that are harm-bearing. */
+  harmDimensions: ScamDimension[];
+  /** Spans supporting the assessment (empty when nothing fired). */
+  spans: EvidenceSpan[];
+  /** True when the contextual evidence is strong enough to confirm scam/phishing on its own. */
+  confirms: boolean;
+  reason: "accusatory_term" | "multi_dimension_with_harm" | "insufficient_context" | "no_signal";
+}
+
+/**
+ * Assess contextual scam evidence for `normalized`. `accusatoryHit` is true when an independently
+ * accusatory scam/phishing term already matched — in that case the contextual layer is not needed.
+ */
+export function assessScamContext(
+  normalized: string,
+  accusatoryHit: boolean,
+  findSpans: (text: string, term: string, category: string) => EvidenceSpan[],
+): ScamContextAssessment {
+  const spans: EvidenceSpan[] = [];
+  const dims = new Set<ScamDimension>();
+  for (const [dimension, terms] of SCAM_CONTEXT_LEXICON) {
+    for (const term of terms) {
+      const hits = findSpans(normalized, term, "scam");
+      if (hits.length === 0) continue;
+      dims.add(dimension);
+      spans.push(...hits);
+    }
+  }
+  const dimensions = [...dims];
+  const harmDimensions = dimensions.filter((d) => HARM_BEARING_DIMENSIONS.has(d));
+  if (accusatoryHit) {
+    return { dimensions, harmDimensions, spans, confirms: true, reason: "accusatory_term" };
+  }
+  // Two distinct dimensions AND at least one of them harm-bearing. Ambient stacking never confirms.
+  if (dimensions.length >= 2 && harmDimensions.length >= 1) {
+    return { dimensions, harmDimensions, spans, confirms: true, reason: "multi_dimension_with_harm" };
+  }
+  return {
+    dimensions, harmDimensions, spans, confirms: false,
+    reason: dimensions.length === 0 ? "no_signal" : "insufficient_context",
+  };
+}
+
 /* ------------------------------------------------------------------ verdicts */
 
 /**
@@ -263,7 +397,8 @@ const NON_ACCUSATORY: ReadonlySet<string> = new Set(["neutral", "positive"]);
  */
 export type CustomerClassificationDisplay =
   | { kind: "confirmed_category"; category: string }
-  | { kind: "review_required" }
+  /** `legacy` ⇒ the row predates the evidence gate; its stored accusation can never be verified. */
+  | { kind: "review_required"; legacy?: boolean }
   | { kind: "no_issue" };
 
 /**
@@ -278,12 +413,43 @@ export function customerClassificationDisplay(
   persistedCategories: readonly string[] | null | undefined,
   gateDecisions?: readonly { category: string; verdict: string }[] | null,
 ): CustomerClassificationDisplay {
-  const held = (gateDecisions ?? []).some((d) => d.verdict === "review_required");
-  if (held) return { kind: "review_required" };
-  const accusatory = (persistedCategories ?? []).filter((c) => !NON_ACCUSATORY.has(c));
-  const first = accusatory[0];
-  if (first === undefined) return { kind: "no_issue" };
-  return { kind: "confirmed_category", category: first };
+  const decisions = gateDecisions ?? [];
+  const categories = (persistedCategories ?? []).filter((c) => !NON_ACCUSATORY.has(c));
+  const accusatory = categories.filter((c) => EVIDENCE_REQUIRED_CATEGORIES.has(c));
+
+  // Anything explicitly held for review wins outright — we never mix fact with suspicion.
+  if (decisions.some((d) => d.verdict === "review_required")) return { kind: "review_required" };
+
+  if (accusatory.length > 0) {
+    // FAIL-CLOSED. An accusation is a fact ONLY when the gate explicitly says `confirmed` for that exact
+    // category. A missing gate is the pre-evidence-deployment case (`legacy`) and an unmatched category is
+    // a partial/older gate — both are unverified, never confirmed. This is the fix for rows written before
+    // the evidence gate existed, which previously rendered as "Vulgarita / Kritické" purely by default.
+    const unverified = accusatory.filter(
+      (c) => !decisions.some((d) => d.category === c && d.verdict === "confirmed"),
+    );
+    if (unverified.length > 0) return { kind: "review_required", legacy: decisions.length === 0 };
+    const first = accusatory[0] as string;
+    return { kind: "confirmed_category", category: first };
+  }
+
+  // No accusation at all: a descriptive category (spam, complaint, …) may still be shown as-is.
+  const descriptive = categories[0];
+  if (descriptive === undefined) return { kind: "no_issue" };
+  return { kind: "confirmed_category", category: descriptive };
+}
+
+/**
+ * Is this item's stored verdict unverifiable legacy data (accusatory category, no evidence gate)?
+ * Admin diagnostics use this to label the raw stored category/level as legacy/unverified rather than
+ * hiding it. Customer surfaces must use {@link customerClassificationDisplay} instead.
+ */
+export function isLegacyUnverifiedVerdict(
+  persistedCategories: readonly string[] | null | undefined,
+  gateDecisions?: readonly { category: string; verdict: string }[] | null,
+): boolean {
+  const hasAccusation = (persistedCategories ?? []).some((c) => EVIDENCE_REQUIRED_CATEGORIES.has(c));
+  return hasAccusation && (gateDecisions ?? []).length === 0;
 }
 
 /** Severity a customer may be shown. An unconfirmed item is never presented at a definitive level. */

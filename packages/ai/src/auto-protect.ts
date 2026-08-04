@@ -108,7 +108,10 @@ const TERM_LEXICON: { category: AutoProtectCategory; terms: string[] }[] = [
   { category: "terrorism_extremism", terms: ["bomb", "jihad", "heil hitler", "terror attack", "behead"] },
   { category: "racism", terms: ["go back to your country", "your race", "subhuman", "racial slur"] },
   { category: "violence", terms: ["i will kill you", "kill you", "beat you up", "i will hurt", "stab you", "shoot you", "zabijem ta", "zbijem ta"] },
-  { category: "phishing", terms: ["verify your account", "confirm your password", "reset your password", "login here", "click here to claim", "bank details", "wire transfer"] },
+  // ACCUSATORY phishing phrases only. "bank details", "wire transfer" and "login here" were removed:
+  // each is ordinary commercial language and is now a CONTEXTUAL dimension (see SCAM_CONTEXT_LEXICON),
+  // which can only confirm alongside a second, harm-bearing dimension.
+  { category: "phishing", terms: ["verify your account", "confirm your password", "reset your password", "send your password", "click here to claim"] },
   { category: "sexual_vulgarity", terms: ["send nudes", "porn", "explicit sexual"] },
   { category: "brand_impersonation", terms: ["official account", "i am the ceo", "real owner", "verified official", "this page impersonates"] },
   { category: "crisis_keyword", terms: ["class action lawsuit", "data breach", "health inspection", "product recall", "regulatory complaint"] },
