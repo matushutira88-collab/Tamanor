@@ -113,7 +113,7 @@ jobs:
         run: |
           HOST="${{ steps.deploy.outputs.host }}"
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${HOST}/api/health" || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://tamanor.com/api/health" || true)
             if [ "$code" = "200" ]; then echo "✓ deployment healthy"; ok=1; break; fi
             sleep 6
           done
