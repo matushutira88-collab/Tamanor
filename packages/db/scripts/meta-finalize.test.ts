@@ -24,9 +24,19 @@ const mkPage = (tag: string, sfx: string, withIg: boolean) => ({
 
 async function run() {
   const sfx = Date.now().toString(36);
-  // Active trial window → `full_access`, so the growth-plan per-brand connect limits apply (V1.68 read-time
-  // gate would otherwise resolve this no-subscription/no-trial tenant to `restricted` → zero limits).
-  const t = await systemDb.tenant.create({ data: { name: "Mf", slug: `mf-${sfx}`, plan: "growth", trialEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) } }); // growth: 3 brands × (1 FB + 1 IG) per brand
+  // Active Growth fixture. An active free trial canonically resolves to free_trial entitlements
+  // (1 monitored account), so it must not be used to exercise Growth's account limits.
+  const t = await systemDb.tenant.create({
+    data: {
+      name: "Mf",
+      slug: `mf-${sfx}`,
+      plan: "growth",
+      billingStatus: "active",
+      accessState: "full_access",
+      trialStartsAt: null,
+      trialEndsAt: null,
+    },
+  }); // growth: 3 brands × (1 FB + 1 IG) per brand
   const b = await systemDb.brand.create({ data: { tenantId: t.id, name: "MfB" } });
   const link = (page: never, connectIg: boolean) => linkMetaAssets({
     tenantId: t.id, brandId: b.id, page, connectIg, scopes: [], grantedPermissions: [],

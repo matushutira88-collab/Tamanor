@@ -83,3 +83,11 @@ export const loginChallengeLimiter = new CentralLimiter("login_challenge", {
 });
 
 export { ipKeyFromHeader };
+
+/**
+ * Single-item re-analysis can spend paid-provider budget. Shared/durable store, per actor+tenant,
+ * and FAIL CLOSED when the store is unavailable in production.
+ */
+export const inboxReanalysisLimiter = new CentralLimiter("inbox_reanalysis", {
+  limit: 10, windowMs: 15 * 60_000, failClosed: true,
+});

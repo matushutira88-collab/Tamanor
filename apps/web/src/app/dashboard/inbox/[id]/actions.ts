@@ -4,9 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Permission, assertCan } from "@guardora/core";
 import { normalize } from "@guardora/ai";
-import { withTenant } from "@guardora/db";
+import { confirmReanalysisPreview, withTenant } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
+import { isSameOrigin } from "@/server/csrf";
+import { inboxReanalysisLimiter } from "@/lib/rate-limit";
+import { previewItemReanalysis } from "@/server/inbox-reanalysis";
 
 const FEEDBACK_TYPES = [
   "correct_risk", "false_positive", "false_negative", "mark_safe", "mark_risky",
@@ -122,4 +125,53 @@ export async function addMemoryRule(formData: FormData): Promise<void> {
   });
 
   backToItem(item.id, `Added to brand memory: "${phrase}" (${type.replace("_", " ")}).`);
+}
+
+
+const IDEMPOTENCY_RE = /^[A-Za-z0-9_-]{16,120}$/;
+
+function reanalysisBack(itemId: string, result: string, previewId?: string): never {
+  revalidatePath(`/dashboard/inbox/${itemId}`);
+  const query = new URLSearchParams({ reanalysis: result });
+  if (previewId) query.set("preview", previewId);
+  redirect(`/dashboard/inbox/${itemId}?${query.toString()}`);
+}
+
+/** One provider/classifier run. The browser supplies only item id + an opaque retry key. */
+export async function previewReanalysisAction(itemId: string, formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.InboxAct);
+  if (!(await isSameOrigin())) reanalysisBack(itemId, "csrf");
+  if (!(await inboxReanalysisLimiter.check(`${session.tenantId}:${session.userId}`)).allowed) {
+    reanalysisBack(itemId, "rate_limited");
+  }
+  const idempotencyKey = String(formData.get("idempotencyKey") ?? "");
+  if (!IDEMPOTENCY_RE.test(idempotencyKey)) reanalysisBack(itemId, "invalid_request");
+
+  const result = await previewItemReanalysis({
+    tenantId: session.tenantId,
+    itemId,
+    actorUserId: session.userId,
+    idempotencyKey,
+  });
+  if (!result.ok) reanalysisBack(itemId, result.reason);
+  reanalysisBack(itemId, result.preview.status === "consumed" ? "success" : "preview_ready", result.preview.id);
+}
+
+/** Apply the exact durable proposal. No classification values and no provider call are accepted here. */
+export async function confirmReanalysisAction(itemId: string, formData: FormData): Promise<void> {
+  const session = await requireSession();
+  assertCan(session.role, Permission.InboxAct);
+  if (!(await isSameOrigin())) reanalysisBack(itemId, "csrf");
+  const previewId = String(formData.get("previewId") ?? "");
+  if (!/^rrp_[a-f0-9]{32}$/.test(previewId)) reanalysisBack(itemId, "invalid_request");
+
+  const result = await confirmReanalysisPreview({
+    tenantId: session.tenantId,
+    itemId,
+    actorUserId: session.userId,
+    previewId,
+  });
+  if (!result.ok) reanalysisBack(itemId, result.reason, previewId);
+  reanalysisBack(itemId, "success", previewId);
 }

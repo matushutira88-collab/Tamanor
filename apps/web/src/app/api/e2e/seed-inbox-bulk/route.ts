@@ -48,7 +48,7 @@ export async function POST(req: Request) {
         const createdAt = new Date(BASE + i * 1000);
         const isReview = i % 5 === 0;
         cData.push({ id: cid, tenantId, brandId: brand.id, connectedAccountId: accId, platform: "facebook_page", kind: isReview ? "review" : "comment", externalId: `scale_${i}`, text: `Scale item ${i} about service ${i % 10 === 0 ? "needle" : "haystack"}`, authorDisplayName: `Scale Author ${i % 50}`, rating: isReview ? (i % 5) + 1 : null, publishedAt: createdAt });
-        rData.push({ id: randomUUID(), tenantId, brandId: brand.id, platform: "facebook_page", contentItemId: cid, status: "classified", sentiment: SENTS[i % 3], riskCategories: i % 7 === 0 ? ["spam"] : [], riskLevel: i % 11 === 0 ? "high" : "none", createdAt, isRead: i % 4 === 0, priority: PRIOS[i % 4], inboxWorkflowStatus: WFS[i % 4] });
+        rData.push({ id: randomUUID(), tenantId, brandId: brand.id, platform: "facebook_page", contentItemId: cid, status: "classified", sentiment: SENTS[i % 3], riskCategories: i % 7 === 0 ? ["spam"] : [], riskLevel: i % 11 === 0 ? "high" : "none", createdAt, isRead: i % 4 === 0, priority: PRIOS[i % 4], priorityProvenance: "system", prioritySetByUserId: null, prioritySetAt: createdAt, inboxWorkflowStatus: WFS[i % 4] });
       }
       await db.contentItem.createMany({ data: cData as never });
       await db.reputationItem.createMany({ data: rData as never });

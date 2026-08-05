@@ -74,6 +74,24 @@ console.log("\n2) aggregate integrity — excluded from confirmed totals, visibl
     [LEGACY, CONFIRMED_PROF].filter((r) => projectStoredClassification(r).autoProtect.countsTowardWouldAutoHide).length === 1);
 }
 
+
+console.log("\n2b) fresh no-issue Auto-Protect replacement stays current and non-affirmative");
+{
+  const current = projectStoredClassification({
+    riskLevel: "none", riskCategories: [], aiDiagnostics: null,
+    autoProtect: { decision: "monitor", matchedCategory: "normal_criticism" },
+  });
+  check("2h) current no-issue monitor is not stale",
+    current.state === "no_issue" && current.autoProtect.state === "confirmed"
+    && !current.autoProtect.requiresReanalysis && !current.autoProtect.countsTowardWouldAutoHide);
+  const impossible = projectStoredClassification({
+    riskLevel: "none", riskCategories: [], aiDiagnostics: null,
+    autoProtect: { decision: "would_auto_hide", matchedCategory: "profanity" },
+  });
+  check("2i) affirmative no-issue decision still fails closed",
+    impossible.autoProtect.state === "stale_unverified" && impossible.autoProtect.decision === null);
+}
+
 console.log("\n3) the full verdict matrix");
 {
   const cases: [string, StoredClassificationRow, "confirmed" | "review_required" | "no_issue"][] = [

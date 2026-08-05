@@ -22,7 +22,17 @@ export type ProcessingStatus =
   | "processed_rules" | "processed_local" | "processed_paid" | "cached"
   | "basic_limit_reached" | "premium_limit_reached" | "paid_ai_disabled" | "failed";
 
-export interface MeteredCtx { tenantId: string; plan: string; accessState?: string; internalAccess?: boolean; reputationItemId?: string; contentItemId?: string; correlationId?: string }
+export interface MeteredCtx {
+  tenantId: string;
+  plan: string;
+  accessState?: string;
+  internalAccess?: boolean;
+  reputationItemId?: string;
+  contentItemId?: string;
+  correlationId?: string;
+  /** Explicit operator re-analysis: bypass a possibly stale cache and meter this run under its own key. */
+  refresh?: boolean;
+}
 export interface MeteredDeps {
   /** TEST-ONLY provider injection. Production uses the internal classifyHybrid (paid) path. */
   callProvider?: (input: ClassificationInput, cfg: HybridConfig) => Promise<HybridResult>;
@@ -35,7 +45,7 @@ export interface MeteredResult extends HybridResult {
   contentHash: string;
 }
 
-const CLASSIFIER_VERSION = "risk-rules-v1";
+export const CLASSIFIER_VERSION = "risk-rules-v1";
 
 /**
  * Run a reservation settlement/compensation DB op FAIL-OPEN. A throw here must never crash the whole
@@ -61,10 +71,11 @@ export async function classifyWithUsagePolicy(
     classifierVersion: CLASSIFIER_VERSION, policyVersion: POLICY_VERSION,
   });
   const evRefs = { reputationItemId: ctx.reputationItemId, contentItemId: ctx.contentItemId, correlationId: ctx.correlationId };
+  const refreshKey = ctx.refresh ? `refresh:${ctx.correlationId ?? contentHash}` : null;
   const done = (r: HybridResult, tier: "rules" | "local" | "paid", status: ProcessingStatus, reason?: string): MeteredResult => ({ ...r, processingTier: tier, processingStatus: status, processingReason: reason, contentHash });
 
   // 1) CACHE — never calls a paid provider, consumes no unit.
-  const cached = await cacheGet(ctx.tenantId, contentHash, modelKey, POLICY_VERSION);
+  const cached = ctx.refresh ? null : await cacheGet(ctx.tenantId, contentHash, modelKey, POLICY_VERSION);
   if (cached) {
     await recordCacheHit(ctx.tenantId, { idempotencyKey: `cache:${contentHash}:${modelKey}`, ...evRefs }, ctx.plan, now);
     return done(cached.normalizedResult as unknown as HybridResult, "rules", "cached");
@@ -72,7 +83,10 @@ export async function classifyWithUsagePolicy(
 
   // 2) RULES (+ local) — always free, deterministic. Consume ONE basic unit (deduped by content).
   const rules = await classifyHybrid(input, { ...cfg, aiRisk: { enabled: false, provider: "none", minConfidence: cfg.aiRisk.minConfidence, callMode: cfg.aiRisk.callMode } });
-  const basic = await consumeBasicUnit(ctx.tenantId, ctx.plan, { idempotencyKey: `basic:${contentHash}`, tier: "rules", internalAccess: ctx.internalAccess, ...evRefs }, now);
+  const basic = await consumeBasicUnit(ctx.tenantId, ctx.plan, {
+    idempotencyKey: refreshKey ? `basic:${refreshKey}` : `basic:${contentHash}`,
+    tier: "rules", internalAccess: ctx.internalAccess, ...evRefs,
+  }, now);
   const baseStatus: ProcessingStatus = basic.denied ? "basic_limit_reached" : "processed_rules";
 
   // 3) PAID fallback — policy → canary allowlist → per-instance fuses → GLOBAL reserve → TENANT reserve.
@@ -101,7 +115,11 @@ export async function classifyWithUsagePolicy(
     // (there is no stale-recovery for the global counter). If it denies or is an idempotent retry, likewise.
     let tenant: Awaited<ReturnType<typeof reservePremiumCall>>;
     try {
-      tenant = await reservePremiumCall(ctx.tenantId, ctx.plan, { provider, modelKey, estMicros, idempotencyKey: `prem:${contentHash}:${modelKey}`, internalAccess: ctx.internalAccess, ...evRefs }, now);
+      tenant = await reservePremiumCall(ctx.tenantId, ctx.plan, {
+        provider, modelKey, estMicros,
+        idempotencyKey: refreshKey ? `prem:${refreshKey}:${modelKey}` : `prem:${contentHash}:${modelKey}`,
+        internalAccess: ctx.internalAccess, ...evRefs,
+      }, now);
     } catch {
       await bestEffort(() => releaseGlobalDailyCall(provider, estMicros, now));
       return done(rules, "rules", "failed", "paid_provider_error");

@@ -20,10 +20,19 @@ const BEFORE = new Date(DAY_START.getTime() - 3_600_000); // 23:00 yesterday UTC
 async function run() {
   const sfx = Date.now().toString(36);
   const mk = async (tag: string) => {
-    // Active trial window → effective access `full_access`, so the growth-plan entitlement limits apply.
-    // Without it, the V1.68 read-time gate resolves a `no_subscription`/no-trial tenant to `restricted`
-    // and entitlements collapse to the locked (zero) tier regardless of plan.
-    const t = await systemDb.tenant.create({ data: { name: `Ao${tag}`, slug: `ao-${tag}-${sfx}`, plan: "growth", trialEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) } });
+    // Active Growth fixture. An active free trial canonically resolves to free_trial entitlements
+    // (1 monitored account), so it must not be used to exercise Growth capacity.
+    const t = await systemDb.tenant.create({
+      data: {
+        name: `Ao${tag}`,
+        slug: `ao-${tag}-${sfx}`,
+        plan: "growth",
+        billingStatus: "active",
+        accessState: "full_access",
+        trialStartsAt: null,
+        trialEndsAt: null,
+      },
+    });
     const b = await systemDb.brand.create({ data: { tenantId: t.id, name: `AoB${tag}` } });
     return { t, b };
   };

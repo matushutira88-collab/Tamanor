@@ -15,7 +15,8 @@
  */
 import { readFileSync } from "node:fs";
 import {
-  projectStoredClassification, persistedProjectionFields, readPersistedProjection,
+  projectStoredClassification, persistedProjectionFields, persistedProjectionFieldsAfterClassification,
+  readPersistedProjection,
   CUSTOMER_PROJECTION_VERSION, type StoredClassificationRow,
 } from "../src/evidence";
 import { customerRiskyWhere, customerRequiresReviewWhere, sentimentBucketWhere, sentimentBucket } from "../src/reputation";
@@ -129,6 +130,18 @@ console.log("\n4) E/F/G — clean, non-accusatory historical, malformed diagnost
   check("4b) clean item does not match risky", !matches(RISKY_WHERE, { ...e, sentiment: "neutral" }));
   check("4c) clean item does not match requires-review", !matches(REVIEW_WHERE, { ...e, sentiment: "neutral" }));
 
+  const freshClean = persistedProjectionFieldsAfterClassification({
+    ...E_RAW, autoProtect: { decision: "monitor", matchedCategory: "normal_criticism" },
+  });
+  check("4c1) fresh clean classification clears the re-analysis marker",
+    freshClean.customerRequiresReanalysis === false
+    && readPersistedProjection(freshClean).requiresReanalysis === false);
+  const freshReview = persistedProjectionFieldsAfterClassification(G_RAW);
+  check("4c2) fresh review_required needs human review, not another classifier run",
+    freshReview.customerClassificationState === "review_required"
+    && freshReview.customerRequiresReanalysis === false
+    && readPersistedProjection(freshReview).requiresReanalysis === false);
+
   const f = persistedProjectionFields(F_RAW);
   check("4d) non-accusatory historical (spam, no gate) keeps confirmed behaviour",
     f.customerClassificationState === "confirmed" && f.customerRiskCategories.includes("spam"));
@@ -182,7 +195,7 @@ console.log("\n6) I — the predicates are SQL-shaped and pagination-safe");
 console.log("\n7) write path + rendering corrections");
 {
   const sync = read("packages/sync/src/index.ts");
-  check("7a) ingest persists the projection through the canonical helper", /persistedProjectionFields\(\{/.test(sync));
+  check("7a) ingest persists the projection through the canonical helper", /persistedProjectionFieldsAfterClassification\(\{/.test(sync));
   check("7b) ingest does not re-derive the evidence gate itself", !/evidenceGate/.test(sync.replace(/aiDiagnostics: hybrid\.diagnostics/g, "")));
   const comments = read("apps/web/src/app/dashboard/comments/page.tsx");
   check("7c) the comments bucket is computed from the projection, not the raw verdict",

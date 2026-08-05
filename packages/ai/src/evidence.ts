@@ -555,9 +555,15 @@ export function projectStoredClassification(row: StoredClassificationRow): Custo
   const eligibleForSeverityTotals = state === "confirmed" && HIGHISH.has(row.riskLevel);
 
   const ap = row.autoProtect ?? null;
+  // A fresh no-issue classification may legitimately produce a current, non-affirmative
+  // normal-criticism decision. Do not mislabel that replacement decision as stale. Any affirmative or
+  // mismatched no-issue decision still fails closed.
+  const currentNoIssueDecision = state === "no_issue" && ap !== null
+    && ap.matchedCategory === "normal_criticism"
+    && (ap.decision === "no_action" || ap.decision === "monitor" || ap.decision === "blocked_by_safety");
   const autoProtect: CustomerAutoProtectView = ap === null
     ? { state: "none", decision: null, matchedCategory: null, countsTowardWouldAutoHide: false, requiresReanalysis: false }
-    : state === "confirmed"
+    : state === "confirmed" || currentNoIssueDecision
       ? {
         state: "confirmed", decision: ap.decision, matchedCategory: ap.matchedCategory,
         countsTowardWouldAutoHide: ap.decision === "would_auto_hide", requiresReanalysis: false,
@@ -611,6 +617,20 @@ export function persistedProjectionFields(row: StoredClassificationRow): Persist
     // Re-analysis is required whenever nothing confirms the stored verdict, or a stale Auto-Protect
     // decision hangs off it. Re-interpretation cannot clear either; only re-classification can.
     customerRequiresReanalysis: v.requiresReview || v.autoProtect.requiresReanalysis,
+  };
+}
+
+/**
+ * Persist the projection produced by a classifier run that just completed successfully. Unlike a legacy
+ * reinterpretation/backfill, a fresh run is not stale: `review_required` may still require HUMAN review,
+ * but it must not request another classifier run.
+ */
+export function persistedProjectionFieldsAfterClassification(
+  row: StoredClassificationRow,
+): PersistedProjectionFields & { customerRequiresReanalysis: false } {
+  return {
+    ...persistedProjectionFields(row),
+    customerRequiresReanalysis: false,
   };
 }
 
@@ -672,7 +692,9 @@ export function readPersistedProjection(row: PersistedProjectionRow): {
     categories: rawState === "confirmed" ? categories : [],
     // Never present high/critical for anything not confirmed, whatever was persisted.
     riskLevel: rawState === "confirmed" ? level : (rank(level) >= rank("high") ? "medium" : level),
-    requiresReanalysis: row.customerRequiresReanalysis === true || rawState !== "confirmed",
+    // For a current, internally consistent projection the persisted marker is authoritative. A fresh
+    // review_required result may need HUMAN review without needing another classifier run.
+    requiresReanalysis: row.customerRequiresReanalysis === true,
     stale: false,
   };
 }
