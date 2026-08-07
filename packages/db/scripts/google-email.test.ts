@@ -40,7 +40,7 @@ async function run() {
   // 1) MIME construction — From locked, To/Reply-To/Subject present, multipart + base64 bodies.
   const t = new GoogleEmailTransport(CFG);
   const mime = t.buildMime("user@example.com", MSG as never);
-  check("MIME: From is LOCKED to the configured sender", mime.includes("From: no-reply@tamanor.com"));
+  check("MIME: From is LOCKED to the configured sender", mime.includes("From: Tamanor <no-reply@tamanor.com>"));
   check("MIME: To header present", mime.includes("To: user@example.com"));
   check("MIME: Reply-To header present", mime.includes("Reply-To: support@tamanor.com"));
   check("MIME: Subject is RFC2047 UTF-8 encoded-word", /Subject: =\?UTF-8\?B\?/.test(mime));
