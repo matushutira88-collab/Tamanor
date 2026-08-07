@@ -156,6 +156,8 @@
     "platform-rollout:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/platform-rollout.test.ts",
     "google-business-connector:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/google-business-connector.test.ts",
     "google-business-api:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/google-business-api-client.test.ts",
+    "google-business-oauth-slice1:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/google-business-oauth-slice1.test.ts",
+    "google-business-connect-repo:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/google-business-connect-repo.test.ts",
     "unified-inbox:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/unified-inbox.test.ts",
     "auth-session:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/auth-session.test.ts",
     "auth-registration:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/auth-registration.test.ts",

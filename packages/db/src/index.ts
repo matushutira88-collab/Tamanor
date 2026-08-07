@@ -184,6 +184,7 @@ export * from "./business-lead-adapter";
 export * from "./provider-credential-crypto";
 export * from "./provider-credential-lock";
 export * from "./provider-credential-vault";
+export * from "./google-business-connect-repo";
 export * from "./provider-credential-resolver";
 export * from "./provider-credential-backfill";
 export * from "./provider-credential-runtime-readiness";

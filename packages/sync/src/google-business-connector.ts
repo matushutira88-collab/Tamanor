@@ -254,9 +254,158 @@ export function buildGoogleAuthUrl(input: { clientId: string; redirectUri: strin
   return `https://accounts.google.com/o/oauth2/v2/auth?${p.toString()}`;
 }
 
+/**
+ * SLICE 1 — server-side authorization-code exchange.
+ *
+ * The browser never sees the client secret and never performs this call. The response body is parsed
+ * ONLY for the fields below; nothing derived from it (token, raw body, provider error text) is ever
+ * returned to a caller, logged, audited or placed in a URL. Failures collapse into the existing
+ * bounded {@link GoogleBusinessReason} vocabulary.
+ *
+ * `refresh_token` is REQUIRED: without it there is no unattended review sync, so a grant that omits it
+ * (a re-consent where Google withholds it) is treated as a failure rather than a half-connected state.
+ * `buildGoogleAuthUrl` already sends access_type=offline + prompt=consent to force its issuance.
+ */
+export const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+
+export interface GoogleTokenExchangeResult {
+  ok: boolean;
+  reason: GoogleBusinessReason | "google_business_exchange_ok";
+  /** Present ONLY on success. Callers must hand these straight to the vault. */
+  credentials?: {
+    refreshToken: string;
+    accessToken: string;
+    /** Absolute expiry derived from expires_in at exchange time. */
+    accessTokenExpiresAt: Date;
+    tokenType: string;
+    /** Scopes Google actually granted (may be a subset of what was requested). */
+    scopes: string[];
+  };
+}
+
+export type GoogleTokenFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+
+export async function exchangeGoogleAuthCode(input: {
+  code: string;
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  fetchImpl?: GoogleTokenFetch;
+  now?: () => number;
+  timeoutMs?: number;
+}): Promise<GoogleTokenExchangeResult> {
+  if (!input.code) return { ok: false, reason: "google_business_access_denied" };
+  const fetchImpl = (input.fetchImpl ?? (globalThis.fetch as unknown as GoogleTokenFetch));
+  const now = input.now ?? (() => Date.now());
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 10_000);
+  try {
+    const res = await fetchImpl(GOOGLE_TOKEN_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code: input.code,
+        client_id: input.clientId,
+        client_secret: input.clientSecret,
+        redirect_uri: input.redirectUri,
+        grant_type: "authorization_code",
+      }).toString(),
+      signal: controller.signal,
+    });
+    let body: unknown = null;
+    try { body = await res.json(); } catch { body = null; }
+    if (!res.ok) {
+      // A revoked/expired/replayed code is `invalid_grant`; anything else is a generic refusal.
+      const err = body && typeof body === "object" ? (body as { error?: unknown }).error : undefined;
+      return { ok: false, reason: err === "invalid_grant" ? "google_business_token_expired" : "google_business_refresh_failed" };
+    }
+    const t = (body ?? {}) as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; token_type?: unknown; scope?: unknown };
+    const accessToken = typeof t.access_token === "string" ? t.access_token : "";
+    const refreshToken = typeof t.refresh_token === "string" ? t.refresh_token : "";
+    if (!accessToken) return { ok: false, reason: "google_business_refresh_failed" };
+    // No refresh token ⇒ no unattended sync ⇒ refuse rather than store a half-usable grant.
+    if (!refreshToken) return { ok: false, reason: "google_business_permission_missing" };
+    const expiresInSec = typeof t.expires_in === "number" && Number.isFinite(t.expires_in) ? t.expires_in : 3600;
+    const granted = typeof t.scope === "string" && t.scope.trim() ? t.scope.trim().split(/\s+/) : [GOOGLE_BUSINESS_SCOPE];
+    // The connector is useless without business.manage — a downgraded grant is refused.
+    if (!granted.includes(GOOGLE_BUSINESS_SCOPE)) return { ok: false, reason: "google_business_permission_missing" };
+    return {
+      ok: true,
+      reason: "google_business_exchange_ok",
+      credentials: {
+        refreshToken,
+        accessToken,
+        accessTokenExpiresAt: new Date(now() + expiresInSec * 1000),
+        tokenType: typeof t.token_type === "string" ? t.token_type : "Bearer",
+        scopes: granted,
+      },
+    };
+  } catch {
+    // Abort/network — indistinguishable by design; never surfaces a provider message.
+    return { ok: false, reason: "google_business_refresh_failed" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Constant-time-ish state comparison for the OAuth CSRF check. */
 export function validateOAuthState(received: string | null | undefined, expected: string | null | undefined): boolean {
   return !!received && !!expected && received === expected;
+}
+
+/**
+ * SLICE 1 — live discovery of what the fresh grant authorises.
+ *
+ * Reuses the EXISTING client (`listAccounts` / `listLocations`) and the EXISTING normalizers, so
+ * verification and sync-eligibility semantics are unchanged. One page per account is deliberate: this
+ * establishes what the grant can see, not an exhaustive inventory (Slice 2 owns selection/import).
+ *
+ * Returns only normalized, non-secret business metadata. Any provider failure collapses into the
+ * bounded reason vocabulary — the raw error never escapes.
+ */
+export interface GoogleDiscoveryResult {
+  ok: boolean;
+  reason: GoogleBusinessReason | "google_business_discovery_ok";
+  accounts: GoogleBusinessAccount[];
+  locationsByAccount: Record<string, GoogleBusinessLocation[]>;
+  /** Convenience for Slice 2: locations that are actually eligible to sync. */
+  eligibleLocationCount: number;
+}
+
+export interface GoogleDiscoveryClient {
+  listAccounts(pageToken?: string): Promise<{ accounts: unknown[]; nextPageToken?: string }>;
+  listLocations(accountResourceName: string, pageToken?: string): Promise<{ locations: unknown[]; nextPageToken?: string }>;
+}
+
+export async function discoverGoogleBusinessScope(client: GoogleDiscoveryClient, opts: { maxAccounts?: number } = {}): Promise<GoogleDiscoveryResult> {
+  const empty = { accounts: [] as GoogleBusinessAccount[], locationsByAccount: {} as Record<string, GoogleBusinessLocation[]>, eligibleLocationCount: 0 };
+  let rawAccounts: unknown[];
+  try {
+    rawAccounts = (await client.listAccounts()).accounts ?? [];
+  } catch {
+    return { ok: false, reason: "google_business_access_denied", ...empty };
+  }
+  const accounts = rawAccounts.map((a) => normalizeGoogleAccount((a ?? {}) as Parameters<typeof normalizeGoogleAccount>[0]));
+  // A grant that sees zero accounts cannot be presented as a working connection.
+  if (accounts.length === 0) return { ok: false, reason: "google_business_account_not_found", ...empty };
+
+  // Keyed by providerAccountId (the trailing segment), NOT the raw resource name — the map is handed
+  // to the caller, and the raw name stays internal per this file's existing convention.
+  const locationsByAccount: Record<string, GoogleBusinessLocation[]> = {};
+  let eligible = 0;
+  for (const acct of accounts.slice(0, Math.max(1, opts.maxAccounts ?? 10))) {
+    try {
+      // listLocations expects the RAW resource name ("accounts/123"), which is what the client sends on.
+      const page = await client.listLocations(acct.providerAccountName);
+      const locs = (page.locations ?? []).map((l) => normalizeGoogleLocation((l ?? {}) as Parameters<typeof normalizeGoogleLocation>[0]));
+      locationsByAccount[acct.providerAccountId] = locs;
+      eligible += locs.filter(isLocationSyncEligible).length;
+    } catch {
+      // One account failing must not discard the accounts already discovered.
+      locationsByAccount[acct.providerAccountId] = [];
+    }
+  }
+  return { ok: true, reason: "google_business_discovery_ok", accounts, locationsByAccount, eligibleLocationCount: eligible };
 }
 
 // ---------------------------------------------------------------------------
