@@ -90,6 +90,26 @@ export default async function AccountsPage({
   const manage = can(session.role, Permission.ConnectorManage);
   const meta = getMetaConfig();
   const gbp = getGoogleBusinessConfig();
+  // GOOGLE-BUSINESS-SLICE-2 — is the tenant's Google connection actually live? Only then does the
+  // location-selection step exist. Non-secret status only; no credential is read here.
+  const gbpConnected = await withTenant(session.tenantId, async (db) => {
+    const row = await db.businessPlatformConnection.findFirst({
+      where: { tenantId: session.tenantId, provider: "google" as never },
+      select: { status: true },
+    });
+    return row?.status === "active";
+  });
+  // Import outcome summary, assembled from bounded counts in the query string.
+  const gbpCount = (k: string) => { const n = Number(sp[k] ?? ""); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const gbpParts = [
+    gbpCount("gbpImported") ? `${gbpCount("gbpImported")} ${hdrT.gbp.importedLocations}` : "",
+    gbpCount("gbpReconnected") ? `${gbpCount("gbpReconnected")} ${hdrT.gbp.reconnectedLocations}` : "",
+    gbpCount("gbpLimited") ? `${gbpCount("gbpLimited")} ${hdrT.gbp.skippedLimit}` : "",
+    gbpCount("gbpIneligible") ? `${gbpCount("gbpIneligible")} ${hdrT.gbp.skippedUnverified}` : "",
+    gbpCount("gbpUnknown") ? `${gbpCount("gbpUnknown")} ${hdrT.gbp.skippedUnknown}` : "",
+    gbpCount("gbpFailed") ? `${gbpCount("gbpFailed")} ${hdrT.gbp.skippedFailed}` : "",
+  ].filter(Boolean);
+  const gbpImport = gbpParts.length ? gbpParts.join(" · ") : undefined;
   const setup = getMetaSetupStatus();
   const sp = await searchParams;
   const metaNotice = sp.meta ? META_NOTICES[sp.meta] : undefined;
@@ -228,6 +248,14 @@ export default async function AccountsPage({
               </p>
             </>
           ) : null}
+        </div>
+      ) : null}
+
+      {/* GOOGLE-BUSINESS-SLICE-2 — truthful import outcome. COUNTS only: no location name, provider id
+          or token ever enters the URL, and every rejection category is stated rather than hidden. */}
+      {gbpImport ? (
+        <div className="mb-4 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm">
+          {gbpImport}
         </div>
       ) : null}
 
@@ -384,9 +412,18 @@ export default async function AccountsPage({
           <p className="text-sm text-[var(--color-muted)]">{hdrT.gbp.state_awaiting_approval}</p>
         ) : (
           <>
-            <p className="text-sm text-[var(--color-muted)]">{hdrT.gbp.readyToConnectBody}</p>
+            <p className="text-sm text-[var(--color-muted)]">{gbpConnected ? hdrT.gbp.chooseLocations : hdrT.gbp.readyToConnectBody}</p>
             {manage ? (
-              <a href="/api/connectors/google-business/connect" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{hdrT.gbp.connect}</a>
+              // Once connected, the primary action is choosing WHICH locations to monitor — connecting
+              // the Google account alone imports nothing. Reconnecting stays available underneath.
+              gbpConnected ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Link href="/dashboard/accounts/google-business/select" className="inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{hdrT.gbp.chooseLocations}</Link>
+                  <a href="/api/connectors/google-business/connect" className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs transition hover:border-[var(--color-brand)]">{hdrT.gbp.connect}</a>
+                </div>
+              ) : (
+                <a href="/api/connectors/google-business/connect" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] hover:bg-[var(--color-brand-strong)]">{hdrT.gbp.connect}</a>
+              )
             ) : null}
           </>
         )}

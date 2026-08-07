@@ -143,7 +143,8 @@ export async function GET(req: NextRequest) {
     },
   }).catch(() => { /* the connection is real whether or not the audit write succeeds */ });
 
-  // Slice 2 owns account/location SELECTION and import; Slice 1 stops at a verified, credentialed
-  // connection plus the normalized discovery it just proved.
-  return NextResponse.redirect(new URL(`${BACK}google=connected`, req.url));
+  // SLICE 2 — the connection is credentialed and discovery is proven, so hand the user straight to the
+  // location-selection step. Nothing is imported yet: the selection page re-runs discovery server-side
+  // and the user must explicitly choose which verified locations to connect.
+  return NextResponse.redirect(new URL("/dashboard/accounts/google-business/select?google=connected", req.url));
 }

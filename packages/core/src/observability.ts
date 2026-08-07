@@ -163,6 +163,9 @@ export type OpsEvent =
   | "business.meta_page_onboarded"
   // A submitted asset that did not match the server-side OAuth asset list (count only, never the value).
   | "business.meta_asset_selection_rejected"
+  // GOOGLE-BUSINESS-SLICE-2 — a submitted location id that did not match the server-side discovery for
+  // this tenant (forged, foreign, or since removed). Count only — never the submitted value.
+  | "business.google_location_selection_rejected"
   // META-EXTERNAL-ACCESS-V1 — Meta data-deletion / deauthorize callbacks. Bounded reason/result labels ONLY:
   // never the signed request, payload, app secret, app-scoped user id, email or confirmation code.
   | "meta.data_deletion_rejected"

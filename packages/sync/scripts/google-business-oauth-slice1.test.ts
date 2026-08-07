@@ -203,7 +203,8 @@ async function main() {
       !/apiEnabled\s*&&\s*apiApproved/.test(cb) && !/apiApproved\s*&&\s*apiEnabled/.test(cb));
     // Anchor on the CALL site, not the import line, which naturally sorts first.
     const exchangeAt = cb.indexOf("exchangeGoogleAuthCode({");
-    const successAt = cb.lastIndexOf("${BACK}google=connected");
+    // SLICE 2 — success now hands off to the location-selection step instead of the accounts list.
+    const successAt = cb.lastIndexOf("/dashboard/accounts/google-business/select");
     check("D8) both gates precede the token exchange",
       exchangeAt > 0 && cb.indexOf("!cfg.apiApproved") < exchangeAt && cb.indexOf("!cfg.apiEnabled") < exchangeAt);
     check("D9) exchange failure fails closed", /!exchanged\.ok[\s\S]{0,60}return fail\("google=exchange_failed"/.test(cb));
@@ -231,7 +232,7 @@ async function main() {
       (cb.match(/BusinessConnectionStatus\.active/g) ?? []).length === 1
       && cb.slice(activateAt, activateAt + 300).includes("BusinessConnectionStatus.active"));
     check("D12g) promotion failure also fails closed", /!activated\.ok\) return fail\("google=connection_failed"/.test(cb));
-    check("D13) exactly one success redirect exists", (cb.match(/\$\{BACK\}google=connected/g) ?? []).length === 1);
+    check("D13) exactly one success redirect exists", (cb.match(/google-business\/select\?google=connected/g) ?? []).length === 1);
     check("D14) unauthenticated and unauthorized callers cannot reach the exchange",
       /!session\) return NextResponse\.redirect\(new URL\("\/login"/.test(cb) && /Permission\.ConnectorManage/.test(cb));
     check("D15) credentials are handed to the vault helper, not written by the route",
