@@ -99,6 +99,7 @@ export default async function AccountsPage({
     });
     return row?.status === "active";
   });
+  const sp = await searchParams;
   // Import outcome summary, assembled from bounded counts in the query string.
   const gbpCount = (k: string) => { const n = Number(sp[k] ?? ""); return Number.isFinite(n) && n > 0 ? n : 0; };
   const gbpParts = [
@@ -111,7 +112,6 @@ export default async function AccountsPage({
   ].filter(Boolean);
   const gbpImport = gbpParts.length ? gbpParts.join(" · ") : undefined;
   const setup = getMetaSetupStatus();
-  const sp = await searchParams;
   const metaNotice = sp.meta ? META_NOTICES[sp.meta] : undefined;
   // V1.64 — a taken per-brand platform slot in the Meta select flow is reported as `?slot=N`.
   const errorNotice = sp.error
