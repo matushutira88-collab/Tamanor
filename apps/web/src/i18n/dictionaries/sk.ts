@@ -1251,6 +1251,13 @@ export const sk: Dictionary = {
 
   // V1.36 Google Business Profile connector (sledovanie recenzií, iba na čítanie).
   gbp: {
+    // GOOGLE-BUSINESS-SLICE-2 — bounded import outcome labels (counts are supplied by the caller).
+    importedLocations: "prevádzok pripojených",
+    reconnectedLocations: "prevádzok znova pripojených",
+    skippedLimit: "preskočených — značka už má pripojenú prevádzku",
+    skippedUnverified: "preskočených — Google ich neoveril",
+    skippedUnknown: "preskočených — už nie sú dostupné",
+    skippedFailed: "sa nepodarilo pripojiť",
     reviewMonitoring: "Sledovanie recenzií",
     readyToConnectBody: "Pripojte Google Business Profile a sledujte recenzie svojich prevádzok.",
     connect: "Pripojiť Google Business Profile",

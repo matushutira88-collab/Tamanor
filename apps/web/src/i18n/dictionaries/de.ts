@@ -1251,6 +1251,13 @@ export const de: Dictionary = {
 
   // V1.36 Google Business Profile Connector (Bewertungs-Monitoring, nur lesen).
   gbp: {
+    // GOOGLE-BUSINESS-SLICE-2 — bounded import outcome labels (counts are supplied by the caller).
+    importedLocations: "Standorte verbunden",
+    reconnectedLocations: "Standorte erneut verbunden",
+    skippedLimit: "übersprungen — Marke hat bereits einen verbundenen Standort",
+    skippedUnverified: "übersprungen — von Google nicht verifiziert",
+    skippedUnknown: "übersprungen — nicht mehr verfügbar",
+    skippedFailed: "konnten nicht verbunden werden",
     reviewMonitoring: "Bewertungs-Monitoring",
     readyToConnectBody: "Verbinden Sie Google Business Profile, um die Bewertungen Ihrer Standorte zu überwachen.",
     connect: "Google Business Profile verbinden",

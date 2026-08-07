@@ -1282,6 +1282,13 @@ export const en = {
 
   // V1.36 Google Business Profile connector (review monitoring, read-only).
   gbp: {
+    // GOOGLE-BUSINESS-SLICE-2 — bounded import outcome labels (counts are supplied by the caller).
+    importedLocations: "locations connected",
+    reconnectedLocations: "locations reconnected",
+    skippedLimit: "skipped — brand already has a connected location",
+    skippedUnverified: "skipped — not verified by Google",
+    skippedUnknown: "skipped — no longer available",
+    skippedFailed: "could not be connected",
     reviewMonitoring: "Review monitoring",
     readyToConnectBody: "Connect Google Business Profile to monitor your location reviews.",
     connect: "Connect Google Business Profile",

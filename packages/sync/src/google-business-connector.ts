@@ -354,15 +354,30 @@ export function validateOAuthState(received: string | null | undefined, expected
 }
 
 /**
- * SLICE 1 — live discovery of what the fresh grant authorises.
+ * SLICE 1/2 — live discovery of what the grant authorises, FULLY PAGINATED.
  *
  * Reuses the EXISTING client (`listAccounts` / `listLocations`) and the EXISTING normalizers, so
- * verification and sync-eligibility semantics are unchanged. One page per account is deliberate: this
- * establishes what the grant can see, not an exhaustive inventory (Slice 2 owns selection/import).
+ * verification and sync-eligibility semantics are unchanged. Slice 2 made this exhaustive: a customer
+ * choosing which location to connect must see ALL of them, so both listings follow `nextPageToken`
+ * until the provider stops — never a silent first page.
+ *
+ * PAGINATION SAFETY (all fail-closed, all deterministic):
+ *   · a hard page cap per listing ({@link GOOGLE_DISCOVERY_MAX_PAGES}) bounds a runaway cursor;
+ *   · a REPEATED page token — the classic provider bug that loops forever — stops the listing;
+ *   · a non-string/empty token is treated as "no more pages" rather than being sent back;
+ *   · a hard item cap per listing bounds memory even if every page is honoured;
+ *   · locations are deduped by providerLocationId, keeping FIRST occurrence, so an overlapping page
+ *     boundary can never produce two selectable rows for one real location.
+ * When a bound or a loop is hit the result reports `truncated: true` so the caller can say so out loud
+ * instead of quietly presenting a partial list as complete.
  *
  * Returns only normalized, non-secret business metadata. Any provider failure collapses into the
  * bounded reason vocabulary — the raw error never escapes.
  */
+/** Hard ceiling on pages followed per listing. 20 × pageSize 100 = 2000 locations per account. */
+export const GOOGLE_DISCOVERY_MAX_PAGES = 20;
+/** Hard ceiling on items collected per listing, independent of page count. */
+export const GOOGLE_DISCOVERY_MAX_ITEMS = 2_000;
 export interface GoogleDiscoveryResult {
   ok: boolean;
   reason: GoogleBusinessReason | "google_business_discovery_ok";
@@ -370,6 +385,8 @@ export interface GoogleDiscoveryResult {
   locationsByAccount: Record<string, GoogleBusinessLocation[]>;
   /** Convenience for Slice 2: locations that are actually eligible to sync. */
   eligibleLocationCount: number;
+  /** True when a page cap, item cap or repeated-token loop stopped a listing early. */
+  truncated: boolean;
 }
 
 export interface GoogleDiscoveryClient {
@@ -377,17 +394,68 @@ export interface GoogleDiscoveryClient {
   listLocations(accountResourceName: string, pageToken?: string): Promise<{ locations: unknown[]; nextPageToken?: string }>;
 }
 
+/**
+ * Follow `nextPageToken` for one listing, with every safety bound applied. `fetchPage` is the only
+ * provider-touching part; everything else is pure and deterministic.
+ */
+async function collectPages<T>(
+  fetchPage: (pageToken?: string) => Promise<{ items: unknown[]; nextPageToken?: string }>,
+  normalize: (raw: unknown) => T,
+): Promise<{ items: T[]; truncated: boolean }> {
+  const items: T[] = [];
+  const seenTokens = new Set<string>();
+  let token: string | undefined;
+  let truncated = false;
+
+  for (let page = 0; page < GOOGLE_DISCOVERY_MAX_PAGES; page++) {
+    const res = await fetchPage(token);
+    for (const raw of res.items ?? []) {
+      if (items.length >= GOOGLE_DISCOVERY_MAX_ITEMS) { truncated = true; break; }
+      items.push(normalize(raw ?? {}));
+    }
+    if (truncated) break;
+
+    const next = res.nextPageToken;
+    // A missing, non-string or empty token means the listing is complete. Never echo such a value back.
+    if (typeof next !== "string" || next.trim() === "") return { items, truncated };
+    // A token we have already sent means the provider is looping. Stop rather than paginate forever.
+    if (seenTokens.has(next)) return { items, truncated: true };
+    seenTokens.add(next);
+    token = next;
+    // The loop condition itself enforces the page cap; reaching it without returning is a truncation.
+    if (page === GOOGLE_DISCOVERY_MAX_PAGES - 1) truncated = true;
+  }
+  return { items, truncated };
+}
+
+/** Dedupe locations by providerLocationId, keeping the FIRST occurrence (deterministic across pages). */
+function dedupeLocations(locations: GoogleBusinessLocation[]): GoogleBusinessLocation[] {
+  const seen = new Set<string>();
+  const out: GoogleBusinessLocation[] = [];
+  for (const l of locations) {
+    const key = l.providerLocationId || l.providerLocationName;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(l);
+  }
+  return out;
+}
+
 export async function discoverGoogleBusinessScope(client: GoogleDiscoveryClient, opts: { maxAccounts?: number } = {}): Promise<GoogleDiscoveryResult> {
-  const empty = { accounts: [] as GoogleBusinessAccount[], locationsByAccount: {} as Record<string, GoogleBusinessLocation[]>, eligibleLocationCount: 0 };
-  let rawAccounts: unknown[];
+  const empty = { accounts: [] as GoogleBusinessAccount[], locationsByAccount: {} as Record<string, GoogleBusinessLocation[]>, eligibleLocationCount: 0, truncated: false };
+  let accountPages: { items: GoogleBusinessAccount[]; truncated: boolean };
   try {
-    rawAccounts = (await client.listAccounts()).accounts ?? [];
+    accountPages = await collectPages(
+      async (t) => { const r = await client.listAccounts(t); return { items: r.accounts ?? [], nextPageToken: r.nextPageToken }; },
+      (raw) => normalizeGoogleAccount(raw as Parameters<typeof normalizeGoogleAccount>[0]),
+    );
   } catch {
     return { ok: false, reason: "google_business_access_denied", ...empty };
   }
-  const accounts = rawAccounts.map((a) => normalizeGoogleAccount((a ?? {}) as Parameters<typeof normalizeGoogleAccount>[0]));
+  const accounts = accountPages.items;
   // A grant that sees zero accounts cannot be presented as a working connection.
   if (accounts.length === 0) return { ok: false, reason: "google_business_account_not_found", ...empty };
+  let truncated = accountPages.truncated;
 
   // Keyed by providerAccountId (the trailing segment), NOT the raw resource name — the map is handed
   // to the caller, and the raw name stays internal per this file's existing convention.
@@ -396,16 +464,23 @@ export async function discoverGoogleBusinessScope(client: GoogleDiscoveryClient,
   for (const acct of accounts.slice(0, Math.max(1, opts.maxAccounts ?? 10))) {
     try {
       // listLocations expects the RAW resource name ("accounts/123"), which is what the client sends on.
-      const page = await client.listLocations(acct.providerAccountName);
-      const locs = (page.locations ?? []).map((l) => normalizeGoogleLocation((l ?? {}) as Parameters<typeof normalizeGoogleLocation>[0]));
+      const page = await collectPages(
+        async (t) => { const r = await client.listLocations(acct.providerAccountName, t); return { items: r.locations ?? [], nextPageToken: r.nextPageToken }; },
+        (raw) => normalizeGoogleLocation(raw as Parameters<typeof normalizeGoogleLocation>[0]),
+      );
+      const locs = dedupeLocations(page.items);
       locationsByAccount[acct.providerAccountId] = locs;
       eligible += locs.filter(isLocationSyncEligible).length;
+      if (page.truncated) truncated = true;
     } catch {
-      // One account failing must not discard the accounts already discovered.
+      // One account failing must not discard the accounts already discovered — but the list this
+      // customer is shown IS then incomplete, and must say so.
       locationsByAccount[acct.providerAccountId] = [];
+      truncated = true;
     }
   }
-  return { ok: true, reason: "google_business_discovery_ok", accounts, locationsByAccount, eligibleLocationCount: eligible };
+  if (accounts.length > Math.max(1, opts.maxAccounts ?? 10)) truncated = true;
+  return { ok: true, reason: "google_business_discovery_ok", accounts, locationsByAccount, eligibleLocationCount: eligible, truncated };
 }
 
 // ---------------------------------------------------------------------------

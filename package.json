@@ -157,6 +157,8 @@
     "google-business-connector:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/google-business-connector.test.ts",
     "google-business-api:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/google-business-api-client.test.ts",
     "google-business-oauth-slice1:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/google-business-oauth-slice1.test.ts",
+    "google-business-slice2:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/google-business-slice2.test.ts",
+    "google-business-import-repo:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/google-business-import-repo.test.ts",
     "google-business-connect-repo:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/google-business-connect-repo.test.ts",
     "unified-inbox:test": "pnpm --filter @guardora/worker exec tsx ../../packages/sync/scripts/unified-inbox.test.ts",
     "auth-session:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/auth-session.test.ts",
