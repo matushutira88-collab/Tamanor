@@ -5,6 +5,7 @@
 import {
   GoogleEmailTransport, createEmailTransport, resolveEmailConfig, type EmailConfig,
   setOpsSink, resetOpsSink, type OpsEvent,
+  probeGoogleEmailCredentials, classifyGoogleTokenError, GOOGLE_TOKEN_ERRORS,
 } from "@guardora/core";
 
 let failures = 0;
@@ -117,6 +118,46 @@ async function run() {
   check("createEmailTransport('google' + creds) → google", createEmailTransport(CFG).name === "google");
   check("createEmailTransport('google' no creds) → null (truthful)", createEmailTransport({ provider: "google", from: "no-reply@tamanor.com" }).name === "null");
   check("resolveEmailConfig maps GOOGLE_EMAIL_SENDER as the From", resolveEmailConfig({ EMAIL_PROVIDER: "google", GOOGLE_EMAIL_SENDER: "no-reply@tamanor.com", GOOGLE_EMAIL_CLIENT_ID: "a", GOOGLE_EMAIL_CLIENT_SECRET: "b", GOOGLE_EMAIL_REFRESH_TOKEN: "c" })?.from === "no-reply@tamanor.com");
+
+  // ---------------------------------------------------------- OAuth refresh diagnostic (bounded)
+  const tokenFetch = (status: number, body: unknown) =>
+    (async (url: string) => {
+      if (!String(url).includes("oauth2.googleapis.com/token")) throw new Error("only the token endpoint may be called");
+      return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
+    }) as unknown as typeof fetch;
+  const probe = async (status: number, body: unknown) => {
+    globalThis.fetch = tokenFetch(status, body);
+    return probeGoogleEmailCredentials(CFG);
+  };
+  for (const code of GOOGLE_TOKEN_ERRORS) {
+    const r = await probe(400, { error: code, error_description: "SHOULD NEVER APPEAR" });
+    check(`12) token error ${code} -> bounded reason`, r.ok === false && r.reason === code, String(r.reason));
+  }
+  check("12) 5xx without error field -> provider_5xx", (await probe(503, {})).reason === "provider_5xx");
+  check("12) unrecognised code -> unknown_provider_error", (await probe(400, { error: "brand_new_code" })).reason === "unknown_provider_error");
+  check("12) 200 without access_token -> unknown_provider_error", (await probe(200, {})).reason === "unknown_provider_error");
+  check("12) success -> success/ok", (await probe(200, { access_token: "at", expires_in: 3600 })).reason === "success");
+  check("12) no google creds -> not_configured",
+    (await probeGoogleEmailCredentials({ provider: "google", from: "x@tamanor.com" })).reason === "not_configured");
+  check("12) null config -> not_configured", (await probeGoogleEmailCredentials(null)).reason === "not_configured");
+  globalThis.fetch = (async () => { throw new Error("boom"); }) as unknown as typeof fetch;
+  const net = await probeGoogleEmailCredentials(CFG);
+  check("12) transport failure -> network_timeout", net.ok === false && net.reason === "network_timeout");
+  const leak = await probe(400, { error: "invalid_client", error_description: "The OAuth client was not found.", extra: "raw provider payload" });
+  const ser = JSON.stringify(leak);
+  check("12) probe leaks no secret/token/provider text",
+    !ser.includes("cid") && !ser.includes("csecret") && !ser.includes("r_refresh_secret")
+    && !ser.includes("OAuth client was not found") && !ser.includes("raw provider payload"), ser);
+  check("12) probe shape is exactly { ok, reason }", Object.keys(leak).sort().join(",") === "ok,reason", Object.keys(leak).join(","));
+  check("12) classifier total on junk",
+    classifyGoogleTokenError(400, null) === "unknown_provider_error"
+    && classifyGoogleTokenError(400, "str") === "unknown_provider_error"
+    && classifyGoogleTokenError(400, { error: 7 }) === "unknown_provider_error");
+  check("12) classifier: error field wins over status", classifyGoogleTokenError(500, { error: "invalid_grant" }) === "invalid_grant");
+  globalThis.fetch = tokenFetch(400, { error: "invalid_client" });
+  const sendRes = await new GoogleEmailTransport(CFG).send(MSG);
+  check("12) send() still reports refresh_failed (contract unchanged)",
+    sendRes.ok === false && sendRes.reason === "refresh_failed", String(sendRes.reason));
 
   globalThis.fetch = realFetch;
   console.log(`\n${failures === 0 ? "PASS" : "FAIL"} — Google Workspace / Gmail API transport (V1.51B)`);
