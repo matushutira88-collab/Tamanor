@@ -1,15 +1,17 @@
 /**
  * Root layout for the Tamanor native app.
  *
- * Responsibilities, in order: hold the splash screen until the brand faces are
- * ready, establish the safe-area and theme providers, hand the navigator a
- * navigation theme derived from our own tokens, and drive the status bar from
- * the active appearance.
+ * Order of responsibility: hold the splash until the brand faces are ready,
+ * establish safe-area / theme / auth providers, then mount the navigator with
+ * DECLARATIVE route guards.
  *
- * Route groups: this file is the single root. When M2 adds authentication the
- * intended shape is `src/app/(auth)/` for signed-out routes and `src/app/(app)/`
- * for signed-in ones, with the redirect decided here once session state exists.
- * Both groups are URL-transparent, so adding them will not change any path.
+ * Route protection uses `Stack.Protected`. When a guard is false the screens are
+ * not registered with the navigator at all, so a deep link into `(app)` cannot
+ * resolve without a server-validated session — and because exactly one guard is
+ * true for every auth state, there is no redirect loop to avoid.
+ *
+ * Nothing inside `(app)` renders while the session is still being validated: the
+ * boot screen replaces the navigator entirely during `booting`.
  */
 
 import {
@@ -25,7 +27,10 @@ import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { AppText, Button, Screen } from '@/components/ui';
+import { TamanorMark } from '@/components/brand/tamanor-mark';
+import { AppText, Button, Loading, Screen } from '@/components/ui';
+import { AuthProvider, useAuth } from '@/auth/auth-provider';
+import { canEnterApp, isBooting } from '@/auth/auth-machine';
 import { TamanorThemeProvider, useBrandFonts, useTheme } from '@/theme';
 
 // Must run at module scope, before the first render.
@@ -50,7 +55,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <TamanorThemeProvider fontsReady={fontsReady}>
-          <ThemedNavigator />
+          <AuthProvider>
+            <ThemedNavigator />
+          </AuthProvider>
         </TamanorThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
@@ -59,11 +66,11 @@ export default function RootLayout() {
 
 /**
  * Bridges the Tamanor theme into React Navigation, which owns the colours of
- * anything the navigator draws itself (screen background during transitions,
- * headers, card edges).
+ * anything the navigator draws itself, and applies the auth route guards.
  */
 function ThemedNavigator() {
   const theme = useTheme();
+  const { state } = useAuth();
 
   const navigationTheme = useMemo(() => {
     const base = theme.scheme === 'dark' ? DarkTheme : DefaultTheme;
@@ -82,17 +89,46 @@ function ThemedNavigator() {
     };
   }, [theme]);
 
+  const signedIn = canEnterApp(state);
+
   return (
     <NavigationThemeProvider value={navigationTheme}>
       {/* `style` follows the appearance: light content on the dark canvas. */}
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: theme.colors.background },
-        }}
-      />
+      {isBooting(state) ? (
+        <BootScreen />
+      ) : (
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: theme.colors.background },
+          }}>
+          <Stack.Protected guard={signedIn}>
+            <Stack.Screen name="(app)" />
+          </Stack.Protected>
+          <Stack.Protected guard={!signedIn}>
+            <Stack.Screen name="(auth)" />
+          </Stack.Protected>
+        </Stack>
+      )}
     </NavigationThemeProvider>
+  );
+}
+
+/**
+ * Shown while the stored token is being validated against the server. This is a
+ * real screen rather than a blank frame, and it is what guarantees no protected
+ * content is ever painted before validation completes.
+ */
+function BootScreen() {
+  const theme = useTheme();
+  return (
+    <Screen centered>
+      <View style={{ alignItems: 'center', gap: theme.spacing.xl }}>
+        <TamanorMark size={64} />
+        <Loading label="Checking your session" />
+      </View>
+    </Screen>
   );
 }
 
