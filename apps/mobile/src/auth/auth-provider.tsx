@@ -22,8 +22,8 @@ import { AppState, type AppStateStatus } from "react-native";
 import { fetchSession, login, logout } from "@/api/auth";
 import type { ApiErrorCode, SessionProfile } from "@/api/types";
 import {
-  bootstrapSession, createSubmitGuard, performSignIn, performSignOut, revalidateSession,
-  type AuthFlowDeps,
+  bootstrapSession, createSubmitGuard, isDefinitiveRejection, performSignIn, performSignOut,
+  revalidateSession, type AuthFlowDeps,
 } from "./auth-flows";
 import { authReducer, initialAuthState, sessionOf, type AuthState } from "./auth-machine";
 import { deleteToken, readToken, writeToken } from "./session-storage";
@@ -50,6 +50,12 @@ interface AuthContextValue {
   signOut: () => Promise<SignOutResult>;
   /** Re-ask the server. Used by the verification screen and the foreground check. */
   revalidate: () => Promise<void>;
+  /**
+   * M3 — report that an authenticated request was refused. Any screen that gets a
+   * 401 hands it here rather than handling sign-out itself, so every path out of
+   * `authenticated` goes through this one machine.
+   */
+  onSessionRejected: (error: ApiErrorCode) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -103,6 +109,16 @@ export function AuthProvider({ children, deps = flowDeps }: { children: ReactNod
     if (mounted.current) dispatch(event);
   }, [deps]);
 
+  const onSessionRejected = useCallback<AuthContextValue["onSessionRejected"]>(
+    (error) => {
+      // A definitive rejection means the stored token is worthless — drop it. The
+      // reducer ignores `network`/`timeout`, so a blip cannot sign anyone out.
+      if (isDefinitiveRejection(error)) void deps.store.deleteToken();
+      if (mounted.current) dispatch({ type: "SESSION_INVALIDATED", error });
+    },
+    [deps],
+  );
+
   // Revalidate when the app returns from a meaningful spell in the background.
   // Not a poller: nothing runs while the app is in the foreground.
   useEffect(() => {
@@ -124,8 +140,8 @@ export function AuthProvider({ children, deps = flowDeps }: { children: ReactNod
   }, [revalidate]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, session: sessionOf(state), signIn, signOut, revalidate }),
-    [state, signIn, signOut, revalidate],
+    () => ({ state, session: sessionOf(state), signIn, signOut, revalidate, onSessionRejected }),
+    [state, signIn, signOut, revalidate, onSessionRejected],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

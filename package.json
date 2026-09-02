@@ -340,7 +340,9 @@
     "production-app-role-align-workflow:test": "pnpm --filter @guardora/db exec tsx scripts/production-app-role-align-workflow.test.ts",
     "mobile-auth:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/mobile-auth.test.ts",
     "mobile-auth-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-auth-client.test.ts",
-    "mobile-auth-db:test": "pnpm --filter @guardora/web exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/mobile-auth-db.test.ts"
+    "mobile-auth-db:test": "pnpm --filter @guardora/web exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/mobile-auth-db.test.ts",
+    "mobile-shell:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/mobile-shell.test.ts",
+    "mobile-shell-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-shell.test.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
