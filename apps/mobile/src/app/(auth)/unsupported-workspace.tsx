@@ -12,6 +12,7 @@ import { View } from 'react-native';
 import { TamanorMark } from '@/components/brand/tamanor-mark';
 import { AppText, Button, Card, Screen } from '@/components/ui';
 import { useAuth } from '@/auth/auth-provider';
+import { t } from '@/i18n';
 import { useTheme } from '@/theme';
 
 export default function UnsupportedWorkspaceScreen() {
@@ -24,7 +25,7 @@ export default function UnsupportedWorkspaceScreen() {
         <View style={{ alignItems: 'center', gap: theme.spacing.md }}>
           <TamanorMark size={56} />
           <AppText variant="title" accessibilityRole="header" style={{ textAlign: 'center' }}>
-            Workspace not available
+            {t.auth.unsupportedTitle}
           </AppText>
         </View>
 
@@ -32,21 +33,21 @@ export default function UnsupportedWorkspaceScreen() {
           <View style={{ gap: theme.spacing.md }}>
             <AppText variant="body">
               {session?.tenantName
-                ? `“${session.tenantName}” cannot be opened in the Tamanor mobile app yet.`
-                : 'This workspace cannot be opened in the Tamanor mobile app yet.'}
+                ? t.auth.unsupportedNamed(session.tenantName)
+                : t.auth.unsupportedGeneric}
             </AppText>
             <AppText variant="callout" tone="foregroundMuted">
-              Sign in at tamanor.com to continue, or switch to a workspace the app supports.
+              {t.auth.unsupportedBody}
             </AppText>
           </View>
         </Card>
 
         <Button
-          label="Sign out"
+          label={t.common.signOut}
           variant="secondary"
           block
           onPress={() => void signOut()}
-          accessibilityHint="Signs out and returns to the sign-in screen"
+          accessibilityHint={t.auth.signOutHint}
         />
       </View>
     </Screen>

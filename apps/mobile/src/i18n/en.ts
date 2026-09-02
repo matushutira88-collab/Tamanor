@@ -5,7 +5,10 @@
  * (`apps/web/src/app/dashboard/page.tsx` COPY / ACTIVITY_LABEL and the dashboard
  * layout's StateBanner) so the two surfaces read the same.
  */
+import { enInbox } from "./en-inbox";
+
 export const en = {
+  ...enInbox,
   nav: {
     overview: "Overview",
     comments: "Comments",

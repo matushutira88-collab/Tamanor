@@ -4,7 +4,10 @@
  */
 import type { Dictionary } from "./en";
 
+import { skInbox } from "./sk-inbox";
+
 export const sk: Dictionary = {
+  ...skInbox,
   nav: {
     overview: "Prehľad",
     comments: "Komentáre",

@@ -17,7 +17,7 @@ import { TamanorMark } from '@/components/brand/tamanor-mark';
 import { AppText, Button, Card, Screen } from '@/components/ui';
 import { useAuth } from '@/auth/auth-provider';
 import type { ApiErrorCode } from '@/api/types';
-import { API_URL_ENV_VAR } from '@/api/config';
+import { t } from '@/i18n';
 import { useTheme } from '@/theme';
 
 /** One fixed sentence per bounded code. Never interpolates server text. */
@@ -25,25 +25,25 @@ function messageFor(error: ApiErrorCode): string {
   switch (error) {
     case 'invalid_credentials':
       // Identical for a missing account and a wrong password — by design.
-      return 'That email or password is not correct.';
+      return t.auth.errInvalid;
     case 'rate_limited':
-      return 'Too many attempts. Please wait a few minutes and try again.';
+      return t.auth.errRateLimited;
     case 'challenge_required':
-      return 'For security, this sign-in needs an extra check that the app cannot complete yet. Please sign in at tamanor.com, then try again.';
+      return t.auth.errChallenge;
     case 'invalid_request':
-      return 'Please enter your email and password.';
+      return t.auth.errMissingFields;
     case 'network':
-      return 'No connection. Check your network and try again.';
+      return t.auth.errNetwork;
     case 'timeout':
-      return 'Tamanor took too long to respond. Please try again.';
+      return t.auth.errTimeout;
     case 'config':
-      return `This build is not configured to reach Tamanor (${API_URL_ENV_VAR}).`;
+      return t.auth.errConfig;
     case 'unauthenticated':
     case 'session_expired':
     case 'session_revoked':
     case 'server_error':
     default:
-      return 'Something went wrong signing in. Please try again.';
+      return t.auth.errGeneric;
   }
 }
 
@@ -98,17 +98,17 @@ export default function LoginScreen() {
           {/* Decorative — the heading below announces the brand. */}
           <TamanorMark size={56} />
           <AppText variant="title" accessibilityRole="header">
-            Sign in to Tamanor
+            {t.auth.signInTitle}
           </AppText>
           <AppText variant="callout" tone="foregroundMuted" style={{ textAlign: 'center' }}>
-            Online reputation protection
+            {t.auth.tagline}
           </AppText>
         </View>
 
         {expiredNotice ? (
           <Card variant="sunken">
             <AppText variant="callout">
-              You were signed out because your session ended. Please sign in again.
+              {t.auth.sessionEnded}
             </AppText>
           </Card>
         ) : null}
@@ -116,15 +116,15 @@ export default function LoginScreen() {
         <View style={{ gap: theme.spacing.lg }}>
           <View style={{ gap: theme.spacing.sm }}>
             <AppText variant="caption" tone="foregroundMuted" nativeID="login-email-label">
-              Email
+              {t.auth.email}
             </AppText>
             <TextInput
               value={email}
               onChangeText={setEmail}
               style={fieldStyle}
-              placeholder="you@company.com"
+              placeholder={t.auth.emailPlaceholder}
               placeholderTextColor={theme.colors.foregroundMuted}
-              accessibilityLabel="Email"
+              accessibilityLabel={t.auth.email}
               accessibilityLabelledBy="login-email-label"
               keyboardType="email-address"
               textContentType="username"
@@ -140,7 +140,7 @@ export default function LoginScreen() {
 
           <View style={{ gap: theme.spacing.sm }}>
             <AppText variant="caption" tone="foregroundMuted" nativeID="login-password-label">
-              Password
+              {t.auth.password}
             </AppText>
             <View>
               <TextInput
@@ -148,9 +148,9 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 style={[fieldStyle, { paddingRight: theme.spacing.xxxl + theme.spacing.lg }]}
-                placeholder="Your password"
+                placeholder={t.auth.passwordPlaceholder}
                 placeholderTextColor={theme.colors.foregroundMuted}
-                accessibilityLabel="Password"
+                accessibilityLabel={t.auth.password}
                 accessibilityLabelledBy="login-password-label"
                 secureTextEntry={!revealPassword}
                 textContentType="password"
@@ -166,8 +166,8 @@ export default function LoginScreen() {
                 disabled={busy}
                 accessibilityRole="switch"
                 accessibilityState={{ checked: revealPassword, disabled: busy }}
-                accessibilityLabel={revealPassword ? 'Hide password' : 'Show password'}
-                accessibilityHint="Toggles whether the password is visible on screen"
+                accessibilityLabel={revealPassword ? t.auth.hidePasswordA11y : t.auth.showPasswordA11y}
+                accessibilityHint={t.auth.passwordToggleHint}
                 // Larger than it looks: the visible text is short, but the target
                 // fills the field's full height so it clears 44pt.
                 style={{
@@ -181,7 +181,7 @@ export default function LoginScreen() {
                   justifyContent: 'center',
                 }}>
                 <AppText variant="caption" tone="brand">
-                  {revealPassword ? 'Hide' : 'Show'}
+                  {revealPassword ? t.auth.hide : t.auth.show}
                 </AppText>
               </Pressable>
             </View>
@@ -192,8 +192,8 @@ export default function LoginScreen() {
             disabled={busy}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: rememberMe, disabled: busy }}
-            accessibilityLabel="Keep me signed in"
-            accessibilityHint="Keeps this device signed in for longer"
+            accessibilityLabel={t.auth.rememberMe}
+            accessibilityHint={t.auth.rememberMeHint}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -219,7 +219,7 @@ export default function LoginScreen() {
                 </AppText>
               ) : null}
             </View>
-            <AppText variant="callout">Keep me signed in</AppText>
+            <AppText variant="callout">{t.auth.rememberMe}</AppText>
           </Pressable>
 
           {error ? (
@@ -238,19 +238,19 @@ export default function LoginScreen() {
           ) : null}
 
           <Button
-            label={busy ? 'Signing in…' : 'Sign in'}
+            label={busy ? t.auth.signingIn : t.auth.signIn}
             onPress={() => void submit()}
             disabled={!canSubmit}
             busy={busy}
             block
-            accessibilityLabel="Sign in"
-            accessibilityHint="Signs in to your Tamanor account"
+            accessibilityLabel={t.auth.signIn}
+            accessibilityHint={t.auth.signInHint}
           />
         </View>
 
         <AppText variant="caption" tone="foregroundMuted" style={{ textAlign: 'center' }}>
           {/* M2 scope: registration and password recovery stay on the web for now. */}
-          Need an account or a password reset? Visit tamanor.com on the web.
+          {t.auth.footer}
         </AppText>
       </View>
     </Screen>

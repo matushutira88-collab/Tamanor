@@ -4,7 +4,10 @@
  */
 import type { Dictionary } from "./en";
 
+import { deInbox } from "./de-inbox";
+
 export const de: Dictionary = {
+  ...deInbox,
   nav: {
     overview: "Übersicht",
     comments: "Kommentare",

@@ -16,6 +16,7 @@ import { View } from 'react-native';
 import { TamanorMark } from '@/components/brand/tamanor-mark';
 import { AppText, Button, Card, Screen } from '@/components/ui';
 import { useAuth } from '@/auth/auth-provider';
+import { t } from '@/i18n';
 import { useTheme } from '@/theme';
 
 export default function VerifyEmailScreen() {
@@ -29,26 +30,25 @@ export default function VerifyEmailScreen() {
         <View style={{ alignItems: 'center', gap: theme.spacing.md }}>
           <TamanorMark size={56} />
           <AppText variant="title" accessibilityRole="header" style={{ textAlign: 'center' }}>
-            Verify your email
+            {t.auth.verifyTitle}
           </AppText>
         </View>
 
         <Card>
           <View style={{ gap: theme.spacing.md }}>
             <AppText variant="body">
-              We sent a verification link to{' '}
+              {t.auth.verifySentTo}{' '}
               <AppText variant="bodyStrong">{session?.userEmail ?? 'your email address'}</AppText>.
             </AppText>
             <AppText variant="callout" tone="foregroundMuted">
-              Open that link, then come back and continue. Tamanor keeps your account locked until
-              the address is confirmed.
+              {t.auth.verifyBody}
             </AppText>
           </View>
         </Card>
 
         <View style={{ gap: theme.spacing.md }}>
           <Button
-            label={checking ? 'Checking…' : "I've verified my email"}
+            label={checking ? t.auth.verifyChecking : t.auth.verifyCheck}
             busy={checking}
             block
             onPress={async () => {
@@ -59,14 +59,14 @@ export default function VerifyEmailScreen() {
                 setChecking(false);
               }
             }}
-            accessibilityHint="Asks Tamanor to check whether your email is now verified"
+            accessibilityHint={t.auth.verifyHint}
           />
           <Button
-            label="Sign out"
+            label={t.common.signOut}
             variant="secondary"
             block
             onPress={() => void signOut()}
-            accessibilityHint="Signs out and returns to the sign-in screen"
+            accessibilityHint={t.auth.signOutHint}
           />
         </View>
       </View>

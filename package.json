@@ -342,7 +342,9 @@
     "mobile-auth-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-auth-client.test.ts",
     "mobile-auth-db:test": "pnpm --filter @guardora/web exec dotenv -e ../../.env.local -e ../../.env -- tsx scripts/mobile-auth-db.test.ts",
     "mobile-shell:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/mobile-shell.test.ts",
-    "mobile-shell-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-shell.test.ts"
+    "mobile-shell-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-shell.test.ts",
+    "mobile-inbox:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/mobile-inbox.test.ts",
+    "mobile-inbox-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-inbox.test.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
