@@ -228,10 +228,30 @@ async function main() {
       discoveryGuardAt > 0 && activateAt > discoveryGuardAt);
     check("D12e) a discovery failure returns before reaching promotion",
       /!discovery\.ok\) return fail\("google=discovery_failed"/.test(cb));
-    check("D12f) `active` is named exactly once, at the promotion call",
-      (cb.match(/BusinessConnectionStatus\.active/g) ?? []).length === 1
-      && cb.slice(activateAt, activateAt + 300).includes("BusinessConnectionStatus.active"));
+    // M7 — the callback now serves BOTH transports, so there are two promotion calls
+    // (web and mobile). The invariant is unchanged and asserted more strictly: `active`
+    // appears ONLY at an `activateGoogleBusinessConnection` call, never anywhere else,
+    // and every promotion call names it.
+    {
+      const promotions = (cb.match(/activateGoogleBusinessConnection\(\{/g) ?? []).length;
+      const actives = (cb.match(/BusinessConnectionStatus\.active/g) ?? []).length;
+      check("D12f) `active` is named only at a promotion call, once per branch",
+        promotions >= 1 && actives === promotions, `promotions=${promotions} actives=${actives}`);
+      // Each occurrence must sit inside the 300 characters following a promotion call.
+      const windows: string[] = [];
+      let at = cb.indexOf("activateGoogleBusinessConnection({");
+      while (at >= 0) { windows.push(cb.slice(at, at + 300)); at = cb.indexOf("activateGoogleBusinessConnection({", at + 1); }
+      check("D12f2) every promotion call sets the active status",
+        windows.length === promotions && windows.every((w) => w.includes("BusinessConnectionStatus.active")));
+    }
     check("D12g) promotion failure also fails closed", /!activated\.ok\) return fail\("google=connection_failed"/.test(cb));
+    // M7 — the mobile branch fails closed at the same two points, with bounded codes.
+    check("D12h) the mobile branch fails closed on discovery",
+      /!discovery\.ok\) return bail\("discovery", "discovery_failed"/.test(cb));
+    check("D12i) the mobile branch fails closed on promotion",
+      /!activated\.ok\) return bail\("activation", "connection_failed"/.test(cb));
+    check("D12j) the mobile branch never claims connected — it lands in selection_required",
+      /markSelectionRequired\(/.test(cb) && !/status: "completed"/.test(cb));
     check("D13) exactly one success redirect exists", (cb.match(/google-business\/select\?google=connected/g) ?? []).length === 1);
     check("D14) unauthenticated and unauthorized callers cannot reach the exchange",
       /!session\) return NextResponse\.redirect\(new URL\("\/login"/.test(cb) && /Permission\.ConnectorManage/.test(cb));

@@ -320,27 +320,41 @@ async function main() {
 
   console.log("\n12) source invariants — existing comment onboarding unchanged");
   {
-    const src = readFileSync(new URL("../../../apps/web/src/app/dashboard/accounts/meta/actions.ts", import.meta.url), "utf8");
+    // M7 — the Meta selection BUSINESS RULES moved out of the dashboard Server Action
+    // into a transport-neutral service so the native mobile selection endpoint runs the
+    // identical code. The rules are asserted where they now live; the action is asserted
+    // separately below to prove it still delegates and still gates on the web session.
+    const src = readFileSync(new URL("../../../apps/web/src/server/oauth/meta-selection-service.ts", import.meta.url), "utf8");
+    const action = readFileSync(new URL("../../../apps/web/src/app/dashboard/accounts/meta/actions.ts", import.meta.url), "utf8");
     check("12a) connect still persists via linkMetaAssets", /linkMetaAssets\(\{/.test(src));
     check("12b) vault-only token write preserved (plaintext page token passed to linkMetaAssets)", /pageAccessToken: page\.pageAccessToken/.test(src));
     check("12c) Instagram still connected through the same path", /connectIg: igChosen/.test(src));
     check("12d) monitoring activation preserved", /enableAccountMonitoringWithinLimit/.test(src));
     check("12e) monitored-limit reconcile preserved", /enforceMonitoringLimits/.test(src));
-    check("12f) token verification preserved", /checkAccountToken\(session\.tenantId, link\.pageAccountId\)/.test(src));
-    check("12g) first read-only sync still scheduled after the response", /after\(async \(\) => \{[\s\S]*?runReadOnlySync/.test(src));
-    check("12h) connector-manage permission gate preserved", /assertCan\(session\.role, Permission\.ConnectorManage\)/.test(src));
-    check("12i) tenant comes from the session, never the client", /session\.tenantId/.test(src) && !/formData\.get\("tenantId"\)/.test(src));
+    check("12f) token verification preserved", /checkAccountToken\(actor\.tenantId, link\.pageAccountId\)/.test(src));
+    check("12g) first read-only sync still scheduled after the response",
+      /after\(async \(\) => \{[\s\S]*?startFirstSyncs/.test(action) && /runReadOnlySync\(\{ accountId: id, tenantId \}, "automatic"\)/.test(src));
+    check("12h) connector-manage permission gate preserved", /assertCan\(session\.role, Permission\.ConnectorManage\)/.test(action));
+    check("12i) tenant comes from the session, never the client",
+      /session\.tenantId/.test(action) && !/formData\.get\("tenantId"\)/.test(action)
+      && /actor\.tenantId/.test(src) && !/tenantId:\s*input\.tenantId/.test(src));
     check("12j) selection is validated against the SERVER asset list", /resolveMetaAssetSelection\(pages, selected\)/.test(src));
     // Compare CALL SITES (not the import line): the subscribe call must come after the account+credential
     // persistence call, inside the same per-Page loop.
     const linkCall = src.indexOf("link = await linkMetaAssets({");
-    const subCall = src.indexOf("await ensureLeadgenSubscriptionOnConnect(session.tenantId");
+    const subCall = src.indexOf("await ensureLeadgenSubscriptionOnConnect(actor.tenantId");
     check("12k) subscription runs per Page inside the loop, after linkMetaAssets",
       linkCall > 0 && subCall > linkCall, `link=${linkCall} sub=${subCall}`);
     check("12l) subscription is NOT inside a withTenant transaction",
       !/withTenant\([\s\S]{0,400}ensureLeadgenSubscriptionOnConnect/.test(src));
+    // The redirect is transport, so it is asserted on the action. The service is also
+    // checked: it must not build a redirect at all, which is what keeps it reusable.
     check("12m) redirect carries counts only — no page name/id/token",
-      /lead=\$\{leadSummary\}/.test(src) && !/pageId=\$/.test(src) && !/pageAccessToken=\$/.test(src));
+      /lead=\$\{leadSummary\}/.test(action) && !/pageId=\$/.test(action) && !/pageAccessToken=\$/.test(action));
+    check("12n) the shared service performs no transport (no redirect/revalidate/cookies)",
+      !/redirect\(|revalidatePath\(|cookies\(\)/.test(src));
+    check("12o) the shared service never returns a token",
+      !/pageAccessToken:/.test(src.split("return {")[1] ?? ""));
   }
 
   resetOpsSink();
