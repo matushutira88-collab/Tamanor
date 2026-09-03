@@ -40,6 +40,14 @@ export type ApiErrorCode =
   | "unauthenticated"
   | "session_expired"
   | "session_revoked"
+  /** The item does not exist, or belongs to another tenant — deliberately the same. */
+  | "not_found"
+  /** The role lacks the required permission. The screen stays readable. */
+  | "permission_denied"
+  /** Access is read-only (restricted/suspended tenant). */
+  | "read_only"
+  /** Another operator changed the item first; the server returns canonical state. */
+  | "conflict"
   | "server_error"
   | "network"
   | "timeout"
@@ -300,4 +308,131 @@ export interface InboxOptions {
 
 export interface InboxOptionsResponse {
   options: InboxOptions;
+}
+
+/* -------------------------------------------------------------------------- */
+/* M5 — Action Queue                                                           */
+/* -------------------------------------------------------------------------- */
+
+export const QUEUE_TABS = ["active", "approval", "blocked", "resolved", "all"] as const;
+export type QueueTab = (typeof QUEUE_TABS)[number];
+
+export const QUEUE_STATES = [
+  "suggested", "approval_required", "approved", "rejected", "blocked_by_safety",
+  "dry_run", "executed", "failed", "rollback_needed", "monitor", "no_action",
+] as const;
+export type QueueState = (typeof QUEUE_STATES)[number];
+
+export const PROPOSED_ACTIONS = [
+  "notify", "create_inbox_item", "suggest_reply", "request_approval", "hide_comment",
+  "report", "escalate", "assign_to_user", "create_incident", "no_action",
+] as const;
+export type ProposedAction = (typeof PROPOSED_ACTIONS)[number];
+
+export const EXECUTION_STATUSES = [
+  "blocked", "dry_run", "executed", "failed", "rollback_pending", "rolled_back",
+] as const;
+export type ExecutionStatus = (typeof EXECUTION_STATUSES)[number];
+
+export type ExecutionTrigger = "approval" | "autonomous";
+
+export const QUEUE_REASONS = [
+  "global_disabled", "facebook_hide_disabled", "unsupported_platform", "account_is_demo",
+  "account_not_active", "reconnect_required", "token_not_healthy", "token_expired",
+  "unhealthy_account", "missing_permission", "safety_never_autonomous",
+  "category_not_eligible", "policy_not_autonomous", "low_confidence",
+  "threat_requires_critical", "missing_comment_id",
+  "dry_run_mode", "dry_run_still_enabled", "live_not_enabled", "live_confirm_required",
+  "already_executed", "comment_deleted_or_unavailable", "provider_error", "unavailable",
+] as const;
+export type QueueReason = (typeof QUEUE_REASONS)[number];
+
+export const READINESS_STATES = ["blocked", "dry_run", "live_possible", "already_executed", "not_applicable"] as const;
+export type Readiness = (typeof READINESS_STATES)[number];
+
+export const LIFECYCLE_STATES = ["visible", "hidden", "deleted", "cannot_hide", "unknown"] as const;
+export type Lifecycle = (typeof LIFECYCLE_STATES)[number];
+
+export type PolicyMode = "monitor" | "assist" | "approval" | "autonomous";
+
+export const QUEUE_AUDIT_EVENTS = [
+  "approval.approved", "approval.rejected", "approval.resolved", "approval.retried",
+  "platform_action.live_requested", "platform_action.executed", "platform_action.blocked",
+  "feedback.created", "incident.created",
+] as const;
+export type QueueAuditEvent = (typeof QUEUE_AUDIT_EVENTS)[number];
+
+/** The INTERNAL decisions the app may request. Provider actions are absent by design. */
+export const QUEUE_DECISIONS = ["approve", "reject", "resolve"] as const;
+export type QueueDecision = (typeof QUEUE_DECISIONS)[number];
+
+export interface QueueExecution {
+  status: ExecutionStatus;
+  trigger: ExecutionTrigger;
+  reason: QueueReason | null;
+  at: string;
+}
+
+export interface QueueItem {
+  id: string;
+  relatedInboxItemId: string | null;
+  proposedAction: ProposedAction;
+  queueState: QueueState;
+  category: string;
+  reason: QueueReason | null;
+  createdAt: string;
+  contentPreview: string | null;
+  contentType: "comment" | "review" | null;
+  author: string | null;
+  platform: string | null;
+  account: string | null;
+  rating: number | null;
+  risk: string | null;
+  execution: QueueExecution | null;
+  lifecycle: Lifecycle;
+  /** UX affordances. The server re-checks all of them on every mutation. */
+  canApprove: boolean;
+  canReject: boolean;
+  canResolve: boolean;
+}
+
+export interface QueueItemDetail extends QueueItem {
+  contentText: string | null;
+  confidence: number | null;
+  policy: { mode: PolicyMode | null; neverAutonomous: boolean; autonomousEligible: boolean };
+  /** INFORMATION ONLY — M5 exposes no live-execution control. */
+  readiness: { state: Readiness; reason: QueueReason | null };
+  executions: QueueExecution[];
+  activity: { id: string; event: QueueAuditEvent; at: string }[];
+}
+
+export interface QueueCounts {
+  active: number;
+  approval: number;
+  blocked: number;
+}
+
+export interface QueueListResponse {
+  items: QueueItem[];
+  page: { nextCursor: string | null; hasMore: boolean };
+  counts: QueueCounts;
+  tab: QueueTab;
+  canDecide: boolean;
+}
+
+export interface QueueDetailResponse {
+  item: QueueItemDetail;
+  canDecide: boolean;
+}
+
+export interface QueueDecisionResponse {
+  ok: boolean;
+  item: QueueItem | null;
+  counts: QueueCounts | null;
+}
+
+/** 409 payload — the canonical current state after losing a race. */
+export interface QueueConflictResponse {
+  error: "conflict";
+  item: QueueItem | null;
 }

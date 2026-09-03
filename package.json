@@ -344,7 +344,9 @@
     "mobile-shell:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/mobile-shell.test.ts",
     "mobile-shell-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-shell.test.ts",
     "mobile-inbox:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/mobile-inbox.test.ts",
-    "mobile-inbox-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-inbox.test.ts"
+    "mobile-inbox-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-inbox.test.ts",
+    "mobile-queue-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-queue.test.ts",
+    "mobile-queue:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/mobile-queue.test.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

@@ -94,7 +94,9 @@ const PLATFORM_LABEL: Record<string, string> = {
   tiktok: "TikTok",
   linkedin: "LinkedIn",
 };
-export const platformLabel = (key: string): string => PLATFORM_LABEL[key] ?? key;
+/** Own-property lookup — `__proto__` must not resolve to the prototype object. */
+export const platformLabel = (key: string): string =>
+  Object.prototype.hasOwnProperty.call(PLATFORM_LABEL, key) ? PLATFORM_LABEL[key]! : key;
 
 /**
  * Whether the item's processing state should be surfaced at all.

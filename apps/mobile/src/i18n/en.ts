@@ -6,9 +6,11 @@
  * layout's StateBanner) so the two surfaces read the same.
  */
 import { enInbox } from "./en-inbox";
+import { enQueue } from "./en-queue";
 
 export const en = {
   ...enInbox,
+  ...enQueue,
   nav: {
     overview: "Overview",
     comments: "Comments",
@@ -22,6 +24,7 @@ export const en = {
     team: "Team",
   },
   common: {
+    back: "Back",
     retry: "Try again",
     refresh: "Refresh",
     viewAll: "View all",

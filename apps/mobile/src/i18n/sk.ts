@@ -5,9 +5,11 @@
 import type { Dictionary } from "./en";
 
 import { skInbox } from "./sk-inbox";
+import { skQueue } from "./sk-queue";
 
 export const sk: Dictionary = {
   ...skInbox,
+  ...skQueue,
   nav: {
     overview: "Prehľad",
     comments: "Komentáre",
@@ -21,6 +23,7 @@ export const sk: Dictionary = {
     team: "Tím",
   },
   common: {
+    back: "Späť",
     retry: "Skúsiť znova",
     refresh: "Obnoviť",
     viewAll: "Zobraziť všetky",

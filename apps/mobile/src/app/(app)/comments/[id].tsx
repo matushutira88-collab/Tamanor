@@ -173,7 +173,7 @@ export default function InboxDetailScreen() {
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
-          accessibilityLabel={t.common.retry === '' ? 'Back' : '←'}
+          accessibilityLabel={t.common.back}
           hitSlop={12}
           style={{
             minWidth: theme.sizing.minTouchTarget, minHeight: theme.sizing.minTouchTarget,

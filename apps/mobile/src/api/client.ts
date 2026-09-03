@@ -23,6 +23,10 @@ const KNOWN_SERVER_CODES = new Set<ApiErrorCode>([
   "unauthenticated",
   "session_expired",
   "session_revoked",
+  "not_found",
+  "permission_denied",
+  "read_only",
+  "conflict",
   "server_error",
 ]);
 
@@ -126,6 +130,9 @@ export function mapErrorPayload(status: number, payload: unknown): ApiErrorCode 
 
   // No usable code — fall back to the status class alone.
   if (status === 401) return "unauthenticated";
+  if (status === 403) return "permission_denied";
+  if (status === 404) return "not_found";
+  if (status === 409) return "conflict";
   if (status === 429) return "rate_limited";
   if (status === 400) return "invalid_request";
   return "server_error";

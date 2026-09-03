@@ -5,9 +5,11 @@
 import type { Dictionary } from "./en";
 
 import { deInbox } from "./de-inbox";
+import { deQueue } from "./de-queue";
 
 export const de: Dictionary = {
   ...deInbox,
+  ...deQueue,
   nav: {
     overview: "Übersicht",
     comments: "Kommentare",
@@ -21,6 +23,7 @@ export const de: Dictionary = {
     team: "Team",
   },
   common: {
+    back: "Zurück",
     retry: "Erneut versuchen",
     refresh: "Aktualisieren",
     viewAll: "Alle anzeigen",
