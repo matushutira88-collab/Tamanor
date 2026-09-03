@@ -8,10 +8,12 @@
 import { enInbox } from "./en-inbox";
 import { enQueue } from "./en-queue";
 import { enAccounts } from "./en-accounts";
+import { enOauth } from "./en-oauth";
 
 export const en = {
   ...enInbox,
   ...enQueue,
+  ...enOauth,
   nav: {
     overview: "Overview",
     comments: "Comments",

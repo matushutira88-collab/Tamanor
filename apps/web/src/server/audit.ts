@@ -12,7 +12,12 @@ import type { AppSession } from "./auth";
  * short tenant transaction is opened.
  */
 export async function writeAudit(opts: {
-  session: AppSession;
+  /**
+   * M7 — widened from the web-only `AppSession` to the two fields this function has
+   * always used, so a mobile-resolved OAuth actor can write the SAME canonical audit
+   * entry. `AppSession` still satisfies it, so every existing caller is unchanged.
+   */
+  session: Pick<AppSession, "tenantId" | "userId">;
   event: string;
   brandId?: string;
   targetType?: string;

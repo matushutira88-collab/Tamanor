@@ -7,10 +7,12 @@ import type { Dictionary } from "./en";
 import { deInbox } from "./de-inbox";
 import { deQueue } from "./de-queue";
 import { deAccounts } from "./de-accounts";
+import { deOauth } from "./de-oauth";
 
 export const de: Dictionary = {
   ...deInbox,
   ...deQueue,
+  ...deOauth,
   nav: {
     overview: "Übersicht",
     comments: "Kommentare",

@@ -1,28 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { getMetaConfig } from "@guardora/config";
-import {
-  exchangeMetaCode,
-  exchangeForLongLivedToken,
-  discoverMetaAccounts,
-  fetchMetaPermissions,
-  fetchMetaAuthorizingUserId,
-  MetaGraphError,
-  type MetaPermissionsResult,
-} from "@guardora/connectors";
-import { emitOpsEvent } from "@guardora/core";
-import { classifyMetaDiscoveryError, classifyMetaEmptyPages } from "@/server/oauth/meta-callback-classify";
-import { encryptToken } from "@guardora/db";
 import { getSession } from "@/server/auth";
 import { withTenant } from "@guardora/db";
 import { writeAudit } from "@/server/audit";
+import { runMetaOAuthExchange } from "@/server/oauth/meta-oauth-service";
+import {
+  tryResolveMobileFlow, markSelectionRequired, failMobileFlow, mobileCallbackUrl,
+  type MobileCallbackFailure,
+} from "@/server/oauth/mobile-callback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const STATE_COOKIE = "meta_oauth_state";
 const ONBOARDING_COOKIE = "meta_onboarding";
-const ONBOARDING_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const ONBOARDING_TTL_MS = 10 * 60 * 1000;
 
 function fail(req: NextRequest, reason: string) {
   return NextResponse.redirect(
@@ -31,52 +24,131 @@ function fail(req: NextRequest, reason: string) {
 }
 
 /**
- * V1.58.1 — safe, structured server-side diagnostics for the Meta OAuth callback.
- * NEVER contains an access token, authorization code, app secret, or a full request
- * URL — only failure classification + Meta's own (token-free) error metadata, so a
- * 307-that-fails is debuggable from the logs. Emitted at warn level.
- */
-function logDiag(fields: Record<string, unknown>): void {
-  // eslint-disable-next-line no-console
-  console.warn("[meta-oauth]", JSON.stringify({ scope: "connectors/meta/callback", ...fields }));
-}
-
-/** Extract safe (token-free) fields from a Meta Graph error for logging + classification. */
-function metaErrFields(err: unknown): {
-  httpStatus?: number; metaCode?: number; metaSubcode?: number; metaType?: string;
-  kind: string; fbtraceId?: string; metaMessage?: string;
-} {
-  if (err instanceof MetaGraphError) {
-    const d = err.detail;
-    return {
-      httpStatus: d.status, metaCode: d.code, metaSubcode: d.subcode, metaType: d.type,
-      kind: d.kind, fbtraceId: d.fbtraceId, metaMessage: d.metaMessage,
-    };
-  }
-  return { kind: "generic" };
-}
-
-const safeErr = (err: unknown): string => (err instanceof Error ? err.message : "unknown_error");
-
-/**
- * OAuth callback. Validates CSRF state, exchanges the code, discovers Pages/IG
- * accounts, and stores the result in a short-lived onboarding session, then
- * redirects to the Page selection screen. It NEVER creates a ConnectedAccount
- * here and NEVER creates a fake "connected" state on error. Tokens are never
- * logged or written to audit.
+ * Meta OAuth callback — ONE HTTPS endpoint serving BOTH transports.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * WHICH BRANCH, AND WHY IN THIS ORDER.
+ *
+ * A mobile authorization arrives with no Tamanor cookie at all, so the first thing
+ * this route does — before any cookie is read — is hash the provider's `state` and
+ * look for a `ConnectorOAuthFlow`. That lookup is also the replay guard: it
+ * atomically consumes the state, so a redelivered callback finds it spent.
+ *
+ * A WEB `state` is a `randomUUID` that was never written to that table, so the
+ * lookup finds nothing, returns `not_mobile`, and execution falls through to the
+ * original cookie path — unchanged, including its exact redirect vocabulary.
+ *
+ * Both branches then run the SAME `runMetaOAuthExchange`: identical token exchange,
+ * permissions read, discovery, classification and encrypted onboarding write.
+ * Neither branch owns a private copy of the provider pipeline.
+ * ────────────────────────────────────────────────────────────────────────────
+ *
+ * NO ACCOUNT IS CREATED HERE, on either branch. Discovery lands in a short-lived
+ * onboarding session and the user then selects; a Meta grant is an authorization,
+ * not a connection.
  */
 export async function GET(req: NextRequest) {
+  const params = req.nextUrl.searchParams;
+  const code = params.get("code");
+  const state = params.get("state");
+  const oauthError = params.get("error");
+
+  /* ------------------------------------------------------------- MOBILE ---- */
+  const mobile = await tryResolveMobileFlow({ rawState: state, provider: "meta" });
+
+  if (mobile.kind === "rejected") {
+    // A replayed, expired, mismatched or logged-out flow. The app is sent home with
+    // a correlation id ONLY; it will read the authoritative status itself.
+    return mobile.flowId
+      ? NextResponse.redirect(mobileCallbackUrl(mobile.flowId))
+      : fail(req, "invalid_state");
+  }
+
+  if (mobile.kind === "resolved") {
+    const flow = mobile.flow;
+    // Every mobile exit is the SAME deep link: a correlation id and nothing else.
+    // The outcome is deliberately not encoded here — the app reads it from the
+    // authenticated status endpoint, which is the only authority.
+    const done = () =>
+      NextResponse.redirect(mobileCallbackUrl(flow.id), {
+        status: 302,
+        headers: { "Cache-Control": "no-store" },
+      });
+
+    // Identity comes ENTIRELY from the stored flow. Nothing the browser sent is
+    // treated as authority — not a tenant, a user, a brand or a role.
+    const auditSession = { tenantId: flow.tenantId, userId: flow.userId };
+    const auditFail = async (reason: string) => {
+      await writeAudit({
+        session: auditSession, event: "oauth.failed",
+        brandId: flow.brandId ?? undefined, targetType: "connector", targetId: "meta",
+        metadata: { platform: "meta", reason, surface: "mobile" },
+      }).catch(() => {});
+    };
+
+    if (oauthError) {
+      await auditFail("user_denied");
+      await failMobileFlow(flow, "user_cancelled");
+      return done();
+    }
+    if (!code) {
+      await auditFail("invalid_state");
+      await failMobileFlow(flow, "invalid_state");
+      return done();
+    }
+    if (!flow.brandId) {
+      await auditFail("bad_brand");
+      await failMobileFlow(flow, "unknown");
+      return done();
+    }
+    // The brand was validated at start; re-validate under RLS so a brand deleted
+    // mid-authorization cannot be written to.
+    const brand = await withTenant(flow.tenantId, (db) =>
+      db.brand.findFirst({ where: { id: flow.brandId!, tenantId: flow.tenantId }, select: { id: true } }),
+    );
+    if (!brand) {
+      await auditFail("bad_brand");
+      await failMobileFlow(flow, "unknown");
+      return done();
+    }
+
+    const result = await runMetaOAuthExchange({
+      code, tenantId: flow.tenantId, userId: flow.userId, brandId: flow.brandId,
+    });
+
+    if (!result.ok) {
+      await auditFail(result.reason);
+      await failMobileFlow(flow, normalizeMetaFailure(result.reason));
+      return done();
+    }
+
+    await writeAudit({
+      session: auditSession, event: "oauth.completed",
+      brandId: flow.brandId, targetType: "connector", targetId: "meta",
+      metadata: { platform: "meta", surface: "mobile" },
+    }).catch(() => {});
+    await writeAudit({
+      session: auditSession, event: "account.discovered",
+      brandId: flow.brandId, targetType: "connector", targetId: "meta",
+      metadata: {
+        platform: "meta", surface: "mobile",
+        pages: result.pageCount, withInstagram: result.withInstagram,
+      },
+    }).catch(() => {});
+
+    // AUTHORIZED, NOT CONNECTED. The phone now fetches options and selects natively.
+    await markSelectionRequired({ flow, resultRefId: result.onboardingId });
+    return done();
+  }
+
+  /* ---------------------------------------------------------------- WEB ---- */
+  // Unchanged from before M7: cookie session, cookie state, same redirects.
   const session = await getSession();
   if (!session) return NextResponse.redirect(new URL("/login", req.url));
 
   const jar = await cookies();
   const stored = jar.get(STATE_COOKIE)?.value;
   jar.delete(STATE_COOKIE);
-
-  const params = req.nextUrl.searchParams;
-  const code = params.get("code");
-  const state = params.get("state");
-  const oauthError = params.get("error");
 
   const meta = getMetaConfig();
   const [stateToken, brandId] = (stored ?? "").split(":");
@@ -113,79 +185,12 @@ export async function GET(req: NextRequest) {
     return fail(req, "bad_brand");
   }
 
-  const cfg = {
-    appId: meta.appId!,
-    appSecret: meta.appSecret!,
-    redirectUri: meta.redirectUri!,
-  };
-
-  // 1) Short-lived token exchange, then upgrade to a long-lived token (~60d).
-  let token;
-  try {
-    const shortLived = await exchangeMetaCode(cfg, code);
-    token = await exchangeForLongLivedToken(cfg, shortLived.accessToken);
-    logDiag({ step: "token_exchange", ok: true });
-  } catch (err) {
-    // Safe-fail the whole onboarding — no account is created.
-    logDiag({ step: "token_exchange", ok: false, message: safeErr(err) });
-    await auditFail("token_exchange_failed");
-    return fail(req, "token_exchange_failed");
-  }
-
-  // 1b) Permissions diagnostic (best-effort, non-fatal). `/me/permissions` is the
-  //     authoritative record of what the user actually granted — Facebook Login for
-  //     Business lets users decline individual permissions, and a declined/absent
-  //     `pages_show_list` makes `/me/accounts` return an error or an empty list. This
-  //     lets us distinguish a permission gap from a generic API error.
-  let perms: MetaPermissionsResult = { granted: [], declined: [] };
-  let permsOk = false;
-  try {
-    // Pass the app secret so the request carries appsecret_proof (Meta "Require App Secret").
-    perms = await fetchMetaPermissions(token.accessToken, cfg.appSecret);
-    permsOk = true;
-    logDiag({ step: "me/permissions", ok: true, granted: perms.granted, declined: perms.declined });
-  } catch (err) {
-    logDiag({ step: "me/permissions", ok: false, ...metaErrFields(err) });
-  }
-  const hasPagesShowList = perms.granted.includes("pages_show_list");
-
-  // 1c) META-EXTERNAL-ACCESS-V2 — the APP-SCOPED user id of the identity completing this flow. Resolved from
-  //     Graph with the just-exchanged user token (never from the browser) and carried into credential
-  //     authorization provenance at confirm time, so a later Meta deauthorize / data-deletion callback can
-  //     invalidate exactly the credentials this grant produced. Best-effort: if Graph does not return it the
-  //     connect still succeeds, the credential simply records no provenance and is not attributable.
-  let authorizingProviderUserId: string | null = null;
-  try {
-    authorizingProviderUserId = await fetchMetaAuthorizingUserId(token.accessToken, cfg.appSecret);
-    logDiag({ step: "me/id", ok: true, resolved: authorizingProviderUserId !== null });
-  } catch (err) {
-    logDiag({ step: "me/id", ok: false, ...metaErrFields(err) });
-  }
-
-  // 2) Account discovery (uses the long-lived user token + appsecret_proof).
-  let pages;
-  try {
-    pages = await discoverMetaAccounts(token.accessToken, cfg.appSecret);
-    logDiag({ step: "me/accounts", ok: true, accountsCount: pages.length });
-  } catch (err) {
-    // Distinguish a Meta API error (esp. a permission error) from a generic failure —
-    // NEVER report "no pages"/"missing permission" for what is actually a generic API error.
-    const f = metaErrFields(err);
-    logDiag({ step: "me/accounts", ok: false, ...f });
-    emitOpsEvent("oauth.discovery_failed", {
-      platform: "meta", httpStatus: f.httpStatus, kind: f.kind, metaCode: f.metaCode, metaSubcode: f.metaSubcode,
-    });
-    const reason = classifyMetaDiscoveryError(f.kind, permsOk, hasPagesShowList);
-    await auditFail(reason);
-    return fail(req, reason);
-  }
-  if (pages.length === 0) {
-    // Empty (HTTP 200) list: a genuine "no Pages" unless /me/permissions CONFIRMS pages_show_list
-    // was declined/absent — never a false "missing permission" when we couldn't read permissions.
-    const reason = classifyMetaEmptyPages(permsOk, hasPagesShowList);
-    logDiag({ step: "me/accounts", ok: true, accountsCount: 0, reason, hasPagesShowList, permsOk });
-    await auditFail(reason);
-    return fail(req, reason);
+  const result = await runMetaOAuthExchange({
+    code, tenantId: session.tenantId, userId: session.userId, brandId,
+  });
+  if (!result.ok) {
+    await auditFail(result.reason);
+    return fail(req, result.reason);
   }
 
   await writeAudit({
@@ -204,49 +209,12 @@ export async function GET(req: NextRequest) {
     targetId: "meta",
     metadata: {
       platform: "meta",
-      pages: pages.length,
-      withInstagram: pages.filter((p) => p.igBusinessId).length,
+      pages: result.pageCount,
+      withInstagram: result.withInstagram,
     },
   });
 
-  // 3) Persist discovery to a short-lived onboarding session (server-only tokens)
-  const expiresAt = token.expiresInSeconds
-    ? new Date(Date.now() + token.expiresInSeconds * 1000)
-    : null;
-
-  // Tenant write AFTER all provider HTTP has completed (read → fetch → write).
-  // Token encryption + tenant isolation preserved exactly (encryptToken + withTenant).
-  let onboardingId: string;
-  try {
-    onboardingId = (await withTenant(session.tenantId, async (db) => {
-      const onboarding = await db.metaOnboardingSession.create({
-        data: {
-          tenantId: session.tenantId,
-          brandId,
-          userId: session.userId,
-          // Encrypted at the storage seam (dev: tagged plaintext; prod: KMS).
-          userAccessToken: encryptToken(token.accessToken),
-          tokenType: token.tokenType,
-          tokenExpiresAt: expiresAt,
-          // The scopes actually requested for this flow (env-driven, safe default).
-          grantedScopes: meta.scopes,
-          // Opaque provider subject id only — never a token, never rendered.
-          authorizingProviderUserId,
-          pages: pages as never,
-          expiresAt: new Date(Date.now() + ONBOARDING_TTL_MS),
-        },
-        select: { id: true },
-      });
-      return onboarding.id;
-    })) as string;
-    logDiag({ step: "save", ok: true, accountsCount: pages.length });
-  } catch (err) {
-    logDiag({ step: "save", ok: false, message: safeErr(err) });
-    await auditFail("save_failed");
-    return fail(req, "save_failed");
-  }
-
-jar.set(ONBOARDING_COOKIE, onboardingId, {
+  jar.set(ONBOARDING_COOKIE, result.onboardingId, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -257,4 +225,26 @@ jar.set(ONBOARDING_COOKIE, onboardingId, {
   return NextResponse.redirect(
     new URL("/dashboard/accounts/meta/select", req.url),
   );
+}
+
+/**
+ * Map the canonical web failure vocabulary onto the bounded mobile one.
+ *
+ * The web reasons are already bounded keys, but they are a redirect vocabulary; the
+ * phone gets the smaller, stable set it localizes. Anything unrecognized becomes
+ * `unknown` rather than travelling verbatim.
+ */
+function normalizeMetaFailure(reason: string): MobileCallbackFailure {
+  switch (reason) {
+    case "token_exchange_failed": return "token_exchange_failed";
+    case "save_failed": return "save_failed";
+    case "config_missing": return "provider_unavailable";
+    case "oauth_denied": return "user_cancelled";
+    case "invalid_state": return "invalid_state";
+    case "no_pages":
+    case "no_accounts": return "no_accounts";
+    case "missing_permission":
+    case "permission_missing": return "missing_permission";
+    default: return "unknown";
+  }
 }

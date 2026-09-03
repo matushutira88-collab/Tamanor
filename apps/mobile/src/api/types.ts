@@ -618,3 +618,109 @@ export interface AccountDisconnectResponse {
   providerRevoke: RevokeResult;
   manualCleanupRecommended: boolean;
 }
+
+/* -------------------------------------------------------------------------- */
+/* M7 — native connector OAuth                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * THE DEEP LINK IS NOT AUTHORITATIVE.
+ *
+ * `tamanor://oauth/callback?flow=…` means only "the auth browser returned; ask the
+ * server what happened". Every type below describes a SERVER answer fetched with
+ * the bearer — none of it may be constructed from a deep link.
+ */
+
+export const OAUTH_PROVIDERS = ["meta", "google_business"] as const;
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+
+export const OAUTH_INTENTS = ["connect", "reconnect"] as const;
+export type OAuthIntent = (typeof OAUTH_INTENTS)[number];
+
+/**
+ * Flow lifecycle. `selection_required` is a real state: the provider authorized
+ * Tamanor, but nothing is connected until the user picks Pages or locations.
+ */
+export const OAUTH_STATUSES = [
+  "pending", "provider_pending", "selection_required",
+  "completed", "failed", "cancelled", "expired",
+] as const;
+export type OAuthStatus = (typeof OAUTH_STATUSES)[number];
+
+/** Bounded failure vocabulary. Raw provider text never reaches the app. */
+export const OAUTH_RESULT_CODES = [
+  "user_cancelled", "invalid_state", "expired", "permission_denied",
+  "account_limit_reached", "brand_platform_limit_reached", "provider_unavailable",
+  "token_exchange_failed", "missing_permission", "no_accounts", "selection_required",
+  "save_failed", "not_found", "session_invalid", "unknown",
+] as const;
+export type OAuthResultCode = (typeof OAUTH_RESULT_CODES)[number];
+
+/**
+ * Provider availability. Three booleans — no client id, redirect URI or scope list,
+ * because the app never builds a provider URL itself.
+ */
+export interface OAuthProviderAvailability {
+  provider: OAuthProvider;
+  configured: boolean;
+  available: boolean;
+  approved: boolean;
+}
+
+export interface OAuthProvidersResponse {
+  providers: OAuthProviderAvailability[];
+  /** Connect targets. The id is a hint; the server re-validates it. */
+  brands: { id: string; name: string }[];
+  canManageConnectors: boolean;
+}
+
+export interface OAuthStartResponse {
+  flowId: string;
+  /**
+   * The PROVIDER's authorization URL, built server-side. It carries normal OAuth
+   * parameters and never a Tamanor bearer, session token or client secret.
+   */
+  authorizationUrl: string;
+  expiresAt: string;
+}
+
+export interface OAuthFlow {
+  id: string;
+  provider: OAuthProvider;
+  intent: OAuthIntent;
+  status: OAuthStatus;
+  expiresAt: string;
+  resultCode: OAuthResultCode | null;
+  accountId: string | null;
+  selectionRequired: boolean;
+}
+
+/** One selectable provider asset. Carries no token and no provider credential. */
+export interface OAuthSelectableOption {
+  /** The canonical selection value the server validates against. */
+  id: string;
+  displayName: string;
+  kind: string;
+  alreadyConnected: boolean;
+  eligible: boolean;
+  reason: string | null;
+}
+
+export interface OAuthOptionsResponse {
+  flowId: string;
+  provider: OAuthProvider;
+  options: OAuthSelectableOption[];
+}
+
+export interface OAuthSelectResponse {
+  flowId: string;
+  status: OAuthStatus;
+  connected: number;
+  monitored: number;
+  limited: number;
+  slotTaken: number;
+  /** Submitted ids matching no server asset. A COUNT — never the value. */
+  rejected: number;
+  accountIds: string[];
+  resultCode: OAuthResultCode | null;
+}

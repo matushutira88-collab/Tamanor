@@ -185,12 +185,18 @@ console.log("\n6) source invariants — the real implementation matches this mod
   check("6i) a revoked vault row fails closed and is never downgraded to a legacy read",
     /if \(outcome\.state === "revoked"\) throw new VaultCredentialUnusableError\("revoked"\)/.test(resolver));
 
-  const cb = read("apps/web/src/app/api/connectors/meta/callback/route.ts");
+  // M7 — the Meta exchange moved into a transport-neutral service that BOTH the web
+  // callback and the native mobile branch call. The Graph resolution is asserted where
+  // it now lives; the callback is still checked for the browser-input negatives.
+  const cb = read("apps/web/src/server/oauth/meta-oauth-service.ts");
+  const cbRoute = read("apps/web/src/app/api/connectors/meta/callback/route.ts");
   check("6j) the authorizing user id is resolved SERVER-SIDE from Graph, never from the browser",
-    /fetchMetaAuthorizingUserId\(token\.accessToken/.test(cb) && !/searchParams\.get\("user_id"\)/.test(cb) && !/formData/.test(cb));
-  const confirm = read("apps/web/src/app/dashboard/accounts/meta/actions.ts");
+    /fetchMetaAuthorizingUserId\(token\.accessToken/.test(cb)
+    && !/searchParams\.get\("user_id"\)/.test(cb) && !/formData/.test(cb)
+    && !/searchParams\.get\("user_id"\)/.test(cbRoute) && !/formData/.test(cbRoute));
+  const confirm = read("apps/web/src/server/oauth/meta-selection-service.ts");
   check("6k) connect passes provenance from the server-held onboarding row",
-    /authorizingProviderUserId: row\.authorizingProviderUserId/.test(confirm));
+    /authorizingProviderUserId: onboarding\.authorizingProviderUserId/.test(confirm));
   check("6l) provenance is never read from the submitted form", !/get\("authorizingProviderUserId"\)/.test(confirm) && !/get\("user_id"\)/.test(confirm));
 
   for (const route of ["apps/web/src/app/api/meta/data-deletion/route.ts", "apps/web/src/app/api/meta/deauthorize/route.ts"]) {

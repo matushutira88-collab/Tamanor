@@ -29,7 +29,6 @@ import {
 } from '@/accounts/accounts-state';
 import { consumeAccountsStale } from '@/accounts/accounts-sync';
 import { AccountRow } from '@/components/accounts/account-row';
-import { WebConnectNotice } from '@/components/accounts/web-connect-notice';
 import { AppHeader } from '@/components/shell/app-header';
 import {
   AppText, Badge, Button, EmptyState, ErrorState, SkeletonCard,
@@ -233,18 +232,17 @@ export default function AccountsScreen() {
           }
           // The Connect hand-off lives at the END of the list so it is reachable from
           // both the empty state and a populated one, and only for a role that may use it.
+          // M7 — the Connect CTA now starts a NATIVE OAuth flow. The M6 "manage on
+          // the web" hand-off is gone: the phone is already an authenticated Tamanor
+          // client, so it never sends the user to a browser to log in again.
           ListFooterComponent={
             state.phase === 'ready' && state.canManage ? (
               <View style={{ paddingTop: theme.spacing.lg }}>
-                <WebConnectNotice
-                  target="connect"
-                  strings={{
-                    title: t.accounts.webHandoff.connectTitle,
-                    body: t.accounts.webHandoff.connectBody,
-                    open: t.accounts.actions.connect,
-                    unavailable: t.accounts.webHandoff.unavailable,
-                    notConfigured: t.accounts.webHandoff.notConfigured,
-                  }}
+                <Button
+                  label={t.accounts.actions.connect}
+                  variant="primary"
+                  block
+                  onPress={() => router.push('/accounts/connect')}
                 />
               </View>
             ) : null

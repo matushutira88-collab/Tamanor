@@ -168,6 +168,7 @@ export * from "./platform-admin";
 export * from "./website-analytics-reports";
 export * from "./website-analytics";
 export * from "./sync-lease";
+export * from "./connector-oauth-flow";
 export * from "./session-mgmt";
 export * from "./account-protection";
 export * from "./onboarding";

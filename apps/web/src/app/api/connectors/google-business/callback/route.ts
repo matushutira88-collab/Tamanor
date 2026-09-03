@@ -9,6 +9,9 @@ import { persistGoogleBusinessGrant, activateGoogleBusinessConnection, BusinessC
 import { Permission, can } from "@guardora/core";
 import { getSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
+import {
+  tryResolveMobileFlow, markSelectionRequired, failMobileFlow, mobileCallbackUrl,
+} from "@/server/oauth/mobile-callback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +58,25 @@ const BACK = "/dashboard/accounts?";
  * line, or the browser. Audit metadata carries only bounded stage/outcome labels and counts.
  */
 export async function GET(req: NextRequest) {
+  /* ------------------------------------------------------------- MOBILE ----
+   * A phone-initiated authorization arrives with no Tamanor cookie, so the state is
+   * resolved against `ConnectorOAuthFlow` BEFORE any cookie is read. That lookup
+   * atomically consumes the state, so it is the replay guard too. A WEB state is a
+   * `randomUUID` that was never written to that table, so it finds nothing and
+   * execution falls through to the original cookie path, unchanged.
+   */
+  {
+    const mobile = await tryResolveMobileFlow({
+      rawState: req.nextUrl.searchParams.get("state"), provider: "google_business",
+    });
+    if (mobile.kind === "rejected") {
+      return mobile.flowId
+        ? NextResponse.redirect(mobileCallbackUrl(mobile.flowId))
+        : NextResponse.redirect(new URL(`${BACK}google=invalid_state`, req.url));
+    }
+    if (mobile.kind === "resolved") return handleMobileGoogleCallback(req, mobile.flow);
+  }
+
   const session = await getSession();
   if (!session) return NextResponse.redirect(new URL("/login", req.url));
   if (!can(session.role, Permission.ConnectorManage)) {
@@ -147,4 +169,103 @@ export async function GET(req: NextRequest) {
   // location-selection step. Nothing is imported yet: the selection page re-runs discovery server-side
   // and the user must explicitly choose which verified locations to connect.
   return NextResponse.redirect(new URL("/dashboard/accounts/google-business/select?google=connected", req.url));
+}
+
+
+/**
+ * The MOBILE branch of the Google Business callback.
+ *
+ * Runs the identical canonical pipeline as the web branch — exchange,
+ * `persistGoogleBusinessGrant`, discovery, then `activateGoogleBusinessConnection`
+ * LAST — so a discovery failure can never leave a connection claiming to be live.
+ *
+ * The difference is only the ending. A Google grant authorizes Tamanor; it does not
+ * connect any location. So the flow lands in `selection_required`, not `completed`,
+ * and the phone then chooses locations natively. The deep link carries a flow id and
+ * nothing else — no code, no state, no token, no provider text.
+ */
+async function handleMobileGoogleCallback(
+  req: NextRequest,
+  flow: { id: string; tenantId: string; userId: string; brandId: string | null },
+): Promise<NextResponse> {
+  const params = req.nextUrl.searchParams;
+  const code = params.get("code");
+  const providerError = params.get("error");
+
+  // Identity comes ENTIRELY from the stored flow; the browser supplies no authority.
+  const session = { tenantId: flow.tenantId, userId: flow.userId };
+  const done = () =>
+    NextResponse.redirect(mobileCallbackUrl(flow.id), {
+      status: 302,
+      headers: { "Cache-Control": "no-store" },
+    });
+
+  const bail = async (stage: string, outcome: string, code: Parameters<typeof failMobileFlow>[1]) => {
+    await writeAudit({
+      session,
+      event: GOOGLE_BUSINESS_AUDIT.syncFailed,
+      targetType: "connector",
+      targetId: "google_business",
+      metadata: { platform: "google_business", stage, outcome, surface: "mobile" },
+    }).catch(() => { /* auditing a failure must not mask it */ });
+    await failMobileFlow(flow as never, code);
+    return done();
+  };
+
+  if (providerError) return bail("oauth_callback", "oauth_denied", "user_cancelled");
+  if (!code) return bail("oauth_callback", "invalid_callback", "invalid_state");
+
+  const cfg = getGoogleBusinessConfig();
+  if (!cfg.configured) return bail("config", "not_configured", "provider_unavailable");
+  if (!cfg.apiEnabled) return bail("config", "api_disabled", "provider_unavailable");
+  if (!cfg.apiApproved) return bail("config", "api_access_unconfirmed", "provider_unavailable");
+
+  // Server-side exchange. The client secret is read only here and never travels.
+  const exchanged = await exchangeGoogleAuthCode({
+    code,
+    clientId: cfg.clientId!,
+    clientSecret: process.env.GOOGLE_BUSINESS_CLIENT_SECRET!,
+    redirectUri: cfg.redirectUri!,
+  });
+  if (!exchanged.ok || !exchanged.credentials) {
+    return bail("token_exchange", "exchange_failed", "token_exchange_failed");
+  }
+  const credentials = exchanged.credentials;
+
+  const persisted = await persistGoogleBusinessGrant({ tenantId: flow.tenantId, credentials });
+  if (!persisted.ok) return bail("credential_persist", "connection_failed", "save_failed");
+
+  const discovery = await discoverGoogleBusinessScope(
+    new GoogleBusinessApiClient({ transport: createGoogleFetchTransport(), accessToken: credentials.accessToken }),
+  );
+  // Fail-closed WITHOUT promotion: the credential stays encrypted and the connection
+  // is left exactly as it was.
+  if (!discovery.ok) return bail("discovery", "discovery_failed", "provider_unavailable");
+
+  const activated = await activateGoogleBusinessConnection({
+    tenantId: flow.tenantId,
+    connectionId: persisted.connectionId,
+    status: BusinessConnectionStatus.active,
+  });
+  if (!activated.ok) return bail("activation", "connection_failed", "save_failed");
+
+  await writeAudit({
+    session,
+    event: GOOGLE_BUSINESS_AUDIT.connected,
+    targetType: "connector",
+    targetId: "google_business",
+    // Counts and stage labels only — no account or location names, no token material.
+    metadata: {
+      platform: "google_business",
+      stage: "oauth_completed",
+      surface: "mobile",
+      accountCount: discovery.accounts.length,
+      eligibleLocationCount: discovery.eligibleLocationCount,
+    },
+  }).catch(() => { /* the connection is real whether or not the audit write succeeds */ });
+
+  // AUTHORIZED, NOT CONNECTED. Locations are chosen natively next; nothing is
+  // imported until the user explicitly selects.
+  await markSelectionRequired({ flow: flow as never, resultRefId: persisted.connectionId });
+  return done();
 }

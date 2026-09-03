@@ -148,12 +148,17 @@ console.log("\n3) revocation scope — everything that identity authorised, and 
   const vault = read("packages/db/src/provider-credential-vault.ts");
   check("3o) provenance is written server-side on every credential store/rotate",
     /authorizingProviderUserId: input\.authorizingProviderUserId \?\? null/.test(vault));
-  const cbSrc = read("apps/web/src/app/api/connectors/meta/callback/route.ts");
+  // M7 — asserted in the shared service the exchange moved to; the route keeps its
+  // own negative check that nothing is read from the browser.
+  const cbSrc = read("apps/web/src/server/oauth/meta-oauth-service.ts");
+  const cbRouteSrc = read("apps/web/src/app/api/connectors/meta/callback/route.ts");
   check("3p) the authorizing identity is resolved from Graph, never from the browser",
-    /fetchMetaAuthorizingUserId\(token\.accessToken/.test(cbSrc) && !/searchParams\.get\("user_id"\)/.test(cbSrc));
-  const confirmSrc = read("apps/web/src/app/dashboard/accounts/meta/actions.ts");
+    /fetchMetaAuthorizingUserId\(token\.accessToken/.test(cbSrc)
+    && !/searchParams\.get\("user_id"\)/.test(cbSrc)
+    && !/searchParams\.get\("user_id"\)/.test(cbRouteSrc));
+  const confirmSrc = read("apps/web/src/server/oauth/meta-selection-service.ts");
   check("3q) provenance reaches the credential from the server-held onboarding row, not the form",
-    /authorizingProviderUserId: row\.authorizingProviderUserId/.test(confirmSrc) && !/get\("authorizingProviderUserId"\)/.test(confirmSrc));
+    /authorizingProviderUserId: onboarding\.authorizingProviderUserId/.test(confirmSrc) && !/get\("authorizingProviderUserId"\)/.test(confirmSrc));
 }
 
 console.log("\n4) public routes reachable without authentication");
@@ -217,10 +222,15 @@ console.log("\n6) asset selection + cross-tenant rejection");
     const r = resolveMetaAssetSelection([], ["facebook:PAGE_OWNED", "instagram:IG_OWNED"]);
     return r.pages.size === 0 && r.instagram.size === 0 && r.rejected === 2;
   })());
-  const actions = read("apps/web/src/app/dashboard/accounts/meta/actions.ts");
+  // M7 — server-side selection validation now lives in the shared service.
+  const actions = read("apps/web/src/server/oauth/meta-selection-service.ts");
   check("6d) connect validates the submitted selection against the server asset list",
     /resolveMetaAssetSelection\(pages, selected\)/.test(actions));
-  check("6e) tenant is taken from the session, never from the client", !/formData\.get\("tenantId"\)/.test(actions) && /session\.tenantId/.test(actions));
+  // M7 — the service receives an already-authorized actor; it reads no request input at
+  // all, which is a STRONGER guarantee than "does not read formData.tenantId".
+  check("6e) tenant is taken from the authorized actor, never from the client",
+    /actor\.tenantId/.test(actions) && !/formData/.test(actions) && !/searchParams/.test(actions)
+    && !/tenantId:\s*input\.tenantId/.test(actions));
   const repair = read("apps/web/src/app/dashboard/platforms/actions.ts");
   check("6f) the repair action accepts only an account id (no Page id / tenant / token from the client)",
     /fd\.get\("accountId"\)/.test(repair) && !/fd\.get\("pageId"\)/.test(repair) && !/fd\.get\("tenantId"\)/.test(repair) && !/fd\.get\("token"\)/.test(repair));

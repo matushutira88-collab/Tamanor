@@ -276,6 +276,8 @@ model User {
   businessContactNotes              BusinessContactNote[]      @relation("BusinessContactNoteAuthor")
   // CS-C8 — Family guardian invitations this user accepted (SetNull on user delete).
   familyGuardianInvitationsAccepted FamilyGuardianInvitation[]
+  // M7 — provider OAuth authorizations this user started (any surface).
+  connectorOAuthFlows               ConnectorOAuthFlow[]
 
   @@map("users")
 }
@@ -363,10 +365,72 @@ model UserSession {
   user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   activeTenant Tenant @relation(fields: [activeTenantId], references: [id], onDelete: Cascade)
 
+  connectorOAuthFlows ConnectorOAuthFlow[]
+
   @@index([userId])
   @@index([activeTenantId])
   @@index([expiresAt])
   @@map("user_sessions")
+}
+
+/// M7 — one durable, provider-neutral OAuth authorization transaction.
+///
+/// It exists because OAuth needs replay-proof `state` and a way to correlate the provider's
+/// callback back to the Tamanor user who started it. The callback arrives with NOTHING but the
+/// state value: no cookie, no bearer. This row is that correlation, and it is the ONLY thing
+/// that makes a mobile-initiated connect possible without minting a browser login.
+///
+/// It is NOT an account, a login session, or a credential store. It holds NO bearer, NO session
+/// token, NO provider authorization code, NO access or refresh token and NO client secret — only
+/// sha256(oauthState). Provider credentials stay in the existing encrypted vault / onboarding row,
+/// referenced by `resultRefId`. Short-lived and fail-closed: an expired or already-consumed state
+/// is rejected, never extended.
+model ConnectorOAuthFlow {
+  id              String    @id @default(cuid())
+
+  userId          String
+  tenantId        String
+  /// The originating UserSession, so a logout/revocation fails the flow closed. The raw
+  /// session token is NEVER stored — only this id.
+  sessionId       String
+
+  /// "web" | "mobile" — which transport started it. Bounded in code.
+  surface         String
+  /// "meta" | "google_business" — bounded in code.
+  provider        String
+  /// "connect" | "reconnect" — bounded in code.
+  intent          String
+
+  /// Connect target (validated against the tenant at start).
+  brandId         String?
+  /// Reconnect target (validated against the tenant at start).
+  accountId       String?
+
+  /// sha256(oauthState). UNIQUE — this uniqueness IS the replay guard.
+  stateHash       String    @unique
+
+  /// pending | provider_pending | selection_required | completed | failed | cancelled | expired
+  status          String    @default("pending")
+  /// Bounded failure/result code. NEVER raw provider text.
+  resultCode      String?
+  /// The ConnectedAccount that resulted, when exactly one did.
+  resultAccountId String?
+  /// A canonical follow-up record — e.g. the MetaOnboardingSession holding discovery.
+  resultRefId     String?
+
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime
+  /// Set by the ATOMIC one-time state consume. A second callback finds it non-null and is rejected.
+  stateConsumedAt DateTime?
+  completedAt     DateTime?
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session UserSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([expiresAt])
+  @@map("connector_oauth_flows")
 }
 
 model Tenant {
@@ -525,6 +589,8 @@ model Tenant {
   businessContactNotes            BusinessContactNote[]
   businessContactIngestionEvents  BusinessContactIngestionEvent[]
 
+  // M7 — provider OAuth authorizations started for this tenant (any surface).
+  connectorOAuthFlows   ConnectorOAuthFlow[]
   @@map("tenants")
 }
 

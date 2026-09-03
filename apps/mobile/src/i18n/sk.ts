@@ -7,10 +7,12 @@ import type { Dictionary } from "./en";
 import { skInbox } from "./sk-inbox";
 import { skQueue } from "./sk-queue";
 import { skAccounts } from "./sk-accounts";
+import { skOauth } from "./sk-oauth";
 
 export const sk: Dictionary = {
   ...skInbox,
   ...skQueue,
+  ...skOauth,
   nav: {
     overview: "Prehľad",
     comments: "Komentáre",

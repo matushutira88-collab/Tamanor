@@ -7,7 +7,8 @@
  *
  * PROVIDER-WRITE BOUNDARY: the only provider operation expressible here is a
  * READ-ONLY sync. There is no hide, delete, reply, moderation or kill-switch call,
- * and no OAuth URL is ever constructed — see `@/accounts/web-handoff`.
+ * and no OAuth URL is ever constructed here — provider authorization lives in
+ * `@/api/oauth`, where the URL is issued by the server.
  */
 
 import { apiRequest, type ClientConfig } from "./client";

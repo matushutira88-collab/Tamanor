@@ -12,9 +12,10 @@
  * connection section may render a success tone.
  * ────────────────────────────────────────────────────────────────────────────
  *
- * WRITE ACTIONS: monitoring on/off, a manual READ-ONLY sync, and disconnect. There
- * is no moderation control, no kill-switch mutation, and no native OAuth — the
- * reconnect CTA is the safe web hand-off.
+ * WRITE ACTIONS: monitoring on/off, a manual READ-ONLY sync, disconnect, and — since
+ * M7 — a NATIVE reconnect. There is still no moderation control and no kill-switch
+ * mutation; reconnect starts a server-issued provider authorization in the system
+ * browser and sends only this account's id.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -39,7 +40,6 @@ import {
   syncRunTone, tokenHealthTone,
 } from '@/accounts/presentation';
 import { DisconnectSheet } from '@/components/accounts/disconnect-sheet';
-import { WebConnectNotice } from '@/components/accounts/web-connect-notice';
 import {
   AppText, Badge, Button, Card, Divider, EmptyState, ErrorState, SectionHeader, SkeletonCard,
 } from '@/components/ui';
@@ -340,18 +340,31 @@ export default function AccountDetailScreen() {
         </Card>
 
         {/* The reconnect hand-off, shown only when the connection actually needs it. */}
+        {/*
+          M7 — RECONNECT is native. Only the account id travels; the server derives
+          the tenant, brand and provider from the canonical account, so the phone
+          cannot aim a reconnect at a different brand or platform.
+        */}
         {offerReconnect ? (
-          <WebConnectNotice
-            target="manage"
-            accountId={account.id}
-            strings={{
-              title: t.accounts.webHandoff.reconnectTitle,
-              body: t.accounts.webHandoff.reconnectBody,
-              open: t.accounts.actions.reconnect,
-              unavailable: t.accounts.webHandoff.unavailable,
-              notConfigured: t.accounts.webHandoff.notConfigured,
-            }}
-          />
+          <Card>
+            <View style={{ gap: theme.spacing.sm, alignItems: 'flex-start' }}>
+              <AppText variant="bodyStrong">{t.accounts.actions.reconnect}</AppText>
+              <AppText variant="callout" tone="foregroundMuted">{t.oauth.browserNotice}</AppText>
+              <Button
+                label={t.accounts.actions.reconnect}
+                variant="primary"
+                onPress={() =>
+                  router.push({
+                    pathname: '/accounts/connect',
+                    params: {
+                      accountId: account.id,
+                      provider: account.platform === 'google_business' ? 'google_business' : 'meta',
+                    },
+                  })
+                }
+              />
+            </View>
+          </Card>
         ) : null}
 
         {/* -------------------------------------------------- TRUTH 2: Monitoring */}

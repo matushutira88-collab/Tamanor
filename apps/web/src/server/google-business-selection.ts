@@ -38,6 +38,14 @@ import type { AppSession } from "./auth";
  */
 
 /** One selectable row, as shown in the UI. Contains no secret and no raw provider payload. */
+/**
+ * M7 — these services only ever needed a tenant. Widening the parameter from the
+ * web-only `AppSession` to this structural shape lets the native mobile selection
+ * endpoint call the SAME functions; `AppSession` still satisfies it, so every
+ * existing web caller is unchanged.
+ */
+export type TenantScoped = { tenantId: string };
+
 export interface SelectableLocation {
   /** Stable provider identity — the only value the browser may submit back. */
   locationId: string;
@@ -99,7 +107,7 @@ async function resolveAccessToken(tenantId: string, connectionId: string): Promi
  * The gates + local state every entry point needs, resolved once. Everything here is fail-closed and
  * runs BEFORE any network call, exactly as the OAuth callback does.
  */
-async function preflight(session: AppSession): Promise<
+async function preflight(session: TenantScoped): Promise<
   | { ok: true; connectionId: string; token: string; importedIds: Set<string>; brands: Array<{ id: string; name: string }> }
   | { ok: false; reason: SelectionUnavailableReason }
 > {
@@ -137,7 +145,7 @@ async function preflight(session: AppSession): Promise<
  * Build the authoritative selection view for this tenant: fresh, fully paginated discovery joined with
  * which locations are already imported.
  */
-export async function loadGoogleBusinessSelection(session: AppSession): Promise<SelectionView> {
+export async function loadGoogleBusinessSelection(session: TenantScoped): Promise<SelectionView> {
   const pre = await preflight(session);
   if (!pre.ok) return { state: "unavailable", reason: pre.reason };
 
@@ -195,7 +203,7 @@ export type ResolveSelectionResult =
  * Returns the resolved locations plus counts of what was rejected and why, so the caller can report a
  * partial import truthfully instead of claiming everything worked.
  */
-export async function resolveSelectedLocations(session: AppSession, submittedIds: string[]): Promise<ResolveSelectionResult> {
+export async function resolveSelectedLocations(session: TenantScoped, submittedIds: string[]): Promise<ResolveSelectionResult> {
   const pre = await preflight(session);
   if (!pre.ok) return { ok: false, reason: pre.reason };
 

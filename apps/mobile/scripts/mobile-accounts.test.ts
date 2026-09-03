@@ -44,9 +44,6 @@ import {
   connectionTone, displayPlatform, fallbackPlatformLabel, firstSyncTone, monitoringTone,
   needsAttention, shouldOfferReconnect, shouldShowCapability, syncRunTone, tokenHealthTone,
 } from "../src/accounts/presentation";
-import {
-  HANDOFF_TARGETS, isOpenableHandoffUrl, resolveHandoffUrl,
-} from "../src/accounts/web-handoff";
 import { consumeAccountsStale, markAccountsStale, resetAccountsStale } from "../src/accounts/accounts-sync";
 import { mapErrorPayload, isSessionInvalid } from "../src/api/client";
 import { en } from "../src/i18n/en";
@@ -73,10 +70,8 @@ const ACCOUNT_MODULES = [
   "src/accounts/accounts-sync.ts",
   "src/accounts/presentation.ts",
   "src/accounts/use-accounts.ts",
-  "src/accounts/web-handoff.ts",
   "src/components/accounts/account-row.tsx",
   "src/components/accounts/disconnect-sheet.tsx",
-  "src/components/accounts/web-connect-notice.tsx",
   "src/app/(app)/accounts/_layout.tsx",
   "src/app/(app)/accounts/index.tsx",
   "src/app/(app)/accounts/[accountId].tsx",
@@ -143,98 +138,27 @@ for (const tok of OAUTH_LEAK_TOKENS) {
   check(`no accounts module contains "${tok}"`, offenders.length === 0, dump(offenders));
 }
 
-/** The one module that may call `Linking.openURL` is the hand-off notice. */
-const openers = ACCOUNT_MODULES.filter((m) => /Linking\.openURL/.test(codeOf(m)));
-check("only the web-connect notice opens a URL",
-  dump(openers) === dump(["src/components/accounts/web-connect-notice.tsx"]), dump(openers));
-{
-  const src = codeOf("src/components/accounts/web-connect-notice.tsx");
-  check("the opened URL comes from resolveHandoffUrl", /resolveHandoffUrl\(target/.test(src));
-  check("the URL is re-validated immediately before opening",
-    /isOpenableHandoffUrl\(resolved\.url\)/.test(src));
-  check("nothing is concatenated onto the URL before opening",
-    !/openURL\([^)]*\+/.test(src) && !/openURL\(`/.test(src), src.match(/openURL\([^)]*\)/)?.[0] ?? "");
-  check("the notice never reads a session token", !/readToken|Authorization|Bearer/.test(src));
-}
+/**
+ * M7 — the M6 "manage on the web" hand-off is GONE. Connecting and reconnecting are
+ * native now, so no Accounts module opens a URL at all: the provider authorization
+ * URL is issued by the server and opened by the OAuth controller.
+ */
+check("no accounts module opens a URL any more",
+  !ACCOUNT_MODULES.some((m) => /Linking\.openURL/.test(codeOf(m))));
+check("the M6 web-handoff module no longer exists", (() => {
+  try { readSrc("src/accounts/web-handoff.ts"); return false; } catch { return true; }
+})());
+check("the M6 web-connect notice no longer exists", (() => {
+  try { readSrc("src/components/accounts/web-connect-notice.tsx"); return false; } catch { return true; }
+})());
+check("Connect starts the NATIVE flow",
+  /router\.push\('\/accounts\/connect'\)/.test(codeOf("src/app/(app)/accounts/index.tsx")));
+check("Reconnect starts the NATIVE flow with only an account id",
+  /pathname: '\/accounts\/connect'/.test(codeOf("src/app/(app)/accounts/[accountId].tsx"))
+  && /accountId: account\.id/.test(codeOf("src/app/(app)/accounts/[accountId].tsx")));
 check("no accounts module puts a token in a URL",
   !ACCOUNT_MODULES.some((m) => /[?&](token|bearer|session|access_token|auth)=/i.test(codeOf(m))));
 check("no accounts module uses a WebView", !ACCOUNT_MODULES.some((m) => /WebView/.test(codeOf(m))));
-
-/** The hand-off URL builder itself. */
-check("there are exactly two hand-off targets", dump(HANDOFF_TARGETS) === dump(["connect", "manage"]));
-{
-  const connect = resolveHandoffUrl("connect", null, { baseUrl: PROD, dev: false });
-  check("connect resolves to the accounts manager",
-    connect.ok && connect.url === `${PROD}/dashboard/accounts`, dump(connect));
-  const manage = resolveHandoffUrl("manage", "abc123", { baseUrl: PROD, dev: false });
-  check("manage resolves to the account page",
-    manage.ok && manage.url === `${PROD}/dashboard/accounts/abc123`, dump(manage));
-  check("a hand-off URL has NO query string", connect.ok && !connect.url.includes("?"));
-  check("a hand-off URL has NO fragment", connect.ok && !connect.url.includes("#"));
-}
-{
-  // Production must be HTTPS.
-  const http = resolveHandoffUrl("connect", null, { baseUrl: "http://app.tamanor.com", dev: false });
-  check("plain http in production is rejected", !http.ok && http.reason === "insecure", dump(http));
-  const httpDevPublic = resolveHandoffUrl("connect", null, { baseUrl: "http://evil.example.com", dev: true });
-  check("plain http to a PUBLIC host is rejected even in dev", !httpDevPublic.ok, dump(httpDevPublic));
-  const httpDevLan = resolveHandoffUrl("connect", null, { baseUrl: "http://192.168.1.20:3000", dev: true });
-  check("plain http to a LAN dev server is allowed in dev", httpDevLan.ok, dump(httpDevLan));
-  const httpDevLoop = resolveHandoffUrl("connect", null, { baseUrl: "http://127.0.0.1:3000", dev: true });
-  check("plain http to loopback is allowed in dev", httpDevLoop.ok);
-  const httpsLan = resolveHandoffUrl("connect", null, { baseUrl: "https://192.168.1.20:3000", dev: false });
-  check("https is always fine", httpsLan.ok);
-}
-for (const scheme of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,x", "tamanor://x"]) {
-  const r = resolveHandoffUrl("connect", null, { baseUrl: scheme, dev: true });
-  check(`a "${scheme.split(":")[0]}:" base is rejected`, !r.ok, dump(r));
-}
-for (const bad of ["", "not a url", "://missing"]) {
-  check(`a malformed base "${bad}" is a config rejection`,
-    !resolveHandoffUrl("connect", null, { baseUrl: bad, dev: true }).ok);
-}
-/** A crafted account id must never escape the path. */
-for (const bad of ["../../admin", "a/b", "a?x=1", "a#f", "a b", "", "  ", "x".repeat(65), "a%2f", "__proto__x!"]) {
-  const r = resolveHandoffUrl("manage", bad, { baseUrl: PROD, dev: false });
-  check(`a crafted account id is rejected: ${dump(bad).slice(0, 24)}`, !r.ok && r.reason === "invalid_account", dump(r));
-}
-check("a missing account id for manage is rejected",
-  !resolveHandoffUrl("manage", null, { baseUrl: PROD, dev: false }).ok);
-check("an unknown target is rejected",
-  !resolveHandoffUrl("settings" as never, null, { baseUrl: PROD, dev: false }).ok);
-/** The base URL's own path/query must not leak into the hand-off. */
-{
-  const r = resolveHandoffUrl("connect", null, { baseUrl: "https://app.tamanor.com/api/v2?k=secret", dev: false });
-  check("the base URL's path and query are discarded",
-    r.ok && r.url === `${PROD}/dashboard/accounts`, dump(r));
-}
-
-/** The final open-time guard. */
-check("a valid hand-off URL is openable",
-  isOpenableHandoffUrl(`${PROD}/dashboard/accounts`, { dev: false }));
-check("an account page is openable",
-  isOpenableHandoffUrl(`${PROD}/dashboard/accounts/abc`, { dev: false }));
-for (const bad of [
-  `${PROD}/dashboard/accounts?token=abc`,
-  `${PROD}/dashboard/accounts#token=abc`,
-  `${PROD}/dashboard/billing`,
-  `${PROD}/login`,
-  `${PROD}/api/connectors/meta/start`,
-  "https://evil.example.com/dashboard/accounts",
-  "javascript:alert(1)",
-  "https://user:pass@app.tamanor.com/dashboard/accounts",
-  "http://app.tamanor.com/dashboard/accounts",
-]) {
-  const openable = isOpenableHandoffUrl(bad, { dev: false });
-  // A different HOST is intentionally allowed by path-shape alone; the URL can only
-  // ever be BUILT from the configured origin, and the query/scheme guards are what
-  // stop a credential travelling. Assert the credential-bearing shapes are refused.
-  if (bad.includes("?") || bad.includes("#") || bad.startsWith("javascript:") || bad.includes("@") || bad.startsWith("http://")) {
-    check(`open-time guard refuses: ${bad.slice(0, 46)}`, !openable, String(openable));
-  } else if (!bad.includes("/dashboard/accounts")) {
-    check(`open-time guard refuses a non-accounts path: ${bad.slice(0, 46)}`, !openable);
-  }
-}
 
 /* -------------------------------------------------------------------------- */
 /* 2. PROVIDER-WRITE and TOKEN boundaries                                      */
