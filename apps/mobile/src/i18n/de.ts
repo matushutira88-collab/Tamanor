@@ -6,6 +6,7 @@ import type { Dictionary } from "./en";
 
 import { deInbox } from "./de-inbox";
 import { deQueue } from "./de-queue";
+import { deAccounts } from "./de-accounts";
 
 export const de: Dictionary = {
   ...deInbox,
@@ -57,6 +58,9 @@ export const de: Dictionary = {
     down: "Rückgang",
   },
   accounts: {
+    // M6 Accounts vocabulary, merged into the existing dashboard block so the
+    // whole surface stays under one `t.accounts.*` namespace.
+    ...deAccounts.accounts,
     section: "Überwachte Konten",
     comments: "Kommentare",
     risky: "Risiko",

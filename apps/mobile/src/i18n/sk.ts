@@ -6,6 +6,7 @@ import type { Dictionary } from "./en";
 
 import { skInbox } from "./sk-inbox";
 import { skQueue } from "./sk-queue";
+import { skAccounts } from "./sk-accounts";
 
 export const sk: Dictionary = {
   ...skInbox,
@@ -57,6 +58,9 @@ export const sk: Dictionary = {
     down: "pokles",
   },
   accounts: {
+    // M6 Accounts vocabulary, merged into the existing dashboard block so the
+    // whole surface stays under one `t.accounts.*` namespace.
+    ...skAccounts.accounts,
     section: "Strážené účty",
     comments: "Komentáre",
     risky: "Rizikové",

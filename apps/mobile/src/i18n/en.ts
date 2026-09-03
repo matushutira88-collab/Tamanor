@@ -7,6 +7,7 @@
  */
 import { enInbox } from "./en-inbox";
 import { enQueue } from "./en-queue";
+import { enAccounts } from "./en-accounts";
 
 export const en = {
   ...enInbox,
@@ -58,6 +59,9 @@ export const en = {
     down: "down",
   },
   accounts: {
+    // M6 Accounts vocabulary, merged into the existing dashboard block so the
+    // whole surface stays under one `t.accounts.*` namespace.
+    ...enAccounts.accounts,
     section: "Watched accounts",
     comments: "Comments",
     risky: "Risky",

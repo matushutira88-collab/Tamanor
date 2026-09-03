@@ -27,6 +27,9 @@ const KNOWN_SERVER_CODES = new Set<ApiErrorCode>([
   "permission_denied",
   "read_only",
   "conflict",
+  "account_limit_reached",
+  "workspace_unsupported",
+  "verification_required",
   "server_error",
 ]);
 

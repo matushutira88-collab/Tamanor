@@ -48,6 +48,12 @@ export type ApiErrorCode =
   | "read_only"
   /** Another operator changed the item first; the server returns canonical state. */
   | "conflict"
+  /** The plan's monitored-account limit is already reached. */
+  | "account_limit_reached"
+  /** The session is valid but the workspace is not one this app supports. */
+  | "workspace_unsupported"
+  /** The account is verified-email gated. */
+  | "verification_required"
   | "server_error"
   | "network"
   | "timeout"
@@ -435,4 +441,180 @@ export interface QueueDecisionResponse {
 export interface QueueConflictResponse {
   error: "conflict";
   item: QueueItem | null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* M6 — Accounts                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * THE FOUR SEPARATE TRUTHS.
+ *
+ *   CONNECTION HEALTH ≠ MONITORING ≠ AUTO-SYNC ≠ PROVIDER ACTION CAPABILITY
+ *
+ * They arrive as four independent fields and the client must keep them apart. There
+ * is deliberately no combined "status" field to render, and only `connectionState`
+ * may ever drive a success/green treatment.
+ */
+
+/** Canonical `ConnectionState` (@guardora/core). Only CONNECTED_HEALTHY may be green. */
+export const CONNECTION_STATES = [
+  "CONNECTED_HEALTHY", "WAITING_FIRST_SYNC", "DEGRADED",
+  "REAUTH_REQUIRED", "SYNC_FAILED", "DISCONNECTED",
+] as const;
+export type ConnectionState = (typeof CONNECTION_STATES)[number];
+
+/** Canonical `AutoSyncState`. */
+export const AUTO_SYNC_STATES = [
+  "ENABLED_HEALTHY", "ENABLED_DEGRADED", "ENABLED_REAUTH_REQUIRED",
+  "DISABLED", "NOT_CONFIGURED",
+] as const;
+export type AutoSyncState = (typeof AUTO_SYNC_STATES)[number];
+
+/** Canonical `FirstSyncState`. A never-synced account is waiting, not failed. */
+export const FIRST_SYNC_STATES = ["waiting_first_sync", "syncing", "synced", "failed"] as const;
+export type FirstSyncState = (typeof FIRST_SYNC_STATES)[number];
+
+export const ACCOUNT_KINDS = ["real", "read_only", "test"] as const;
+export type AccountKind = (typeof ACCOUNT_KINDS)[number];
+
+/** Canonical platforms plus an explicit `unknown`. A new platform never becomes Facebook. */
+export const ACCOUNT_PLATFORMS = [
+  "facebook_page", "instagram_business", "youtube",
+  "linkedin_company", "tiktok", "google_business", "unknown",
+] as const;
+export type AccountPlatform = (typeof ACCOUNT_PLATFORMS)[number];
+
+/** Token PRESENTATION only. No token, fragment or expiry secret ever reaches the app. */
+export const TOKEN_HEALTHS = ["unknown", "ok", "expiring_soon", "expired", "invalid", "revoked"] as const;
+export type TokenHealth = (typeof TOKEN_HEALTHS)[number];
+
+export const ACCOUNT_REASONS = [
+  "token_expired", "permission_missing", "provider_unavailable", "rate_limited",
+  "sync_failed", "reconnect_required", "no_token", "disconnected",
+  "credential_persist_failed", "instagram_disconnected", "account_not_discoverable",
+  "unknown",
+] as const;
+export type AccountReason = (typeof ACCOUNT_REASONS)[number];
+
+export const SYNC_RUN_STATUSES = [
+  "running", "completed", "failed", "partial_success", "skipped_locked",
+  "disconnected", "permission_missing", "rate_limited", "api_unavailable", "interrupted",
+] as const;
+export type SyncRunStatus = (typeof SYNC_RUN_STATUSES)[number];
+
+export const CAPABILITY_STATES = [
+  "available", "unavailable", "not_implemented", "not_configured",
+  "missing_permission", "requires_web", "blocked_by_safety",
+] as const;
+export type CapabilityState = (typeof CAPABILITY_STATES)[number];
+
+/** Bounded outcome of a manual sync. `started` never means "finished". */
+export const SYNC_RESULTS = [
+  "started", "already_running", "reconnect_required", "not_supported", "not_found",
+] as const;
+export type SyncResult = (typeof SYNC_RESULTS)[number];
+
+export const REVOKE_RESULTS = ["revoked", "unsupported", "already_invalid", "failed"] as const;
+export type RevokeResult = (typeof REVOKE_RESULTS)[number];
+
+export interface AccountCapabilities {
+  canRead: CapabilityState;
+  canSync: CapabilityState;
+  canMonitor: CapabilityState;
+  canReconnect: CapabilityState;
+  canDisconnect: CapabilityState;
+  moderationState: CapabilityState;
+  replyState: CapabilityState;
+}
+
+export interface ConnectedAccountItem {
+  id: string;
+  platform: AccountPlatform;
+  platformLabel: string;
+  name: string | null;
+  username: string | null;
+  accountKind: AccountKind;
+
+  /** TRUTH 1 */
+  connectionState: ConnectionState;
+  needsReconnect: boolean;
+  reason: AccountReason | null;
+
+  /** TRUTH 2 */
+  monitoringEnabled: boolean;
+  monitoringCanBeEnabled: boolean;
+
+  /** TRUTH 3 */
+  autoSyncState: AutoSyncState;
+  firstSyncState: FirstSyncState;
+  lastSuccessfulSyncAt: string | null;
+  lastAttemptAt: string | null;
+
+  commentsToday: number;
+  riskToday: number;
+
+  /** TRUTH 4. UX affordances only — the server re-checks every one of them. */
+  capabilities: AccountCapabilities;
+  canManage: boolean;
+}
+
+export interface SyncRunItem {
+  id: string;
+  status: SyncRunStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  fetched: number;
+  created: number;
+  reason: AccountReason | null;
+  demo: boolean;
+}
+
+export interface ConnectedAccountDetail extends ConnectedAccountItem {
+  tokenHealth: TokenHealth;
+  tokenExpiresAt: string | null;
+  lastSuccessfulProviderCheckAt: string | null;
+  /** Display only — M6 exposes no kill-switch control. */
+  protectionPaused: boolean;
+  brandName: string | null;
+  syncRuns: SyncRunItem[];
+}
+
+export interface AccountCapacity {
+  used: number;
+  /** `-1` means unlimited. */
+  limit: number;
+  remaining: number;
+  monitored: number;
+}
+
+export interface AccountsListResponse {
+  accounts: ConnectedAccountItem[];
+  capacity: AccountCapacity;
+  capabilities: { canManageConnectors: boolean };
+  needsAttention: number;
+}
+
+export interface AccountDetailResponse {
+  account: ConnectedAccountDetail;
+  capacity: AccountCapacity;
+  capabilities: { canManageConnectors: boolean };
+}
+
+export interface MonitoringResponse {
+  account: ConnectedAccountItem;
+  capacity: AccountCapacity;
+}
+
+export interface AccountSyncResponse {
+  result: SyncResult;
+}
+
+export interface AccountDisconnectResponse {
+  disconnected: boolean;
+  /** A COUNT of the local accounts that shared these credentials — never their ids. */
+  clusterCount: number;
+  clusterPlatforms: AccountPlatform[];
+  providerRevoke: RevokeResult;
+  manualCleanupRecommended: boolean;
 }
