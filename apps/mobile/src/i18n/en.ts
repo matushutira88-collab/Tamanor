@@ -27,6 +27,10 @@ export const en = {
     team: "Team",
   },
   common: {
+    /** The `+not-found` screen — reachable from an unknown `tamanor://` deep link. */
+    notFoundTitle: "Page not found",
+    notFoundBody: "That link does not point anywhere in Tamanor.",
+    notFoundAction: "Go to the start",
     back: "Back",
     retry: "Try again",
     refresh: "Refresh",

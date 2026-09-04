@@ -26,6 +26,10 @@ export const sk: Dictionary = {
     team: "Tím",
   },
   common: {
+    /** The `+not-found` screen — reachable from an unknown `tamanor://` deep link. */
+    notFoundTitle: "Stránka sa nenašla",
+    notFoundBody: "Tento odkaz nikam v Tamanore nevedie.",
+    notFoundAction: "Prejsť na začiatok",
     back: "Späť",
     retry: "Skúsiť znova",
     refresh: "Obnoviť",

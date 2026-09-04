@@ -26,6 +26,10 @@ export const de: Dictionary = {
     team: "Team",
   },
   common: {
+    /** The `+not-found` screen — reachable from an unknown `tamanor://` deep link. */
+    notFoundTitle: "Seite nicht gefunden",
+    notFoundBody: "Dieser Link führt nirgendwohin in Tamanor.",
+    notFoundAction: "Zum Anfang",
     back: "Zurück",
     retry: "Erneut versuchen",
     refresh: "Aktualisieren",

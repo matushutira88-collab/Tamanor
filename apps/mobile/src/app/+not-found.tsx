@@ -7,6 +7,7 @@ import { Link } from 'expo-router';
 import { View } from 'react-native';
 
 import { AppText, Screen } from '@/components/ui';
+import { t } from '@/i18n';
 import { useTheme } from '@/theme';
 
 export default function NotFoundScreen() {
@@ -15,13 +16,13 @@ export default function NotFoundScreen() {
   return (
     <Screen centered>
       <View style={{ alignItems: 'center', gap: theme.spacing.md }}>
-        <AppText variant="title">Page not found</AppText>
+        <AppText variant="title">{t.common.notFoundTitle}</AppText>
         <AppText variant="body" tone="foregroundMuted" style={{ textAlign: 'center' }}>
-          That link does not point anywhere in Tamanor.
+          {t.common.notFoundBody}
         </AppText>
         <Link href="/" accessibilityRole="link" accessibilityHint="Returns to the home screen">
           <AppText variant="bodyStrong" tone="brand">
-            Go to the start
+            {t.common.notFoundAction}
           </AppText>
         </Link>
       </View>
