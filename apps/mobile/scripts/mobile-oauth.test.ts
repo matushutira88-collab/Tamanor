@@ -27,7 +27,13 @@ import {
   type OAuthFlow, type OAuthSelectableOption,
 } from "../src/api/types";
 import { OAUTH_ROUTES } from "../src/api/oauth";
-import { OAUTH_CALLBACK_PATH, OAUTH_SCHEME, parseOAuthDeepLink } from "../src/oauth/deep-link";
+import { OAUTH_CALLBACK_PATH, OAUTH_SCHEME, isValidFlowId, parseOAuthDeepLink } from "../src/oauth/deep-link";
+import {
+  acknowledgeOAuthReturn, captureOAuthReturn, captureOAuthReturnUrl,
+  decideOAuthReturn, discardOAuthReturn, discardOAuthReturnHandoff,
+  getOAuthReturnSnapshot, initialOAuthReturnState, markOAuthReturnHandedOff,
+  resetOAuthReturnStore, subscribeOAuthReturn,
+} from "../src/oauth/oauth-return";
 import {
   canSubmitSelection, didFail, initialOAuthState, isBusy, isTerminal, oauthReducer,
   shouldRefreshAccounts, type OAuthFlowState,
@@ -132,8 +138,12 @@ check("the callback path is the one the server redirects to", OAUTH_CALLBACK_PAT
   check("the parser never reads a status", !/searchParams\.get\("status"\)/.test(src));
   check("the parser never reads a code or state",
     !/searchParams\.get\("code"\)/.test(src) && !/searchParams\.get\("state"\)/.test(src));
+  // M10B — the read moved from `get("flow")` to `getAll("flow")` so a REPEATED key is
+  // refused instead of silently resolved to the first value. The property under test is
+  // unchanged and still exact: one query access, and it is `flow`.
   check("the parser reads exactly ONE query parameter",
-    (src.match(/searchParams\.get\(/g) ?? []).length === 1);
+    (src.match(/searchParams\.get(All)?\(/g) ?? []).length === 1 &&
+    (src.match(/searchParams\.get(All)?\("flow"\)/g) ?? []).length === 1);
 }
 
 /**
@@ -524,6 +534,475 @@ async function storageBehaviour(): Promise<void> {
 
 async function main(): Promise<void> {
   await storageBehaviour();
+  /* ============== M10B — CALLBACK ROUTE & COLD-START RECOVERY ============== */
+  console.log("\nM10B — the OAuth return URL resolves to a real route");
+
+  {
+    const routeSrc = readSrc("src/app/oauth/callback.tsx");
+    const route = codeOf("src/app/oauth/callback.tsx");
+    const root = codeOf("src/app/_layout.tsx");
+    const connect = codeOf("src/app/(app)/accounts/connect.tsx");
+
+    /* ---- the route exists and is reachable ---- */
+    check("R1) a real route file backs oauth/callback (not `+not-found`)",
+      routeSrc.length > 0 && /export default function/.test(route));
+    check("R2) the route is DECLARED in the root stack, not only present on disk",
+      /<Stack\.Screen\s+name="oauth\/callback"\s*\/>/.test(root));
+    check("R3) it is declared OUTSIDE both auth-guarded groups, so every auth state can render it",
+      root.indexOf('name="oauth/callback"') > root.indexOf('name="(auth)"'));
+    check("R4) `+not-found` still exists for genuinely unknown paths",
+      readSrc("src/app/+not-found.tsx").length > 0);
+    check("R5) the callback route never renders the not-found screen itself",
+      !/not-?found/i.test(route));
+
+    /* ---- the boot gate no longer discards the navigation intent ---- */
+    check("R6) the navigator is always mounted — boot is an OVERLAY, not a replacement",
+      /StyleSheet\.absoluteFill/.test(root) && /isBooting\(state\) \?/.test(root));
+    check("R7) `(app)` is STILL gated by the signed-in guard only",
+      /<Stack\.Protected guard=\{signedIn\}>/.test(root));
+    check("R8) `(auth)` does not flash during boot",
+      /guard=\{!signedIn && !isBooting\(state\)\}/.test(root));
+    check("R9) the boot screen is still rendered while booting",
+      /<BootScreen \/>/.test(root));
+
+    /* ---- the route is a dispatcher, never an authority (M7 rule preserved) ---- */
+    for (const forbidden of [
+      "success", "status", "error", "provider", "tenantId", "userId",
+      "accountId", "access_token", "refresh_token", "code", "state",
+    ]) {
+      check(`R10-${forbidden}) the callback route never reads \`${forbidden}\` from the URL`,
+        !new RegExp(`useLocalSearchParams[^;]*\\b${forbidden}\\b`, "s").test(route) &&
+        !new RegExp(`params\\.${forbidden}\\b`).test(route));
+    }
+    check("R11) the route reads ONLY `flow` from the URL",
+      (route.match(/useLocalSearchParams<\{[^}]*\}>/s) ?? [""])[0].includes("flow") &&
+      !/useLocalSearchParams<\{[^}]*(token|code|success|status)[^}]*\}>/s.test(route));
+    check("R12) the route sets NO oauth status of its own",
+      !/dispatch\(/.test(route) && !/setStatus/.test(route));
+    check("R13) the route runs no second OAuth state machine",
+      !/useOAuthFlow/.test(route) && !/oauthReducer/.test(route));
+
+    /* ---- auth is resolved before routing ---- */
+    check("R14) booting holds rather than guessing a destination", /isBooting\(state\)/.test(route));
+    check("R15) an unauthenticated arrival goes to the canonical (auth) destination, never into (app)",
+      /!canEnterApp\(state\)/.test(route) &&
+      /href="\/login"/.test(route) &&
+      /href="\/verify-email"/.test(route) &&
+      /href="\/unsupported-workspace"/.test(route));
+    // Every unauthenticated destination is emitted BEFORE the only `(app)` target,
+    // so the signed-out branch cannot fall through into product content.
+    check("R15b) the unauthenticated branch never targets an (app) route",
+      route.indexOf('href="/login"') < route.indexOf("accounts/connect") &&
+      route.indexOf('href="/verify-email"') < route.indexOf("accounts/connect") &&
+      route.indexOf('href="/unsupported-workspace"') < route.indexOf("accounts/connect"));
+    check("R16) the flow reference is DISCARDED when not authenticated (session-bound: fail closed)",
+      route.indexOf("canEnterApp") < route.indexOf("/accounts/connect"));
+    check("R17) an authenticated arrival is handed to the canonical Connect surface",
+      /pathname: '\/accounts\/connect'/.test(route));
+
+    /* ---- Connect consumes it through the EXISTING controller ---- */
+    check("R18) Connect reads the handed-off flow id from route params",
+      /flow: callbackFlowId/.test(connect));
+    check("R19) it resumes through the controller's own `resolve` — no duplicated logic",
+      /resolveFlow\(callbackFlowId\)/.test(connect) && /controller\.resolve/.test(connect));
+    check("R20) the resume is guarded so a re-render cannot re-ask",
+      /resumedRef\.current === callbackFlowId/.test(connect));
+    check("R21) Connect still owns the ONE OAuth controller", /useOAuthFlow\(\)/.test(connect));
+  }
+
+  {
+    /* ---- the shared flow-id validator, and the malformed-URL matrix ---- */
+    check("R22) the route and the parser share ONE flow-id validator",
+      codeOf("src/oauth/deep-link.ts").includes("export function isValidFlowId") &&
+      codeOf("src/app/oauth/callback.tsx").includes("isValidFlowId"));
+
+    check("R23) a well-formed callback still parses to the id alone",
+      dump(parseOAuthDeepLink("tamanor://oauth/callback?flow=abc123")) ===
+        dump({ kind: "oauth_callback", flowId: "abc123" }));
+
+    // Every malformed shape must be refused BEFORE any server request is made.
+    for (const [label, url] of [
+      ["no query at all", "tamanor://oauth/callback"],
+      ["empty flow", "tamanor://oauth/callback?flow="],
+      ["whitespace flow", "tamanor://oauth/callback?flow=%20%20"],
+      ["unrelated param", "tamanor://oauth/callback?foo=bar"],
+      ["repeated flow key", "tamanor://oauth/callback?flow=A&flow=B"],
+      ["oversized flow", `tamanor://oauth/callback?flow=${"x".repeat(200)}`],
+      ["path traversal", "tamanor://oauth/callback?flow=../../etc/passwd"],
+      ["wrong path", "tamanor://oauth/other?flow=abc123"],
+      ["wrong scheme", "exp://oauth/callback?flow=abc123"],
+    ] as const) {
+      check(`R24-${label}) refused client-side (no server request)`,
+        parseOAuthDeepLink(url).kind === "ignored");
+    }
+
+    check("R25) a REPEATED flow key is ambiguous and is never resolved by picking the first",
+      parseOAuthDeepLink("tamanor://oauth/callback?flow=A&flow=B").kind === "ignored");
+    check("R26) isValidFlowId rejects a non-string (a repeated route param arrives as an array)",
+      !isValidFlowId(["A", "B"]) && !isValidFlowId(undefined) && !isValidFlowId(null) && !isValidFlowId(""));
+    check("R27) isValidFlowId accepts a normal cuid-shaped id", isValidFlowId("cmtlf125w0001abcd"));
+  }
+
+  /* ============== M10C — NATIVE OAUTH RETURN HANDOFF ============== */
+  console.log("\nM10C — the return handoff navigates without trusting the URL");
+
+  {
+    const A = (booting: boolean, canEnter: boolean) => ({ booting, canEnterApp: canEnter });
+    const S = initialOAuthReturnState;
+
+    /* ---- capture: only our exact shape, only the id ---- */
+    const captured = captureOAuthReturn(S(), "tamanor://oauth/callback?flow=abc123");
+    check("H1) a valid native callback is captured as a flow id", captured.pending === "abc123");
+    check("H2) capture stores NOTHING but the id",
+      Object.keys(captured).sort().join(",") === "handedOff,pending");
+
+    for (const [label, url] of [
+      ["missing flow", "tamanor://oauth/callback"],
+      ["empty flow", "tamanor://oauth/callback?flow="],
+      ["whitespace flow", "tamanor://oauth/callback?flow=%20"],
+      ["repeated flow", "tamanor://oauth/callback?flow=A&flow=B"],
+      ["oversized flow", `tamanor://oauth/callback?flow=${"x".repeat(200)}`],
+      ["path traversal", "tamanor://oauth/callback?flow=../../etc"],
+      ["wrong path", "tamanor://oauth/elsewhere?flow=abc123"],
+      ["wrong scheme", "exp://oauth/callback?flow=abc123"],
+      ["null", null],
+      ["undefined", undefined],
+    ] as const) {
+      check(`H3-${label}) never enters the handoff`,
+        captureOAuthReturn(S(), url).pending === null);
+    }
+
+    // A spoofed claim cannot ride along: the shared parser drops every other param.
+    const spoof = captureOAuthReturn(S(),
+      "tamanor://oauth/callback?flow=abc123&success=true&access_token=SECRET&accountId=x&tenantId=y&code=z&state=w");
+    check("H4) a spoofed callback yields the id and nothing else", spoof.pending === "abc123");
+    check("H4b) the captured state cannot express an outcome",
+      !("success" in spoof) && !("status" in spoof) && !("token" in spoof));
+
+    /* ---- decide: auth boot order (§9) ---- */
+    check("H5) nothing captured → idle", decideOAuthReturn(S(), A(false, true)).kind === "idle");
+    check("H6) BOOTING → wait, never a premature decision",
+      decideOAuthReturn(captured, A(true, false)).kind === "wait");
+    check("H7) booting must not be mistaken for signed-out",
+      decideOAuthReturn(captured, A(true, false)).kind !== "discard");
+    check("H8) authenticated + canEnterApp → navigate with that id",
+      dump(decideOAuthReturn(captured, A(false, true))) ===
+        dump({ kind: "navigate", flowId: "abc123" }));
+    check("H9) authoritatively NOT enterable → discard, never navigate",
+      decideOAuthReturn(captured, A(false, false)).kind === "discard");
+
+    /* ---- discard is forgetting, not remembering (§10, §11) ---- */
+    const dropped = discardOAuthReturn(captured);
+    check("H10) discard clears the pending id", dropped.pending === null);
+    check("H11) a discarded id is NOT recorded as handed off",
+      dropped.handedOff === null);
+    check("H12) after discard a LATER login does not resurrect it — nothing is pending",
+      decideOAuthReturn(dropped, A(false, true)).kind === "idle");
+    check("H13) a session-bound flow cannot be inherited by a new session",
+      decideOAuthReturn(discardOAuthReturn(captured), A(false, true)).kind !== "navigate");
+
+    /* ---- dedupe: one round trip, many deliveries (§12) ---- */
+    const once = markOAuthReturnHandedOff(captured, "abc123");
+    check("H14) handing off clears pending and records the id",
+      once.pending === null && once.handedOff === "abc123");
+    check("H15) the SAME id arriving again (initialURL + url event) is ignored",
+      captureOAuthReturn(once, "tamanor://oauth/callback?flow=abc123") === once);
+    check("H16) …so it cannot navigate twice — no bouncing",
+      decideOAuthReturn(captureOAuthReturn(once, "tamanor://oauth/callback?flow=abc123"),
+        A(false, true)).kind === "idle");
+    check("H17) capturing the same id twice BEFORE handoff is also a no-op",
+      captureOAuthReturn(captured, "tamanor://oauth/callback?flow=abc123") === captured);
+    check("H18) a genuinely DIFFERENT flow still gets through",
+      captureOAuthReturn(once, "tamanor://oauth/callback?flow=def456").pending === "def456");
+
+    /* ---- the handoff decides a destination and nothing else ---- */
+    const mod = codeOf("src/oauth/oauth-return.ts");
+    check("H19) the handoff module never talks to a provider",
+      !/fetch\(|axios|https?:\/\//.test(mod));
+    check("H20) it never exchanges a code or persists a token",
+      !/token|code|secret/i.test(mod.replace(/flowId/g, "")));
+    check("H21) it never marks a flow complete or creates an account",
+      !/completed|ConnectedAccount|import/i.test(mod.replace(/^import .*$/gm, "")));
+    check("H22) it reuses the ONE strict parser rather than its own",
+      /parseOAuthDeepLink/.test(mod) && !/searchParams/.test(mod));
+    check("H23) it is pure — no React, no navigation, no storage",
+      !/useState|useEffect|router|AsyncStorage|SecureStore/.test(mod));
+  }
+
+  {
+    const root = codeOf("src/app/_layout.tsx");
+    const connect = codeOf("src/app/(app)/accounts/connect.tsx");
+    const route = codeOf("src/app/oauth/callback.tsx");
+
+    /* ---- Connect still owns the ONE controller (§6) ---- */
+    check("H24) Connect owns the OAuth controller and resolves through it",
+      /useOAuthFlow\(\)/.test(connect) && /resolveFlow\(callbackFlowId\)/.test(connect));
+    check("H25) the decision module introduces no competing pending-flow store",
+      !/pendingFlowStorage/.test(codeOf("src/oauth/oauth-return.ts")));
+
+    /* ---- the callback route survives as a fallback (§13, §18) ---- */
+    check("H36) the /oauth/callback route still exists", route.length > 0);
+    check("H37) it is still declared in the root stack (never `+not-found`)",
+      /<Stack\.Screen\s+name="oauth\/callback"\s*\/>/.test(root));
+    check("H38) it targets the SAME continuation surface, so it is not a second one",
+      /pathname: '\/accounts\/connect'/.test(route));
+    check("H39) it still resolves auth before routing anywhere",
+      /isBooting\(state\)/.test(route) && /!canEnterApp\(state\)/.test(route));
+
+    /* ---- the five-tab guards are untouched (§9) ---- */
+    check("H40) `(app)` is still gated by the signed-in guard alone",
+      /<Stack\.Protected guard=\{signedIn\}>/.test(root));
+    check("H41) `(auth)` still excludes booting, so no tab flash before auth",
+      /guard=\{!signedIn && !isBooting\(state\)\}/.test(root));
+
+    /* ---- the return URL is still Expo's, not a hardcoded string (§16) ---- */
+    const flow = codeOf("src/oauth/use-oauth-flow.ts");
+    check("H42) openAuthSessionAsync still derives the return URL from Linking.createURL",
+      /Linking\.createURL\("oauth\/callback"\)/.test(flow));
+    check("H43) the return URL is never hardcoded",
+      !/"tamanor:\/\//.test(flow) && !/'tamanor:\/\//.test(flow));
+    check("H44) the public scheme is unchanged",
+      JSON.parse(readSrc("app.json")).expo.scheme === "tamanor");
+  }
+
+  /* ============== M10D — THE HANDOFF STORE ============== */
+  console.log("\nM10D — capture, auth-gate and acknowledge, without navigating");
+
+  {
+    resetOAuthReturnStore();
+    check("D1) the store starts empty",
+      getOAuthReturnSnapshot().pending === null && getOAuthReturnSnapshot().handedOff === null);
+
+    let notified = 0;
+    const unsub = subscribeOAuthReturn(() => { notified += 1; });
+
+    captureOAuthReturnUrl("tamanor://oauth/callback?flow=d1");
+    check("D2) a valid native URL lands in the store", getOAuthReturnSnapshot().pending === "d1");
+    check("D3) subscribers are notified exactly once", notified === 1);
+
+    // The same round trip arrives from getInitialURL AND the url event.
+    captureOAuthReturnUrl("tamanor://oauth/callback?flow=d1");
+    check("D4) the SAME id again is a no-op — no second handoff", notified === 1);
+    check("D5) …and the snapshot is unchanged", getOAuthReturnSnapshot().pending === "d1");
+
+    for (const bad of [
+      "tamanor://oauth/callback",
+      "tamanor://oauth/callback?flow=",
+      "tamanor://oauth/callback?flow=A&flow=B",
+      `tamanor://oauth/callback?flow=${"x".repeat(200)}`,
+      "exp://oauth/callback?flow=d2",
+      null, undefined,
+    ] as const) {
+      const before = getOAuthReturnSnapshot();
+      captureOAuthReturnUrl(bad);
+      check(`D6) a malformed link never displaces a pending id: ${String(bad).slice(0, 34)}`,
+        getOAuthReturnSnapshot() === before);
+    }
+
+    acknowledgeOAuthReturn("d1");
+    check("D7) acknowledging clears pending and records the id",
+      getOAuthReturnSnapshot().pending === null && getOAuthReturnSnapshot().handedOff === "d1");
+    check("D8) an acknowledged id cannot be re-captured — this is the loop guard",
+      (captureOAuthReturnUrl("tamanor://oauth/callback?flow=d1"),
+        getOAuthReturnSnapshot().pending === null));
+    acknowledgeOAuthReturn("d1");
+    check("D9) acknowledging twice is harmless",
+      getOAuthReturnSnapshot().handedOff === "d1");
+    check("D10) acknowledging a DIFFERENT id than the pending one does nothing",
+      (captureOAuthReturnUrl("tamanor://oauth/callback?flow=d3"),
+        acknowledgeOAuthReturn("not-d3"),
+        getOAuthReturnSnapshot().pending === "d3"));
+
+    discardOAuthReturnHandoff();
+    check("D11) discarding clears pending", getOAuthReturnSnapshot().pending === null);
+    check("D12) a discarded id is NOT recorded as handed off — it was never handed anywhere",
+      getOAuthReturnSnapshot().handedOff !== "d3");
+
+    unsub();
+    const beforeUnsub = notified;
+    captureOAuthReturnUrl("tamanor://oauth/callback?flow=d4");
+    check("D13) unsubscribing stops notifications", notified === beforeUnsub);
+    resetOAuthReturnStore();
+  }
+
+  {
+    const wiring = codeOf("src/oauth/use-oauth-return.ts");
+    const store = codeOf("src/oauth/oauth-return.ts");
+    const root = codeOf("src/app/_layout.tsx");
+    const appLayout = codeOf("src/app/(app)/_layout.tsx");
+    const connect = codeOf("src/app/(app)/accounts/connect.tsx");
+
+    /* ---- the wiring captures and NEVER navigates (§2, §8) ---- */
+    check("D14) the capture hook owns getInitialURL and the url event",
+      /Linking\.getInitialURL\(\)/.test(wiring) && /Linking\.addEventListener\("url"/.test(wiring));
+    for (const banned of ["router.push", "router.replace", "router.navigate"]) {
+      check(`D15-${banned}) the return wiring never calls ${banned}`, !wiring.includes(banned));
+    }
+    check("D16) the wiring imports no router at all", !/from "expo-router"/.test(wiring));
+    check("D17) the store never navigates either",
+      !/router\.|Redirect|useRouter/.test(store));
+
+    /* ---- capture is mounted above auth so a COLD return survives boot (§8) ---- */
+    check("D18) capture is mounted once, at the root", 
+      (root.match(/useOAuthReturnCapture\(\)/g) ?? []).length === 1);
+    check("D19) the auth gate is mounted alongside it",
+      /useOAuthReturnAuthGate\(\{ booting: isBooting\(state\), canEnterApp: canEnterApp\(state\) \}\)/.test(root));
+
+    /* ---- persistence boundary (§7) ---- */
+    check("D20) the store is in-memory — no durable OAuth storage was added",
+      !/AsyncStorage|SecureStore|pendingFlowStorage/.test(store));
+    check("D21) M7 pendingFlowStorage remains the only durable pending-flow mechanism",
+      !/pendingFlowStorage/.test(wiring));
+    check("D22) no second reducer and no second status client",
+      !/oauthReducer|fetchOAuthFlow|useReducer/.test(store + wiring));
+
+    /* ---- Connect remains the sole continuation (§10) ---- */
+    check("D23) Connect still resolves through the existing controller",
+      /useOAuthFlow\(\)/.test(connect) && /resolveFlow\(callbackFlowId\)/.test(connect));
+    check("D24) Connect still guards against re-resolving on re-render",
+      /resumedRef\.current === callbackFlowId/.test(connect));
+
+    /* ---- the layout does NOT navigate (the documented M10D finding) ---- */
+    for (const banned of ["router.push", "router.replace", "router.navigate"]) {
+      check(`D25-${banned}) the authenticated layout never calls ${banned}`,
+        !appLayout.includes(banned));
+    }
+
+    /* ---- auth guards and the fallback route are untouched (§13) ---- */
+    check("D26) `(app)` is still gated by the signed-in guard alone",
+      /<Stack\.Protected guard=\{signedIn\}>/.test(root));
+    check("D27) `(auth)` still excludes booting", 
+      /guard=\{!signedIn && !isBooting\(state\)\}/.test(root));
+    check("D28) the /oauth/callback route is still declared (never `+not-found`)",
+      /<Stack\.Screen\s+name="oauth\/callback"\s*\/>/.test(root) &&
+      readSrc("src/app/oauth/callback.tsx").length > 0);
+
+    /* ---- the return URL contract is unchanged (§12) ---- */
+    check("D29) openAuthSessionAsync still derives the return URL from Linking.createURL",
+      /Linking\.createURL\("oauth\/callback"\)/.test(codeOf("src/oauth/use-oauth-flow.ts")));
+    check("D30) the scheme is still `tamanor`",
+      JSON.parse(readSrc("app.json")).expo.scheme === "tamanor");
+  }
+
+  /* ============== M10E — THE CONTINUATION CARD ============== */
+  console.log("\nM10E — one deliberate tap, from a screen");
+
+  {
+    const card = codeOf("src/components/oauth/continuation-card.tsx");
+    const overview = codeOf("src/app/(app)/index.tsx");
+    const accounts = codeOf("src/app/(app)/accounts/index.tsx");
+    const connect = codeOf("src/app/(app)/accounts/connect.tsx");
+    const rootLayout = codeOf("src/app/_layout.tsx");
+    const appLayout = codeOf("src/app/(app)/_layout.tsx");
+
+    /* ---- it renders only for a real pending return ---- */
+    check("E1) the card reads the shared coordinator, not its own state",
+      /useOAuthReturnState\(\)/.test(card) && !/useState|useReducer/.test(card));
+    check("E2) no pending return → renders nothing at all",
+      /if \(!pending\) return null;/.test(card));
+    check("E3) it is mounted on Overview — the surface a cold return lands on",
+      /<OAuthContinuationCard \/>/.test(overview));
+    check("E4) …and on the Accounts list, as the SAME shared component",
+      /<OAuthContinuationCard \/>/.test(accounts));
+    check("E5) one component, no duplicated logic",
+      /from '@\/components\/oauth\/continuation-card'/.test(overview) &&
+      /from '@\/components\/oauth\/continuation-card'/.test(accounts));
+
+    /* ---- authority: it knows a flow id and nothing more (§6) ---- */
+    for (const forbidden of [
+      "success", "connected", "selection", "provider", "accountId",
+      "tenantId", "userId", "access_token", "refresh_token", "code", "state",
+    ]) {
+      check(`E6-${forbidden}) the card never reads \`${forbidden}\``,
+        !new RegExp(`\\b${forbidden}\\b`).test(card));
+    }
+    check("E7) the card calls no OAuth API itself",
+      !/fetchOAuthFlow|fetchOAuthOptions|useOAuthFlow|apiRequest/.test(card));
+    check("E8) Overview never calls the OAuth status API directly",
+      !/fetchOAuthFlow|oauth\/flows/.test(overview));
+
+    /* ---- copy claims a RETURN, never a success (§5) ---- */
+    const DICTS = { en, sk, de } as const;
+    for (const [name, d] of Object.entries(DICTS)) {
+      const c = d.oauth.continuation;
+      check(`E9-${name}) continuation copy exists`,
+        Boolean(c?.title && c?.body && c?.cta));
+      check(`E10-${name}) it never claims the account is connected`,
+        !/\bconnected\b|\bpripojen(ý|é|á)\b|\bverbunden\b/i.test(`${c.title} ${c.body}`));
+    }
+    check("E11) EN cta", en.oauth.continuation.cta === "Finish connecting");
+    check("E12) SK cta", sk.oauth.continuation.cta === "Dokončiť pripojenie");
+    check("E13) DE cta", de.oauth.continuation.cta.length > 0 && de.oauth.continuation.cta !== en.oauth.continuation.cta);
+    check("E14) no hardcoded English in the card", !/["'`][A-Z][a-z]+ [a-z]+/.test(card.replace(/import[^\n]*/g, "")));
+
+    /* ---- the CTA navigates FROM A SCREEN, the proven path (§3) ---- */
+    check("E15) the CTA pushes the canonical Connect route",
+      /router\.push\(`\/accounts\/connect\?flow=\$\{encodeURIComponent\(pending\)\}`/.test(card));
+    check("E16) it carries ONLY the flow id", !/&[a-z]+=/.test(card));
+    check("E17) navigation happens in an onPress handler, not an effect",
+      /onPress=\{\(\) => \{/.test(card) && !/useEffect/.test(card));
+    check("E18) it uses the screen-level router hook", /useRouter\(\)/.test(card));
+
+    /* ---- no layout navigation was reintroduced (§2) ---- */
+    for (const banned of ["router.push", "router.replace", "router.navigate", "<Redirect"]) {
+      check(`E19-${banned}) the root layout still never navigates`, !rootLayout.includes(banned));
+      check(`E20-${banned}) the (app) layout still never navigates`, !appLayout.includes(banned));
+    }
+    check("E21) nothing auto-navigates on capture",
+      !/router\./.test(codeOf("src/oauth/use-oauth-return.ts")));
+
+    /* ---- acknowledgement happens at the SAFE point (§8) ---- */
+    check("E22) the card does NOT acknowledge — a failed push must not lose the affordance",
+      !/acknowledgeOAuthReturn/.test(card));
+    check("E23) Connect acknowledges once it has accepted the flow param",
+      /acknowledgeOAuthReturn\(callbackFlowId\)/.test(connect));
+    check("E24) …and only after the re-render guard, so it cannot storm",
+      connect.indexOf("resumedRef.current = callbackFlowId") <
+        connect.indexOf("acknowledgeOAuthReturn(callbackFlowId)"));
+    check("E25) Connect still resolves through the one canonical resolver",
+      /resolveFlow\(callbackFlowId\)/.test(connect) && /useOAuthFlow\(\)/.test(connect));
+
+    /* ---- duplicate delivery yields ONE continuation ---- */
+    resetOAuthReturnStore();
+    captureOAuthReturnUrl("tamanor://oauth/callback?flow=e1");
+    captureOAuthReturnUrl("tamanor://oauth/callback?flow=e1");
+    check("E26) the same flow twice leaves ONE pending id",
+      getOAuthReturnSnapshot().pending === "e1");
+    acknowledgeOAuthReturn("e1");
+    check("E27) after the tap the card disappears", getOAuthReturnSnapshot().pending === null);
+    captureOAuthReturnUrl("tamanor://oauth/callback?flow=e1");
+    check("E28) a late duplicate cannot bring it back", getOAuthReturnSnapshot().pending === null);
+
+    /* ---- malformed never produces a card ---- */
+    for (const bad of [
+      "tamanor://oauth/callback",
+      "tamanor://oauth/callback?flow=",
+      "tamanor://oauth/callback?flow=A&flow=B",
+      `tamanor://oauth/callback?flow=${"x".repeat(200)}`,
+    ] as const) {
+      resetOAuthReturnStore();
+      captureOAuthReturnUrl(bad);
+      check(`E29) malformed never becomes a card: ${bad.slice(24, 52)}`,
+        getOAuthReturnSnapshot().pending === null);
+    }
+
+    /* ---- discard: a new session never inherits an old flow (§12, §13) ---- */
+    resetOAuthReturnStore();
+    captureOAuthReturnUrl("tamanor://oauth/callback?flow=e2");
+    discardOAuthReturnHandoff();
+    check("E30) a discarded return shows no card", getOAuthReturnSnapshot().pending === null);
+    check("E31) …and is not remembered, so a later login cannot resurrect it",
+      getOAuthReturnSnapshot().handedOff !== "e2");
+    resetOAuthReturnStore();
+
+    /* ---- the shell is untouched ---- */
+    check("E32) the five-tab guards are unchanged",
+      /<Stack\.Protected guard=\{signedIn\}>/.test(rootLayout) &&
+      /guard=\{!signedIn && !isBooting\(state\)\}/.test(rootLayout));
+    check("E33) the /oauth/callback route is still declared (never `+not-found`)",
+      /<Stack\.Screen\s+name="oauth\/callback"\s*\/>/.test(rootLayout));
+  }
+
   console.log(
     `\n${fail === 0 ? "PASS" : "FAIL"} — mobile connector OAuth client (M7): ${pass} passed, ${fail} failed`,
   );

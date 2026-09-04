@@ -7,6 +7,16 @@
  */
 export const enOauth = {
   oauth: {
+    /**
+     * The continuation card shown after a provider browser returns to the app.
+     * It states ONLY that the sign-in came back — never that anything connected.
+     * The outcome is unknown until the server's authenticated status read.
+     */
+    continuation: {
+      title: "Finish connecting your account",
+      body: "Your provider sign-in has returned to Tamanor. Continue to verify the result.",
+      cta: "Finish connecting",
+    },
     connectTitle: "Connect an account",
     connectSubtitle: "Choose where Tamanor should watch for comments and reviews.",
     provider: { meta: "Facebook & Instagram", google_business: "Google Business Profile" },

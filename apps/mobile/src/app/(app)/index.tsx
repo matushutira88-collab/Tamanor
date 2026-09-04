@@ -34,6 +34,7 @@ import {
   queryReducer,
 } from '@/data/query';
 import { AppHeader } from '@/components/shell/app-header';
+import { OAuthContinuationCard } from '@/components/oauth/continuation-card';
 import { AccountSummaryCard } from '@/components/dashboard/account-summary-card';
 import { ActivityRow } from '@/components/dashboard/activity-row';
 import { KpiCard } from '@/components/dashboard/kpi-card';
@@ -189,6 +190,14 @@ export default function OverviewScreen() {
       />
 
       {bootstrap?.access.banner ? <AccessBanner banner={bootstrap.access.banner} /> : null}
+
+      {/*
+        M10E — after a provider browser returns, this is where the user picks the
+        flow back up. It renders only when a validated callback is pending, and it
+        claims nothing about the outcome; Connect reads that from the server.
+        Overview is the mandatory surface because a cold return lands here.
+      */}
+      <OAuthContinuationCard />
 
       {dashboard?.realTestMode ? (
         <Card variant="sunken">

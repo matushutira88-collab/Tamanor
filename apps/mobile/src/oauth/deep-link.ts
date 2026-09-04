@@ -26,6 +26,18 @@ export const OAUTH_CALLBACK_PATH = "oauth/callback";
 /** A flow id is a cuid — a plain opaque token, never a URL or a path. */
 const FLOW_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
+/**
+ * The ONE flow-id validator. The deep-link parser and the `oauth/callback` route
+ * both gate on this, so a value one accepts can never be one the other rejects.
+ *
+ * It is a shape check, not an authorization check: a well-formed id still proves
+ * nothing. The server re-checks that the flow belongs to this user, tenant AND
+ * login session, so a guessed id returns `not_found`.
+ */
+export function isValidFlowId(value: unknown): value is string {
+  return typeof value === "string" && FLOW_ID_PATTERN.test(value.trim());
+}
+
 export type DeepLinkParse =
   /** A well-formed callback. `flowId` is a CORRELATION ID — not proof of anything. */
   | { kind: "oauth_callback"; flowId: string }
@@ -56,8 +68,13 @@ export function parseOAuthDeepLink(url: string | null | undefined): DeepLinkPars
   const path = `${parsed.host}${parsed.pathname}`.replace(/^\/+|\/+$/g, "");
   if (path !== OAUTH_CALLBACK_PATH) return { kind: "ignored" };
 
-  const flowId = parsed.searchParams.get("flow")?.trim() ?? "";
-  if (!FLOW_ID_PATTERN.test(flowId)) return { kind: "ignored" };
+  // M10B — a REPEATED key (`?flow=A&flow=B`) is ambiguous, and `get()` would silently
+  // pick the first. Picking one is a guess, and a guess is what sends a garbage id to
+  // the server. Exactly one value, or nothing.
+  const values = parsed.searchParams.getAll("flow");
+  if (values.length !== 1) return { kind: "ignored" };
+  const flowId = values[0]!.trim();
+  if (!isValidFlowId(flowId)) return { kind: "ignored" };
 
   // ONLY the id. Any other parameter is discarded, by construction.
   return { kind: "oauth_callback", flowId };

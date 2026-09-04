@@ -4,6 +4,16 @@
  */
 export const deOauth = {
   oauth: {
+    /**
+     * The continuation card shown after a provider browser returns to the app.
+     * It states ONLY that the sign-in came back — never that anything connected.
+     * The outcome is unknown until the server's authenticated status read.
+     */
+    continuation: {
+      title: "Kontoverbindung abschließen",
+      body: "Die Anmeldung beim Anbieter ist zu Tamanor zurückgekehrt. Fahren Sie fort, um das Ergebnis zu prüfen.",
+      cta: "Verbindung abschließen",
+    },
     connectTitle: "Konto verbinden",
     connectSubtitle: "Wählen Sie, wo Tamanor auf Kommentare und Bewertungen achten soll.",
     provider: { meta: "Facebook & Instagram", google_business: "Google-Unternehmensprofil" },

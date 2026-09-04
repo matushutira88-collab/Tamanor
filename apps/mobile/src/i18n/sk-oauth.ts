@@ -4,6 +4,16 @@
  */
 export const skOauth = {
   oauth: {
+    /**
+     * The continuation card shown after a provider browser returns to the app.
+     * It states ONLY that the sign-in came back — never that anything connected.
+     * The outcome is unknown until the server's authenticated status read.
+     */
+    continuation: {
+      title: "Dokončite pripojenie účtu",
+      body: "Prihlásenie u poskytovateľa sa vrátilo do Tamanoru. Pokračujte a overte výsledok.",
+      cta: "Dokončiť pripojenie",
+    },
     connectTitle: "Pripojiť účet",
     connectSubtitle: "Vyberte, kde má Tamanor sledovať komentáre a recenzie.",
     provider: { meta: "Facebook a Instagram", google_business: "Profil Google Business" },

@@ -30,6 +30,7 @@ import {
 import { consumeAccountsStale } from '@/accounts/accounts-sync';
 import { AccountRow } from '@/components/accounts/account-row';
 import { AppHeader } from '@/components/shell/app-header';
+import { OAuthContinuationCard } from '@/components/oauth/continuation-card';
 import {
   AppText, Badge, Button, EmptyState, ErrorState, SkeletonCard,
 } from '@/components/ui';
@@ -111,6 +112,10 @@ export default function AccountsScreen() {
     <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingTop: insets.top }}>
       <View style={{ paddingHorizontal: theme.spacing.xl }}>
         <AppHeader title={t.accounts.title} workspaceName={bootstrap?.workspace.name} />
+
+        {/* M10E — the same shared card, so a return is recoverable from either
+            surface a user is likely to be on. One component, no duplicated logic. */}
+        <OAuthContinuationCard />
 
         {/* Compact summary: how many, how much of the plan, how many are unhealthy. */}
         {capacity ? (

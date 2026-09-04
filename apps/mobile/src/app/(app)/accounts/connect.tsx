@@ -15,7 +15,7 @@
  * canonical connector services the dashboard uses.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -28,6 +28,7 @@ import type {
 import { useAuth } from '@/auth/auth-provider';
 import { readToken } from '@/auth/session-storage';
 import { useOAuthFlow } from '@/oauth/use-oauth-flow';
+import { acknowledgeOAuthReturn } from '@/oauth/oauth-return';
 import {
   AppText, Badge, Button, Card, EmptyState, ErrorState, Loading, SectionHeader,
 } from '@/components/ui';
@@ -54,9 +55,36 @@ export default function ConnectAccountScreen() {
 
   // An optional reconnect target, passed by the account detail screen. It is a
   // routing hint only — the server re-derives brand and provider from the account.
-  const { accountId, provider: reconnectProvider } = useLocalSearchParams<{
-    accountId?: string; provider?: string;
+  const { accountId, provider: reconnectProvider, flow: callbackFlowId } = useLocalSearchParams<{
+    accountId?: string; provider?: string; flow?: string;
   }>();
+
+  /**
+   * M10B — an OAuth return handed here by the `oauth/callback` route.
+   *
+   * The id is a CORRELATION REFERENCE, never a result: this asks the controller to
+   * re-read the SERVER's authoritative status, which is the same single response
+   * every other wake-up signal (browser close, deep link, app resume, cold start)
+   * already funnels into. No status is set locally and no second state machine is
+   * introduced — `resolve` is the controller's own public entry point and is
+   * documented as safe to call repeatedly, which is what makes a duplicated
+   * callback harmless.
+   *
+   * The guard keys on the id so a re-render cannot re-ask, while a genuinely
+   * different flow still resolves.
+   */
+  const resolveFlow = controller.resolve;
+  const resumedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!callbackFlowId || resumedRef.current === callbackFlowId) return;
+    resumedRef.current = callbackFlowId;
+    // M10E — the continuation has now been ACCEPTED by the screen that owns the
+    // resolver, which is the safe point to retire the recovery card. Doing it any
+    // earlier would drop the user's only way back if navigation never landed.
+    // It records a client-navigation fact only; the outcome is still the server's.
+    acknowledgeOAuthReturn(callbackFlowId);
+    void resolveFlow(callbackFlowId);
+  }, [callbackFlowId, resolveFlow]);
 
   const [providers, setProviders] = useState<OAuthProviderAvailability[]>([]);
   const [brands, setBrands] = useState<{ id: string; name: string }[]>([]);
