@@ -350,7 +350,8 @@
     "mobile-accounts:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/mobile-accounts.test.ts",
     "mobile-accounts-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-accounts.test.ts",
     "mobile-oauth:test": "pnpm --filter @guardora/worker exec tsx ../web/scripts/mobile-oauth.test.ts",
-    "mobile-oauth-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-oauth.test.ts"
+    "mobile-oauth-client:test": "pnpm --filter @guardora/worker exec tsx ../mobile/scripts/mobile-oauth.test.ts",
+    "connector-oauth-flow-db:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- sh -c 'tsx scripts/assert-local-db.cli.ts && tsx scripts/connector-oauth-flow-db.test.ts'"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

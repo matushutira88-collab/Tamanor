@@ -20,7 +20,11 @@ async function main() {
 
   const onDisk = readdirSync(MIGRATIONS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
   const pending = await pendingMigrations(onDisk);
-  const pendCheck = evaluatePendingMigrations(pending);
+  // Gate on the migration the operator actually armed. `evaluatePendingMigrations`
+  // still requires it to be pending AND the only pending one, so an unreviewed
+  // migration riding along is still a hard stop.
+  const armed = process.env.EXPECTED_MIGRATION;
+  const pendCheck = evaluatePendingMigrations(pending, armed || undefined);
 
   const counts = await collectTenantCounts();
   const ceilingCheck = evaluateLegacyCeiling(counts.familyFreeTrial, ceiling);

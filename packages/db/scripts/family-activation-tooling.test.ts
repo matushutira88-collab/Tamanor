@@ -11,6 +11,7 @@ import {
   evaluatePendingMigrations, evaluateLegacyCeiling, comparePreservation,
   redactPriceId, validateFamilyPriceConfig, evaluateReadiness,
   EXPECTED_PRODUCTION_MIGRATION, MIGRATION_CONFIRMATION_PHRASE, FAMILY_PRICE_ENV_NAMES,
+  ACCEPTED_PRODUCTION_MIGRATIONS, isAcceptedProductionMigration, requiresFamilyReconcileChecks,
   DEFAULT_MAX_LEGACY_FAMILY_TENANTS, type TenantCounts, type ReadinessFacts, type FamilyPriceReadiness,
 } from "./family-activation";
 
@@ -67,6 +68,32 @@ function main() {
   check("only the expected migration pending → ok", evaluatePendingMigrations([EXPECTED_PRODUCTION_MIGRATION]).ok);
   check("nothing pending → rejected (not pending)", !evaluatePendingMigrations([]).ok);
   check("★ unexpected extra pending migration → rejected", !evaluatePendingMigrations([EXPECTED_PRODUCTION_MIGRATION, "20990101000000_surprise"]).ok);
+
+  // M8 — the allowlist widens WHICH migration may be armed, without weakening the
+  // "exactly one, and nothing else pending" protection.
+  const CONNECTOR = "20260903090000_connector_oauth_flow";
+  check("the connector OAuth migration is on the reviewed allowlist", isAcceptedProductionMigration(CONNECTOR));
+  check("the family migration remains on the allowlist", isAcceptedProductionMigration(EXPECTED_PRODUCTION_MIGRATION));
+  check("★ an unreviewed migration can NEVER be armed", !isAcceptedProductionMigration("20990101000000_surprise"));
+  check("★ an empty/absent migration name can never be armed",
+    !isAcceptedProductionMigration("") && !isAcceptedProductionMigration(null) && !isAcceptedProductionMigration(undefined));
+  check("the allowlist is small and explicit", ACCEPTED_PRODUCTION_MIGRATIONS.length === 2);
+
+  check("arming the connector migration passes input validation",
+    validateMigrationInputs({ environment: "production", expectedMigration: CONNECTOR, confirmation: MIGRATION_CONFIRMATION_PHRASE }).ok);
+  check("★ arming an unreviewed migration is rejected",
+    !validateMigrationInputs({ environment: "production", expectedMigration: "20990101000000_surprise", confirmation: MIGRATION_CONFIRMATION_PHRASE }).ok);
+
+  check("★ arming the connector migration STILL rejects a second pending migration",
+    !evaluatePendingMigrations([CONNECTOR, "20990101000000_surprise"], CONNECTOR).ok);
+  check("arming the connector migration accepts it as the only pending one",
+    evaluatePendingMigrations([CONNECTOR], CONNECTOR).ok);
+  check("★ arming a migration that is NOT pending is rejected",
+    !evaluatePendingMigrations([EXPECTED_PRODUCTION_MIGRATION], CONNECTOR).ok);
+
+  // The family-specific post-migration assertions must not run for an additive migration.
+  check("family reconcile checks apply to the family migration", requiresFamilyReconcileChecks(EXPECTED_PRODUCTION_MIGRATION));
+  check("family reconcile checks do NOT apply to the connector migration", !requiresFamilyReconcileChecks(CONNECTOR));
   check("a different single pending → rejected", !evaluatePendingMigrations(["20990101000000_surprise"]).ok);
 
   // D. legacy ceiling

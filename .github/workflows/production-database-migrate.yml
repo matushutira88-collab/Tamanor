@@ -19,7 +19,7 @@ on:
         options:
           - production
       expected_migration:
-        description: "Must equal 20260812090000_family_billing_baseline_reconcile"
+        description: "Exact migration to apply; must be on ACCEPTED_PRODUCTION_MIGRATIONS (family-activation.ts)"
         required: true
         type: string
       confirmation:
