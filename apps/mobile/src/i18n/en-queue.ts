@@ -8,6 +8,8 @@
  */
 export const enQueue = {
   queue: {
+    /** The model's confidence in its own read. A LABEL — never a blocked reason. */
+    confidence: "Confidence",
     title: "Alerts",
     subtitle: "Actions Tamanor is proposing for your accounts.",
     activeCount: (n: number) => `${n} need${n === 1 ? "s" : ""} attention`,

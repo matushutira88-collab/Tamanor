@@ -63,7 +63,7 @@ export default function OverviewScreen() {
   // bottom inset, so only the top notch needs handling here.
   const insets = useSafeAreaInsets();
   const { onSessionRejected } = useAuth();
-  const { bootstrap, reload: reloadShell } = useShell();
+  const { bootstrap, reload: reloadShell, needsReload: shellNeedsReload } = useShell();
 
   const [timeframe, setTimeframe] = useState<Timeframe>(30);
   const [state, dispatch] = useReducer(queryReducer<Dashboard>, null, initialQueryState<Dashboard>);
@@ -119,6 +119,22 @@ export default function OverviewScreen() {
     // not a fan-out, and no background polling anywhere.
     await Promise.all([reloadShell({ refresh: true }), load(timeframe, { refresh: true })]);
   }, [reloadShell, load, timeframe]);
+
+  /**
+   * The error card's retry (M8C).
+   *
+   * One outage usually fails bootstrap and the dashboard together, and the user
+   * tapping "Try again" on a full-screen error expects the whole screen back —
+   * tab bar, workspace name and badges included. So this repairs the shell too,
+   * but ONLY when the shell actually needs it: a healthy shell is left alone so
+   * a dashboard retry does not drag a second request along behind it.
+   */
+  const retry = useCallback(async () => {
+    await Promise.all([
+      shellNeedsReload ? reloadShell() : Promise.resolve(),
+      load(timeframe),
+    ]);
+  }, [shellNeedsReload, reloadShell, load, timeframe]);
 
   const dashboard = state.data;
 
@@ -195,10 +211,12 @@ export default function OverviewScreen() {
         </View>
       ) : isBlockingError(state) ? (
         <ErrorState
-          title={t.errors.title}
+          // The ONE screen that legitimately names the dashboard. Every other
+          // screen uses the generic `errors.title`.
+          title={t.dashboard.errorTitle}
           message={messageFor(state.error ?? 'server_error')}
           retryLabel={t.common.retry}
-          onRetry={() => void load(timeframe)}
+          onRetry={() => void retry()}
         />
       ) : dashboard ? (
         dashboard.isEmpty ? (

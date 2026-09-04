@@ -7,6 +7,8 @@
  */
 export const skQueue = {
   queue: {
+    /** Istota modelu vo vlastné vyhodnotenie. LABEL — nikdy nie dôvod zablokovania. */
+    confidence: "Istota",
     title: "Upozornenia",
     subtitle: "Akcie, ktoré Tamanor navrhuje pre vaše účty.",
     activeCount: (n: number) =>

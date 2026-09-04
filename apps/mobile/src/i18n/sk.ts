@@ -38,6 +38,8 @@ export const sk: Dictionary = {
     of: "z",
   },
   dashboard: {
+    /** Dashboard-specific. The generic title lives at `errors.title`. */
+    errorTitle: "Nepodarilo sa načítať prehľad",
     eyebrow: "Prehľad",
     greeting: "Vitajte späť",
     subtitle: "Tu je prehľad ochrany vašej reputácie dnes.",
@@ -132,7 +134,7 @@ export const sk: Dictionary = {
     cta: "Prejsť na fakturáciu",
   },
   errors: {
-    title: "Nepodarilo sa načítať prehľad",
+    title: "Niečo sa nepodarilo",
     network: "Žiadne pripojenie. Skontrolujte sieť a skúste znova.",
     timeout: "Tamanor odpovedal príliš dlho. Skúste to znova.",
     server: "Na našej strane nastala chyba. Skúste to znova.",

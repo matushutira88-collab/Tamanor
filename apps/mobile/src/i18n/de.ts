@@ -38,6 +38,8 @@ export const de: Dictionary = {
     of: "von",
   },
   dashboard: {
+    /** Dashboard-specific. The generic title lives at `errors.title`. */
+    errorTitle: "Dashboard konnte nicht geladen werden",
     eyebrow: "Übersicht",
     greeting: "Willkommen zurück",
     subtitle: "Das passiert heute mit Ihrer Markenreputation.",
@@ -132,7 +134,7 @@ export const de: Dictionary = {
     cta: "Zur Abrechnung",
   },
   errors: {
-    title: "Dashboard konnte nicht geladen werden",
+    title: "Etwas ist schiefgelaufen",
     network: "Keine Verbindung. Prüfen Sie Ihr Netzwerk und versuchen Sie es erneut.",
     timeout: "Tamanor hat zu lange gebraucht. Bitte erneut versuchen.",
     server: "Auf unserer Seite ist etwas schiefgelaufen. Bitte erneut versuchen.",

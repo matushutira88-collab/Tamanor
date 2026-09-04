@@ -39,6 +39,8 @@ export const en = {
     of: "of",
   },
   dashboard: {
+    /** Dashboard-specific. The generic title lives at `errors.title`. */
+    errorTitle: "Couldn't load your dashboard",
     eyebrow: "Overview",
     greeting: "Welcome back",
     subtitle: "Here's what's happening with your brand reputation today.",
@@ -133,7 +135,7 @@ export const en = {
     cta: "Go to billing",
   },
   errors: {
-    title: "Couldn't load your dashboard",
+    title: "Something went wrong",
     network: "No connection. Check your network and try again.",
     timeout: "Tamanor took too long to respond. Please try again.",
     server: "Something went wrong on our side. Please try again.",

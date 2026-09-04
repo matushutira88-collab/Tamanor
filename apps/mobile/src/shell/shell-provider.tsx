@@ -11,6 +11,12 @@
  *
  * A 401/403 here is handed to the M2 auth machine rather than handled locally, so
  * an expired session signs the user out through the one existing path.
+ *
+ * Any OTHER failure is a shell error, and since M8C it is a visible, retryable one:
+ * `phase` tells the shell what to render and `needsReload` tells a screen's retry
+ * whether to drag bootstrap along with it. The rules live in `./shell-state` as
+ * pure functions. Before M8C this failure was silent and the shell could stay
+ * degraded until the app was restarted.
  */
 
 import {
@@ -24,10 +30,15 @@ import type { ApiErrorCode, Bootstrap, NavKey } from "@/api/types";
 import { useAuth } from "@/auth/auth-provider";
 import { readToken } from "@/auth/session-storage";
 import { initialQueryState, queryReducer, type QueryState } from "@/data/query";
+import { shellNeedsReload, shellPhase, type ShellPhase } from "./shell-state";
 
 interface ShellContextValue {
   state: QueryState<Bootstrap>;
   bootstrap: Bootstrap | null;
+  /** What the shell should render: `booting` / `ready` / `error`. */
+  phase: ShellPhase;
+  /** True when a screen's own retry should re-run bootstrap too. See `shell-state`. */
+  needsReload: boolean;
   /** Destinations the server says this role/workspace may see. */
   allowedNav: NavKey[];
   reload: (options?: { refresh?: boolean }) => Promise<void>;
@@ -95,6 +106,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     () => ({
       state,
       bootstrap: state.data,
+      phase: shellPhase(state),
+      needsReload: shellNeedsReload(state),
       // Fail closed: until the server has answered, no destination is "allowed".
       allowedNav: state.data?.nav.allowed ?? [],
       reload: load,
@@ -117,4 +130,4 @@ export function useShellCounts(): { pendingReview: number; unreadNotifications: 
   return bootstrap?.counts ?? { pendingReview: 0, unreadNotifications: 0 };
 }
 
-export type { ApiErrorCode };
+export type { ApiErrorCode, ShellPhase };

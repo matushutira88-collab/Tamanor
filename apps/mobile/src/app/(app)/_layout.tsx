@@ -17,18 +17,37 @@
  *
  * Tabs the server has NOT allowed are hidden. That is a UX affordance only — every
  * endpoint re-authorizes independently, so hiding a tab protects nothing on its own.
+ *
+ * BOOTSTRAP FAILURE (M8C). If bootstrap has never answered and has failed, this
+ * layout renders a retryable error INSTEAD of the tab bar. It must not fall through
+ * to `Tabs`: with `allowedNav` empty that produced a silently degraded two-tab shell
+ * with no workspace name and an empty More screen, and nothing but an app restart
+ * repaired it. Fail closed and say so, rather than fail closed and stay quiet.
  */
 
 import { Tabs } from 'expo-router/js-tabs';
 import { Platform, View } from 'react-native';
 
-import { CountBadge } from '@/components/ui';
+import type { ApiErrorCode } from '@/api/types';
+import { CountBadge, ErrorState, Screen } from '@/components/ui';
 import {
   AccountsIcon, AlertsIcon, CommentsIcon, MoreIcon, OverviewIcon,
 } from '@/components/shell/tab-icons';
 import { ShellProvider, useShell } from '@/shell/shell-provider';
 import { t } from '@/i18n';
 import { useTheme } from '@/theme';
+
+/** One fixed sentence per bounded code — never raw server text. */
+function messageFor(error: ApiErrorCode): string {
+  switch (error) {
+    case 'network': return t.errors.network;
+    case 'timeout': return t.errors.timeout;
+    case 'config': return t.errors.config;
+    case 'permission_denied': return t.errors.forbidden;
+    case 'workspace_unsupported': return t.errors.forbidden;
+    default: return t.errors.server;
+  }
+}
 
 export default function AppLayout() {
   return (
@@ -40,7 +59,24 @@ export default function AppLayout() {
 
 function ShellTabs() {
   const theme = useTheme();
-  const { bootstrap, allowedNav } = useShell();
+  const { bootstrap, allowedNav, phase, state, reload } = useShell();
+
+  // Bootstrap failed with nothing to fall back on. Show it, and offer the retry
+  // that repairs the whole shell — navigation, workspace name, badges and More.
+  // A 401 never reaches here; the provider routes it to the M2 auth machine.
+  if (phase === 'error') {
+    return (
+      <Screen centered>
+        <ErrorState
+          title={t.errors.title}
+          message={messageFor(state.error ?? 'server_error')}
+          retryLabel={t.common.retry}
+          busy={state.status === 'loading' || state.status === 'refreshing'}
+          onRetry={() => void reload()}
+        />
+      </Screen>
+    );
+  }
 
   // Until bootstrap answers, `allowedNav` is empty. Overview is always mounted so
   // the shell has a destination to render while the server is still deciding; the

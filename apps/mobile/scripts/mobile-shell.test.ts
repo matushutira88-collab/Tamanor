@@ -20,12 +20,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-import type { ApiErrorCode, AccountStatus, ActivityType, Dashboard, NavKey } from "../src/api/types";
+import type { ApiErrorCode, AccountStatus, ActivityType, Bootstrap, Dashboard, NavKey } from "../src/api/types";
 import { TIMEFRAMES } from "../src/api/types";
 import {
   createRequestTracker, initialQueryState, isBlockingError, isInitialLoad, isRefreshing,
   queryReducer, type QueryState,
 } from "../src/data/query";
+import { shellNeedsReload, shellPhase } from "../src/shell/shell-state";
 import { resolveLocale, isLocale, dictionaryFor, LOCALES, DEFAULT_LOCALE } from "../src/i18n/locale";
 import { en } from "../src/i18n/en";
 import { sk } from "../src/i18n/sk";
@@ -362,6 +363,189 @@ async function run() {
       !Object.keys(pkg.dependencies).some((d) => /chart|victory|d3|gifted/i.test(d)));
     check("no state-management framework was added",
       !Object.keys(pkg.dependencies).some((d) => /redux|zustand|mobx|jotai|recoil|react-query|tanstack/i.test(d)));
+  }
+
+  /* ===================== M8C — SHELL FAILURE & RECOVERY ===================== */
+  console.log("\nM8C — SHELL FAILURE & RECOVERY (defect 1)");
+
+  {
+    const B = () => initialQueryState<Bootstrap>();
+    const boot = (over: Partial<Bootstrap> = {}): Bootstrap =>
+      ({
+        user: { name: "QA", email: "qa@tamanor.test" },
+        workspace: { name: "Tamanor Mobile QA", kind: "business", demo: false },
+        role: "owner",
+        access: { state: "active", billingStatus: "active", trialDaysLeft: null, planName: "Growth", banner: null, canWrite: true },
+        usage: { processedItems: { used: 0, limit: 500 }, accounts: { used: 2, limit: 1 } },
+        counts: { pendingReview: 2, unreadNotifications: 5 },
+        nav: { allowed: ["comments", "accounts", "alerts", "settings"] as NavKey[] },
+        generatedAt: "2026-09-04T00:00:00.000Z",
+        ...over,
+      }) as Bootstrap;
+
+    /* ---- phase ---- */
+    check("S1) idle with no bootstrap → booting (never an error)",
+      shellPhase(B()) === "booting");
+    const firstLoad = queryReducer<Bootstrap>(B(), { type: "START" });
+    check("S2) first load in flight → booting", shellPhase(firstLoad) === "booting");
+
+    const failed = queryReducer<Bootstrap>(firstLoad, { type: "FAILURE", error: "timeout" });
+    check("S3) bootstrap failed with no data → error (the defect-1 state is now named)",
+      shellPhase(failed) === "error");
+    check("S3b) the failure carries the bounded code, not raw text", failed.error === "timeout");
+
+    const ready = queryReducer<Bootstrap>(firstLoad, { type: "SUCCESS", data: boot() });
+    check("S4) bootstrap answered → ready", shellPhase(ready) === "ready");
+
+    const staleAfterFailedReload = queryReducer<Bootstrap>(
+      queryReducer<Bootstrap>(ready, { type: "START", refresh: true }),
+      { type: "FAILURE", error: "network" },
+    );
+    check("S5) a failed RELOAD keeps the shell usable — the tab bar must not collapse",
+      shellPhase(staleAfterFailedReload) === "ready" && staleAfterFailedReload.data !== null);
+
+    /* ---- needsReload: what a screen-level retry should drag along ---- */
+    check("S6) failed with no data → a screen retry reloads the shell too",
+      shellNeedsReload(failed));
+    check("S7) STALE (data + last reload failed) still needs a reload",
+      shellNeedsReload(staleAfterFailedReload));
+    check("S8) a HEALTHY shell is NOT reloaded by a dashboard retry",
+      !shellNeedsReload(ready));
+    check("S9) never-loaded idle shell needs a reload", shellNeedsReload(B()));
+    check("S10) first load in flight still reports needsReload (provider dedupes)",
+      shellNeedsReload(firstLoad));
+
+    /* ---- recovery ---- */
+    const retrying = queryReducer<Bootstrap>(failed, { type: "START" });
+    check("S11) retrying leaves the error state — the user sees progress, not the error",
+      shellPhase(retrying) === "booting" && retrying.error === null);
+
+    const recovered = queryReducer<Bootstrap>(retrying, { type: "SUCCESS", data: boot() });
+    check("S12) retry success → ready", shellPhase(recovered) === "ready");
+    check("S13) recovery restores the ALLOWED NAVIGATION (not permanently empty)",
+      (recovered.data?.nav.allowed ?? []).length === 4);
+    check("S13b) the degraded two-tab shell is gone: comments/accounts/alerts all allowed",
+      ["comments", "accounts", "alerts"].every((k) => recovered.data!.nav.allowed.includes(k as NavKey)));
+    check("S14) recovery restores the WORKSPACE NAME",
+      recovered.data?.workspace.name === "Tamanor Mobile QA");
+    check("S15) recovery restores the SHELL BADGES",
+      recovered.data?.counts.pendingReview === 2 && recovered.data?.counts.unreadNotifications === 5);
+    check("S16) recovery restores PLAN + USAGE (the More screen's content)",
+      recovered.data?.access.planName === "Growth" && recovered.data?.usage.accounts.used === 2);
+    check("S17) recovery clears the error", recovered.error === null);
+
+    /* ---- a stale loser must not overwrite a successful retry ---- */
+    const lateFailure = queryReducer<Bootstrap>(recovered, { type: "FAILURE", error: "timeout" });
+    check("S18) a late FAILURE cannot erase the recovered bootstrap",
+      lateFailure.data !== null && shellPhase(lateFailure) === "ready");
+
+    /* ---- fail closed: nothing is fabricated while failed ---- */
+    check("S19) a failed shell exposes NO navigation",
+      (failed.data?.nav.allowed ?? []).length === 0);
+    check("S20) a failed shell exposes NO workspace name", failed.data === null);
+  }
+
+  {
+    const provider = codeOf("src/shell/shell-provider.tsx");
+    const layout = codeOf("src/app/(app)/_layout.tsx");
+    const overview = codeOf("src/app/(app)/index.tsx");
+    const shellState = codeOf("src/shell/shell-state.ts");
+
+    check("S21) the provider exposes an explicit phase",
+      /phase:\s*shellPhase\(state\)/.test(provider));
+    check("S22) the provider exposes needsReload",
+      /needsReload:\s*shellNeedsReload\(state\)/.test(provider));
+    check("S23) the provider still exposes a reload operation", /reload:\s*load/.test(provider));
+    check("S24) ONE bootstrap at a time — the overlapping-request guard survives",
+      /if\s*\(inFlight\.current\)\s*return;/.test(provider));
+    check("S25) a stale response still cannot commit (mounted guard retained)",
+      provider.includes("if (!mounted.current) return;"));
+    check("S26) 401/expired/revoked STILL goes to the canonical M2 auth path",
+      /isSessionInvalid\(result\.error\)/.test(provider) && /onSessionRejected\(result\.error\)/.test(provider));
+    check("S27) a missing token still signs out through the same path",
+      /onSessionRejected\("unauthenticated"\)/.test(provider));
+
+    check("S28) the app shell RENDERS the failure instead of a silent degraded tab bar",
+      /phase === 'error'/.test(layout) && layout.includes("<ErrorState"));
+    check("S29) the error branch returns BEFORE the tab navigator is built",
+      layout.indexOf("phase === 'error'") < layout.indexOf("<Tabs"));
+    check("S30) the shell error offers a retry that re-runs bootstrap",
+      /onRetry=\{\(\) => void reload\(\)\}/.test(layout));
+    check("S31) the shell error message comes from the bounded vocabulary, not raw text",
+      /messageFor\(state\.error \?\? 'server_error'\)/.test(layout));
+    check("S32) the shell never fabricates an allowed-nav fallback",
+      !/allowedNav\s*=\s*\[['"]/.test(layout) && /allowedNav\.includes/.test(layout));
+
+    check("S33) Overview's retry reloads the shell when the shell needs it",
+      /shellNeedsReload \? reloadShell\(\)/.test(overview));
+    check("S34) Overview's retry does NOT unconditionally reload a healthy shell",
+      !/onRetry=\{\(\) => void reloadShell/.test(overview));
+    check("S35) the error card uses the coordinated retry, not the bare dashboard load",
+      /onRetry=\{\(\) => void retry\(\)\}/.test(overview));
+    check("S36) pull-to-refresh keeps its own separate path (no retry loop)",
+      /onRefresh=\{\(\) => void onRefresh\(\)\}/.test(overview));
+
+    check("S37) the shell rules are pure functions, not React state",
+      !shellState.includes("useState") && !shellState.includes("useEffect"));
+    check("S38) no state framework was introduced for this",
+      !/redux|zustand|jotai|tanstack|react-query/i.test(shellState + provider + layout));
+    check("S39) no second navigation system was introduced",
+      !layout.includes("createBottomTabNavigator") && !layout.includes("NavigationContainer"));
+  }
+
+  /* ===================== M8C — GENERIC ERROR TITLE ===================== */
+  console.log("\nM8C — GENERIC ERROR TITLE (defect 2)");
+
+  {
+    const DICTS = { en, sk, de } as const;
+    const DASHBOARD_WORDS = /dashboard|prehľad|prehlad/i;
+
+    for (const [name, d] of Object.entries(DICTS)) {
+      check(`E1-${name}) has a generic errors.title`,
+        typeof d.errors.title === "string" && d.errors.title.length > 0);
+      check(`E2-${name}) the GENERIC title no longer names the dashboard`,
+        !DASHBOARD_WORDS.test(d.errors.title));
+      check(`E3-${name}) has a dashboard-specific errorTitle`,
+        typeof d.dashboard.errorTitle === "string" && d.dashboard.errorTitle.length > 0);
+      check(`E4-${name}) the dashboard title still names the dashboard`,
+        DASHBOARD_WORDS.test(d.dashboard.errorTitle));
+      check(`E5-${name}) generic and dashboard titles are different strings`,
+        d.errors.title !== d.dashboard.errorTitle);
+    }
+
+    check("E6) EN generic copy", en.errors.title === "Something went wrong");
+    // The M8B defect string must survive ONLY as the dashboard's own title (E9).
+    check("E7) SK generic copy", sk.errors.title === "Niečo sa nepodarilo");
+    check("E8) DE generic copy", de.errors.title === "Etwas ist schiefgelaufen");
+    check("E9) SK dashboard copy is preserved verbatim",
+      sk.dashboard.errorTitle === "Nepodarilo sa načítať prehľad");
+  }
+
+  {
+    // Every ErrorState in the app, and which title it is allowed to use.
+    const GENERIC_SCREENS = [
+      "src/app/(app)/accounts/[accountId].tsx",
+      "src/app/(app)/accounts/index.tsx",
+      "src/app/(app)/accounts/connect.tsx",
+      "src/app/(app)/alerts/[id].tsx",
+      "src/app/(app)/alerts/index.tsx",
+      "src/app/(app)/comments/[id].tsx",
+      "src/app/(app)/comments/index.tsx",
+      "src/app/(app)/_layout.tsx",
+    ];
+    for (const rel of GENERIC_SCREENS) {
+      const src = codeOf(rel);
+      const screen = rel.split("/").pop();
+      check(`E10-${screen}) uses the GENERIC title`, src.includes("title={t.errors.title}"));
+      check(`E11-${screen}) does NOT use the dashboard title`,
+        !src.includes("t.dashboard.errorTitle"));
+    }
+    const overview = codeOf("src/app/(app)/index.tsx");
+    check("E12) Overview — and only Overview — keeps the dashboard-specific title",
+      overview.includes("title={t.dashboard.errorTitle}") && !overview.includes("title={t.errors.title}"));
+    check("E13) no hardcoded English error title was introduced",
+      !GENERIC_SCREENS.concat("src/app/(app)/index.tsx").some((rel) =>
+        /title="(Something|Couldn|Failed|Error)/.test(codeOf(rel))));
   }
 
   console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — mobile shell + dashboard client (M3): ${pass} passed, ${fail} failed`);

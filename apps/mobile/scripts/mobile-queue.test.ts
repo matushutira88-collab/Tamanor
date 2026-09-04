@@ -620,6 +620,66 @@ for (const m of QUEUE_MODULES) {
 check("the queue client never stringifies a token",
   !/JSON\.stringify\([^)]*token/.test(codeOf("src/api/queue.ts")));
 
+/* ===================== M8C — CONFIDENCE LABEL ===================== */
+console.log("\nM8C — CONFIDENCE IS NOT A REASON (defect 3)");
+
+{
+  const DICTS = { en, sk, de } as const;
+
+  for (const [name, d] of Object.entries(DICTS)) {
+    check(`C1-${name}) a DEDICATED confidence label exists`,
+      typeof d.queue.confidence === "string" && d.queue.confidence.length > 0);
+    check(`C2-${name}) the label is NOT the low_confidence blocked-reason sentence`,
+      (d.queue.confidence as string) !== (d.queue.reason.low_confidence as string));
+    check(`C3-${name}) the label carries no percentage or digits — the VALUE holds those`,
+      !/[0-9%]/.test(d.queue.confidence));
+    check(`C4-${name}) the label is a short noun label, not a sentence`,
+      !d.queue.confidence.includes(".") && d.queue.confidence.split(" ").length <= 3);
+    check(`C5-${name}) the blocked-reason vocabulary still covers low_confidence`,
+      typeof d.queue.reason.low_confidence === "string" && d.queue.reason.low_confidence.length > 0);
+  }
+
+  check("C6) EN label", en.queue.confidence === "Confidence");
+  check("C7) SK label", sk.queue.confidence === "Istota");
+  check("C8) DE label", de.queue.confidence === "Konfidenz");
+
+  // The exact M8B defect: the reason sentence used as a label rendered
+  // "Istota bola príliš nízka: 90 %" for an item whose confidence was 90%.
+  check("C9) SK reason copy is unchanged and still a full sentence",
+    sk.queue.reason.low_confidence === "Istota bola príliš nízka");
+  check("C10) EN reason copy is unchanged",
+    en.queue.reason.low_confidence === "Confidence was too low");
+  check("C11) every locale's confidence label is distinct from EVERY blocked reason",
+    Object.values(DICTS).every((d) =>
+      !(Object.values(d.queue.reason) as string[]).includes(d.queue.confidence)));
+}
+
+{
+  const detail = codeOf("src/app/(app)/alerts/[id].tsx");
+
+  check("C12) the confidence Row uses the DEDICATED label",
+    /<Row\s+label=\{t\.queue\.confidence\}/.test(detail));
+  check("C13) no blocked reason is used as a Row LABEL anywhere on the screen",
+    !/label=\{t\.queue\.reason\./.test(detail));
+  check("C14) the M8B defect line is gone",
+    !detail.includes("label={t.queue.reason.low_confidence}"));
+  check("C15) confidence ABSENT → the row is not rendered at all",
+    /\{item\.confidence !== null \? \(/.test(detail));
+  check("C16) the percentage lives in the VALUE, not the label",
+    /value=\{`\$\{Math\.round\(item\.confidence \* 100\)\}%`\}/.test(detail));
+
+  // Reason and confidence stay independent: the reason is whatever the SERVER
+  // said, rendered from item.reason — never derived from the number.
+  check("C17) the reason is rendered from the server's own field",
+    /t\.queue\.reason\[item\.reason\]/.test(detail));
+  check("C18) the client never infers a reason from the confidence value",
+    !/confidence\s*[<>]=?\s*[0-9.]/.test(detail));
+  check("C19) confidence and reason render as separate elements",
+    detail.indexOf("t.queue.confidence") < detail.indexOf("t.queue.reason[item.reason]"));
+  check("C20) a high-confidence item with a NON-confidence reason still renders both",
+    /\{item\.reason \? \(/.test(detail) && /\{item\.confidence !== null \? \(/.test(detail));
+}
+
 /* -------------------------------------------------------------------------- */
 
 console.log(

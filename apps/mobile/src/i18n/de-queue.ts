@@ -7,6 +7,8 @@
  */
 export const deQueue = {
   queue: {
+    /** Die Konfidenz des Modells. Ein LABEL — nie ein Blockierungsgrund. */
+    confidence: "Konfidenz",
     title: "Hinweise",
     subtitle: "Aktionen, die Tamanor für Ihre Konten vorschlägt.",
     activeCount: (n: number) => `${n} ${n === 1 ? "erfordert" : "erfordern"} Aufmerksamkeit`,

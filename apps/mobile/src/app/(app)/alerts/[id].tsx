@@ -336,8 +336,11 @@ export default function QueueDetailScreen() {
           <View style={{ gap: theme.spacing.sm }}>
             <Row label={t.inbox.filterLabels.risk} value={riskLabel ?? '—'} />
             <Row label={t.queue.sections.proposal} value={item.category} />
+            {/* CONFIDENCE IS NOT A REASON. The label is the dedicated confidence
+                string; the blocking reason below is whatever the SERVER said it
+                was, and is never inferred from this number. */}
             {item.confidence !== null ? (
-              <Row label={t.queue.reason.low_confidence} value={`${Math.round(item.confidence * 100)}%`} />
+              <Row label={t.queue.confidence} value={`${Math.round(item.confidence * 100)}%`} />
             ) : null}
             {item.reason ? (
               <AppText variant="callout">{t.queue.reason[item.reason] ?? item.reason}</AppText>
