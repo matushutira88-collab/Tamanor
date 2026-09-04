@@ -14,8 +14,50 @@ import {
   SELF_SERVE_PLANS, resolveStripePriceId,
 } from "@guardora/core";
 
-/** The single accepted production migration this workflow applies. */
+/**
+ * The FAMILY-BILLING migration this module's preservation checks are written for.
+ *
+ * Kept as its own constant, and still the default everywhere, because the verifier
+ * and the counts collector assert family-specific invariants that are only
+ * meaningful for THIS migration (the `familyTrialConsumedAt` column, cleared trial
+ * dates, family tenant preservation).
+ */
 export const EXPECTED_PRODUCTION_MIGRATION = "20260812090000_family_billing_baseline_reconcile";
+
+/**
+ * The migrations an operator may deliberately arm the production workflow with.
+ *
+ * The workflow's protection is unchanged in kind: an operator must still name ONE
+ * exact migration, and {@link evaluatePendingMigrations} still refuses to proceed if
+ * anything else is also pending. What this allowlist adds is that the accepted name
+ * is no longer frozen to a single historical migration — a new migration has to be
+ * added here CONSCIOUSLY, in a reviewed change, before it can ever be armed.
+ *
+ * This is deliberately NOT "allow whatever is pending": an unreviewed migration that
+ * lands on main still cannot be applied to production by this workflow.
+ */
+export const ACCEPTED_PRODUCTION_MIGRATIONS: readonly string[] = [
+  EXPECTED_PRODUCTION_MIGRATION,
+  // M7 — the durable connector OAuth transaction. Purely additive: one new table,
+  // its indexes, FKs and RLS policy. No backfill, no existing column touched.
+  "20260903090000_connector_oauth_flow",
+];
+
+/** Whether a migration name may be armed at all. */
+export function isAcceptedProductionMigration(name: string | undefined | null): boolean {
+  return typeof name === "string" && ACCEPTED_PRODUCTION_MIGRATIONS.includes(name);
+}
+
+/**
+ * Whether an armed migration carries the family-billing reconcile semantics.
+ *
+ * The post-migration verifier runs family preservation checks; those are specific to
+ * the reconcile migration and would be meaningless (and misleading) for an additive
+ * one, so the verifier asks this rather than assuming.
+ */
+export function requiresFamilyReconcileChecks(name: string | undefined | null): boolean {
+  return name === EXPECTED_PRODUCTION_MIGRATION;
+}
 /** The exact confirmation phrase an operator must type to arm the workflow. */
 export const MIGRATION_CONFIRMATION_PHRASE = "APPLY_ACCEPTED_PRODUCTION_MIGRATIONS";
 /** The only accepted `environment` input value. */
@@ -38,7 +80,11 @@ export type MigrationInputs = { environment?: string; expectedMigration?: string
 export function validateMigrationInputs(input: MigrationInputs): { ok: boolean; errors: string[] } {
   const errors: string[] = [];
   if (input.environment !== ACCEPTED_ENVIRONMENT) errors.push(`environment must be "${ACCEPTED_ENVIRONMENT}"`);
-  if (input.expectedMigration !== EXPECTED_PRODUCTION_MIGRATION) errors.push(`expected_migration must be "${EXPECTED_PRODUCTION_MIGRATION}"`);
+  // Still ONE exact name, still fail-closed — but chosen from the reviewed allowlist
+  // rather than frozen to a single migration forever.
+  if (!isAcceptedProductionMigration(input.expectedMigration)) {
+    errors.push(`expected_migration must be one of: ${ACCEPTED_PRODUCTION_MIGRATIONS.join(", ")}`);
+  }
   if (input.confirmation !== MIGRATION_CONFIRMATION_PHRASE) errors.push("confirmation must exactly equal the required phrase");
   return { ok: errors.length === 0, errors };
 }

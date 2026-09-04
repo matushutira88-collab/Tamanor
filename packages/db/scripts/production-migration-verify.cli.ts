@@ -7,7 +7,7 @@
  * Fails the job (non-zero) on any regression. Never rolls back — a failure is surfaced for an operator.
  */
 import { readFileSync } from "node:fs";
-import { comparePreservation, EXPECTED_PRODUCTION_MIGRATION, type TenantCounts } from "./family-activation";
+import { comparePreservation, EXPECTED_PRODUCTION_MIGRATION, requiresFamilyReconcileChecks, type TenantCounts } from "./family-activation";
 import {
   collectTenantCounts, appliedMigrationNames, familyTrialConsumedColumnExists,
   reconciledConsumedNotNullCount, familyFreeWithTrialDatesCount, writeStepSummary, PREFLIGHT_COUNTS_FILE,
@@ -18,18 +18,30 @@ async function main() {
   const post = await collectTenantCounts();
   const applied = await appliedMigrationNames();
 
+  // Verify the migration the operator ARMED, not a hard-coded one.
+  const armed = process.env.EXPECTED_MIGRATION || EXPECTED_PRODUCTION_MIGRATION;
+
   const failures: string[] = [];
-  if (!applied.includes(EXPECTED_PRODUCTION_MIGRATION)) failures.push("expected migration is not recorded as applied");
-  if (!(await familyTrialConsumedColumnExists())) failures.push("familyTrialConsumedAt column is missing");
-  const consumedNotNull = await reconciledConsumedNotNullCount();
-  if (consumedNotNull > 0) failures.push(`familyTrialConsumedAt is non-null on ${consumedNotNull} reconciled family_free tenants`);
-  const freeWithTrial = await familyFreeWithTrialDatesCount();
-  if (freeWithTrial > 0) failures.push(`${freeWithTrial} family_free tenants still carry trial dates (should be cleared)`);
+  if (!applied.includes(armed)) failures.push(`armed migration ${armed} is not recorded as applied`);
+
+  // The family reconcile assertions below describe THAT migration's data effects.
+  // Running them after an unrelated additive migration would be meaningless, so they
+  // are scoped rather than assumed. Tenant PRESERVATION is checked either way — no
+  // migration may lose tenants.
+  let consumedNotNull = 0;
+  let freeWithTrial = 0;
+  if (requiresFamilyReconcileChecks(armed)) {
+    if (!(await familyTrialConsumedColumnExists())) failures.push("familyTrialConsumedAt column is missing");
+    consumedNotNull = await reconciledConsumedNotNullCount();
+    if (consumedNotNull > 0) failures.push(`familyTrialConsumedAt is non-null on ${consumedNotNull} reconciled family_free tenants`);
+    freeWithTrial = await familyFreeWithTrialDatesCount();
+    if (freeWithTrial > 0) failures.push(`${freeWithTrial} family_free tenants still carry trial dates (should be cleared)`);
+  }
   const preserve = comparePreservation(pre, post);
   failures.push(...preserve.failures);
 
   const summary = {
-    migrationApplied: applied.includes(EXPECTED_PRODUCTION_MIGRATION),
+    migrationApplied: applied.includes(armed),
     zeroFamilyFreeTrial: post.familyFreeTrial === 0,
     reconciledConsumedNull: consumedNotNull === 0,
     reconciledTrialDatesCleared: freeWithTrial === 0,
