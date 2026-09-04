@@ -40,6 +40,9 @@ export type OpsEvent =
   | "sync.fencing_rejected"
   | "sync.interrupted"
   | "sync.completed"
+  // M9 — a sync was refused because the account's platform has no ingestion transport.
+  // Carries only the resolved provider bucket and the trigger; never an account or tenant id.
+  | "sync.provider_not_supported"
   // V1.58.8 — Vercel-native Cron job runtime (no secrets; only operation/result/trigger labels).
   | "cron.dispatch.started"
   | "cron.dispatch.completed"

@@ -200,3 +200,100 @@ export const AUTO_SYNC_STATE_PRESENTATION: Record<AutoSyncState, { tone: Connect
   DISABLED: { tone: "muted", key: "disabled" },
   NOT_CONFIGURED: { tone: "muted", key: "not_configured" },
 };
+
+/* -------------------------------------------------------------------------- */
+/* M9 — the ONE manual-sync provider routing resolver                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * M9 (P0) — the ONE provider-neutral resolver for "may this account run a manual
+ * read-only sync, and through WHICH provider transport?".
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * WHY THIS EXISTS
+ *
+ * Before M9 the web "Sync now" path resolved only the CONNECTION state and then
+ * called `runReadOnlySync` unconditionally. That function resolves a META access
+ * token first and then falls through to `createConnectorRuntime(platform, mode)`,
+ * whose `createRawConnector` hands back the real Meta read-only adapter for
+ * Facebook/Instagram and SILENTLY FALLS BACK to a placeholder for everything
+ * else. So a real Google Business location — a genuine `ConnectedAccount` row
+ * created by `importGoogleBusinessLocation` — entered the Meta path and could
+ * only end in a false "reconnect required" (no Meta token in its vault) or, worse,
+ * placeholder content written against a real account.
+ *
+ * Mobile already refused this correctly; the web did not. Two surfaces, two
+ * answers. This resolver is now the single answer for both, and it is PURE so the
+ * tests can pin every platform without a DB or a network.
+ *
+ * FAIL CLOSED: an unrecognized platform is `unknown` and is never syncable. There
+ * is deliberately NO default that routes to Meta.
+ * ────────────────────────────────────────────────────────────────────────────
+ */
+export type SyncProvider = "meta" | "google_business" | "unknown";
+
+export type ManualSyncRefusal =
+  /** The platform has no read-only ingestion implementation behind it at all. */
+  | "not_supported"
+  /** The provider connection needs the user to reconnect before any provider call. */
+  | "reauth_required"
+  /** The account is disconnected. */
+  | "disconnected";
+
+export interface ManualSyncCapability {
+  supported: boolean;
+  provider: SyncProvider;
+  reason?: ManualSyncRefusal;
+}
+
+/**
+ * Which provider transport owns a platform's ingestion.
+ *
+ * `google_business` is named truthfully even though its ingestion is not wired:
+ * naming it `unknown` would lose the distinction between "we know who owns this
+ * and it is not built" and "we do not recognise this platform at all".
+ */
+export function syncProviderFor(platform: string): SyncProvider {
+  switch (platform) {
+    case "facebook_page":
+    case "instagram_business":
+      return "meta";
+    case "google_business":
+      return "google_business";
+    default:
+      return "unknown";
+  }
+}
+
+/**
+ * Platforms with a real read-only INGESTION path wired end to end.
+ *
+ * Google Business has a real review-listing service (`listGoogleBusinessReviews`)
+ * but nothing ingests from it into ReputationItems, so it is not syncable yet and
+ * must say so rather than fire a doomed request down someone else's transport.
+ */
+const INGESTION_IMPLEMENTED: readonly SyncProvider[] = ["meta"];
+
+export function resolveManualSyncCapability(input: {
+  platform: string;
+  connectionState: ConnectionState;
+}): ManualSyncCapability {
+  const provider = syncProviderFor(input.platform);
+
+  // Provider routing is decided FIRST and independently of connection health, so an
+  // unsupported platform can never be "unblocked" into another provider's transport
+  // by happening to look healthy.
+  if (!INGESTION_IMPLEMENTED.includes(provider)) {
+    return { supported: false, provider, reason: "not_supported" };
+  }
+
+  // Only now does the canonical connection verdict apply.
+  if (input.connectionState === "DISCONNECTED") {
+    return { supported: false, provider, reason: "disconnected" };
+  }
+  if (input.connectionState === "REAUTH_REQUIRED") {
+    return { supported: false, provider, reason: "reauth_required" };
+  }
+
+  return { supported: true, provider };
+}

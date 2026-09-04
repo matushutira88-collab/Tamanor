@@ -55,6 +55,7 @@ import {
   metrics,
   notificationDedupeKey,
   dayBucket,
+  syncProviderFor,
 } from "@guardora/core";
 import {
   createConnectorRuntime,
@@ -276,6 +277,19 @@ export async function runReadOnlySync(
   const mode = account.mode as unknown as CoreMode;
   if (!modeAllowsSync(mode)) {
     return zero(false, `Sync is not available in "${account.mode}" mode.`);
+  }
+
+  // M9 (P0) — PROVIDER TRANSPORT GATE, enforced in the ENGINE, not only in the callers.
+  // Everything below this line is the Meta read-only path: it resolves a Meta access token
+  // and, for anything Meta does not own, `createRawConnector` silently falls back to a
+  // PLACEHOLDER connector. That fallback is how a real Google Business location used to be
+  // dragged onto the Meta transport and end in a false "reconnect required". Refuse here so
+  // no caller — web action, mobile endpoint, worker or future one — can route a non-Meta
+  // account into Meta. Fails closed on an unrecognized platform.
+  const syncProvider = syncProviderFor(String(account.platform));
+  if (syncProvider !== "meta") {
+    emitOpsEvent("sync.provider_not_supported", { provider: syncProvider, trigger });
+    return zero(false, "Read-only sync is not available for this platform yet.");
   }
 
   // --- V1.37.4 — acquire the account-level sync lease BEFORE any work. Guarantees

@@ -411,7 +411,15 @@ export function normalizeReason(raw: unknown): AccountReasonKey | null {
  * and would fire a doomed provider request, so Google Business reports
  * `requires_web` and the sync endpoint refuses with `not_supported`.
  */
-const SYNC_IMPLEMENTED_PLATFORMS: readonly PlatformKey[] = ["facebook_page", "instagram_business"];
+/**
+ * M9 — mirrors the canonical `syncProviderFor(...) === "meta"` in
+ * `@guardora/core/connection-state`. It is restated (not imported) because this
+ * module is a PURE service whose "imports no runtime value" property is itself an
+ * asserted invariant of M6. A cross-module test pins this predicate to the
+ * canonical resolver for EVERY platform, so the two can never drift apart.
+ */
+const syncIsImplemented = (platform: PlatformKey): boolean =>
+  platform === "facebook_page" || platform === "instagram_business";
 
 /** The Meta permission that gates hiding. Mirrors the web detail page's matrix. */
 const HIDE_PERMISSION = "pages_manage_engagement";
@@ -432,7 +440,7 @@ export function resolveCapabilities(input: {
 
   // Manual sync: implemented for Meta only, blocked by the canonical resolver's
   // reconnect/disconnect verdict, and gated on the connector-manage permission.
-  const syncImplemented = SYNC_IMPLEMENTED_PLATFORMS.includes(platform);
+  const syncImplemented = syncIsImplemented(platform);
   const canSync: CapabilityStateKey =
     !syncImplemented ? "requires_web"
       : disconnected || needsReauth ? "unavailable"
@@ -810,7 +818,7 @@ export async function handleAccountSync(
 
   // Only Meta has a read-only sync implementation behind it. Reporting anything else
   // as syncable would launch a doomed provider request.
-  if (!SYNC_IMPLEMENTED_PLATFORMS.includes(platform)) {
+  if (!syncIsImplemented(platform)) {
     return { status: 200, body: { result: "not_supported" } satisfies SyncResponse as unknown as Record<string, unknown> };
   }
 

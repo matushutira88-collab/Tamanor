@@ -15,6 +15,7 @@ import {
   maxPerBrandForPlatform,
   resolveConnectionState,
   manualSyncBlocked,
+  resolveManualSyncCapability,
 } from "@guardora/core";
 import { runReadOnlySync, disconnectAccount } from "@guardora/sync";
 import { withTenant, assertTenantActive, getTenantEntitlements, acquireTenantResourceLock, countCommercialConnections, assertBrandPlatformCapacity } from "@guardora/db";
@@ -142,7 +143,7 @@ export async function runSyncAction(accountId: string): Promise<void> {
   const account = await withTenant(session.tenantId, (db) => db.connectedAccount.findFirst({
     where: { id: accountId, tenantId: session.tenantId },
     select: {
-      id: true, status: true, mode: true, health: true, connectionStatus: true, tokenHealth: true,
+      id: true, platform: true, status: true, mode: true, health: true, connectionStatus: true, tokenHealth: true,
       tokenExpiresAt: true, lastError: true, lastSuccessfulSyncAt: true, lastSyncedAt: true, monitoringEnabled: true,
     },
   }));
@@ -155,6 +156,16 @@ export async function runSyncAction(accountId: string): Promise<void> {
   if (manualSyncBlocked(state)) {
     revalidatePath(`/dashboard/accounts/${accountId}`);
     redirect(`/dashboard/accounts/${accountId}?kind=error&notice=${encodeURIComponent("Reconnect the account first — manual sync is unavailable until it is reconnected.")}`);
+  }
+
+  // M9 (P0) — PROVIDER ROUTING. `runReadOnlySync` resolves a META token and then falls back
+  // to a placeholder connector for any non-Meta platform, so a Google Business location used
+  // to enter the Meta path and end in a false "reconnect required". Routing is now decided by
+  // the ONE provider-neutral resolver, which fails closed on an unknown platform.
+  const capability = resolveManualSyncCapability({ platform: String(account.platform), connectionState: state });
+  if (!capability.supported) {
+    revalidatePath(`/dashboard/accounts/${accountId}`);
+    redirect(`/dashboard/accounts/${accountId}?kind=error&notice=${encodeURIComponent("Manual sync is not available for this platform yet. Tamanor keeps monitoring it automatically where supported.")}`);
   }
 
   // V1.69 (Release B / B6) — NON-BLOCKING "Sync now": the read-only sync (which does the whole Meta HTTP
@@ -183,7 +194,7 @@ export async function retryFirstSync(formData: FormData): Promise<void> {
   const account = await withTenant(session.tenantId, (db) => db.connectedAccount.findFirst({
     where: { id: accountId, tenantId: session.tenantId },
     select: {
-      id: true, status: true, mode: true, health: true, connectionStatus: true, tokenHealth: true,
+      id: true, platform: true, status: true, mode: true, health: true, connectionStatus: true, tokenHealth: true,
       tokenExpiresAt: true, lastError: true, lastSuccessfulSyncAt: true, lastSyncedAt: true, monitoringEnabled: true,
     },
   }));
@@ -193,6 +204,13 @@ export async function retryFirstSync(formData: FormData): Promise<void> {
   if (manualSyncBlocked(state)) {
     revalidatePath("/dashboard/accounts");
     redirect("/dashboard/accounts?sync=reconnect_required");
+  }
+  // M9 (P0) — same provider gate as "Sync now". A first-sync RETRY is still a manual sync,
+  // so it must not be the back door that puts a non-Meta account on the Meta transport.
+  const capability = resolveManualSyncCapability({ platform: String(account.platform), connectionState: state });
+  if (!capability.supported) {
+    revalidatePath("/dashboard/accounts");
+    redirect("/dashboard/accounts?sync=not_supported");
   }
   const tenantId = session.tenantId;
   after(async () => { await runReadOnlySync({ accountId, tenantId }, "manual").catch(() => {}); });
