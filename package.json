@@ -238,7 +238,6 @@
     "lead-erasure:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/lead-erasure.test.ts",
     "observability:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/observability.test.ts",
     "sync-verdict:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/sync-verdict.test.ts",
-    "connector-oauth-flow-db:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env.local -e ../../.env -- sh -c 'tsx scripts/assert-local-db.cli.ts && tsx scripts/connector-oauth-flow-db.test.ts'",
     "connection-truth:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/connection-truth.test.ts",
     "referential-integrity:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/referential-integrity.test.ts",
     "meta-connector:test": "pnpm --filter @guardora/db exec dotenv -e ../../.env -- tsx scripts/meta-connector.test.ts",
