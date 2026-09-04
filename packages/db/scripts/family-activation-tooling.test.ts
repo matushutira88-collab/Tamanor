@@ -147,5 +147,40 @@ function main() {
 }
 
 main();
+
+/* ===================== PREFLIGHT QUERY SAFETY (M12) ===================== */
+/**
+ * The production migration preflight is READ-ONLY, but it still has to survive Prisma's
+ * CLIENT-side validation. `{ field: { not: null } }` on a NON-nullable field throws
+ * "Argument `not` must not be null" before any query runs — which aborted a real approved
+ * production migration at the preflight step (run 33901547150; migrate deploy correctly
+ * skipped, production untouched).
+ *
+ * Guard the whole class, not just the one field: every `not: null` filter in the DB-touching
+ * preflight collector must name a field the schema declares optional.
+ */
+{
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const url = await import("node:url");
+  const here = path.dirname(url.fileURLToPath(import.meta.url));
+  const counts = fs.readFileSync(path.join(here, "family-activation-counts.ts"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const schema = fs.readFileSync(path.join(here, "..", "prisma", "schema.prisma"), "utf8");
+
+  const nullableFields = new Set<string>();
+  for (const m of schema.matchAll(/^\s+(\w+)\s+\w+\?/gm)) nullableFields.add(m[1]!);
+
+  const filtered = [...counts.matchAll(/(\w+)\s*:\s*\{\s*not\s*:\s*null\s*\}/g)].map((m) => m[1]!);
+  const offenders = filtered.filter((f) => !nullableFields.has(f));
+  check(`★ every 'not: null' preflight filter targets a NULLABLE field (checked ${filtered.length})`,
+    offenders.length === 0, offenders.join(", "));
+
+  check("★ the non-nullable stripeCustomerId is never filtered with not:null",
+    !/stripeCustomerId\s*:\s*\{\s*not\s*:\s*null\s*\}/.test(counts));
+  check("★ stripeCustomerMappings is derived from the subscription count, not re-queried",
+    /const stripeCustomerMappings = subscriptions;/.test(counts));
+}
+
 console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — FAMILY-BILLING activation tooling: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

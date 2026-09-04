@@ -24,15 +24,24 @@ export async function collectTenantCounts(): Promise<TenantCounts> {
   const bizGroups = await systemDb.tenant.groupBy({ by: ["plan"], where: { workspaceKind: "business" }, _count: { _all: true } });
   const businessByPlan: Record<string, number> = {};
   for (const g of bizGroups) businessByPlan[g.plan] = g._count._all;
-  const [protectedProfiles, guardianRelationships, familyInvitations, familyMemberships, safetySignals, subscriptions, stripeCustomerMappings] = await Promise.all([
+  const [protectedProfiles, guardianRelationships, familyInvitations, familyMemberships, safetySignals, subscriptions] = await Promise.all([
     systemDb.protectedProfile.count(),
     systemDb.guardianRelationship.count(),
     systemDb.familyGuardianInvitation.count(),
     systemDb.membership.count(),
     systemDb.safetySignal.count(),
     systemDb.subscription.count(),
-    systemDb.subscription.count({ where: { stripeCustomerId: { not: null } } }),
   ]);
+  /**
+   * `Subscription.stripeCustomerId` is `String @unique` — NON-nullable. Every Subscription
+   * therefore has exactly one Stripe customer mapping, so the mapping count IS the
+   * subscription count and is reused rather than re-queried.
+   *
+   * This previously issued `{ stripeCustomerId: { not: null } }`, which Prisma rejects
+   * client-side on a non-nullable field ("Argument `not` must not be null"). That aborted the
+   * read-only preflight and — correctly, fail-closed — skipped the migration entirely.
+   */
+  const stripeCustomerMappings = subscriptions;
   return {
     familyFreeTrial, familyFree, familyBasic, familyPlus, familyPremium, businessByPlan,
     protectedProfiles, guardianRelationships, familyInvitations, familyMemberships, safetySignals, subscriptions, stripeCustomerMappings,
