@@ -3,20 +3,8 @@
   "regions": ["fra1"],
   "crons": [
     {
-      "path": "/api/internal/jobs/meta-dispatch",
-      "schedule": "*/2 * * * *"
-    },
-    {
-      "path": "/api/internal/jobs/webhook-retry",
-      "schedule": "*/2 * * * *"
-    },
-    {
       "path": "/api/internal/jobs/maintenance",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/internal/cron/family-notifications",
-      "schedule": "*/5 * * * *"
     }
   ]
 }
