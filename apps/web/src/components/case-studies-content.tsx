@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { MarketingPage } from "@/components/marketing-page";
 import { IllusShield, IllusNetwork, IllusChart, IllusApproval } from "@/components/illustrations";
 import type { Dictionary, Locale } from "@/i18n";
@@ -8,7 +7,7 @@ const ICONS = [<IllusShield key="s" size={72} />, <IllusNetwork key="n" size={72
 export function CaseStudiesContent({ dict, locale }: { dict: Dictionary; locale: Locale }) {
   const t = dict.caseStudies;
   return (
-    <MarketingPage eyebrow={t.eyebrow} title={t.title} subtitle={t.subtitle} dict={dict} locale={locale}>
+    <MarketingPage eyebrow={t.eyebrow} title={t.title} subtitle={t.subtitle} dict={dict} locale={locale} width="wide" cta>
       <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1 text-xs text-[var(--color-muted)]">
         <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-warn)]" />
         {t.exampleBadge}
@@ -16,7 +15,7 @@ export function CaseStudiesContent({ dict, locale }: { dict: Dictionary; locale:
 
       <div className="grid gap-5 md:grid-cols-2">
         {t.cases.map((c, i) => (
-          <article key={c.tag} className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] p-7">
+          <article key={c.tag} className="rounded-3xl border border-[var(--color-border)] bg-white p-7 shadow-[0_10px_30px_rgba(15,23,42,.04)] md:p-8">
             <div className="flex items-center gap-4">
               <span className="text-[var(--color-brand)]">{ICONS[i]}</span>
               <div>
@@ -24,7 +23,7 @@ export function CaseStudiesContent({ dict, locale }: { dict: Dictionary; locale:
                 <h3 className="text-xl font-semibold">{c.tag}</h3>
               </div>
             </div>
-            <dl className="mt-5 space-y-4 text-sm">
+            <dl className="mt-6 space-y-4 border-t border-[var(--color-border)] pt-6 text-[14.5px] leading-relaxed">
               <div>
                 <dt className="font-semibold text-[var(--color-fg)]">{t.problemLabel}</dt>
                 <dd className="mt-1 text-[var(--color-muted)]">{c.problem}</dd>
@@ -42,17 +41,7 @@ export function CaseStudiesContent({ dict, locale }: { dict: Dictionary; locale:
         ))}
       </div>
 
-      <div className="mt-10 rounded-2xl border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-6 text-center">
-        <p className="text-sm text-[var(--color-muted)]">{t.footerNote}</p>
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-          <Link href="/register" className="rounded-xl bg-[var(--color-brand)] px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
-            {dict.common.startFree}
-          </Link>
-          <Link href="/login" className="rounded-xl border border-[var(--color-border-strong)] px-5 py-2.5 text-sm font-semibold transition hover:bg-[var(--color-surface-2)]">
-            {dict.common.logIn}
-          </Link>
-        </div>
-      </div>
+      <p className="mx-auto mt-10 max-w-2xl text-center text-sm text-[var(--color-muted)]">{t.footerNote}</p>
     </MarketingPage>
   );
 }

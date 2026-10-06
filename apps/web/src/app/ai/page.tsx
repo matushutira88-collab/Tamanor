@@ -109,7 +109,7 @@ export default async function AiPage() {
           collectionLd("AI discoverability resources", "/ai", RESOURCES.map((r) => ({ name: r.name, path: r.path }))),
         ]}
       />
-      <MarketingPage
+      <MarketingPage cta
         dict={t}
         locale={locale}
         eyebrow={c.eyebrow}
