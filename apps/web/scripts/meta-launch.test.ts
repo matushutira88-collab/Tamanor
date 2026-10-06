@@ -78,7 +78,7 @@ function run() {
 
   // ---------------- Provider truth stays consistent ----------------
   withEnv(OAUTH, () => {
-    check("14) provider truth consistent: Instagram not public-live while launch pending", providerTruthConsistentWithLaunch(getMetaLaunchStatus(process.env, [])) === true);
+    check("14) provider truth consistent with launch status (Instagram live by provider-model decision)", providerTruthConsistentWithLaunch(getMetaLaunchStatus(process.env, [])) === true);
   });
 
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — Meta launch readiness (V1.40)`);

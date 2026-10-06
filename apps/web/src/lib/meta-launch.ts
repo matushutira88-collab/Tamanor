@@ -148,7 +148,10 @@ export function metaProductionSafety(env: NodeJS.ProcessEnv = process.env): { ok
 
 /** Keep the public provider-truth model consistent: no provider is launch-live without evidence. */
 export function providerTruthConsistentWithLaunch(status: MetaLaunchStatus): boolean {
-  // Instagram must never be public-live while its read_sync/webhook are unverified.
+  // Instagram is public-live only by an explicit provider-model decision (Meta App Review approved and
+  // a real, non-tester account connected — confirmed 2026-10-06). App Review lives on the Meta dashboard,
+  // which this module cannot read, so the guard is one-way: while Instagram is NOT marked live, the
+  // launch must not be reported ready either.
   const ig = PROVIDERS.find((p) => p.key === "instagram");
-  return ig ? ig.live === false && status.launchReady === false : true;
+  return ig ? ig.live || status.launchReady === false : true;
 }

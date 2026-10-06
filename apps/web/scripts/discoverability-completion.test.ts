@@ -78,7 +78,7 @@ function run() {
 
   // 11–13: honesty
   const ig = providerStatusFor("instagram")!, gbp = providerStatusFor("google_business")!;
-  check("11) Instagram = implementation_complete_verification_pending, not live", ig.status === "implementation_complete_verification_pending" && ig.verificationPending === true && ig.live === false);
+  check("11) Instagram = live_verified (Meta App Review approved)", ig.status === "live_verified" && ig.verificationPending === false && ig.live === true);
   check("12) Google Business = foundation, verification pending, not live", gbp.status === "foundation_only" && gbp.verificationPending === true && gbp.live === false);
   check("13) YouTube/LinkedIn/TikTok = research, not live/supported", ["youtube", "linkedin", "tiktok"].every((k) => { const p = providerStatusFor(k)!; return p.status === "research" && p.live === false; }));
 

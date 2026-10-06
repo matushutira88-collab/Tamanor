@@ -6,7 +6,8 @@
  *
  * Statuses are set from the REAL codebase + phase reports, not marketing intent:
  *   - Facebook read-only sync is verified live (hide is human-approved, off by default).
- *   - Instagram is implementation-complete but NOT live (Meta App Review pending).
+ *   - Instagram read-only comment monitoring is live: Meta App Review approved and verified
+ *     with a real (non-tester) Instagram Professional account.
  *   - Google Business is a foundation ready for approved API access; NOT live.
  *   - YouTube / LinkedIn / TikTok are research — not supported.
  */
@@ -61,11 +62,11 @@ export const PROVIDERS: readonly ProviderTruth[] = [
   {
     key: "instagram",
     name: "Instagram Business",
-    status: "implementation_complete_verification_pending",
-    verificationPending: true,
-    live: false,
+    status: "live_verified",
+    verificationPending: false,
+    live: true,
     publicStatement:
-      "Implementation complete — discovery, read-only comment ingestion with pagination and webhooks. Real provider verification via Meta App Review is pending, so Instagram is not yet live.",
+      "Live read-only comment monitoring is verified (Meta App Review approved) — discovery through the linked Facebook Page, comment ingestion with pagination and webhooks. Instagram is read-only: Tamanor never hides, deletes, replies, bans or reports.",
     capabilitiesSource: "core/INSTAGRAM_CAPABILITIES (canReadComments; no moderation)",
   },
   {
@@ -119,7 +120,7 @@ export function providerStatusFor(key: string | undefined | null): ProviderTruth
   return key ? BY_KEY.get(key) : undefined;
 }
 
-/** Providers that are live-verified today (currently Facebook only). */
+/** Providers that are live-verified today (Facebook and Instagram). */
 export function liveProviders(): ProviderTruth[] {
   return PROVIDERS.filter((p) => p.live);
 }

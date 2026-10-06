@@ -52,7 +52,7 @@ function run() {
 
   // ---------------- connector display truthfulness ----------------
   const igConnected = connectorDisplay({ platformKey: "instagram", status: "active", health: "healthy", connectionStatus: "connected" });
-  check("6) Instagram connected → verification_pending, NOT healthy/live", igConnected.state === "provider_verification_pending" && igConnected.tone === "warn" && /not live/i.test(igConnected.copy));
+  check("6) Instagram connected + healthy → live (no verification-pending banner)", igConnected.state !== "provider_verification_pending" && igConnected.tone !== "warn" && !/not live/i.test(igConnected.copy));
   const gbpConnected = connectorDisplay({ platformKey: "google_business", status: "active", health: "healthy", connectionStatus: "connected" });
   check("7) Google Business connected → verification_pending, NOT live", gbpConnected.state === "provider_verification_pending");
   const fbHealthy = connectorDisplay({ platformKey: "facebook", status: "active", health: "healthy", connectionStatus: "connected" });
@@ -64,7 +64,7 @@ function run() {
   check("13) Facebook placeholder / sync-off → sync_disabled, NOT healthy", connectorDisplay({ platformKey: "facebook", status: "active", health: "healthy", mode: "placeholder" }).state === "sync_disabled" && connectorDisplay({ platformKey: "facebook", status: "active", health: "healthy" }, { liveSyncEnabled: false }).state === "sync_disabled");
 
   // ---------------- provider truth (one model) ----------------
-  check("14) provider truth: Instagram/GBP not live; YT/LI/TT research", providerStatusFor("instagram")!.live === false && providerStatusFor("google_business")!.live === false && ["youtube", "linkedin", "tiktok"].every((k) => providerStatusFor(k)!.status === "research") && PROVIDERS.length === 6);
+  check("14) provider truth: Instagram live, GBP not live; YT/LI/TT research", providerStatusFor("instagram")!.live === true && providerStatusFor("google_business")!.live === false && ["youtube", "linkedin", "tiktok"].every((k) => providerStatusFor(k)!.status === "research") && PROVIDERS.length === 6);
 
   // ---------------- error boundaries + loading ----------------
   // V1.56A — dashboard/loading.tsx was intentionally removed (it flashed a full-content skeleton on

@@ -83,7 +83,7 @@ const K: KnowledgeEntry[] = [
     ],
     faqs: [
       { q: "Does Tamanor post or reply on my behalf?", a: "No. Tamanor is read-only by default and only prepares actions; a human approves every moderation action before it runs." },
-      { q: "Which accounts can Tamanor protect?", a: "Facebook Pages are live and verified. The Instagram Professional connector is implementation-complete but verification-pending, and Google Business is a foundation pending approved API access. It connects only through official OAuth." },
+      { q: "Which accounts can Tamanor protect?", a: "Facebook Pages and Instagram Professional accounts are live and verified, and Google Business is a foundation pending approved API access. It connects only through official OAuth." },
     ],
     related: ["how-tamanor-works", "why-tamanor", "ai-moderation", "facebook", "instagram"],
     entityRefs: ["software-application", "product", "brand"],
@@ -497,14 +497,14 @@ const K: KnowledgeEntry[] = [
     title: "Roadmap",
     metaTitle: "Roadmap — Tamanor honest platform status",
     summary:
-      "Facebook Page comment monitoring is verified live. Instagram is implementation-complete but verification-pending (Meta App Review). Google Business is a foundation pending approved API access. YouTube, LinkedIn and TikTok are research — not supported.",
-    keywords: ["tamanor roadmap", "platform support", "instagram verification pending", "google business reviews"],
+      "Facebook Page and Instagram Professional comment monitoring are verified live. Google Business is a foundation pending approved API access. YouTube, LinkedIn and TikTok are research — not supported.",
+    keywords: ["tamanor roadmap", "platform support", "instagram comment monitoring", "google business reviews"],
     sections: [
       {
         heading: "What is live, what is pending, what is research",
         body: [
           "Live (verified): Facebook Page read-only comment monitoring, with human-approved hiding off by default.",
-          "Implementation complete, verification pending: Instagram Professional comment monitoring (read-only) — awaiting Meta App Review before it is live.",
+          "Live (verified): Instagram Professional comment monitoring (read-only) — Meta App Review approved.",
           "Foundation, verification pending: Google Business review monitoring — ready for approved API access, not yet live.",
           "Research (not supported): YouTube, LinkedIn and TikTok. Tamanor does not claim support until it is real and verified.",
         ],
@@ -729,21 +729,21 @@ const K: KnowledgeEntry[] = [
     collection: "integrations",
     platformKey: "instagram",
     title: "Instagram integration",
-    metaTitle: "Instagram integration — Tamanor (verification pending)",
+    metaTitle: "Instagram integration — Tamanor",
     summary:
-      "Tamanor's Instagram Professional connector is implementation-complete — discovery through the linked Facebook Page, read-only comment ingestion with pagination and webhooks. Real provider verification via Meta App Review is pending, so it is not yet live.",
+      "Tamanor's Instagram Professional connector is live — discovery through the linked Facebook Page, read-only comment monitoring with pagination and near-real-time webhooks, verified through Meta App Review.",
     keywords: ["instagram business moderation", "instagram comment monitoring", "instagram professional oauth"],
     sections: [
       {
         heading: "What Tamanor does with Instagram",
         body: [
           "The Instagram connector discovers a connected Instagram Professional account through its Facebook Page and reads its comments — media comments and replies, with pagination and near-real-time webhooks. It is read-only: no hide, delete, reply, ban or report.",
-          "Status: implementation complete, real provider verification pending. Live use requires Meta App Review; until then Tamanor does not present Instagram as live.",
+          "Status: live. Meta App Review is approved, so any Instagram Professional account linked to a Facebook Page can be connected through official OAuth.",
         ],
       },
     ],
     faqs: [
-      { q: "Is Instagram live today?", a: "No. The Instagram connector is implementation-complete but not yet live — real provider verification via Meta App Review is pending." },
+      { q: "Is Instagram live today?", a: "Yes. Instagram comment monitoring is live and verified through Meta App Review. It is read-only — no moderation action is enabled." },
       { q: "Can Tamanor hide Instagram comments?", a: "No. Instagram is read-only; no moderation action is enabled." },
       { q: "How is Instagram connected?", a: "Through its linked Facebook Page using official OAuth — the two behave as one unified connector." },
     ],
@@ -1052,12 +1052,12 @@ const K: KnowledgeEntry[] = [
         heading: "What changes",
         body: [
           "Separate provider interfaces mean switching context between Facebook, Instagram and Google, each with its own view of comments or reviews. Tamanor brings monitored items into one normalized inbox with shared risk context, distinguishing comments from reviews.",
-          "Availability is honest: each provider shows its real connector state, and only Facebook is live-verified today. Instagram and Google Business appear with their true status (verification pending), never as live.",
+          "Availability is honest: each provider shows its real connector state, and Facebook and Instagram are live-verified today. Google Business appears with its true status (verification pending), never as live.",
         ],
       },
     ],
     faqs: [
-      { q: "Are all providers live in the inbox?", a: "No. Facebook is live-verified; Instagram and Google Business are shown with their true verification-pending status." },
+      { q: "Are all providers live in the inbox?", a: "No. Facebook and Instagram are live-verified; Google Business is shown with its true verification-pending status." },
     ],
     related: ["separate-social-tools", "unified-inbox", "facebook", "instagram", "google-business"],
     entityRefs: ["compare-hub", "feature-inbox"],
@@ -1097,7 +1097,7 @@ const K: KnowledgeEntry[] = [
           "Disconnect lifecycle — yes: disconnecting removes local tokens; provider revoke is best-effort.",
           "Workflow persistence — yes: proposals, approvals and outcomes persist and are auditable.",
           "Pagination / scalability — yes: read syncs paginate with cursors and are idempotent.",
-          "Provider verification — partial: Facebook is live-verified; Instagram and Google Business are verification-pending; YouTube/LinkedIn/TikTok are research.",
+          "Provider verification — partial: Facebook and Instagram are live-verified; Google Business is verification-pending; YouTube/LinkedIn/TikTok are research.",
         ],
       },
     ],

@@ -26,7 +26,7 @@ export const knowledgeDe: Record<string, KnowledgeEntryL10n> = {
     ],
     faqs: [
       { q: "Postet oder antwortet Tamanor in meinem Namen?", a: "Nein. Tamanor ist standardmäßig schreibgeschützt und bereitet nur Maßnahmen vor; ein Mensch gibt jede Moderationsmaßnahme frei, bevor sie ausgeführt wird." },
-      { q: "Welche Konten kann Tamanor schützen?", a: "Facebook-Seiten sind live und verifiziert. Der Instagram-Professional-Connector ist implementierungsfertig, aber die Verifizierung steht noch aus, und Google Business ist eine Grundlage, die auf genehmigten API-Zugriff wartet. Die Verbindung erfolgt ausschließlich über offizielles OAuth." },
+      { q: "Welche Konten kann Tamanor schützen?", a: "Facebook-Seiten und Instagram-Professional-Konten sind live und verifiziert, und Google Business ist eine Grundlage, die auf genehmigten API-Zugriff wartet. Die Verbindung erfolgt ausschließlich über offizielles OAuth." },
     ],
   },
   "how-tamanor-works": {
@@ -372,14 +372,14 @@ export const knowledgeDe: Record<string, KnowledgeEntryL10n> = {
     title: "Roadmap",
     metaTitle: "Roadmap — Tamanor ehrlicher Plattformstatus",
     summary:
-      "Die Kommentarüberwachung von Facebook-Seiten ist verifiziert und live. Instagram ist implementierungsfertig, aber die Verifizierung steht aus (Meta App Review). Google Business ist eine Grundlage, die auf genehmigten API-Zugriff wartet. YouTube, LinkedIn und TikTok befinden sich in der Recherche — nicht unterstützt.",
-    keywords: ["tamanor roadmap", "plattformunterstützung", "instagram verifizierung ausstehend", "google business bewertungen"],
+      "Die Kommentarüberwachung von Facebook-Seiten und Instagram Professional ist verifiziert und live. Google Business ist eine Grundlage, die auf genehmigten API-Zugriff wartet. YouTube, LinkedIn und TikTok befinden sich in der Recherche — nicht unterstützt.",
+    keywords: ["tamanor roadmap", "plattformunterstützung", "instagram kommentarüberwachung", "google business bewertungen"],
     sections: [
       {
         heading: "Was live ist, was ausstehend ist, was Recherche ist",
         body: [
           "Live (verifiziert): schreibgeschützte Kommentarüberwachung von Facebook-Seiten, mit menschlich freigegebenem Ausblenden, das standardmäßig deaktiviert ist.",
-          "Implementierung abgeschlossen, Verifizierung ausstehend: schreibgeschützte Kommentarüberwachung von Instagram Professional — wartet auf Meta App Review, bevor sie live geht.",
+          "Live (verifiziert): schreibgeschützte Kommentarüberwachung von Instagram Professional — Meta App Review genehmigt.",
           "Grundlage, Verifizierung ausstehend: Überwachung von Google-Business-Bewertungen — bereit für genehmigten API-Zugriff, noch nicht live.",
           "Recherche (nicht unterstützt): YouTube, LinkedIn und TikTok. Tamanor beansprucht keine Unterstützung, solange sie nicht real und verifiziert ist.",
         ],
@@ -554,21 +554,21 @@ export const knowledgeDe: Record<string, KnowledgeEntryL10n> = {
   },
   "instagram": {
     title: "Instagram-Integration",
-    metaTitle: "Instagram-Integration — Tamanor (Verifizierung ausstehend)",
+    metaTitle: "Instagram-Integration — Tamanor",
     summary:
-      "Der Instagram-Professional-Connector von Tamanor ist implementierungsfertig — Erkennung über die verknüpfte Facebook-Seite, schreibgeschützte Kommentarerfassung mit Paginierung und Webhooks. Die echte Anbieterverifizierung über Meta App Review steht aus, daher ist er noch nicht live.",
+      "Der Instagram-Professional-Connector von Tamanor ist live — Erkennung über die verknüpfte Facebook-Seite, schreibgeschützte Kommentarüberwachung mit Paginierung und Webhooks nahezu in Echtzeit, verifiziert über Meta App Review.",
     keywords: ["moderation von instagram business", "überwachung von instagram-kommentaren", "instagram professional oauth"],
     sections: [
       {
         heading: "Was Tamanor mit Instagram macht",
         body: [
           "Der Instagram-Connector erkennt ein verbundenes Instagram-Professional-Konto über dessen Facebook-Seite und liest dessen Kommentare — Kommentare zu Medien und Antworten, mit Paginierung und Webhooks nahezu in Echtzeit. Er ist schreibgeschützt: kein Ausblenden, Löschen, Antworten, Sperren oder Melden.",
-          "Status: Implementierung abgeschlossen, echte Anbieterverifizierung ausstehend. Der Live-Einsatz erfordert Meta App Review; bis dahin präsentiert Tamanor Instagram nicht als live.",
+          "Status: live. Meta App Review ist genehmigt, daher kann jedes mit einer Facebook-Seite verknüpfte Instagram-Professional-Konto über offizielles OAuth verbunden werden.",
         ],
       },
     ],
     faqs: [
-      { q: "Ist Instagram heute live?", a: "Nein. Der Instagram-Connector ist implementierungsfertig, aber noch nicht live — die echte Anbieterverifizierung über Meta App Review steht aus." },
+      { q: "Ist Instagram heute live?", a: "Ja. Die Instagram-Kommentarüberwachung ist live und über Meta App Review verifiziert. Sie ist schreibgeschützt — keine Moderationsaktion ist aktiviert." },
       { q: "Kann Tamanor Instagram-Kommentare ausblenden?", a: "Nein. Instagram ist schreibgeschützt; es ist keine Moderationsmaßnahme aktiviert." },
       { q: "Wie wird Instagram verbunden?", a: "Über die verknüpfte Facebook-Seite mittels offiziellem OAuth — die beiden verhalten sich als ein einheitlicher Connector." },
     ],
@@ -813,12 +813,12 @@ export const knowledgeDe: Record<string, KnowledgeEntryL10n> = {
         heading: "Was sich ändert",
         body: [
           "Separate Anbieteroberflächen bedeuten Kontextwechsel zwischen Facebook, Instagram und Google, jede mit ihrer eigenen Ansicht von Kommentaren oder Bewertungen. Tamanor bringt überwachte Elemente in einen normalisierten Posteingang mit gemeinsamem Risikokontext und unterscheidet dabei Kommentare von Bewertungen.",
-          "Die Verfügbarkeit ist ehrlich: Jeder Anbieter zeigt seinen realen Connector-Zustand, und nur Facebook ist heute live-verifiziert. Instagram und Google Business erscheinen mit ihrem wahren Status (Verifizierung ausstehend), niemals als live.",
+          "Die Verfügbarkeit ist ehrlich: Jeder Anbieter zeigt seinen realen Connector-Zustand, und Facebook und Instagram sind heute live-verifiziert. Google Business erscheint mit seinem wahren Status (Verifizierung ausstehend), niemals als live.",
         ],
       },
     ],
     faqs: [
-      { q: "Sind alle Anbieter im Posteingang live?", a: "Nein. Facebook ist live-verifiziert; Instagram und Google Business werden mit ihrem wahren Status „Verifizierung ausstehend“ angezeigt." },
+      { q: "Sind alle Anbieter im Posteingang live?", a: "Nein. Facebook und Instagram sind live-verifiziert; Google Business wird mit seinem wahren Status „Verifizierung ausstehend“ angezeigt." },
     ],
   },
   "reputation-management-platform-checklist": {
@@ -854,7 +854,7 @@ export const knowledgeDe: Record<string, KnowledgeEntryL10n> = {
           "Trennungslebenszyklus — ja: das Trennen entfernt lokale Tokens; der Widerruf beim Anbieter erfolgt nach bestem Bemühen.",
           "Workflow-Persistenz — ja: Vorschläge, Freigaben und Ergebnisse bleiben erhalten und sind nachprüfbar.",
           "Paginierung / Skalierbarkeit — ja: Lese-Synchronisierungen paginieren mit Cursorn und sind idempotent.",
-          "Anbieterverifizierung — teilweise: Facebook ist live-verifiziert; Instagram und Google Business sind Verifizierung ausstehend; YouTube/LinkedIn/TikTok sind Recherche.",
+          "Anbieterverifizierung — teilweise: Facebook und Instagram sind live-verifiziert; Google Business ist Verifizierung ausstehend; YouTube/LinkedIn/TikTok sind Recherche.",
         ],
       },
     ],

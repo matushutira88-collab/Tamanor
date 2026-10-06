@@ -85,7 +85,7 @@ function run() {
   // 10–12: AI artifacts valid + canonical + provider truth already covered by seo tests; assert shape here
   const ai = buildAiIndex();
   check("10) ai-index: JSON valid, canonical URL, honest flags", ai.url === HOST && ai.humanInTheLoop === true && ai.autoExecution === false && ai.providerStatus.length === 6);
-  check("11) ai-index provider truth: Instagram/GBP not live, YT/LI/TT research", ai.providerStatus.find((p) => p.platform === "instagram")!.live === false && ai.providerStatus.find((p) => p.platform === "google_business")!.live === false && ["youtube", "linkedin", "tiktok"].every((k) => ai.providerStatus.find((p) => p.platform === k)!.status === "research"));
+  check("11) ai-index provider truth: Facebook + Instagram live, GBP not live, YT/LI/TT research", ai.providerStatus.find((p) => p.platform === "instagram")!.live === true && ai.providerStatus.find((p) => p.platform === "google_business")!.live === false && ["youtube", "linkedin", "tiktok"].every((k) => ai.providerStatus.find((p) => p.platform === k)!.status === "research"));
   check("12) every AI map stringifies to valid JSON", Object.entries(ARTIFACTS).filter(([n]) => n.endsWith("Map") || n === "aiIndex" || n === "capabilities" || n === "topics").every(([, s]) => { try { JSON.parse(s); return true; } catch { return false; } }));
 
   // 13: IndexNow payload — canonical public only; rejects private URLs

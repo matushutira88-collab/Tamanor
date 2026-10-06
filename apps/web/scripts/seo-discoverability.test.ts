@@ -52,7 +52,7 @@ function run() {
   // -------------------------- llms.txt --------------------------
   const llms = buildLlmsTxt();
   check("10) llms.txt: titled + summary + capabilities + provider status + revision", llms.startsWith("# Tamanor") && llms.includes("## Capabilities") && llms.includes("## Provider status (single source of truth)") && llms.includes("Last updated:"));
-  check("11) llms.txt: honesty — Facebook live, Instagram verification-pending, TikTok research", /Facebook Page: live_verified/.test(llms) && /Instagram Business: implementation_complete_verification_pending/.test(llms) && /TikTok: research/.test(llms));
+  check("11) llms.txt: honesty — Facebook + Instagram live, TikTok research", /Facebook Page: live_verified/.test(llms) && /Instagram Business: live_verified/.test(llms) && /TikTok: research/.test(llms));
   const full = buildLlmsFullTxt();
   check("12) llms-full.txt: every knowledge page inlined", KNOWLEDGE.every((e) => full.includes(`## ${e.title}`)));
 
@@ -68,7 +68,7 @@ function run() {
   check("16) capabilities: Facebook signals MATCH core capability constants", sig("supportsFacebookPages").supported === FACEBOOK_CAPABILITIES.canReadComments && sig("supportsFacebookHide").supported === FACEBOOK_CAPABILITIES.canHideComment);
   check("17) capabilities: Google review sync MATCHES core", sig("supportsGoogleBusiness").supported === GOOGLE_BUSINESS_CAPABILITIES.canReviewSync);
   check("18) capabilities: honesty — TikTok/YouTube/LinkedIn NOT claimed, no auto-execution", sig("supportsTikTok").supported === TIKTOK_CAPABILITIES.canReadComments && sig("supportsTikTok").supported === false && sig("supportsYouTube").supported === false && sig("supportsLinkedIn").supported === false && sig("supportsAutoExecution").supported === false);
-  check("19) capabilities: platform statuses honest (central provider model)", caps.platforms.find((p) => p.platform === "facebook")!.status === "live_verified" && caps.platforms.find((p) => p.platform === "instagram")!.status === "implementation_complete_verification_pending" && caps.platforms.find((p) => p.platform === "tiktok")!.status === "research");
+  check("19) capabilities: platform statuses honest (central provider model)", caps.platforms.find((p) => p.platform === "facebook")!.status === "live_verified" && caps.platforms.find((p) => p.platform === "instagram")!.status === "live_verified" && caps.platforms.find((p) => p.platform === "tiktok")!.status === "research");
 
   // -------------------------- entity graph --------------------------
   const dangling = danglingRelations();

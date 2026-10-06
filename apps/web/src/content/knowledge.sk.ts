@@ -26,7 +26,7 @@ export const knowledgeSk: Record<string, KnowledgeEntryL10n> = {
     ],
     faqs: [
       { q: "Publikuje alebo odpovedá Tamanor v mojom mene?", a: "Nie. Tamanor je v predvolenom nastavení iba na čítanie a akcie iba pripravuje; každú moderačnú akciu schvaľuje človek pred jej vykonaním." },
-      { q: "Ktoré účty dokáže Tamanor chrániť?", a: "Facebook stránky sú v prevádzke a overené. Konektor pre Instagram Professional je implementačne dokončený, ale čaká na overenie, a Google Business je základom čakajúcim na schválený prístup k API. Pripája sa iba cez oficiálny OAuth." },
+      { q: "Ktoré účty dokáže Tamanor chrániť?", a: "Facebook stránky a účty Instagram Professional sú v prevádzke a overené a Google Business je základom čakajúcim na schválený prístup k API. Pripája sa iba cez oficiálny OAuth." },
     ],
   },
   "how-tamanor-works": {
@@ -372,14 +372,14 @@ export const knowledgeSk: Record<string, KnowledgeEntryL10n> = {
     title: "Plán rozvoja",
     metaTitle: "Plán rozvoja — čestný stav platforiem v Tamanore",
     summary:
-      "Monitorovanie komentárov na Facebook stránkach je overene v prevádzke. Instagram je implementačne dokončený, ale čaká na overenie (Meta App Review). Google Business je základom čakajúcim na schválený prístup k API. YouTube, LinkedIn a TikTok sú vo výskume — nie sú podporované.",
-    keywords: ["plán rozvoja tamanor", "podpora platforiem", "instagram čaká na overenie", "recenzie google business"],
+      "Monitorovanie komentárov na Facebook stránkach a Instagram Professional je overene v prevádzke. Google Business je základom čakajúcim na schválený prístup k API. YouTube, LinkedIn a TikTok sú vo výskume — nie sú podporované.",
+    keywords: ["plán rozvoja tamanor", "podpora platforiem", "monitorovanie komentárov instagram", "recenzie google business"],
     sections: [
       {
         heading: "Čo je v prevádzke, čo čaká a čo je vo výskume",
         body: [
           "V prevádzke (overené): monitorovanie komentárov na Facebook stránkach iba na čítanie, so skrývaním schváleným človekom vypnutým v predvolenom nastavení.",
-          "Implementačne dokončené, čaká na overenie: monitorovanie komentárov Instagram Professional (iba na čítanie) — pred spustením čaká na Meta App Review.",
+          "V prevádzke (overené): monitorovanie komentárov Instagram Professional (iba na čítanie) — Meta App Review schválený.",
           "Základ, čaká na overenie: monitorovanie recenzií Google Business — pripravené na schválený prístup k API, zatiaľ nie je v prevádzke.",
           "Výskum (nie je podporované): YouTube, LinkedIn a TikTok. Tamanor si nenárokuje podporu, kým nie je skutočná a overená.",
         ],
@@ -556,19 +556,19 @@ export const knowledgeSk: Record<string, KnowledgeEntryL10n> = {
     title: "Integrácia Instagramu",
     metaTitle: "Integrácia Instagramu — Tamanor (čaká na overenie)",
     summary:
-      "Konektor Tamanoru pre Instagram Professional je implementačne dokončený — objavenie cez prepojenú Facebook stránku, prijímanie komentárov iba na čítanie so stránkovaním a webhookmi. Skutočné overenie poskytovateľa cez Meta App Review čaká, takže zatiaľ nie je v prevádzke.",
+      "Konektor Tamanoru pre Instagram Professional je v prevádzke — objavenie cez prepojenú Facebook stránku, monitorovanie komentárov iba na čítanie so stránkovaním a webhookmi takmer v reálnom čase, overené cez Meta App Review.",
     keywords: ["moderovanie instagram business", "monitorovanie instagram komentárov", "instagram professional oauth"],
     sections: [
       {
         heading: "Čo Tamanor robí s Instagramom",
         body: [
           "Konektor Instagramu objaví pripojený účet Instagram Professional cez jeho Facebook stránku a číta jeho komentáre — komentáre a odpovede pod médiami, so stránkovaním a webhookmi takmer v reálnom čase. Je iba na čítanie: žiadne skrývanie, mazanie, odpovedanie, banovanie ani nahlasovanie.",
-          "Stav: implementačne dokončené, skutočné overenie poskytovateľa čaká. Živé používanie si vyžaduje Meta App Review; dovtedy Tamanor Instagram neprezentuje ako živý.",
+          "Stav: v prevádzke. Meta App Review je schválený, takže akýkoľvek účet Instagram Professional prepojený s Facebook stránkou sa dá pripojiť cez oficiálny OAuth.",
         ],
       },
     ],
     faqs: [
-      { q: "Je Instagram dnes v prevádzke?", a: "Nie. Konektor Instagramu je implementačne dokončený, ale zatiaľ nie je v prevádzke — skutočné overenie poskytovateľa cez Meta App Review čaká." },
+      { q: "Je Instagram dnes v prevádzke?", a: "Áno. Monitorovanie komentárov na Instagrame je v prevádzke a overené cez Meta App Review. Funguje iba na čítanie — žiadna moderačná akcia nie je zapnutá." },
       { q: "Dokáže Tamanor skrývať komentáre na Instagrame?", a: "Nie. Instagram je iba na čítanie; nie je povolená žiadna moderačná akcia." },
       { q: "Ako je Instagram pripojený?", a: "Cez jeho prepojenú Facebook stránku pomocou oficiálneho OAuth — oba sa správajú ako jeden zjednotený konektor." },
     ],
