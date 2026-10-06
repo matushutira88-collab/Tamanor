@@ -47,7 +47,7 @@ const COPY: Record<
 > = {
   en: {
     eyebrow: "About",
-    title: "An Social Account Firewall for modern brands.",
+    title: "A Social Account Firewall for modern brands.",
     subtitle:
       "Tamanor helps brands protect their reputation across social media, comments and reviews — with AI speed and human control.",
     whyTitle: "Why Tamanor",
