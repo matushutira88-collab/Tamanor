@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import {
   Permission, can, assertCan, emitOpsEvent, maxPerBrandForPlatform,
 } from "@guardora/core";
-import { GOOGLE_BUSINESS_AUDIT, disconnectAccount } from "@guardora/sync";
+import { GOOGLE_BUSINESS_AUDIT, disconnectAccount, runReadOnlySync, activateGoogleBusinessMonitoring } from "@guardora/sync";
 import {
   assertTenantActive, getTenantEntitlements,
   importGoogleBusinessLocation, assertGoogleBusinessCapabilities,
@@ -129,6 +130,21 @@ export async function confirmGoogleBusinessSelection(formData: FormData): Promis
         rejectedUnknown: resolved.rejectedUnknown, rejectedIneligible: resolved.rejectedIneligible,
         capabilities,
       },
+    });
+  }
+
+  // SLICE 3A — FIRST SYNC ON CONNECT, after the response (next/server `after`) so the user never waits
+  // on Google's HTTP cycle and does not depend on the next cron tick. The sync lease dedups, so a
+  // repeated confirmation cannot launch duplicate parallel syncs. Monitoring is activated ONLY if that
+  // sync genuinely succeeds — `activateGoogleBusinessMonitoring` re-reads `lastSuccessfulSyncAt` from the
+  // database rather than trusting this call site, so a failed first sync leaves monitoring off.
+  if (accountIds.length > 0) {
+    const tid = session.tenantId;
+    after(async () => {
+      await Promise.allSettled(accountIds.map(async (id) => {
+        const outcome = await runReadOnlySync({ accountId: id, tenantId: tid }, "automatic");
+        if (outcome.ok) await activateGoogleBusinessMonitoring(tid, id);
+      }));
     });
   }
 

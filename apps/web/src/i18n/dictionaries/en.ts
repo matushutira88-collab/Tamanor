@@ -1289,6 +1289,12 @@ export const en = {
     skippedUnverified: "skipped — not verified by Google",
     skippedUnknown: "skipped — no longer available",
     skippedFailed: "could not be connected",
+    // SLICE-3A — truthful monitoring state for a connected-but-not-yet-monitored account.
+    monMonitored: "Monitored",
+    monSyncing: "Syncing…",
+    monWaiting: "Connected · waiting for first sync",
+    monFirstSyncFailed: "Connected · first sync failed",
+    monUnavailable: "Connected · monitoring unavailable on your plan",
     reviewMonitoring: "Review monitoring",
     readyToConnectBody: "Connect Google Business Profile to monitor your location reviews.",
     connect: "Connect Google Business Profile",

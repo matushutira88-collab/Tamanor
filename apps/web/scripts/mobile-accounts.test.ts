@@ -445,11 +445,11 @@ const base = { connectionState: "CONNECTED_HEALTHY", accountKind: "real", grante
   check("Instagram can sync", ig.canSync === "available");
   check("Instagram moderation is not implemented here", ig.moderationState === "not_implemented");
 
-  // Google Business locations are real ConnectedAccount rows, but `runReadOnlySync`
-  // has no ingestion for them — claiming otherwise would fire a doomed request.
+  // Slice 3A — Google Business review ingestion is wired in `runReadOnlySync` through its OWN
+  // transport (fail-closed behind the Google feature axes), so mobile may start a sync like the web.
   const gb = capOf({ ...base, platform: "google_business", grantedPermissions: [] });
   check("Google Business can read", gb.canRead === "available");
-  check("Google Business sync is truthfully requires_web, not available", gb.canSync === "requires_web");
+  check("Google Business sync is available (Slice 3A ingestion wired)", gb.canSync === "available");
   check("Google Business can still be monitored", gb.canMonitor === "available");
   check("Google Business can be disconnected", gb.canDisconnect === "available");
   check("Google Business moderation is not implemented", gb.moderationState === "not_implemented");
@@ -743,8 +743,8 @@ for (const state of ["CONNECTED_HEALTHY", "WAITING_FIRST_SYNC", "DEGRADED", "SYN
   const spy: Spy = { enableCalls: [], disableCalls: [], syncCalls: [], disconnectCalls: [], audits: [] };
   const deps = makeDeps({ getAccountRow: async () => row({ platform: "google_business" }) }, spy);
   const res = await handleAccountSync({ authorization: AUTH, accountId: "a1" }, deps);
-  check("Google Business sync is truthfully not_supported", res.body.result === "not_supported", dump(res.body));
-  check("Google Business launches NO doomed provider request", spy.syncCalls.length === 0);
+  check("Google Business sync is started (Slice 3A)", res.body.result === "started", dump(res.body));
+  check("Google Business dispatches exactly one engine sync (the engine owns the Google transport)", spy.syncCalls.length === 1);
 }
 {
   const spy: Spy = { enableCalls: [], disableCalls: [], syncCalls: [], disconnectCalls: [], audits: [] };

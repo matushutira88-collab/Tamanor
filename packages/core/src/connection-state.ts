@@ -268,11 +268,11 @@ export function syncProviderFor(platform: string): SyncProvider {
 /**
  * Platforms with a real read-only INGESTION path wired end to end.
  *
- * Google Business has a real review-listing service (`listGoogleBusinessReviews`)
- * but nothing ingests from it into ReputationItems, so it is not syncable yet and
- * must say so rather than fire a doomed request down someone else's transport.
+ * Slice 3A wires Google Business review ingestion through the shared orchestrator
+ * (its own token/refresh layer, fail-closed behind the two Google feature axes), so it
+ * is syncable. `unknown` never is.
  */
-const INGESTION_IMPLEMENTED: readonly SyncProvider[] = ["meta"];
+const INGESTION_IMPLEMENTED: readonly SyncProvider[] = ["meta", "google_business"];
 
 export function resolveManualSyncCapability(input: {
   platform: string;

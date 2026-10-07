@@ -97,11 +97,17 @@ export interface MetaSyncCandidate {
   nextRetryAt: Date | null;
 }
 
-/** Meta accounts eligible for a read-only sync tick. Cross-tenant discovery only. */
+/**
+ * Accounts eligible for a read-only sync tick. Cross-tenant discovery only.
+ *
+ * SLICE 3A — `google_business` joins this list rather than getting its own dispatcher: a Google location
+ * is an ordinary ConnectedAccount and runs through the same lease, backoff and SyncRun machinery. Only
+ * its fetch differs. The name is kept for compatibility with the existing dispatcher/job call sites.
+ */
 export function findMetaSyncCandidates(statuses: string[]): Promise<MetaSyncCandidate[]> {
   return systemDb.connectedAccount.findMany({
     where: {
-      platform: { in: ["facebook_page", "instagram_business"] as never },
+      platform: { in: ["facebook_page", "instagram_business", "google_business"] as never },
       status: { in: statuses as never },
       // V1.75 (P0) — AUTOMATIC sync is per-account. An account whose monitoring/auto-sync is
       // OFF must NEVER be picked up by the cron/worker (this was the "cron syncs disabled

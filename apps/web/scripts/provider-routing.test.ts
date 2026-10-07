@@ -74,10 +74,11 @@ function run() {
   check("9) IG healthy → supported via meta",
     cap(Platform.InstagramBusiness).supported && cap(Platform.InstagramBusiness).provider === "meta");
 
+  // Slice 3A — Google Business review ingestion is wired through its own transport.
   const gb = cap(Platform.GoogleBusiness);
-  check("10) Google Business → NOT supported (no ingestion wired)", !gb.supported);
-  check("11) Google Business refusal is not_supported", gb.reason === "not_supported");
-  check("12) Google Business still reports its own provider, not meta", gb.provider === "google_business");
+  check("10) Google Business healthy → supported (review ingestion wired, Slice 3A)", gb.supported);
+  check("11) Google Business is never refused as not_supported", gb.reason !== "not_supported");
+  check("12) Google Business reports its own provider, not meta", gb.provider === "google_business");
 
   const unknown = cap("something_new");
   check("13) unknown platform → not supported", !unknown.supported);
@@ -88,8 +89,8 @@ function run() {
   const HEALTHS: ConnectionState[] = [
     "CONNECTED_HEALTHY", "WAITING_FIRST_SYNC", "DEGRADED", "REAUTH_REQUIRED", "SYNC_FAILED", "DISCONNECTED",
   ];
-  check("16) Google Business is unsupported in EVERY connection state",
-    HEALTHS.every((h) => !cap(Platform.GoogleBusiness, h).supported));
+  check("16) Google Business follows the connection verdict (blocked only when disconnected / reauth)",
+    HEALTHS.every((h) => cap(Platform.GoogleBusiness, h).supported === (h !== "DISCONNECTED" && h !== "REAUTH_REQUIRED")));
   check("17) an unknown platform is unsupported in EVERY connection state",
     HEALTHS.every((h) => !cap("mystery", h).supported));
   check("18) a healthy-looking Google account never becomes 'meta'",
@@ -178,19 +179,21 @@ function run() {
     /* The mobile predicate is RESTATED rather than imported (purity invariant), so it is
        pinned to the canonical resolver here for every platform — they cannot drift. */
     const mobileSaysImplemented = (p: string) =>
-      p === "facebook_page" || p === "instagram_business";
+      p === "facebook_page" || p === "instagram_business" || p === "google_business";
     const ALL = [...ALL_PLATFORMS.map(String), "unknown", "", "__proto__", "youtube"];
     check("41) mobile's local predicate matches the canonical resolver for EVERY platform",
-      ALL.every((p) => mobileSaysImplemented(p) === (syncProviderFor(p) === "meta")));
+      ALL.every((p) => mobileSaysImplemented(p) === cap(p).supported));
     check("42) that mirrored predicate is the one actually in the mobile source",
-      /platform === "facebook_page" \|\| platform === "instagram_business"/.test(mobile));
+      /platform === "facebook_page" \|\| platform === "instagram_business" \|\| platform === "google_business"/.test(mobile));
   }
 
   /* ===================== THE PROPERTY THAT MATTERS ===================== */
   console.log("\nNO CROSS-PROVIDER LEAK");
 
-  check("43) NO Google Business account can be reported as meta-syncable",
-    !cap(Platform.GoogleBusiness).supported && cap(Platform.GoogleBusiness).provider !== "meta");
+  // Slice 3A (approved by the owner 2026-10-07): Google Business is now syncable through its OWN
+  // transport. The property that matters is unchanged — it can never be routed to Meta.
+  check("43) NO Google Business account can be routed to the Meta transport",
+    cap(Platform.GoogleBusiness).provider === "google_business" && syncProviderFor(Platform.GoogleBusiness) !== "meta");
   check("44) NO unknown platform can become Facebook/Meta",
     ["", "x", "facebook", "meta", "google_business_x"].every((p) => syncProviderFor(p) !== "meta"));
   check("45) the ONLY platforms that reach the Meta transport are FB and IG",

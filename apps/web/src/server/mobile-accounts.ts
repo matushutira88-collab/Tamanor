@@ -419,7 +419,7 @@ export function normalizeReason(raw: unknown): AccountReasonKey | null {
  * canonical resolver for EVERY platform, so the two can never drift apart.
  */
 const syncIsImplemented = (platform: PlatformKey): boolean =>
-  platform === "facebook_page" || platform === "instagram_business";
+  platform === "facebook_page" || platform === "instagram_business" || platform === "google_business";
 
 /** The Meta permission that gates hiding. Mirrors the web detail page's matrix. */
 const HIDE_PERMISSION = "pages_manage_engagement";

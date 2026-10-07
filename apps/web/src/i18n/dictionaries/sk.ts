@@ -1258,6 +1258,12 @@ export const sk: Dictionary = {
     skippedUnverified: "preskočených — Google ich neoveril",
     skippedUnknown: "preskočených — už nie sú dostupné",
     skippedFailed: "sa nepodarilo pripojiť",
+    // SLICE-3A — truthful monitoring state for a connected-but-not-yet-monitored account.
+    monMonitored: "Monitorované",
+    monSyncing: "Synchronizuje sa…",
+    monWaiting: "Pripojené · čaká na prvú synchronizáciu",
+    monFirstSyncFailed: "Pripojené · prvá synchronizácia zlyhala",
+    monUnavailable: "Pripojené · monitoring nie je dostupný vo vašom pláne",
     reviewMonitoring: "Sledovanie recenzií",
     readyToConnectBody: "Pripojte Google Business Profile a sledujte recenzie svojich prevádzok.",
     connect: "Pripojiť Google Business Profile",

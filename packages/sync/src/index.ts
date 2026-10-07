@@ -71,6 +71,16 @@ import {
   classifyIgPermissionState,
   type IgPermissionState,
 } from "./instagram-content";
+// SLICE 3A — Google Business review sync shares this orchestrator; only the fetch differs.
+import {
+  discoverGoogleBusinessScope, fetchAllGoogleReviews, googleReviewToFetchedContent,
+  isLocationSyncEligible, type GoogleBusinessLocation, type GoogleReviewExecutor, type GoogleDiscoveryClient,
+} from "./google-business-connector";
+import { GoogleBusinessApiClient, createGoogleFetchTransport, toReviewExecutor } from "./google-business-api-client";
+import {
+  resolveGoogleBusinessAccessToken, isReconnectRequiredFailure,
+  markGoogleBusinessReconnectRequired, clearGoogleBusinessReconnectRequired,
+} from "./google-business-token";
 
 /** Truthful outcome of a whole sync run. */
 // V1.58.7 — `interrupted`: the run did not complete because this worker LOST its lease (a newer worker
@@ -224,6 +234,19 @@ export interface SyncPhaseHooks {
    * META_LIVE_SYNC. It carries no sensitive data and is never logged.
    */
   contentTransport?: MetaContentTransport;
+  /**
+   * SLICE 3A — inject the Google Business REVIEW executor. Tests pass a deterministic paging executor so
+   * the REAL runReadOnlySync (lease/RLS/idempotency/verdict/dedup/health) runs against a real DB with no
+   * network. Live default (when omitted) is the Google API client, gated by the two Google feature axes.
+   * It carries no credential and is never logged.
+   */
+  googleReviewExecutor?: GoogleReviewExecutor;
+  /**
+   * SLICE 3A — inject the Google DISCOVERY client used to re-resolve the location before a review read.
+   * Tests pass a deterministic stub so the real orchestrator runs with no network. Live default (when
+   * omitted) is the Google API client authenticated with the vault-resolved access token.
+   */
+  googleDiscoveryClient?: GoogleDiscoveryClient;
 }
 
 export async function runReadOnlySync(
@@ -280,14 +303,13 @@ export async function runReadOnlySync(
   }
 
   // M9 (P0) — PROVIDER TRANSPORT GATE, enforced in the ENGINE, not only in the callers.
-  // Everything below this line is the Meta read-only path: it resolves a Meta access token
-  // and, for anything Meta does not own, `createRawConnector` silently falls back to a
-  // PLACEHOLDER connector. That fallback is how a real Google Business location used to be
-  // dragged onto the Meta transport and end in a false "reconnect required". Refuse here so
-  // no caller — web action, mobile endpoint, worker or future one — can route a non-Meta
-  // account into Meta. Fails closed on an unrecognized platform.
+  // Only providers with a real ingestion path pass: Meta, and (Slice 3A) Google Business, whose
+  // fetch is routed to its OWN credential/refresh layer in `fetchContent` before any Meta path and
+  // is fail-closed behind GOOGLE_BUSINESS_API_ENABLED / _APPROVED. Anything else — including an
+  // unrecognized platform — is refused here so no caller can drag it onto the Meta transport or the
+  // placeholder fallback.
   const syncProvider = syncProviderFor(String(account.platform));
-  if (syncProvider !== "meta") {
+  if (syncProvider !== "meta" && syncProvider !== "google_business") {
     emitOpsEvent("sync.provider_not_supported", { provider: syncProvider, trigger });
     return zero(false, "Read-only sync is not available for this platform yet.");
   }
@@ -333,7 +355,11 @@ export async function runReadOnlySync(
     // Live network reads require META_LIVE_SYNC. An INJECTED content transport (tests)
     // performs NO network I/O, so it may run with live sync off — the placeholder-connector
     // invariant (no real API calls by default) still holds because production never injects one.
-    if (isReal && !meta.liveSync && !hooks?.contentTransport) {
+    // META_LIVE_SYNC gates META. Google Business has its OWN two-axis gate
+    // (GOOGLE_BUSINESS_API_ENABLED / GOOGLE_BUSINESS_API_APPROVED), enforced inside its fetch path, and
+    // must not be silently disabled by a Meta switch it has nothing to do with.
+    const isGoogle = String(account.platform) === "google_business";
+    if (isReal && !isGoogle && !meta.liveSync && !hooks?.contentTransport) {
       return zero(false, "Live Meta sync is not enabled (META_LIVE_SYNC=false). No mock data is injected for a real account.");
     }
 
@@ -569,6 +595,14 @@ async function fetchContent(
     return { items };
   }
 
+  // SLICE 3A — GOOGLE BUSINESS. Routed BEFORE the Meta paths because Google has its own credential
+  // anchor (the tenant's BusinessPlatformConnection, not this ConnectedAccount), its own refresh layer
+  // and its own feature flags. It shares everything downstream: the same lease, the same idempotent
+  // ingest, the same SyncRun bookkeeping, the same health fields.
+  if (String(account.platform) === "google_business") {
+    return fetchGoogleBusinessReviews(account, hooks);
+  }
+
   // Real (read_only) LIVE path — Graph GET reads only. Fails safely.
   if (account.tokenExpiresAt && account.tokenExpiresAt.getTime() <= Date.now()) {
     throw new ReconnectRequiredError(
@@ -629,6 +663,83 @@ async function fetchContent(
     // Non-Graph error (network etc.) — generic, no secrets.
     throw new Error("Live Meta sync failed due to an unexpected error.");
   }
+}
+
+/**
+ * SLICE 3A — Google Business review read. Provider HTTP only (never inside a tenant tx).
+ *
+ * The chain is: resolve the location this ConnectedAccount represents from the tenant's Google
+ * connection → obtain a valid access token (refreshing through the vault only if needed) → walk every
+ * review page under explicit bounds → map each review onto the canonical FetchedContent the shared
+ * ingest path already understands.
+ *
+ * AUTHORITY. The location identity comes from `account.externalId`, which Slice 2 wrote server-side from
+ * a re-validated discovery. Nothing here reads a browser payload. The location is re-resolved against
+ * LIVE discovery before any review call, so a location that has been removed, unverified or de-authorised
+ * since import fails closed instead of silently syncing stale data.
+ *
+ * TRUTHFULNESS. A bounded/looping/failed later page returns `truncated: true`, which the caller records
+ * in the SyncRun audit and which must never be presented as a complete sync.
+ */
+async function fetchGoogleBusinessReviews(account: AccountRow, hooks?: SyncPhaseHooks): Promise<FetchResult> {
+  // A test may inject an executor; production never does and goes to the live client.
+  const injected = hooks?.googleReviewExecutor;
+
+  const token = await resolveGoogleBusinessAccessToken(account.tenantId);
+  if (!token.ok) {
+    if (isReconnectRequiredFailure(token.failure)) {
+      // Record the reversible reauth state on the connection, then surface the run-control error the
+      // outer handler already knows how to turn into health + backoff.
+      await markGoogleBusinessReconnectRequired(account.tenantId, token.failure);
+      throw new ReconnectRequiredError("Google authorization is no longer valid — reconnect required.");
+    }
+    if (token.failure === "rate_limited") throw new RateLimitedError("Google API rate limit reached — the sync will retry later.");
+    if (token.retryable) throw new ApiUnavailableError("Google Business API is temporarily unavailable — the sync will retry later.");
+    // not_configured / api_disabled / api_access_unconfirmed / configuration_invalid are DEPLOYMENT
+    // faults. Reconnecting would not help, so they are never reported as reconnect-required.
+    throw new Error("Google Business sync is not available for this deployment.");
+  }
+  if (token.refreshed) emitOpsEvent("provider.token_renewed", { platform: "google_business" });
+  // A working token proves any previous reauth flag is stale.
+  await clearGoogleBusinessReconnectRequired(account.tenantId);
+
+  // Re-resolve the location LIVE — never trust the imported copy to still be authorised/eligible.
+  const client = new GoogleBusinessApiClient({ transport: createGoogleFetchTransport(), accessToken: token.accessToken });
+  const discovery = await discoverGoogleBusinessScope(hooks?.googleDiscoveryClient ?? client);
+  if (!discovery.ok) throw new ApiUnavailableError("Could not read Google Business locations — the sync will retry later.");
+  let location: GoogleBusinessLocation | undefined;
+  let googleAccountId = "";
+  for (const [acctId, locs] of Object.entries(discovery.locationsByAccount)) {
+    const hit = locs.find((l) => l.providerLocationId === account.externalId);
+    if (hit) { location = hit; googleAccountId = acctId; break; }
+  }
+  if (!location) {
+    // The grant no longer covers this location: removed, transferred, or access withdrawn.
+    throw new PermissionRequiredError("This Google location is no longer available under the connected account — reconnect required.");
+  }
+  if (!isLocationSyncEligible(location)) {
+    // Verification was lost. Truthful and terminal for this tick; not a reconnect.
+    throw new Error("This Google location is not verified — reviews cannot be synced.");
+  }
+
+  const executor = injected ?? toReviewExecutor(client);
+  const res = await fetchAllGoogleReviews({ accountId: googleAccountId, location }, { executor });
+  if (!res.ok) {
+    // Bounded reason → the run-control error the outer handler understands. No provider text.
+    if (res.reason === "google_business_token_expired") throw new ReconnectRequiredError("Google authorization expired — reconnect required.");
+    if (res.reason === "google_business_permission_missing" || res.reason === "google_business_access_denied") {
+      throw new PermissionRequiredError("Missing Google Business permissions for this read — reconnect and re-grant access.");
+    }
+    if (res.reason === "google_business_quota_exceeded") throw new RateLimitedError("Google API quota reached — the sync will retry later.");
+    throw new Error("Google Business review sync failed.");
+  }
+
+  return {
+    items: res.reviews.map(googleReviewToFetchedContent),
+    // Google's review listing has no resumable cursor we can safely persist across runs, so none is
+    // claimed. A truncated walk is reported instead of being papered over with a fake cursor.
+    truncated: res.truncated,
+  };
 }
 
 /**
@@ -1201,6 +1312,7 @@ export * from "./meta-leadgen-subscription";
 export * from "./instagram-moderation";
 export * from "./google-business-connector";
 export * from "./google-business-api-client";
+export * from "./google-business-token";
 export * from "./production-safety";
 export * from "./connection-manager";
 export * from "./provider-revoke";

@@ -11,6 +11,7 @@ import {
   hideCapabilityState,
   platformSupportLevel,
   deriveFirstSyncState,
+  deriveMonitoringState,
   firstSyncRetryable,
   type FirstSyncState,
 } from "@guardora/core";
@@ -301,6 +302,28 @@ export default async function AccountsPage({
                           <span className="inline-flex items-center gap-1.5" data-testid="first-sync-state" data-state={st}>
                             <Badge tone={firstSyncTone(st)}>{firstSyncLabel(st)}</Badge>
                             {canManageConnectors && firstSyncRetryable(st) ? (
+                              <form action={retryFirstSync}>
+                                <input type="hidden" name="accountId" value={a.id} />
+                                <button type="submit" className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs hover:border-[var(--color-border-strong)]">{hdrT.dash.firstSyncRetry}</button>
+                              </form>
+                            ) : null}
+                          </span>
+                        );
+                      })() : null}
+                      {/* SLICE 3A — a connected but UNMONITORED account (a freshly imported Google
+                          location, or one held back by the plan cap) states why, instead of showing
+                          nothing at all. Reuses the existing Badge; no separate Google surface. */}
+                      {live && !a.monitoringEnabled ? (() => {
+                        const ms = deriveMonitoringState({ monitoringEnabled: a.monitoringEnabled, lastSuccessfulSyncAt: a.lastSuccessfulSyncAt, syncAttempts: a.syncAttempts, hasActiveLease: activeLeaseIds.has(a.id) });
+                        const label = ms === "syncing" ? hdrT.gbp.monSyncing
+                          : ms === "monitoring_unavailable" ? hdrT.gbp.monUnavailable
+                          : ms === "first_sync_failed" ? hdrT.gbp.monFirstSyncFailed
+                          : hdrT.gbp.monWaiting;
+                        const tone = ms === "first_sync_failed" ? "danger" : ms === "monitoring_unavailable" ? "warn" : "neutral";
+                        return (
+                          <span className="inline-flex items-center gap-1.5" data-testid="monitoring-state" data-state={ms}>
+                            <Badge tone={tone}>{label}</Badge>
+                            {canManageConnectors && (ms === "waiting_first_sync" || ms === "first_sync_failed") ? (
                               <form action={retryFirstSync}>
                                 <input type="hidden" name="accountId" value={a.id} />
                                 <button type="submit" className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs hover:border-[var(--color-border-strong)]">{hdrT.dash.firstSyncRetry}</button>

@@ -1258,6 +1258,12 @@ export const de: Dictionary = {
     skippedUnverified: "übersprungen — von Google nicht verifiziert",
     skippedUnknown: "übersprungen — nicht mehr verfügbar",
     skippedFailed: "konnten nicht verbunden werden",
+    // SLICE-3A — truthful monitoring state for a connected-but-not-yet-monitored account.
+    monMonitored: "Überwacht",
+    monSyncing: "Wird synchronisiert…",
+    monWaiting: "Verbunden · wartet auf erste Synchronisierung",
+    monFirstSyncFailed: "Verbunden · erste Synchronisierung fehlgeschlagen",
+    monUnavailable: "Verbunden · Überwachung in Ihrem Tarif nicht verfügbar",
     reviewMonitoring: "Bewertungs-Monitoring",
     readyToConnectBody: "Verbinden Sie Google Business Profile, um die Bewertungen Ihrer Standorte zu überwachen.",
     connect: "Google Business Profile verbinden",

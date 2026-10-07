@@ -91,4 +91,20 @@ export default tseslint.config(
     files: ["**/scripts/**", "**/*.test.ts", "**/*.test.tsx", "**/e2e/**"],
     rules: { "no-console": "off", "no-constant-binary-expression": "off" },
   },
+  // PRODUCTION-INCIDENT GUARD (/dashboard/accounts, Aug 2026). A `const` referenced ABOVE its own
+  // declaration is a temporal-dead-zone ReferenceError at RUNTIME, and TypeScript does not catch it when
+  // the read happens inside an arrow function that is invoked earlier in the same scope — which is
+  // exactly how the accounts page crashed after `const sp = await searchParams` was declared below a
+  // helper that already used `sp`.
+  //
+  // Scoped to App Router route files, because that is where the async `searchParams`/`params` contract
+  // forces "await first, then use" ordering and where the failure is user-facing. Enabling it repo-wide
+  // would flag 34 pre-existing, harmless hoisting patterns in unrelated modules; narrowing it keeps the
+  // gate meaningful today instead of deferring it behind a large unrelated cleanup.
+  {
+    files: ["apps/web/src/app/**/page.tsx", "apps/web/src/app/**/layout.tsx", "apps/web/src/app/**/route.ts"],
+    rules: {
+      "no-use-before-define": ["error", { functions: false, classes: false, variables: true, allowNamedExports: true }],
+    },
+  },
 );
