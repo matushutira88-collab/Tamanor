@@ -17,7 +17,7 @@ import {
   manualSyncBlocked,
   resolveManualSyncCapability,
 } from "@guardora/core";
-import { runReadOnlySync, disconnectAccount } from "@guardora/sync";
+import { runReadOnlySync, disconnectAccount, activateGoogleBusinessMonitoring } from "@guardora/sync";
 import { withTenant, assertTenantActive, getTenantEntitlements, acquireTenantResourceLock, countCommercialConnections, assertBrandPlatformCapacity } from "@guardora/db";
 import { requireSession } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
@@ -174,7 +174,15 @@ export async function runSyncAction(accountId: string): Promise<void> {
   // dedups concurrent triggers; the account's first-sync state / last-sync time reflect the result on the
   // next page load. Behavior/entitlement logic is unchanged — only the request no longer blocks.
   const tenantId = session.tenantId;
-  after(async () => { await runReadOnlySync({ accountId, tenantId }, "manual").catch(() => {}); });
+  // SLICE 3A — a Google Business account imported by Slice 2 starts UNMONITORED on purpose. A manual
+  // sync that genuinely succeeds is the proof that it can be monitored, so activation is attempted right
+  // after it. `activateGoogleBusinessMonitoring` re-reads the account (platform, status, connection and
+  // `lastSuccessfulSyncAt`) and applies the plan cap itself, so it is a safe no-op for every other
+  // platform and for a sync that did not actually succeed.
+  after(async () => {
+    const outcome = await runReadOnlySync({ accountId, tenantId }, "manual").catch(() => null);
+    if (outcome?.ok) await activateGoogleBusinessMonitoring(tenantId, accountId).catch(() => {});
+  });
 
   revalidatePath(`/dashboard/accounts/${accountId}`);
   revalidatePath("/dashboard/inbox");
@@ -213,7 +221,11 @@ export async function retryFirstSync(formData: FormData): Promise<void> {
     redirect("/dashboard/accounts?sync=not_supported");
   }
   const tenantId = session.tenantId;
-  after(async () => { await runReadOnlySync({ accountId, tenantId }, "manual").catch(() => {}); });
+  after(async () => {
+    const outcome = await runReadOnlySync({ accountId, tenantId }, "manual").catch(() => null);
+    // Same rule as "Sync now": a retry that finally succeeds may activate Google monitoring.
+    if (outcome?.ok) await activateGoogleBusinessMonitoring(tenantId, accountId).catch(() => {});
+  });
   revalidatePath("/dashboard/accounts");
   redirect("/dashboard/accounts?sync=started");
 }

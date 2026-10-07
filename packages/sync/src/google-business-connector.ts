@@ -23,6 +23,7 @@
 import { actorIdentityKey, type PlatformKey } from "@guardora/core";
 import { getGoogleBusinessConfig, GOOGLE_BUSINESS_SCOPE } from "@guardora/config";
 import { sentimentBucket, type SentimentBucket } from "@guardora/ai";
+import type { FetchedContent } from "@guardora/connectors";
 
 export { GOOGLE_BUSINESS_SCOPE };
 export const GOOGLE_BUSINESS_PLATFORM: PlatformKey = "google_business";
@@ -354,6 +355,131 @@ export function validateOAuthState(received: string | null | undefined, expected
 }
 
 /**
+ * SLICE 3A — REFRESH an expired / near-expiry Google access token.
+ *
+ * Same shape and the same discipline as {@link exchangeGoogleAuthCode}: server-side only, the response
+ * body is read for exactly the fields below, and nothing derived from it — token, raw body, provider
+ * error text — is returned, logged, audited or placed in a URL. Failures collapse into a bounded,
+ * ACTIONABLE classification, because the caller must treat "reconnect the user" very differently from
+ * "retry in a minute".
+ *
+ * REFRESH-TOKEN ROTATION. Google usually omits `refresh_token` on a refresh, meaning "keep the one you
+ * have". It occasionally returns a NEW one, which then replaces the old. Both cases are represented
+ * explicitly (`rotatedRefreshToken` is null vs a string) so the vault write is never a guess: a missing
+ * field must never be mistaken for "the refresh token was revoked".
+ */
+export const GOOGLE_REFRESH_MAX_SKEW_MS = 5 * 60_000;
+
+/**
+ * How a refresh failed, in terms of what the CALLER should do about it. This is deliberately not the
+ * same vocabulary as {@link GoogleBusinessReason}: that one describes review-sync outcomes, this one
+ * describes credential health.
+ */
+export type GoogleRefreshFailure =
+  /** The grant is permanently dead (invalid_grant: user revoked, or the refresh token was rotated away). */
+  | "reconnect_required"
+  /** Our client id/secret are wrong or the client was deleted — a DEPLOYMENT fault, not the user's. */
+  | "configuration_invalid"
+  /** Google is rate limiting us. Retry later. */
+  | "rate_limited"
+  /** 5xx / transport / timeout. Retry later. */
+  | "transient_failure"
+  /** 2xx whose body we could not use (no access_token, unparseable). Not retried blindly. */
+  | "malformed_response";
+
+/** True for failures where trying again later is reasonable; false for terminal ones. */
+export function isRetryableRefreshFailure(f: GoogleRefreshFailure): boolean {
+  return f === "rate_limited" || f === "transient_failure";
+}
+
+export type GoogleRefreshResult =
+  | {
+    ok: true;
+    accessToken: string;
+    accessTokenExpiresAt: Date;
+    tokenType: string;
+    scopes: string[];
+    /** Non-null ONLY when Google issued a replacement. Null means "keep the existing refresh token". */
+    rotatedRefreshToken: string | null;
+  }
+  | { ok: false; failure: GoogleRefreshFailure };
+
+export async function refreshGoogleAccessToken(input: {
+  refreshToken: string;
+  clientId: string;
+  clientSecret: string;
+  fetchImpl?: GoogleTokenFetch;
+  now?: () => number;
+  timeoutMs?: number;
+}): Promise<GoogleRefreshResult> {
+  if (!input.refreshToken) return { ok: false, failure: "reconnect_required" };
+  if (!input.clientId || !input.clientSecret) return { ok: false, failure: "configuration_invalid" };
+  const fetchImpl = input.fetchImpl ?? (globalThis.fetch as unknown as GoogleTokenFetch);
+  const now = input.now ?? (() => Date.now());
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 10_000);
+  try {
+    const res = await fetchImpl(GOOGLE_TOKEN_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: input.clientId,
+        client_secret: input.clientSecret,
+        refresh_token: input.refreshToken,
+        grant_type: "refresh_token",
+      }).toString(),
+      signal: controller.signal,
+    });
+    let body: unknown = null;
+    try { body = await res.json(); } catch { body = null; }
+
+    if (!res.ok) {
+      const err = body && typeof body === "object" ? String((body as { error?: unknown }).error ?? "") : "";
+      // invalid_grant is the ONLY terminal, user-actionable case: the grant no longer exists.
+      if (err === "invalid_grant") return { ok: false, failure: "reconnect_required" };
+      // Our credentials are wrong. Reconnecting the user would not help and must not be suggested.
+      if (err === "invalid_client" || err === "unauthorized_client" || res.status === 401) return { ok: false, failure: "configuration_invalid" };
+      if (res.status === 429) return { ok: false, failure: "rate_limited" };
+      if (res.status >= 500) return { ok: false, failure: "transient_failure" };
+      return { ok: false, failure: "malformed_response" };
+    }
+
+    const t = (body ?? {}) as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; token_type?: unknown; scope?: unknown };
+    const accessToken = typeof t.access_token === "string" ? t.access_token : "";
+    if (!accessToken) return { ok: false, failure: "malformed_response" };
+    const expiresInSec = typeof t.expires_in === "number" && Number.isFinite(t.expires_in) && t.expires_in > 0 ? t.expires_in : 3600;
+    const granted = typeof t.scope === "string" && t.scope.trim() ? t.scope.trim().split(/\s+/) : [GOOGLE_BUSINESS_SCOPE];
+    // A refresh that came back WITHOUT business.manage cannot drive review sync; treat it as a dead grant
+    // rather than storing a token that will fail every subsequent call.
+    if (!granted.includes(GOOGLE_BUSINESS_SCOPE)) return { ok: false, failure: "reconnect_required" };
+    return {
+      ok: true,
+      accessToken,
+      accessTokenExpiresAt: new Date(now() + expiresInSec * 1000),
+      tokenType: typeof t.token_type === "string" ? t.token_type : "Bearer",
+      scopes: granted,
+      // ABSENT means "keep the existing refresh token" — never "it was revoked".
+      rotatedRefreshToken: typeof t.refresh_token === "string" && t.refresh_token ? t.refresh_token : null,
+    };
+  } catch {
+    // Abort/network/DNS — retryable, and the underlying message never escapes.
+    return { ok: false, failure: "transient_failure" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Should we refresh before using this access token? True when it is already expired OR falls inside the
+ * safety window, so a token that would die mid-sync is replaced up front rather than causing a 401.
+ * A NULL expiry is treated as unknown-and-therefore-stale (fail-closed).
+ */
+export function googleAccessTokenNeedsRefresh(expiresAt: Date | null | undefined, nowMs: number, skewMs = GOOGLE_REFRESH_MAX_SKEW_MS): boolean {
+  if (!expiresAt) return true;
+  return expiresAt.getTime() - nowMs <= skewMs;
+}
+
+/**
  * SLICE 1/2 — live discovery of what the grant authorises, FULLY PAGINATED.
  *
  * Reuses the EXISTING client (`listAccounts` / `listLocations`) and the EXISTING normalizers, so
@@ -533,6 +659,125 @@ export async function listGoogleBusinessReviews(input: ListReviewsInput, opts: {
   } catch (e) {
     return { reason: mapGoogleBusinessError({ message: e instanceof Error ? e.message : String(e) }), reviews: [], ok: false };
   }
+}
+
+// ---------------------------------------------------------------------------
+// SLICE 3A — exhaustive review fetch + canonical content mapping.
+// ---------------------------------------------------------------------------
+
+/** Hard ceiling on review pages followed per location. 20 x pageSize 50 = 1000 reviews per sync. */
+export const GOOGLE_REVIEW_MAX_PAGES = 20;
+/** Hard ceiling on reviews collected per location, independent of page count. */
+export const GOOGLE_REVIEW_MAX_ITEMS = 1_000;
+
+export interface FetchAllReviewsResult {
+  ok: boolean;
+  reason: GoogleBusinessReason;
+  reviews: NormalizedReview[];
+  /**
+   * True when a page cap, item cap or a repeated page token stopped the walk. A truncated fetch is NOT
+   * a complete sync and the caller must not record it as one.
+   */
+  truncated: boolean;
+  pages: number;
+}
+
+/**
+ * Walk EVERY page of reviews for one location, reusing the existing per-page
+ * {@link listGoogleBusinessReviews} (which keeps all of its fail-closed gates: config, API flag,
+ * location verification, and the requirement that a real executor was injected).
+ *
+ * Safety bounds mirror discovery, and for the same reasons:
+ *   · a hard page cap and a hard item cap bound a runaway cursor;
+ *   · a REPEATED page token — the provider bug that loops forever — stops the walk;
+ *   · a non-string/blank token means "no more pages" and is never echoed back;
+ *   · reviews are deduped by provider review id across pages, so an overlapping page boundary cannot
+ *     produce two records for one real review.
+ *
+ * A failure on page 1 fails the whole fetch. A failure on a LATER page keeps what was already read and
+ * reports `truncated` — losing 400 already-fetched reviews because page 9 timed out would be worse, but
+ * calling that a complete sync would be a lie.
+ */
+export async function fetchAllGoogleReviews(
+  input: Omit<ListReviewsInput, "pageToken">,
+  opts: { source?: NodeJS.ProcessEnv; executor?: GoogleReviewExecutor; maxPages?: number; maxItems?: number } = {},
+): Promise<FetchAllReviewsResult> {
+  const maxPages = Math.max(1, opts.maxPages ?? GOOGLE_REVIEW_MAX_PAGES);
+  const maxItems = Math.max(1, opts.maxItems ?? GOOGLE_REVIEW_MAX_ITEMS);
+  const collected: NormalizedReview[] = [];
+  const seenReviewIds = new Set<string>();
+  const seenTokens = new Set<string>();
+  let token: string | undefined;
+  let truncated = false;
+  let pages = 0;
+  let lastReason: GoogleBusinessReason = "google_business_no_reviews";
+
+  for (; pages < maxPages; pages++) {
+    const page = await listGoogleBusinessReviews({ ...input, pageToken: token }, opts);
+    if (!page.ok) {
+      // Page 1 failing means we have nothing and no basis to claim success.
+      if (pages === 0) return { ok: false, reason: page.reason, reviews: [], truncated: false, pages: 0 };
+      // A later page failing keeps what we have, but the fetch is incomplete.
+      return { ok: true, reason: lastReason, reviews: collected, truncated: true, pages };
+    }
+    lastReason = page.reason;
+    for (const r of page.reviews) {
+      // Never invent an id, and never let one provider review occupy two slots.
+      if (!r.externalReviewId || seenReviewIds.has(r.externalReviewId)) continue;
+      if (collected.length >= maxItems) { truncated = true; break; }
+      seenReviewIds.add(r.externalReviewId);
+      collected.push(r);
+    }
+    if (truncated) { pages++; break; }
+
+    const next = page.nextPageToken;
+    if (typeof next !== "string" || next.trim() === "") { pages++; break; }
+    if (seenTokens.has(next)) { truncated = true; pages++; break; }
+    seenTokens.add(next);
+    token = next;
+    if (pages === maxPages - 1) truncated = true;
+  }
+
+  return {
+    ok: true,
+    reason: collected.length === 0 ? "google_business_no_reviews" : "google_business_sync_succeeded",
+    reviews: collected,
+    truncated,
+    pages,
+  };
+}
+
+/**
+ * Map ONE normalized Google review onto the canonical {@link FetchedContent} the existing ingest path
+ * already understands. No Google-specific persistence exists: a review becomes an ordinary ContentItem
+ * of kind `review`, which the shared pipeline then classifies and projects into a ReputationItem
+ * exactly as a Facebook comment does.
+ *
+ * Only fields the canonical model already has are carried. The raw Google payload, the owner reply, the
+ * location resource name and every other provider detail are deliberately dropped — Slice 3A persists
+ * nothing it does not need, and replies are a later slice.
+ */
+export function googleReviewToFetchedContent(review: NormalizedReview): FetchedContent {
+  return {
+    platform: "google_business" as FetchedContent["platform"],
+    kind: "review" as FetchedContent["kind"],
+    externalId: review.externalReviewId,
+    // The location this review belongs to — the canonical "parent object" for a review.
+    externalParentId: review.locationId,
+    // Rating-only reviews are legitimate and keep an empty body rather than an invented one.
+    text: review.text,
+    author: {
+      // Privacy-safe, location-scoped synthetic identity from the EXISTING normalizer — never a raw
+      // Google account id, and never a globally linkable one.
+      externalId: review.authorExternalId,
+      // Anonymous reviewers contribute no display name at all.
+      displayName: review.reviewerAnonymous ? undefined : (review.reviewerDisplayName ?? undefined),
+    },
+    rating: review.rating > 0 ? review.rating : undefined,
+    publishedAt: review.createTime.toISOString() as FetchedContent["publishedAt"],
+    // Google's review API returns no stable public permalink for a review, so none is invented.
+    permalink: undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------
