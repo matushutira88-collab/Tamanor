@@ -4,8 +4,8 @@
  * AND the centralized provider-status into a user-facing {state, label, tone, copy, cta}.
  *
  * Guarantees (enforced by tests):
- *  - Instagram / Google Business are NEVER shown healthy/live just because OAuth connected —
- *    their provider verification is pending, so the display shows that truth.
+ *  - A verification-pending provider (today: Google Business) is NEVER shown healthy/live just
+ *    because OAuth connected — the display shows that truth.
  *  - A disconnected / expired / permission-missing account always shows the connection
  *    problem (never "connected").
  *  - A sync-disabled account is never shown as healthy without the disabled note.
@@ -100,7 +100,7 @@ function connectorDisplayRaw(a: ConnectorAccountLike, opts: { liveSyncEnabled?: 
     return { state: "api_unavailable", label: "Platform unavailable", tone: "warn", copy: "The platform's API is temporarily unavailable. Monitoring retries automatically.", cta: { label: "View", kind: "view" } };
   }
 
-  // 2) Provider-level verification: Instagram / Google Business are NOT live yet, even
+  // 2) Provider-level verification: verification-pending providers are NOT live yet, even
   //    when the account is connected — show that truth instead of "healthy/live".
   if (provider.verificationPending) {
     return {

@@ -48,6 +48,27 @@ const COMPLIANCE_LINKS: Record<Locale, { label: string; href: string }[]> = {
   ],
 };
 
+const PRODUCT_LINKS: Record<Locale, { label: string; href: string }[]> = {
+  en: [
+    { label: "Features", href: "/features" },
+    { label: "Integrations", href: "/integrations" },
+    { label: "Pricing", href: "#pricing" },
+    { label: "Compare", href: "/compare" },
+  ],
+  sk: [
+    { label: "Funkcie", href: "/features" },
+    { label: "Integrácie", href: "/integrations" },
+    { label: "Cenník", href: "#pricing" },
+    { label: "Porovnanie", href: "/compare" },
+  ],
+  de: [
+    { label: "Funktionen", href: "/features" },
+    { label: "Integrationen", href: "/integrations" },
+    { label: "Preise", href: "#pricing" },
+    { label: "Vergleich", href: "/compare" },
+  ],
+};
+
 export function SiteFooter({
   dict,
   locale = defaultLocale,
@@ -66,13 +87,8 @@ export function SiteFooter({
   const columns: { title: string; links?: FooterLink[]; groups?: { caption: string; muted?: boolean; links: FooterLink[] }[] }[] = [
     {
       title: t.footer.product,
-      links: [
-        { label: t.footer.inbox, href: "/login" },
-        { label: t.footer.approvals, href: "/login" },
-        { label: t.footer.insights, href: "/login" },
-        { label: t.footer.reports, href: "/login" },
-        { label: t.footer.auditLog, href: "/login" },
-      ],
+      // Public product pages — the old Inbox/Approvals/… entries all pointed at /login.
+      links: PRODUCT_LINKS[locale].map((l) => ({ label: l.label, href: l.href === "#pricing" ? `${lp || "/"}#pricing` : l.href })),
     },
     {
       title: t.footer.platforms,
@@ -101,9 +117,6 @@ export function SiteFooter({
       title: "Learn",
       links: [
         { label: "Platform & architecture", href: "/platform" },
-        { label: "Features", href: "/features" },
-        { label: "Integrations", href: "/integrations" },
-        { label: "Compare", href: "/compare" },
         { label: "Documentation", href: "/docs" },
         { label: "AI discoverability", href: "/ai" },
       ],

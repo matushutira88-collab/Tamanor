@@ -25,9 +25,9 @@ const state = (html: string) => html.match(/data-connector-state="([^"]+)"/)?.[1
 const live = (html: string) => html.match(/data-whether-live="([^"]+)"/)?.[1];
 
 function run() {
-  // Instagram connected → verification pending, NEVER live/healthy.
+  // Instagram connected + healthy → live (Meta App Review approved); no verification-pending state.
   const ig = render({ platformKey: "instagram", status: "active", health: "healthy", connectionStatus: "connected" }, true, true);
-  check("1) Instagram connected renders verification_pending, not live", state(ig) === "provider_verification_pending" && live(ig) === "false" && /not live/i.test(ig) && !/>Healthy</.test(ig));
+  check("1) Instagram connected renders live, not verification_pending", state(ig) !== "provider_verification_pending" && live(ig) === "true" && !/not live/i.test(ig));
 
   // Google Business connected → verification pending, not live.
   const gbp = render({ platformKey: "google_business", status: "active", health: "healthy", connectionStatus: "connected" }, false, true);

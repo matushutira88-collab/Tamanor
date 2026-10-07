@@ -102,9 +102,9 @@ const EN: Copy = {
   heroBiz: { eyebrow: "Social account firewall", l1: "Stop the harm", l2: "before it reaches you.", lead: "Tamanor reads every comment and message, scores the risk with AI, auto-hides what's clearly harmful, and routes the grey areas to your team — every action fully audited.", cta: "Deploy free →" },
   heroFam: { eyebrow: "Family safety net", l1: "Shield your family", l2: "from what hides online.", lead: "Tamanor warns you early when risky contact or harmful content reaches your family, keeps every signal private and guardian-controlled — protection, never surveillance.", cta: "Protect my family →" },
   oneEngine: "One engine ·", twoProducts: "two products", pickWorld: "· pick your world", secondary: "See the dashboard",
-  trust: ["No scraping", "Official OAuth only", "Humans decide"], heroCap: "who matter — a human is always in control.", heroCapBold: "teams and families",
+  trust: ["No scraping", "Official OAuth only", "Humans decide"], heroCap: " who matter — a human is always in control.", heroCapBold: "teams and families",
   worksWith: "Works with",
-  platforms: [{ n: "Facebook Page", tag: "comments · auto-hide", on: true }, { n: "Instagram", tag: "comments", on: true }, { n: "YouTube", tag: "read-only", on: true }, { n: "Google Business", tag: "reviews", on: true }, { n: "LinkedIn", tag: "soon", on: false }, { n: "TikTok", tag: "soon", on: false }],
+  platforms: [{ n: "Facebook Page", tag: "comments · auto-hide", on: true }, { n: "Instagram", tag: "comments", on: true }, { n: "YouTube", tag: "in development", on: false }, { n: "Google Business", tag: "in development", on: false }, { n: "LinkedIn", tag: "soon", on: false }, { n: "TikTok", tag: "soon", on: false }],
   bizEyebrow: "Tamanor for Business", bizA: "Your comment sections,", bizB: "on autopilot.", bizBody: "Every comment and DM across your channels runs the firewall: spam and scams gone instantly, harassment hidden at high confidence, and only the genuine grey areas reach your team — with a receipt for every action.", bizList: ["Auto-hide clearly harmful comments at high confidence", "Action queue for the grey areas, with approve / reject", "Reputation & actor-risk on repeat offenders", "Full audit log — no silent moderation, ever"], bizCta: "Explore Business →", bizToastT: "3 items need review", bizToastM: "2 harassment · 1 spam wave",
   famEyebrow: "Tamanor for Families", famA: "A safety net for your family —", famB: "not a spy in their pocket.", famBody: "Guardians get early warning when risky contact or harmful content reaches the people they care for. Consent-first, age-appropriate, and private by design: Tamanor flags the danger — it never hands you their diary.", famList: ["Early warning on grooming, scams & harmful content", "Guardians & consent-first onboarding", "Age-appropriate profiles, private by design", "You stay in control — nothing hidden from you"], famCta: "Explore Family →", famToastT: "Sofia is protected", famToastM: "Guardian: you · consent active",
   orbEyebrow: "One shield, everyone under it", orbA: "Protection that reaches", orbB: "every person", orbBody: "From the brand manager watching a comment storm to the parent worried about a child online — the same engine has their back.", roles: ["Marketing", "Support", "Brand owner", "Parent", "Guardian", "Caregiver"], engineLbl: "Tamanor engine",
@@ -125,7 +125,7 @@ const SK: Copy = {
   oneEngine: "Jeden engine ·", twoProducts: "dva produkty", pickWorld: "· vyber si svet", secondary: "Pozri dashboard",
   trust: ["Žiadne scrapovanie", "Len oficiálny OAuth", "Rozhodujú ľudia"], heroCap: ", na ktorých záleží — vždy rozhoduje človek.", heroCapBold: "tímov a rodín",
   worksWith: "Funguje s",
-  platforms: [{ n: "Facebook Page", tag: "komentáre · auto-skrytie", on: true }, { n: "Instagram", tag: "komentáre", on: true }, { n: "YouTube", tag: "len na čítanie", on: true }, { n: "Google Business", tag: "recenzie", on: true }, { n: "LinkedIn", tag: "čoskoro", on: false }, { n: "TikTok", tag: "čoskoro", on: false }],
+  platforms: [{ n: "Facebook Page", tag: "komentáre · auto-skrytie", on: true }, { n: "Instagram", tag: "komentáre", on: true }, { n: "YouTube", tag: "vo vývoji", on: false }, { n: "Google Business", tag: "vo vývoji", on: false }, { n: "LinkedIn", tag: "čoskoro", on: false }, { n: "TikTok", tag: "čoskoro", on: false }],
   bizEyebrow: "Tamanor pre firmy", bizA: "Vaše komentáre,", bizB: "na autopilote.", bizBody: "Každý komentár a DM naprieč vašimi kanálmi prejde firewallom: spam a podvody zmiznú okamžite, obťažovanie sa skryje pri vysokej istote a k vášmu tímu sa dostanú len skutočne nejasné prípady — s dokladom o každej akcii.", bizList: ["Automaticky skryje jasne škodlivé komentáre pri vysokej istote", "Fronta akcií pre sivé zóny, so schválením / zamietnutím", "Reputácia a riziko aktéra pri opakovaných porušovateľoch", "Kompletný audit log — nikdy žiadna tichá moderácia"], bizCta: "Objaviť Business →", bizToastT: "3 položky na kontrolu", bizToastM: "2 obťažovania · 1 spam vlna",
   famEyebrow: "Tamanor pre rodiny", famA: "Bezpečnostná sieť pre vašu rodinu —", famB: "nie špión vo vrecku.", famBody: "Opatrovníci dostanú včasné varovanie, keď rizikový kontakt alebo škodlivý obsah dosiahne ich blízkych. Súhlas na prvom mieste, primerané veku a súkromné od návrhu: Tamanor označí nebezpečenstvo — nikdy vám nedá ich denník.", famList: ["Včasné varovanie pred groomingom, podvodmi a škodlivým obsahom", "Opatrovníci a onboarding so súhlasom na prvom mieste", "Profily primerané veku, súkromné od návrhu", "Vy máte kontrolu — nič nie je pred vami skryté"], famCta: "Objaviť Family →", famToastT: "Sofia je chránená", famToastM: "Opatrovník: vy · súhlas aktívny",
   orbEyebrow: "Jeden štít, všetci pod ním", orbA: "Ochrana, ktorá dosiahne", orbB: "každého človeka", orbBody: "Od brand manažéra, čo sleduje búrku komentárov, po rodiča, čo sa bojí o dieťa online — rovnaký engine kryje chrbát všetkým.", roles: ["Marketing", "Podpora", "Majiteľ značky", "Rodič", "Opatrovník", "Blízky"], engineLbl: "Tamanor engine",
@@ -146,7 +146,7 @@ const DE: Copy = {
   oneEngine: "Eine Engine ·", twoProducts: "zwei Produkte", pickWorld: "· wähle deine Welt", secondary: "Dashboard ansehen",
   trust: ["Kein Scraping", "Nur offizielles OAuth", "Menschen entscheiden"], heroCap: ", die zählen — ein Mensch behält immer die Kontrolle.", heroCapBold: "Teams und Familien",
   worksWith: "Funktioniert mit",
-  platforms: [{ n: "Facebook Page", tag: "Kommentare · Auto-Ausblenden", on: true }, { n: "Instagram", tag: "Kommentare", on: true }, { n: "YouTube", tag: "nur lesen", on: true }, { n: "Google Business", tag: "Bewertungen", on: true }, { n: "LinkedIn", tag: "bald", on: false }, { n: "TikTok", tag: "bald", on: false }],
+  platforms: [{ n: "Facebook Page", tag: "Kommentare · Auto-Ausblenden", on: true }, { n: "Instagram", tag: "Kommentare", on: true }, { n: "YouTube", tag: "in Entwicklung", on: false }, { n: "Google Business", tag: "in Entwicklung", on: false }, { n: "LinkedIn", tag: "bald", on: false }, { n: "TikTok", tag: "bald", on: false }],
   bizEyebrow: "Tamanor für Unternehmen", bizA: "Deine Kommentarbereiche,", bizB: "auf Autopilot.", bizBody: "Jeder Kommentar und jede DM über deine Kanäle läuft durch die Firewall: Spam und Betrug sofort weg, Belästigung bei hoher Sicherheit ausgeblendet, und nur die echten Grauzonen erreichen dein Team — mit einem Beleg für jede Aktion.", bizList: ["Blendet eindeutig schädliche Kommentare bei hoher Sicherheit aus", "Aktions-Warteschlange für Grauzonen, mit Freigabe / Ablehnung", "Reputation & Akteur-Risiko bei Wiederholungstätern", "Vollständiges Audit-Log — niemals stille Moderation"], bizCta: "Business entdecken →", bizToastT: "3 Elemente zu prüfen", bizToastM: "2 Belästigungen · 1 Spam-Welle",
   famEyebrow: "Tamanor für Familien", famA: "Ein Schutznetz für deine Familie —", famB: "kein Spion in der Tasche.", famBody: "Erziehungsberechtigte werden früh gewarnt, wenn riskanter Kontakt oder schädliche Inhalte ihre Schützlinge erreichen. Einwilligung zuerst, altersgerecht und privat by design: Tamanor markiert die Gefahr — übergibt dir aber niemals ihr Tagebuch.", famList: ["Frühwarnung bei Grooming, Betrug & schädlichen Inhalten", "Erziehungsberechtigte & Einwilligung-zuerst-Onboarding", "Altersgerechte Profile, privat by design", "Du behältst die Kontrolle — nichts wird vor dir verborgen"], famCta: "Family entdecken →", famToastT: "Sofia ist geschützt", famToastM: "Erziehungsberechtigte: du · Einwilligung aktiv",
   orbEyebrow: "Ein Schild, alle darunter", orbA: "Schutz, der", orbB: "jeden Menschen", orbBody: "Vom Brand-Manager, der einen Kommentarsturm beobachtet, bis zum Elternteil, das sich um ein Kind sorgt — dieselbe Engine schützt sie alle.", roles: ["Marketing", "Support", "Markeninhaber", "Elternteil", "Erziehungsberechtigte", "Angehörige"], engineLbl: "Tamanor Engine",
@@ -230,8 +230,8 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
               </h1>
               <p style={{ margin: "24px 0 0", maxWidth: "46ch", fontSize: 16.5, lineHeight: 1.72, color: C.dim }}>{h.lead}</p>
               <div style={{ marginTop: 28, display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <Link href="/register" style={{ display: "inline-flex", alignItems: "center", fontFamily: mono, fontSize: 12.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: "15px 26px", borderRadius: 11, color: "#fff", background: `linear-gradient(180deg, ${acc.a2}, ${acc.a})`, boxShadow: `0 8px 22px color-mix(in srgb, ${acc.a} 34%, transparent)` }}>{h.cta}</Link>
-                <a href="#biz" style={{ display: "inline-flex", alignItems: "center", fontFamily: mono, fontSize: 12.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", padding: "15px 26px", borderRadius: 11, color: C.ink, border: `1px solid ${C.line2}`, background: "#fff" }}>{t.secondary}</a>
+                <Link href={`/register?kind=${mode}`} style={{ display: "inline-flex", alignItems: "center", fontFamily: mono, fontSize: 12.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: "15px 26px", borderRadius: 11, color: "#fff", background: `linear-gradient(180deg, ${acc.a2}, ${acc.a})`, boxShadow: `0 8px 22px color-mix(in srgb, ${acc.a} 34%, transparent)` }}>{h.cta}</Link>
+                <a href={mode === "business" ? "#biz" : "#fam"} style={{ display: "inline-flex", alignItems: "center", fontFamily: mono, fontSize: 12.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", padding: "15px 26px", borderRadius: 11, color: C.ink, border: `1px solid ${C.line2}`, background: "#fff" }}>{t.secondary}</a>
               </div>
               <div style={{ marginTop: 24, display: "flex", gap: 20, flexWrap: "wrap", fontFamily: mono, fontSize: 11, color: C.faint }}>
                 {t.trust.map((x, i) => (
@@ -276,17 +276,21 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
         </div>
       </section>
 
+      {/* ===== PRODUCT (business + family showcases) — header "Product" target ===== */}
+      <div id="product">
       {/* ===== BUSINESS SHOWCASE ===== */}
-      <Showcase id="biz" reverse={false} acc={BIZ}
+      <Showcase id="biz" kind="business" reverse={false} acc={BIZ}
         eyebrow={t.bizEyebrow} a={t.bizA} b={t.bizB} body={t.bizBody} list={t.bizList} cta={t.bizCta}
         toastT={t.bizToastT} toastM={t.bizToastM} toastIcon="⚑"
         window={<DashWindow mode="business" acc={BIZ} t={t} big />} />
 
       {/* ===== FAMILY SHOWCASE ===== */}
-      <Showcase id="fam" reverse={true} acc={FAM} bg={`linear-gradient(180deg,#fff,#f2fbf7)`}
+      <Showcase id="fam" kind="family" reverse={true} acc={FAM} bg={`linear-gradient(180deg,#fff,#f2fbf7)`}
         eyebrow={t.famEyebrow} a={t.famA} b={t.famB} body={t.famBody} list={t.famList} cta={t.famCta}
         toastT={t.famToastT} toastM={t.famToastM} toastIcon="🛡"
         window={<DashWindow mode="family" acc={FAM} t={t} big />} />
+
+      </div>
 
       {/* ===== PROTECTION NETWORK ===== */}
       <section style={{ position: "relative", padding: "94px 0", background: "linear-gradient(180deg,#fff,#f3f7fe)", borderTop: `1px solid ${C.line}`, overflow: "hidden", textAlign: "center" }}>
@@ -315,7 +319,7 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
       </section>
 
       {/* ===== ENGINE ===== */}
-      <section id="engine" style={{ borderTop: `1px solid ${C.line}`, padding: "84px 0", background: "#fff" }}>
+      <section id="features" style={{ borderTop: `1px solid ${C.line}`, padding: "84px 0", background: "#fff" }}>
         <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 26px" }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 24, flexWrap: "wrap", marginBottom: 34 }}>
             <div>
@@ -351,8 +355,8 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
             </div>
           </div>
 
-          <PriceGroup title={t.groupBiz} plans={t.bizPlans} prices={BIZ_PRICES} acc={BIZ} per={per} custom={t.custom} popular={t.popular} priceFor={priceFor} />
-          <PriceGroup title={t.groupFam} plans={t.famPlans} prices={FAM_PRICES} acc={FAM} per={per} custom={t.custom} popular={t.popular} priceFor={priceFor} />
+          <PriceGroup kind="business" title={t.groupBiz} plans={t.bizPlans} prices={BIZ_PRICES} acc={BIZ} per={per} custom={t.custom} popular={t.popular} priceFor={priceFor} />
+          <PriceGroup kind="family" title={t.groupFam} plans={t.famPlans} prices={FAM_PRICES} acc={FAM} per={per} custom={t.custom} popular={t.popular} priceFor={priceFor} />
 
           <p style={{ textAlign: "center", margin: "22px 0 0", fontSize: 11, color: C.faint, fontFamily: mono }}>{t.priceNote}</p>
         </div>
@@ -378,8 +382,8 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
         </div>
       </section>
 
-      {/* ===== NEVER ===== */}
-      <section style={{ borderTop: `1px solid ${C.line}`, background: "#0b1220", color: "#cdd7e6", padding: "66px 0" }}>
+      {/* ===== NEVER ===== — header "Security" target */}
+      <section id="safety" style={{ borderTop: `1px solid ${C.line}`, background: "#0b1220", color: "#cdd7e6", padding: "66px 0" }}>
         <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 26px" }}>
           <div style={{ textAlign: "center", marginBottom: 34 }}>
             <p style={{ fontFamily: mono, fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "#7aa2ff", fontWeight: 600 }}>{t.neverEyebrow}</p>
@@ -410,8 +414,8 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
           </h2>
           <p style={{ margin: "20px auto 0", maxWidth: "46ch", color: C.dim, fontSize: 16 }}>{t.finalBody}</p>
           <div style={{ marginTop: 32, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
-            <Link href="/register" style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: "15px 28px", borderRadius: 11, color: "#fff", background: `linear-gradient(180deg, ${BIZ.a2}, ${BIZ.a})`, boxShadow: `0 8px 22px color-mix(in srgb, ${BIZ.a} 34%, transparent)` }}>{t.ctaBiz}</Link>
-            <Link href="/register" style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: "15px 28px", borderRadius: 11, color: "#fff", background: `linear-gradient(180deg, ${FAM.a2}, ${FAM.a})`, boxShadow: `0 8px 22px color-mix(in srgb, ${FAM.a} 34%, transparent)` }}>{t.ctaFam}</Link>
+            <Link href="/register?kind=business" style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: "15px 28px", borderRadius: 11, color: "#fff", background: `linear-gradient(180deg, ${BIZ.a2}, ${BIZ.a})`, boxShadow: `0 8px 22px color-mix(in srgb, ${BIZ.a} 34%, transparent)` }}>{t.ctaBiz}</Link>
+            <Link href="/register?kind=family" style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: "15px 28px", borderRadius: 11, color: "#fff", background: `linear-gradient(180deg, ${FAM.a2}, ${FAM.a})`, boxShadow: `0 8px 22px color-mix(in srgb, ${FAM.a} 34%, transparent)` }}>{t.ctaFam}</Link>
           </div>
         </div>
       </section>
@@ -422,8 +426,8 @@ export function LandingV2({ locale = "en" }: LandingV2Props) {
 }
 
 /* ---------- showcase section ---------- */
-function Showcase({ id, reverse, acc, bg, eyebrow, a, b, body, list, cta, toastT, toastM, toastIcon, window }: {
-  id: string; reverse: boolean; acc: typeof BIZ; bg?: string; eyebrow: string; a: string; b: string; body: string; list: string[]; cta: string; toastT: string; toastM: string; toastIcon: string; window: React.ReactNode;
+function Showcase({ id, kind, reverse, acc, bg, eyebrow, a, b, body, list, cta, toastT, toastM, toastIcon, window }: {
+  id: string; kind: "business" | "family"; reverse: boolean; acc: typeof BIZ; bg?: string; eyebrow: string; a: string; b: string; body: string; list: string[]; cta: string; toastT: string; toastM: string; toastIcon: string; window: React.ReactNode;
 }) {
   const copy = (
     <div style={reverse ? { order: 2 } as React.CSSProperties : undefined}>
@@ -435,7 +439,7 @@ function Showcase({ id, reverse, acc, bg, eyebrow, a, b, body, list, cta, toastT
           <li key={x} style={{ display: "flex", gap: 12, fontSize: 14.5 }}><Check c={acc.a} />{x}</li>
         ))}
       </ul>
-      <Link href="/register" style={{ marginTop: 28, display: "inline-flex", alignItems: "center", gap: 9, fontFamily: mono, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: "14px 26px", borderRadius: 12, color: "#fff", background: `linear-gradient(180deg, ${acc.a2}, ${acc.a})` }}>{cta}</Link>
+      <Link href={`/register?kind=${kind}`} style={{ marginTop: 28, display: "inline-flex", alignItems: "center", gap: 9, fontFamily: mono, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: "14px 26px", borderRadius: 12, color: "#fff", background: `linear-gradient(180deg, ${acc.a2}, ${acc.a})` }}>{cta}</Link>
     </div>
   );
   const win = (
@@ -464,7 +468,7 @@ function DashWindow({ mode, acc, t, big }: { mode: "business" | "family"; acc: t
     ? [t.dOverview, "Accounts", "Comments", t.dActionQueue]
     : [t.dOverview, "Profiles", t.dGuardians, t.dSignals];
   return (
-    <div style={{ borderRadius: 16, border: `1px solid ${C.line2}`, background: "#fff", boxShadow: "0 40px 90px rgba(15,23,42,.20)", overflow: "hidden" }}>
+    <div aria-hidden="true" style={{ borderRadius: 16, border: `1px solid ${C.line2}`, background: "#fff", boxShadow: "0 40px 90px rgba(15,23,42,.20)", overflow: "hidden", userSelect: "none" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 14px", borderBottom: `1px solid ${C.line}`, background: "#fbfcfe" }}>
         {[0, 1, 2].map((i) => <span key={i} style={{ height: 10, width: 10, borderRadius: "50%", background: "#e2e8f0" }} />)}
         <span style={{ marginLeft: 10, flex: 1, height: 22, borderRadius: 7, background: "#eef2f8", display: "flex", alignItems: "center", padding: "0 10px", fontFamily: mono, fontSize: 10, color: C.faint }}>🔒 {url}</span>
@@ -509,8 +513,8 @@ function DashWindow({ mode, acc, t, big }: { mode: "business" | "family"; acc: t
                 </div>
                 <div style={{ marginTop: 8, height: 5, borderRadius: 9, background: "#eef2f8", overflow: "hidden" }}><i style={{ display: "block", height: "100%", width: "82%", background: `linear-gradient(90deg, ${C.amber}, ${C.red})` }} /></div>
                 <div style={{ marginTop: 10, display: "flex", gap: 7 }}>
-                  <button style={{ flex: 1, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", padding: 7, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: mono, color: C.dim }}>Reject</button>
-                  <button style={{ flex: 1.5, borderRadius: 8, border: 0, color: "#fff", background: `linear-gradient(180deg, ${acc.a2}, ${acc.a})`, padding: 7, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: mono }}>Hide</button>
+                  <span style={{ flex: 1, textAlign: "center", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", padding: 7, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: mono, color: C.dim }}>Reject</span>
+                  <span style={{ flex: 1.5, textAlign: "center", borderRadius: 8, border: 0, color: "#fff", background: `linear-gradient(180deg, ${acc.a2}, ${acc.a})`, padding: 7, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: mono }}>Hide</span>
                 </div>
               </>
             ) : (
@@ -532,8 +536,8 @@ function DashWindow({ mode, acc, t, big }: { mode: "business" | "family"; acc: t
 }
 
 /* ---------- pricing group ---------- */
-function PriceGroup({ title, plans, prices, acc, per, custom, popular, priceFor }: {
-  title: string; plans: Plan[]; prices: (number | null)[]; acc: typeof BIZ; per: string; custom: string; popular: string; priceFor: (v: number | null) => string;
+function PriceGroup({ kind, title, plans, prices, acc, per, custom, popular, priceFor }: {
+  kind: "business" | "family"; title: string; plans: Plan[]; prices: (number | null)[]; acc: typeof BIZ; per: string; custom: string; popular: string; priceFor: (v: number | null) => string;
 }) {
   return (
     <div>
@@ -554,7 +558,7 @@ function PriceGroup({ title, plans, prices, acc, per, custom, popular, priceFor 
                 {pv != null ? <span style={{ fontFamily: mono, fontSize: 11, color: C.faint }}>{per}</span> : null}
               </div>
               <div style={{ fontSize: 12.5, color: C.dim, minHeight: 36, lineHeight: 1.5 }}>{p.tagline}</div>
-              <Link href={pv == null ? "/contact" : "/register"} style={{ marginTop: 14, display: "block", textAlign: "center", fontFamily: mono, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: 11, borderRadius: 10, ...(pop ? { border: 0, color: "#fff", background: `linear-gradient(180deg, ${acc.a2}, ${acc.a})` } : { border: `1px solid ${C.line}`, color: C.ink }) }}>{p.cta}</Link>
+              <Link href={pv == null ? "/contact" : `/register?kind=${kind}`} style={{ marginTop: 14, display: "block", textAlign: "center", fontFamily: mono, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", padding: 11, borderRadius: 10, ...(pop ? { border: 0, color: "#fff", background: `linear-gradient(180deg, ${acc.a2}, ${acc.a})` } : { border: `1px solid ${C.line}`, color: C.ink }) }}>{p.cta}</Link>
               <ul style={{ margin: "16px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5, color: C.dim }}>
                 {p.features.map((f) => (
                   <li key={f} style={{ display: "flex", gap: 8 }}><b style={{ color: acc.deep }}>▸</b>{f}</li>

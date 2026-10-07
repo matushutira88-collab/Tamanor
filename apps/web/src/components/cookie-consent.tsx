@@ -64,6 +64,9 @@ const COPY: Record<Locale, {
 
 function readLocale(): Locale {
   try {
+    // A locale-prefixed URL (/sk, /de/…) wins: a first-time visitor on /sk has no locale cookie yet.
+    const seg = window.location.pathname.split("/")[1];
+    if (isLocale(seg)) return seg;
     const match = document.cookie.match(new RegExp(`(?:^|; )${LOCALE_COOKIE}=([^;]*)`));
     const raw = match?.[1] ? decodeURIComponent(match[1]) : undefined;
     return isLocale(raw) ? raw : defaultLocale;

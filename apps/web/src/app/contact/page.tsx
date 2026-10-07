@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MarketingPage } from "@/components/marketing-page";
+import { MarketingPage, btnPrimary } from "@/components/marketing-page";
 import { getTL } from "@/i18n/server";
 import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
@@ -138,25 +138,33 @@ export default async function ContactPage({
   const error = sp.error;
 
   return (
-    <MarketingPage dict={_lp.t} locale={_lp.locale} eyebrow={c.eyebrow} title={c.title} subtitle={c.subtitle}>
-      <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
+    <MarketingPage dict={_lp.t} locale={_lp.locale} eyebrow={c.eyebrow} title={c.title} subtitle={c.subtitle} width="wide">
+      <div className="grid gap-8 lg:grid-cols-[1fr_1.5fr]">
         <div className="space-y-4">
-          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
-            <p className="text-sm font-semibold">{c.emailLabel}</p>
-            <a href="mailto:hello@tamanor.com" className="mt-1 block text-[var(--color-brand)] hover:underline">hello@tamanor.com</a>
-            <p className="mt-4 text-sm font-semibold">{c.securityLabel}</p>
-            <a href="mailto:security@tamanor.com" className="mt-1 block text-[var(--color-brand)] hover:underline">security@tamanor.com</a>
-          </div>
-          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
-            <p className="text-sm font-semibold">{c.liveWalkthroughTitle}</p>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">{c.liveWalkthroughBody}</p>
-            <Link href="/register" className="mt-3 inline-block rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)]">
-              {c.startFree}
+          {[
+            { label: c.emailLabel, mail: "hello@tamanor.com", icon: "M4 6h16v12H4zM4 7l8 6 8-6" },
+            { label: c.securityLabel, mail: "security@tamanor.com", icon: "M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6z" },
+          ].map((m) => (
+            <a key={m.mail} href={`mailto:${m.mail}`} className="group flex items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,.04)] transition hover:border-[var(--color-brand)]">
+              <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--color-brand-soft)] text-[var(--color-brand-strong)]">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={m.icon} /></svg>
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-muted)]">{m.label}</span>
+                <span className="block truncate font-semibold text-[var(--color-fg)] group-hover:text-[var(--color-brand-strong)]">{m.mail}</span>
+              </span>
+            </a>
+          ))}
+          <div className="rounded-2xl bg-[linear-gradient(160deg,#eaf1ff,#ffffff)] p-6 ring-1 ring-[var(--color-brand-soft)]">
+            <p className="font-bold">{c.liveWalkthroughTitle}</p>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--color-muted)]">{c.liveWalkthroughBody}</p>
+            <Link href="/register" className={`${btnPrimary} mt-4 !px-5 !py-3 !text-[12px]`}>
+              {c.startFree} →
             </Link>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 md:p-8">
+        <div className="rounded-3xl border border-[var(--color-border)] bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,.08)] md:p-10">
           {sent ? (
             <div>
               <p className="text-lg font-semibold">{c.sentTitle}</p>
@@ -168,23 +176,25 @@ export default async function ContactPage({
               {error ? (
                 <p className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger-soft)] px-4 py-2.5 text-sm text-[var(--color-danger)]">{error}</p>
               ) : null}
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium">{c.nameLabel}</span>
-                <input name="name" required placeholder={c.namePlaceholder} className={inputClass} />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium">{c.emailFieldLabel}</span>
-                <input name="email" type="email" required placeholder={c.emailPlaceholder} className={inputClass} />
-              </label>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium">{c.nameLabel}</span>
+                  <input name="name" required autoComplete="name" placeholder={c.namePlaceholder} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium">{c.emailFieldLabel}</span>
+                  <input name="email" type="email" required autoComplete="email" placeholder={c.emailPlaceholder} className={inputClass} />
+                </label>
+              </div>
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium">{c.messageLabel}</span>
-                <textarea name="message" rows={4} placeholder={c.messagePlaceholder} className={inputClass} />
+                <textarea name="message" rows={6} placeholder={c.messagePlaceholder} className={inputClass} />
               </label>
               <label className="flex items-start gap-2.5 text-sm text-[var(--color-muted)]">
                 <input type="checkbox" name="consent" className="mt-0.5 accent-[var(--color-brand)]" />
                 <span>{c.consentPre}<a href="/privacy" className="text-[var(--color-brand)] hover:underline">{c.privacyNotice}</a>{c.consentPost}</span>
               </label>
-              <button type="submit" className="w-full rounded-xl bg-[var(--color-brand)] px-6 py-3 text-sm font-semibold text-[var(--color-brand-fg)] transition hover:bg-[var(--color-brand-strong)] sm:w-auto">
+              <button type="submit" className={`${btnPrimary} w-full sm:w-auto`}>
                 {c.sendMessage}
               </button>
             </form>

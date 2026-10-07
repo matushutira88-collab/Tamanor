@@ -207,7 +207,7 @@ export default async function SecurityPage() {
   return (
     <>
       <JsonLd data={ld} />
-      <MarketingPage dict={_lp.t} locale={_lp.locale}
+      <MarketingPage cta dict={_lp.t} locale={_lp.locale}
         eyebrow={c.eyebrow}
         title={c.title}
         subtitle={c.subtitle}

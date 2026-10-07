@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MarketingPage, Section } from "@/components/marketing-page";
+import { MarketingPage, btnPrimary, btnSecondary } from "@/components/marketing-page";
 import { getTL } from "@/i18n/server";
 import { getLocale } from "@/i18n/locale-server";
 import type { Locale } from "@/i18n";
@@ -9,7 +9,7 @@ const META: Record<Locale, { title: string; description: string }> = {
   en: {
     title: "About — Tamanor",
     description:
-      "Tamanor is an Social Account Firewall that helps modern brands protect their reputation across social media, comments and reviews.",
+      "Tamanor is a Social Account Firewall that helps modern brands protect their reputation across social media, comments and reviews.",
   },
   sk: {
     title: "O nás — Tamanor",
@@ -47,7 +47,7 @@ const COPY: Record<
 > = {
   en: {
     eyebrow: "About",
-    title: "An Social Account Firewall for modern brands.",
+    title: "A Social Account Firewall for modern brands.",
     subtitle:
       "Tamanor helps brands protect their reputation across social media, comments and reviews — with AI speed and human control.",
     whyTitle: "Why Tamanor",
@@ -104,33 +104,39 @@ const COPY: Record<
 export default async function AboutPage() {
   const _lp = await getTL();
   const c = COPY[_lp.locale];
+  const pillars = [
+    { title: c.whyTitle, body: c.whyBody, icon: "M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" },
+    { title: c.approachTitle, body: c.approachBody, icon: "M9 12l2 2 4-4M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7z" },
+    { title: c.whereTitle, body: c.whereBody, icon: "M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" },
+  ];
   return (
     <MarketingPage dict={_lp.t} locale={_lp.locale}
+      width="wide"
+      cta
       eyebrow={c.eyebrow}
       title={c.title}
       subtitle={c.subtitle}
+      actions={
+        <>
+          <Link href="/register" className={btnPrimary}>{c.startFree} →</Link>
+          <a href="mailto:hello@tamanor.com" className={btnSecondary}>hello@tamanor.com</a>
+        </>
+      }
     >
-      <Section title={c.whyTitle}>
-        <p>{c.whyBody}</p>
-      </Section>
-
-      <Section title={c.approachTitle}>
-        <p>{c.approachBody}</p>
-      </Section>
-
-      <Section title={c.whereTitle}>
-        <p>{c.whereBody}</p>
-        <p>
-          <Link href="/register" className="text-[var(--color-brand)] hover:underline">
-            {c.startFree}
-          </Link>{" "}
-          {c.reachUsPre}{" "}
-          <a href="mailto:hello@tamanor.com" className="text-[var(--color-brand)] hover:underline">
-            hello@tamanor.com
-          </a>
-          {c.reachUsPost}
-        </p>
-      </Section>
+      <div className="grid gap-5 md:grid-cols-3">
+        {pillars.map((p, i) => (
+          <article key={p.title} className="flex flex-col rounded-2xl border border-[var(--color-border)] bg-white p-7 shadow-[0_10px_30px_rgba(15,23,42,.04)]">
+            <div className="flex items-start justify-between">
+              <span aria-hidden className="grid h-11 w-11 place-items-center rounded-xl bg-[var(--color-brand-soft)] text-[var(--color-brand-strong)]">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={p.icon} /></svg>
+              </span>
+              <span className="text-[11px] font-semibold tabular-nums tracking-[0.12em] text-[var(--color-muted)]">0{i + 1}</span>
+            </div>
+            <h2 className="mt-6 text-xl font-bold tracking-[-0.02em]">{p.title}</h2>
+            <p className="mt-3 text-[15px] leading-[1.75] text-[var(--color-muted)]">{p.body}</p>
+          </article>
+        ))}
+      </div>
     </MarketingPage>
   );
 }

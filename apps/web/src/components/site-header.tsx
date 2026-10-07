@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Logo } from "./logo";
 import { SectionLink } from "./section-link";
 import { LanguageSwitcher } from "./language-switcher";
+import { MobileNav, DocumentLang } from "./mobile-nav";
 import { getDictionary, defaultLocale, localePrefix, type Dictionary, type Locale } from "@/i18n";
 
 export function SiteHeader({
@@ -18,23 +19,33 @@ export function SiteHeader({
   // deterministic via <SectionLink> (explicit router.push + guaranteed scroll after cross-route load),
   // so a click from a sub-page (e.g. /case-studies) reliably lands on the section on the first click.
   const cls = "transition hover:text-[var(--color-fg)]";
+  // One list feeds both the desktop nav and the mobile panel. Every section id exists on the landing
+  // (platforms, product, features, safety, pricing); "AI + Human" had no section and was dropped.
+  const items = (c?: string) => (
+    <>
+      <SectionLink home={home} section="platforms" className={c}>{t.nav.platforms}</SectionLink>
+      <SectionLink home={home} section="product" className={c}>{t.nav.product}</SectionLink>
+      <SectionLink home={home} section="features" className={c}>{t.nav.features}</SectionLink>
+      <Link href={`${localePrefix(locale)}/case-studies`} className={c}>{t.nav.caseStudies}</Link>
+      <SectionLink home={home} section="safety" className={c}>{t.nav.security}</SectionLink>
+      <SectionLink home={home} section="pricing" className={c}>{t.nav.pricing}</SectionLink>
+    </>
+  );
+  const menuLabel = ({ en: { open: "Open menu", close: "Close menu" }, sk: { open: "Otvoriť menu", close: "Zavrieť menu" }, de: { open: "Menü öffnen", close: "Menü schließen" } } as const)[locale];
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[color-mix(in_oklab,var(--color-bg),transparent_25%)] backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         <Link href={home} className="text-[var(--color-fg)]">
           <Logo compactOnMobile />
         </Link>
-        <nav className="hidden items-center gap-8 text-sm text-[var(--color-muted)] md:flex">
-          <SectionLink home={home} section="platforms" className={cls}>{t.nav.platforms}</SectionLink>
-          <SectionLink home={home} section="features" className={cls}>{t.nav.features}</SectionLink>
-          <SectionLink home={home} section="product" className={cls}>{t.nav.product}</SectionLink>
-          <SectionLink home={home} section="control" className={cls}>{t.nav.aiHuman}</SectionLink>
-          <Link href={`${localePrefix(locale)}/case-studies`} className={cls}>{t.nav.caseStudies}</Link>
-          <SectionLink home={home} section="safety" className={cls}>{t.nav.security}</SectionLink>
-          <SectionLink home={home} section="pricing" className={cls}>{t.nav.pricing}</SectionLink>
+        <nav className="hidden items-center gap-7 whitespace-nowrap text-sm text-[var(--color-muted)] xl:flex">
+          {items(cls)}
         </nav>
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <LanguageSwitcher current={locale} variant="marketing" />
+          {/* Below sm the language switch moves into the menu panel so the bar fits at 320px. */}
+          <div className="hidden sm:block">
+            <LanguageSwitcher current={locale} variant="marketing" />
+          </div>
           {/* V1.50A — self-service CTA hierarchy: secondary = Log in (existing users),
               primary = Start free (self-service registration + 14-day free trial).
               V1.66 — Log in is now reachable on MOBILE too (it used to be `hidden sm:inline-block`, so
@@ -57,8 +68,10 @@ export function SiteHeader({
             <span className="sm:hidden">{t.common.startFreeShort}</span>
             <span className="hidden sm:inline">{t.common.startFree}</span>
           </Link>
+          <MobileNav label={menuLabel} footer={<div className="sm:hidden"><LanguageSwitcher current={locale} variant="marketing" /></div>}>{items()}</MobileNav>
         </div>
       </div>
+      <DocumentLang locale={locale} />
     </header>
   );
 }

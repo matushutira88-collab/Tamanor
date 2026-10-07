@@ -4,7 +4,7 @@ import { connectorDisplay, type ConnectorAccountLike } from "../../lib/connector
 /**
  * V1.39B — the single truthful connector status badge. Every tenant surface (accounts
  * list, account detail, connector cards) renders THIS, so the same provider truth is
- * shown everywhere: Instagram / Google Business can never read "Live", a sync-disabled
+ * shown everywhere: a verification-pending provider (Google Business) can never read "Live", a sync-disabled
  * account never reads "Healthy", and unsupported platforms get no connect/reconnect CTA.
  *
  * Self-contained (relative import + inline span) so it renders in unit tests without a
