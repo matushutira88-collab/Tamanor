@@ -35,6 +35,7 @@ const fileRoutes = routeFiles.filter((r) => emitsFile(r.s)).map((r) => r.rel).so
 // The REVIEWED inventory of legitimate authenticated file responses (route → required user action + auth owner).
 const INVENTORY = [
   "src/app/api/export/route.ts",                                                             // tenant CSV export (session + ReportView)
+  "src/app/api/dashboard/contacts/export/route.ts",                                          // business contacts CSV (verified session + Business entitlement + BusinessContactsExport [Owner/Admin] + same-origin POST + rate limit; RLS; formula-safe CSV; no-store) — reviewed 2026-10-07
   "src/app/api/platform/analytics/export/route.ts",                                          // platform CSV (session + platform role)
   "src/app/api/v1/child-safety/reviewer/analytics/export/route.ts",                          // reviewer analytics CSV
   "src/app/api/v1/child-safety/reviewer/incidents/[incidentId]/evidence/export/route.ts",     // reviewer evidence export
@@ -51,7 +52,7 @@ check("every inventory route still exists (update inventory if intentionally rem
 // Per-route guarantees.
 // Auth may be inline OR delegated to a guarded service whose result status gates the response. `analyticsCsv`
 // resolves a verified session + role in @/server/child-safety/analytics (401 unauthenticated / 403 forbidden).
-const AUTH = /requireSession|getSession|resolveEvidenceActor|requirePlatform|actor\(|requireFamily|analyticsCsv|canManageChildSafetyEvidence/;
+const AUTH = /requireSession|requireVerifiedSession|requireDashboardCapability|getSession|resolveEvidenceActor|requirePlatform|actor\(|requireFamily|analyticsCsv|canManageChildSafetyEvidence/;
 for (const rel of INVENTORY.filter((r) => fileRoutes.includes(r))) {
   const s = routeFiles.find((r) => r.rel === rel)!.s;
   check(`${rel}: authenticated/authorized (inline or delegated-service guard)`, AUTH.test(s));
