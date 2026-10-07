@@ -286,6 +286,8 @@ const KNOWN_EDGES: string[] = [
   "app/dashboard/action-queue/[id]/page.tsx -> components/dashboard/live-hide-form.tsx",
   "app/dashboard/action-queue/[id]/page.tsx -> components/dashboard/submit-button.tsx",
   "app/dashboard/billing/page.tsx -> app/dashboard/billing/checkout-button.tsx",
+  // Single-item re-analysis submit button — receives two label strings only (reviewed 2026-10-07).
+  "app/dashboard/inbox/[id]/page.tsx -> app/dashboard/inbox/[id]/reanalysis-submit.tsx",
   "app/dashboard/child-safety/integrations/page.tsx -> app/dashboard/child-safety/integrations/integration-console.tsx",
   "app/dashboard/child-safety/integrations/pilots/[pilotId]/page.tsx -> app/dashboard/child-safety/integrations/pilots/[pilotId]/pilot-detail-controls.tsx",
   "app/dashboard/child-safety/integrations/pilots/page.tsx -> app/dashboard/child-safety/integrations/pilots/pilot-list-console.tsx",

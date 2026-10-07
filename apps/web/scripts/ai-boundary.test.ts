@@ -91,9 +91,14 @@ function run() {
   const procWriteHits = mutationSurface.filter((f) => /processingStatus|processingTier/.test(readFileSync(f, "utf8"))).map(rel);
   check("7) inbox mutation surface never writes processing state", procWriteHits.length === 0, procWriteHits.join(", "));
 
-  // 8) The single production writer of processingStatus is the metered ingest.
-  const procWriters = files.filter((f) => /processingStatus:\s*hybrid\.processingStatus|data:\s*\{[^}]*processingStatus/.test(readFileSync(f, "utf8")) && !isDevOrTest(f)).map(rel);
-  check("8) processingStatus is DB-written only by the metering ingest", procWriters.length === 1 && procWriters[0] === "packages/sync/src/index.ts", procWriters.join(", "));
+  // 8) processingStatus only ever comes from the metered classifier. Writers: the metered ingest, and the
+  //    single-item re-analysis (Preview runs classifyWithUsagePolicy and stores the proposal; Confirm applies
+  //    exactly that stored proposal — it never calls a classifier itself).
+  const PROC_WRITERS = ["apps/web/src/server/inbox-reanalysis.ts", "packages/db/src/reanalysis-repo.ts", "packages/sync/src/index.ts"];
+  const procWriters = files.filter((f) => /processingStatus:\s*hybrid\.processingStatus|data:\s*\{[^}]*processingStatus/.test(readFileSync(f, "utf8")) && !isDevOrTest(f)).map(rel).sort();
+  check("8) processingStatus is DB-written only by the metering ingest + metered re-analysis", procWriters.length === PROC_WRITERS.length && procWriters.every((w, i) => w === PROC_WRITERS[i]), procWriters.join(", "));
+  const reanalysis = readFileSync(join(ROOT, "apps/web/src/server/inbox-reanalysis.ts"), "utf8");
+  check("8b) re-analysis Preview classifies through the metered usage policy", /await classifyWithUsagePolicy\(/.test(reanalysis));
 
   console.log(`\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — AI provider boundary (V1.44)`);
   process.exit(failures === 0 ? 0 : 1);
